@@ -578,7 +578,14 @@ It also changes Nano:
 - **Quick Menu Bluetooth:** choosing On keeps the chooser open on Pair Device,
   and the connected devices appear as the radio comes up; Off closes it.
 - **Kiosk Mode:** Start opens and closes Applications instead of the ES-DE
-  menu.
+  menu. The Quick Menu stays the way out: turning Toolbox → *Anbernic Button
+  Opens Quick Menu* off turns Kiosk Mode off, turning Kiosk Mode on turns that
+  switch back on, and Kiosk Mode counts as off while the switch is off.
+- **A Home button as the function button** (the KT Pocket KT-R1, ZPG A1
+  Unicorn, AYANEO Pocket Micro and unknown devices): a tap opens the Quick
+  Menu and a 3 s hold goes Home, over a game, in Nano's menus and in the DS
+  emulator, with Universal Hotkeys on or off. Android can't give Home to an
+  app, so Toolbox's *Anbernic Button Opens Quick Menu* shows a fixed On there.
 - **ES-DE boot:** the ES-DE home shows as soon as it is ready, after a few
   black frames that hide its theme art while it decodes.
 - **ES-DE menu → Applications** no longer locks the console up when it starts

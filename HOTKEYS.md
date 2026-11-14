@@ -18,6 +18,7 @@ Hold the **Anbernic button**, or **Start + Select**, in a game and press another
 
 - R is "forward" (save, fast forward) and L is "back" (load, rewind).
 - Quit needs a 3 s hold with nothing else pressed, so it can't happen by accident. Any other key during the hold cancels it until every button is let go and the hold starts again.
+- Where the function button is Android's `HOME` key, its 3 s hold goes Home instead of quitting, with Universal Hotkeys on or off ([The function button is `HOME`](#the-function-button-is-home)). Start + Select's hold still quits.
 - The buttons can be changed under **Settings → Gamepad Settings → Hotkeys**. *Quit Game Button* adds a button chord for quit; it is off by default.
 - The Anbernic button on its own opens the Quick Menu when it is **released**, over a game and in Nano's own menus alike. Start + Select opens the Quick Menu only in Nano's own menus, never in a game.
 - Anbernic + Volume Up / Down changes the screen brightness everywhere. It is not a hotkey, and the Quick Menu does not open on that release.
@@ -67,7 +68,7 @@ It runs while a game is in front (`app_launched`, overlay down, not in a drastic
 3. **Anbernic up:**
    - after a chord: nothing more;
    - alone, within 3 s: the overlay rises on the Quick Menu.
-4. **Hold to quit:** the Anbernic button held on its own for 3 s runs quit, and its release opens nothing. Any other key pressed during the hold cancels it. With Universal Hotkeys off there is no hold to quit, and a release within 10 s opens the Quick Menu as before. The 10 s emergency recovery hold (BACK, `BUTTON_MODE`, or the function button on a device with no Back) is unchanged, and checks the key is still down when it fires. It also works while Nano's overlay holds input back (`sys.gammaos.nano.drop_input`, which a crash can leave set): `BUTTON_MODE`, F10 and `HOME` get through to it then, as Back does, so it works where the recovery key is the function button. They get through only for the hold: while Nano holds input they don't reach the app, raise the Quick Menu or go Home. Injected keys (a hotkey's own, `input keyevent`) neither start nor cancel it. The D-pad reaches Android as a hat axis, so over an Android app it doesn't cancel a hold.
+4. **Hold to quit:** the Anbernic button held on its own for 3 s runs quit, and its release opens nothing. Any other key pressed during the hold cancels it. With Universal Hotkeys off there is no hold to quit, and a release within 10 s opens the Quick Menu as before. Where the button is Android's `HOME` key the hold goes Home instead, with hotkeys on or off, and a release opens the Quick Menu only within 3 s ([The function button is `HOME`](#the-function-button-is-home)). The 10 s emergency recovery hold (BACK, `BUTTON_MODE`, or the function button on a device with no Back) is unchanged, and checks the key is still down when it fires. It also works while Nano's overlay holds input back (`sys.gammaos.nano.drop_input`, which a crash can leave set): `BUTTON_MODE`, F10 and `HOME` get through to it then, as Back does, so it works where the recovery key is the function button. They get through only for the hold: while Nano holds input they don't reach the app, raise the Quick Menu or go Home. Injected keys (a hotkey's own, `input keyevent`) neither start nor cancel it. The D-pad reaches Android as a hat axis, so over an Android app it doesn't cancel a hold.
 5. **Start + Select:** the second of the two pressed while the other is held, with no other pad button down, arms the chord. Both keys still reach the app. Their down state is tracked from the key events, and a chord whose key-ups went missing (the overlay holds them back) is dropped at the next key.
    - A hotkey button pressed while both are held runs its hotkey and is swallowed like an Anbernic chord. Any other key reaches the app. A game's own combination that starts with Start + Select and then adds a hotkey button (L + R + Start + Select resets DS games) runs the hotkeys instead; *Start + Select Hotkeys* off avoids that.
    - Held for 3 s with nothing else pressed, it runs quit. Any other key, or Start or Select pressed again, cancels the hold until both are let go.
@@ -78,7 +79,7 @@ It runs while a game is in front (`app_launched`, overlay down, not in a drastic
 8. **A lost key-up:** if the Anbernic button's key-up goes missing, a later chord checks that it is physically down before acting. Start + Select reads both buttons' physical state.
 9. **A key-up left over:** when the app stops while the Anbernic button or Back is held (a hold to quit, the 10 s recovery), the chords are forgotten, and that button's key-up, if it still comes, is dropped.
 
-Nano's own menus follow the same rule. The Quick Menu toggles on release, and a button pressed while the Anbernic button is held cancels it and is ignored. Back pressed while the Anbernic button is held is a chord too: neither the Quick Menu nor Back acts. Start and Select act when they are released, so pressing both together toggles the Quick Menu once both are up. A key pressed while either is held cancels its action. Anbernic + Volume is brightness, and cancels the Quick Menu like any other chord. Anbernic + Select (shader) and Anbernic + Start (Applications) act on the press and are not a Start + Select chord; Select's search and Start's own action don't run. Applications closes back to where it was opened from, and Start on its own closes it too.
+Nano's own menus follow the same rule. The Quick Menu toggles on release, and a button pressed while the Anbernic button is held cancels it and is ignored. Back pressed while the Anbernic button is held is a chord too: neither the Quick Menu nor Back acts. Start and Select act when they are released, so pressing both together toggles the Quick Menu once both are up. A key pressed while either is held cancels its action. Anbernic + Volume is brightness, and cancels the Quick Menu like any other chord. Anbernic + Select (shader) and Anbernic + Start (Applications) act on the press and are not a Start + Select chord; Select's search and Start's own action don't run. Applications closes back to where it was opened from, and Start on its own closes it too. Where the Anbernic button is Android's `HOME` key, holding it on its own for 3 s goes Home there too, and only a shorter press toggles the Quick Menu.
 
 ### ThimsyHotkeyController (system_server)
 
@@ -210,7 +211,7 @@ drastic-nano reads the pad itself, so PhoneWindowManager leaves the Anbernic but
 | Quit | Its exit, after the hold; it saves slot 9 for Quick Resume |
 | Rewind | Nothing; it has no rewind |
 
-A Menu binding on the Anbernic button doesn't fire after a chord. Anbernic + Select turns the display shader on or off there too; on the DRM path drastic-nano draws the panel itself (with its own shaders), so the change shows once the game ends. Anbernic + Start does nothing there, since Nano's overlay can't show while drastic-nano owns the panel. The game sees neither button.
+A Menu binding on the Anbernic button doesn't fire after a chord. Where the button is Android's `HOME` key, its 3 s hold exits to Nano's home with Universal Hotkeys off too, and with drastic-nano's menu open; a Menu binding on it then opens the menu on a release within 3 s, as with hotkeys on. Anbernic + Select turns the display shader on or off there too; on the DRM path drastic-nano draws the panel itself (with its own shaders), so the change shows once the game ends. Anbernic + Start does nothing there, since Nano's overlay can't show while drastic-nano owns the panel. The game sees neither button.
 
 Nano's libretro player only runs during the Quick Resume preview, so it has no hotkeys.
 
@@ -278,6 +279,23 @@ The two resolvers are held to the same test cases (`gammaos-nano/test/fixtures/d
 - **`"fallback": "back"`:** Back doubles as the function button (below).
 
 The default function buttons are F10 (gamepad only), `BUTTON_MODE` and `HOME`, and the default Back is `BACK`. The Cube's own entry leaves out `HOME`, so nothing on the Cube changes.
+
+### The function button is `HOME`
+
+Android can't hand `HOME` to an app, so a function key whose `android` is `HOME` stays the system's. Today that is the default entry's `HOME` (evdev 172), so it applies to the devices on the default list: the KT Pocket KT-R1, the ZPG A1 Unicorn, the AYANEO Pocket Micro and any device the table doesn't know. The Retroid Pocket 4 Pro and Duo, the E6 Max and the Mangmi Air X list their Home button as `BUTTON_MODE`, so they work like the RG Cube; if one of their key layouts turns out to map it to `HOME`, changing the entry's `android` to `HOME` gives them this behaviour. The decisions are per key: on a default-list device, F10 and `BUTTON_MODE` keep the rules above.
+
+| | The function button is `HOME` | Every other function button (RG Cube included) |
+|---|---|---|
+| Released on its own within 3 s | the Quick Menu | the Quick Menu (within 10 s with Universal Hotkeys off) |
+| Held on its own for 3 s, over a game | **Home**, hotkeys on or off | quit with hotkeys on; nothing with them off |
+| Held on its own for 3 s, in Nano's menus | **Home**: the top of the home screen | nothing (the release opens the Quick Menu) |
+| Held on its own for 3 s, in drastic-nano | **exits to Nano's home** (saving slot 9), hotkeys on or off, menu open or not | exits with hotkeys on and the menu closed |
+| + a button | that button's hotkey (with hotkeys on) | the same |
+| Toolbox → *Anbernic Button Opens Quick Menu* off | no effect: the row shows a fixed **On** with the reason | the button goes to apps |
+
+- **Home over a game** (`PhoneWindowManager`): what a Home press over an app does in Nano mode (`nanoKillAppAndRestart`), which leaves an app with *Keep Running in Background*, or one running a foreground service, running. RetroArch and DraStic are the exception: they leave through the long-press-Back exit (Esc), so they save before closing instead of being force-stopped. Before, the hold ran quit, which also closed the game; a Home press with the button given back to apps force-stopped it with no save.
+- **Home in Nano's menus:** over a running app (the Quick Menu up over a game) the app closes to the home, as *Close Current App* does. In Nano's own menus every level, dialog, keyboard and player closes (music keeps playing, minimised), and the home shows its top: the ES-DE home, the DSi or Minima root, or on the XMB the first row of the category the home starts on (*Startup Menu*, else Game).
+- **The decisions** are `devkeys::isHomeFunction`, `functionRelease` and `functionHold` (C++) and `ThimsyDeviceKeys.isHome`, `functionRelease` and `functionHold` (Java), held to the same cases (`function_release`, `function_hold` in `gammaos-nano/test/fixtures/devkeys/cases.json`).
 
 Nano maps the function button's code to the Cube's F10 as it reads it, after the button pickers (which record the raw code). The rest of its menu code then needs no change. F10 and `BUTTON_MODE` keep working there on every device, as before.
 
@@ -378,7 +396,7 @@ The decision on release is `devkeys::backRelease` (C++) and `ThimsyDeviceKeys.ba
   - Back held between 1 s and 3 s: the Quick Menu, as the Anbernic button's release does.
   - In Nano's menus Back goes back when let go within 1 s, and held 1 to 3 s it opens the Quick Menu. Back + Volume, Select and Start work there too.
   - In drastic-nano, Back keeps its own tap (in-game menu) and long press (exit). Back + a button is a hotkey and opens no menu.
-  - Toolbox → *Anbernic Button Opens Quick Menu* off makes Back plain Back again over apps.
+  - Toolbox → *Anbernic Button Opens Quick Menu* off makes Back plain Back again over apps, and in Nano's menus Back's 1 to 3 s hold no longer opens the Quick Menu (Start + Select still does).
 - **Only a Menu button** (TrimUI Brick and the MagicX handhelds):
   - Their Menu button sends `KEY_BACK` (158), so it is their Back button (`"function": []`, `"fallback": "back"`).
   - It doubles as the function button exactly as Back does above: Menu + a button runs the hotkeys, holding it opens the Quick Menu or quits, and a tap is Back on release.
@@ -386,6 +404,16 @@ The decision on release is `devkeys::backRelease` (C++) and `ThimsyDeviceKeys.ba
   - B is not Back on these devices.
 - **A device with a function button but no Back button** (none known): the function button becomes the 10 s recovery key. PhoneWindowManager adds it when a device's entry has no Back.
 - **On every device:** Start + Select still does every hotkey and the 3 s quit, and Power held raises the Quick Menu over a game.
+
+### The Quick Menu stays reachable
+
+Kiosk Mode (Quick Menu, `persist.gammaos.nano.kiosk`) changes only the ES-DE home: Start opens Applications instead of the ES-DE menu, and Select does nothing in a game list. That leaves the Quick Menu, which the Anbernic button opens, as the way to every setting and out of Kiosk Mode. So:
+
+- Turning Toolbox → *Anbernic Button Opens Quick Menu* off also turns Kiosk Mode off.
+- Turning Kiosk Mode on also turns *Anbernic Button Opens Quick Menu* back on, rather than refusing: Kiosk Mode is turned on from the Quick Menu, and its design relies on the button to get back there.
+- Nano treats Kiosk Mode as off while the button doesn't open the Quick Menu (`devkeys::kioskInEffect`), whatever the properties say, so an `adb setprop` or an old saved state can't lock the menus away either. Where the function button is `HOME`, the button always opens the Quick Menu, so Kiosk Mode is unaffected there.
+
+Other routes to the Quick Menu in Nano's menus, which no setting turns off: Start + Select (Universal Hotkeys, *Start + Select Hotkeys* and Controller Bindings only affect games), and the two-finger tap on the touchscreen (unless *Touch Input* is off). Over a game, Power held raises it and a long press of Back closes the game. Universal Hotkeys off only removes the chords and the hold to quit; the Anbernic button still opens the Quick Menu.
 
 ### Adding a device
 
@@ -419,6 +447,8 @@ On the device, for each emulator:
 4. **Check the edge cases:**
    - Anbernic alone opens the Quick Menu on release;
    - Anbernic, or Start + Select, held 3 s quits; a key pressed during the hold cancels it;
+   - on a device whose function button is `HOME` (KT-R1, ZPG A1, Pocket Micro): a tap opens the Quick Menu, a 3 s hold goes Home over a game (RetroArch saves first), in Nano's menus and in drastic-nano, with Universal Hotkeys on and off, and with Toolbox's switch showing a fixed On;
+   - Toolbox's switch off turns Kiosk Mode off, and Kiosk Mode on turns the switch back on;
    - Start + Select + R1 saves, and Start + Select released opens nothing in a game;
    - Anbernic + an unmapped button does nothing;
    - the 10 s emergency hold still recovers, with Nano's overlay up too;

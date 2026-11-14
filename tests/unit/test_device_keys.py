@@ -159,7 +159,7 @@ class JavaResolver(util.TestCase):
         got = self.resolve(cases_path)
         self.assertEqual(len(got), len(cases))
         for case, result in zip(cases, got):
-            for field in FIELDS + tuple(f for f in ("back_android",) if f in case):
+            for field in FIELDS + tuple(f for f in ("back_android", "home_function") if f in case):
                 self.assertEqual(result[field], case[field], f"{case['name']}: {field}")
 
     def test_same_cases_as_nano(self):
@@ -178,8 +178,30 @@ class JavaResolver(util.TestCase):
         got = json.loads(proc.stdout)["back_release"]
         self.assertEqual(got, [c["want"] for c in cases])
 
+    def test_function_release_and_hold_same_as_nano(self):
+        """The function button let go, and held 3 s (Home where it is HOME), on Nano's cases."""
+        if not os.path.isfile(NANO_CASES):
+            self.skipTest(f"no {NANO_CASES}")
+        with open(NANO_CASES) as f:
+            doc = json.load(f)
+        proc = self.assertOk(util.run(["java", "-cp", self.classes,
+                                       "com.android.server.policy.DeviceKeysCheck", NANO_CASES]))
+        got = json.loads(proc.stdout)
+        self.assertEqual(got["function_release"], [c["want"] for c in doc["function_release"]])
+        self.assertEqual(got["function_hold"], [c["want"] for c in doc["function_hold"]])
+
     def test_the_table(self):
         self.check_cases(CASES)
+
+    def test_home_function_devices(self):
+        """Every device whose function button is Android's HOME is one the table says so for."""
+        with open(CASES) as f:
+            cases = json.load(f)["cases"]
+        for case in cases:
+            self.assertIn("home_function", case, case["name"])
+            self.assertEqual(case["home_function"], "HOME" in case["function_android"], case["name"])
+        cube = next(c for c in cases if c["id"] == "anbernic-rgcube")
+        self.assertFalse(cube["home_function"])
 
     def test_no_table_is_the_rg_cube(self):
         p = self.write("cases.json", json.dumps({"table": None, "cases": [{"props": {}}]}))
@@ -189,6 +211,7 @@ class JavaResolver(util.TestCase):
         self.assertEqual(r["gamepad_only"], [True, False])
         self.assertEqual(r["back_android"], ["BACK"])
         self.assertFalse(r["shared_back"])
+        self.assertFalse(r["home_function"])
 
     def test_malformed_table_is_the_rg_cube(self):
         for bad in ("", "{", "[]", "null"):
