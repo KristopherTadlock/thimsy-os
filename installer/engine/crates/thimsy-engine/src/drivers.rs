@@ -1,10 +1,9 @@
-//! USB access for the flashing tools. Windows needs WinUSB on the device's
-//! flashing-mode IDs, installed with the bundled `wdi-simple` (libwdi)
-//! behind one UAC prompt; when Windows also has another driver for the
-//! device (Unisoc's own), `driver_watch` switches the device to WinUSB as
-//! it's connected. Linux needs a udev rule that lets the logged-in
-//! user open the device, written once through `pkexec`. macOS needs
-//! nothing.
+//! USB access for the flashing tools. Windows needs a driver for the
+//! device's download mode that `spd_dump` can use: Unisoc's own ("SPRD U2S
+//! Diag", sprdvcom; unlocking needs it too) or WinUSB. When neither is
+//! installed, the bundled Unisoc driver package is, behind one UAC prompt.
+//! Linux needs a udev rule that lets the logged-in user open the device,
+//! written once through `pkexec`. macOS needs nothing.
 
 use crate::catalog::Device;
 use crate::error::{Code, EngineError};
@@ -43,29 +42,22 @@ pub fn status(d: &Device, host: Host) -> DriverStatus {
 }
 
 fn windows_status(d: &Device) -> DriverStatus {
-    if !d.identify.usb.is_empty()
-        && winusb_for_all(
-            &d.identify
-                .usb
-                .iter()
-                .map(|u| (u.vid, u.pid))
-                .collect::<Vec<_>>(),
-        )
-    {
+    if !d.identify.usb.is_empty() && covered_all(&usb_ids(d)) {
         return DriverStatus {
             status: "ok",
-            detail: tr("WinUSB is installed for {ids}").replace("{ids}", &ids(d)),
+            detail: tr("A USB driver the installer can use is installed for {ids}")
+                .replace("{ids}", &ids(d)),
         };
     }
-    match crate::tools::locate("wdi-simple") {
+    match crate::tools::locate_dir(UNISOC_DRIVER_DIR) {
         Ok(_) => DriverStatus {
             status: "missing",
-            detail: tr("WinUSB will be installed for {ids} the first time you flash")
+            detail: tr("Unisoc's USB driver will be installed for {ids} the first time you flash")
                 .replace("{ids}", &ids(d)),
         },
         Err(_) => DriverStatus {
             status: "missing",
-            detail: tr("The driver installer isn't bundled with this build. Install WinUSB for the device's download mode with Zadig."),
+            detail: tr("Unisoc's USB driver isn't bundled with this build. Install it from the UnisocTools of GammaOS Next's installation guide."),
         },
     }
 }
@@ -171,7 +163,6 @@ fn inf_flat(text: &str) -> String {
 /// the ID, includes `winusb.inf` and adds no service but WinUSB (libwdi's
 /// and Zadig's packages, or any other built the same way). A vendor package
 /// that merely mentions WinUSB somewhere doesn't count.
-/// `driver_watch::WINUSB_INF_RULE` is the same test in PowerShell.
 pub fn inf_is_winusb_for(text: &str, vid: u16, pid: u16) -> bool {
     inf_flat_is_winusb_for(&inf_flat(text), vid, pid)
 }
@@ -184,110 +175,36 @@ fn inf_flat_is_winusb_for(t: &str, vid: u16, pid: u16) -> bool {
         && t.matches("ADDSERVICE=WINUSB,").count() == services
 }
 
-/// Whether an .inf names VID:PID but isn't a WinUSB package (a vendor
-/// driver such as Unisoc's "SPRD U2S Diag").
-pub fn inf_is_other_for(text: &str, vid: u16, pid: u16) -> bool {
-    inf_flat_is_other_for(&inf_flat(text), vid, pid)
+/// Whether an .inf installs Unisoc's serial driver (sprdvcom, "SPRD U2S
+/// Diag") for VID:PID.
+pub fn inf_is_unisoc_for(text: &str, vid: u16, pid: u16) -> bool {
+    inf_flat_is_unisoc_for(&inf_flat(text), vid, pid)
 }
 
-fn inf_flat_is_other_for(flat: &str, vid: u16, pid: u16) -> bool {
-    flat.contains(&format!("VID_{vid:04X}&PID_{pid:04X}"))
-        && !inf_flat_is_winusb_for(flat, vid, pid)
+fn inf_flat_is_unisoc_for(flat: &str, vid: u16, pid: u16) -> bool {
+    flat.contains(&format!("VID_{vid:04X}&PID_{pid:04X}")) && flat.contains("ADDSERVICE=SPRDVCOM,")
 }
 
-/// Whether Windows keeps another driver than WinUSB for one of `ids` on a
-/// USB port the device was connected to before.
-#[cfg(windows)]
-pub fn other_driver_on_ports(ids: &[(u16, u16)]) -> bool {
-    ids.iter().any(|&(v, p)| {
-        devnode_services(v, p)
-            .iter()
-            .any(|s| !s.eq_ignore_ascii_case("WinUSB"))
-    })
-}
-
-#[cfg(not(windows))]
-pub fn other_driver_on_ports(_ids: &[(u16, u16)]) -> bool {
-    false
+/// Whether an .inf gives VID:PID a driver `spd_dump` can use.
+#[cfg_attr(not(any(windows, test)), allow(dead_code))]
+fn inf_flat_covers(flat: &str, vid: u16, pid: u16) -> bool {
+    inf_flat_is_unisoc_for(flat, vid, pid) || inf_flat_is_winusb_for(flat, vid, pid)
 }
 
 /// In one pass over the published packages: whether each of `ids` has a
-/// WinUSB package, and whether any has another package.
+/// driver `spd_dump` can use. Readable without admin rights; a package's
+/// original name doesn't matter, so earlier installs (Unisoc's own
+/// installer, Zadig) count too.
 #[cfg(windows)]
-fn store_classes(ids: &[(u16, u16)]) -> (Vec<bool>, bool) {
-    let mut winusb = vec![false; ids.len()];
-    let mut other = false;
+fn store_covers(ids: &[(u16, u16)]) -> Vec<bool> {
+    let mut covered = vec![false; ids.len()];
     for_each_published(|t| {
         let flat = inf_flat(t);
         for (i, &(v, p)) in ids.iter().enumerate() {
-            if inf_flat_is_winusb_for(&flat, v, p) {
-                winusb[i] = true;
-            } else if inf_flat_is_other_for(&flat, v, p) {
-                other = true;
-            }
+            covered[i] |= inf_flat_covers(&flat, v, p);
         }
     });
-    (winusb, other)
-}
-
-/// The driver service Windows keeps for each device it has seen with the
-/// ID (one per USB port), from `HKLM\SYSTEM\CurrentControlSet\Enum\USB`;
-/// readable without admin rights.
-#[cfg(windows)]
-fn devnode_services(vid: u16, pid: u16) -> Vec<String> {
-    use windows_sys::Win32::Foundation::ERROR_SUCCESS;
-    use windows_sys::Win32::System::Registry::{
-        RegCloseKey, RegEnumKeyExW, RegGetValueW, RegOpenKeyExW, HKEY, HKEY_LOCAL_MACHINE,
-        KEY_READ, RRF_RT_REG_SZ,
-    };
-    let wide = |s: &str| -> Vec<u16> { s.encode_utf16().chain([0]).collect() };
-    let path = wide(&format!(
-        "SYSTEM\\CurrentControlSet\\Enum\\USB\\VID_{vid:04X}&PID_{pid:04X}"
-    ));
-    let value = wide("Service");
-    let mut out = Vec::new();
-    // SAFETY: buffers are as long as passed; the key is closed below.
-    unsafe {
-        let mut key: HKEY = std::ptr::null_mut();
-        if RegOpenKeyExW(HKEY_LOCAL_MACHINE, path.as_ptr(), 0, KEY_READ, &mut key) != ERROR_SUCCESS
-        {
-            return out;
-        }
-        for i in 0.. {
-            let mut name = [0u16; 256];
-            let mut len = name.len() as u32;
-            let r = RegEnumKeyExW(
-                key,
-                i,
-                name.as_mut_ptr(),
-                &mut len,
-                std::ptr::null(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-            );
-            if r != ERROR_SUCCESS {
-                break;
-            }
-            let mut buf = [0u16; 128];
-            let mut size = std::mem::size_of_val(&buf) as u32;
-            if RegGetValueW(
-                key,
-                name.as_ptr(),
-                value.as_ptr(),
-                RRF_RT_REG_SZ,
-                std::ptr::null_mut(),
-                buf.as_mut_ptr().cast(),
-                &mut size,
-            ) == ERROR_SUCCESS
-            {
-                let n = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-                out.push(String::from_utf16_lossy(&buf[..n]));
-            }
-        }
-        RegCloseKey(key);
-    }
-    out
+    covered
 }
 
 /// Calls `f` with the text of each published third-party package
@@ -321,23 +238,19 @@ pub(crate) fn windows_dir() -> PathBuf {
     PathBuf::from(std::ffi::OsString::from_wide(&buf[..n]))
 }
 
-#[cfg(not(windows))]
-fn winusb_installed(vid: u16, pid: u16) -> bool {
-    test_winusb(vid, pid)
-}
-
-/// Whether every one of `ids` has a WinUSB package among Windows'
-/// published driver packages (one pass). Readable without admin rights;
-/// the package's original name doesn't matter, so earlier installs (any
-/// name, or Zadig) count too.
+/// Whether every one of `ids` has a driver `spd_dump` can use.
 #[cfg(windows)]
-fn winusb_for_all(ids: &[(u16, u16)]) -> bool {
-    store_classes(ids).0.iter().all(|&w| w)
+fn covered_all(ids: &[(u16, u16)]) -> bool {
+    store_covers(ids).iter().all(|&c| c)
 }
 
 #[cfg(not(windows))]
-fn winusb_for_all(ids: &[(u16, u16)]) -> bool {
-    ids.iter().all(|&(v, p)| winusb_installed(v, p))
+fn covered_all(_ids: &[(u16, u16)]) -> bool {
+    test_driver()
+}
+
+fn usb_ids(d: &Device) -> Vec<(u16, u16)> {
+    d.identify.usb.iter().map(|u| (u.vid, u.pid)).collect()
 }
 
 fn ids(d: &Device) -> String {
@@ -349,11 +262,12 @@ fn ids(d: &Device) -> String {
         .join(", ")
 }
 
-/// `drivers --install`: Windows installs WinUSB (one UAC prompt), Linux
-/// writes the udev rule (one password prompt); other hosts need nothing.
+/// `drivers --install`: Windows installs Unisoc's driver (one UAC prompt),
+/// Linux writes the udev rule (one password prompt); other hosts need
+/// nothing.
 pub fn install_for(d: &Device, host: Host, rep: &Reporter) -> Result<()> {
     match host {
-        Host::Windows => install(d, rep).map(|_| ()),
+        Host::Windows => install(d, rep),
         Host::Linux => linux_install(d, rep),
         _ => {
             rep.info("No driver needed on this computer");
@@ -362,14 +276,12 @@ pub fn install_for(d: &Device, host: Host, rep: &Reporter) -> Result<()> {
     }
 }
 
-/// The flash's driver step: Windows installs WinUSB when it's missing;
-/// Linux only warns when no udev rule covers the device (the app offers
-/// `drivers --install`; asking for a password in the middle of a flash
-/// would be a surprise); other hosts need nothing.
-///
-/// Returns whether Windows also has another driver package for the device
-/// (Windows only), found in the same pass.
-pub fn ensure_for_flash(d: &Device, host: Host, rep: &Reporter) -> Result<bool> {
+/// The flash's driver step: Windows installs Unisoc's driver when no
+/// driver `spd_dump` can use is there; Linux only warns when no udev rule
+/// covers the device (the app offers `drivers --install`; asking for a
+/// password in the middle of a flash would be a surprise); other hosts need
+/// nothing.
+pub fn ensure_for_flash(d: &Device, host: Host, rep: &Reporter) -> Result<()> {
     match host {
         Host::Windows => install(d, rep),
         Host::Linux => {
@@ -379,11 +291,11 @@ pub fn ensure_for_flash(d: &Device, host: Host, rep: &Reporter) -> Result<bool> 
                     ids(d)
                 ));
             }
-            Ok(false)
+            Ok(())
         }
         _ => {
             rep.info("No driver needed on this computer");
-            Ok(false)
+            Ok(())
         }
     }
 }
@@ -480,13 +392,30 @@ function New-AdminFolder([string]$path, [bool]$readable) {
 /// Why an elevated script stopped with code 6.
 pub const UNSAFE_ROOT: &str = "the Thimsy Installer folder in ProgramData isn't one only administrators control; delete it and try again";
 
-/// The script the elevated PowerShell runs: copies `wdi-simple.exe` from
-/// `tool` into a new folder only administrators and SYSTEM can change
-/// (`<ProgramData>\Thimsy Installer\driver-<random GUID>`), checks the copy
-/// is the file the engine found (`sha256`), runs it from there for each
-/// USB ID with `--dest` inside that folder, removes the folder and exits
-/// with the first failing exit code (0 when every ID was installed).
-pub fn driver_script(tool: &Path, sha256: &str, usb: &[(u16, u16, String)]) -> String {
+/// A driver package: its folder, and each file's path in it and SHA-256.
+pub type Package = (PathBuf, Vec<(String, String)>);
+
+/// The bundled Unisoc driver package: a folder next to the tools.
+pub const UNISOC_DRIVER_DIR: &str = "unisoc-driver";
+
+/// Its files (as GammaOS's UnisocTools has them; signed by Microsoft).
+pub const UNISOC_DRIVER_FILES: &[&str] = &[
+    "sprdvcom.inf",
+    "sprdvcom.cat",
+    "amd64/sprdvcom.sys",
+    "amd64/WdfCoInstaller01009.dll",
+    "i386/sprdvcom.sys",
+    "i386/WdfCoInstaller01009.dll",
+];
+
+/// The script the elevated PowerShell runs: copies the driver package's
+/// `files` (path in the package, SHA-256) from `src` into a new folder only
+/// administrators and SYSTEM can change (`<ProgramData>\Thimsy
+/// Installer\driver-<random GUID>`), checks each copy is the file the
+/// engine hashed, installs the package with Windows' own `pnputil`,
+/// removes the folder and exits with pnputil's exit code (0 also when
+/// Windows only needs a restart, or had no device to give it to yet).
+pub fn driver_script(src: &Path, files: &[(String, String)]) -> String {
     let mut s = String::from(ADMIN_PRELUDE);
     s.push_str(
         r#"$dir = Join-Path $root ('driver-' + [guid]::NewGuid().ToString())
@@ -495,30 +424,33 @@ try {
   Assert-AdminRoot
   New-AdminFolder $dir $false
   $made = $true
-  $exe = Join-Path $dir 'wdi-simple.exe'
-  $dest = Join-Path $dir 'inf'
+  $pkg = Join-Path $dir 'pkg'
+  New-Item -ItemType Directory -Path (Join-Path $pkg 'amd64'), (Join-Path $pkg 'i386') | Out-Null
 "#,
     );
     s.push_str(&format!(
-        "  Copy-Item -LiteralPath {} -Destination $exe\n",
-        ps_literal(&tool.display().to_string())
+        "  $src = {}
+",
+        ps_literal(&src.display().to_string())
     ));
-    s.push_str(&format!(
-        "  if ((Get-FileHash -Algorithm SHA256 -LiteralPath $exe).Hash -ne {}) {{ $code = 3; throw 'wdi-simple.exe changed before it could run' }}\n",
-        ps_literal(&sha256.to_ascii_uppercase())
-    ));
-    s.push_str("  $code = 0\n");
-    for (vid, pid, label) in usb {
-        // Shown in Device Manager; no characters Windows PowerShell 5.1
-        // passes to native programs badly.
-        let label: String = label.chars().filter(|c| !matches!(c, '"' | '\\')).collect();
+    for (file, sha) in files {
+        let win = file.replace('/', "\\");
         s.push_str(&format!(
-            "  if ($code -eq 0) {{ & $exe '--vid' '0x{vid:04x}' '--pid' '0x{pid:04x}' '--type' '0' '--name' {} '--inf' 'thimsy_{vid:04x}_{pid:04x}.inf' '--dest' $dest; $code = $LASTEXITCODE }}\n",
-            ps_literal(&label)
+            "  Copy-Item -LiteralPath (Join-Path $src {f}) -Destination (Join-Path $pkg {f})
+  if ((Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $pkg {f})).Hash -ne {h}) {{ $code = 3; throw 'the driver package changed before it could be installed' }}
+",
+            f = ps_literal(&win),
+            h = ps_literal(&sha.to_ascii_uppercase())
         ));
     }
     s.push_str(
-        r#"} catch {
+        r#"  $pnputil = Join-Path ([Environment]::SystemDirectory) 'pnputil.exe'
+  & $pnputil '/add-driver' (Join-Path $pkg 'sprdvcom.inf') '/install'
+  $code = $LASTEXITCODE
+  # 3010: installed, Windows wants a restart; 259: installed, no device to
+  # give it to right now.
+  if ($code -eq 3010 -or $code -eq 259) { $code = 0 }
+} catch {
   if ($code -eq 0) { $code = 1 }
 } finally {
   if ($made) { Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue }
@@ -542,17 +474,17 @@ pub fn encode_command(script: &str) -> String {
 #[cfg_attr(not(any(windows, test)), allow(dead_code))]
 const DECLINED: i32 = 1223;
 
-/// Installs WinUSB for the IDs not covered yet, all behind one elevated
-/// run: `run(script)` runs the script elevated and returns its exit code
-/// ([`DECLINED`] when the UAC prompt was declined); `installed(vid, pid)`
-/// looks in the driver store. Every ID must be covered afterwards.
+/// Installs the Unisoc driver package (in `src`, with `files`) when an ID
+/// has no driver `spd_dump` can use, behind one elevated run: `run(script)`
+/// runs the script elevated and returns its exit code ([`DECLINED`] when
+/// the UAC prompt was declined); `covered(vid, pid)` looks in the driver
+/// store. Every ID must be covered afterwards.
 #[cfg_attr(not(any(windows, test)), allow(dead_code))]
 fn install_ids(
     d: &Device,
-    tool: &Path,
-    sha256: &str,
+    package: &dyn Fn() -> Result<Package>,
     rep: &Reporter,
-    installed: &dyn Fn(u16, u16) -> bool,
+    covered: &dyn Fn(u16, u16) -> bool,
     run: &mut dyn FnMut(&str) -> Result<Option<i32>>,
 ) -> Result<()> {
     let todo: Vec<_> = d
@@ -560,9 +492,12 @@ fn install_ids(
         .usb
         .iter()
         .filter(|u| {
-            let have = installed(u.vid, u.pid);
+            let have = covered(u.vid, u.pid);
             if have {
-                rep.info(format!("WinUSB is already installed for {}", u.label));
+                rep.info(format!(
+                    "A USB driver the installer can use is installed for {}",
+                    u.label
+                ));
             }
             !have
         })
@@ -574,106 +509,96 @@ fn install_ids(
         .iter()
         .map(|u| format!("{} ({:04x}:{:04x})", u.label, u.vid, u.pid))
         .collect();
+    let (src, files) = package()?;
     rep.info(format!(
-        "Installing WinUSB for {}; Windows asks for permission",
+        "Installing Unisoc's USB driver for {}; Windows asks for permission",
         names.join(", ")
     ));
-    let usb: Vec<(u16, u16, String)> = todo
-        .iter()
-        .map(|u| (u.vid, u.pid, u.label.clone()))
-        .collect();
-    run_install(&names.join(", "), &usb, tool, sha256, run)?;
+    let code = run(&driver_script(&src, &files))?;
+    if code != Some(0) {
+        let why = match code {
+            Some(DECLINED) => "the Windows permission prompt was declined".to_string(),
+            Some(3) => "the driver package changed before it could be installed".to_string(),
+            Some(6) => UNSAFE_ROOT.to_string(),
+            Some(c) => format!("exit code {c}"),
+            None => "stopped".to_string(),
+        };
+        return Err(EngineError::new(
+            Code::ToolFailed,
+            format!("driver install for {} failed ({why})", names.join(", ")),
+        )
+        .hint("Accept the Windows permission prompt, or install Unisoc's USB driver from the UnisocTools of GammaOS Next's installation guide.")
+        .into());
+    }
     for u in todo {
-        if !installed(u.vid, u.pid) {
+        if !covered(u.vid, u.pid) {
             return Err(EngineError::new(
                 Code::ToolFailed,
                 format!(
-                    "the driver installer finished, but Windows still has no WinUSB driver for {} ({:04x}:{:04x})",
+                    "the driver install finished, but Windows still has no driver the installer can use for {} ({:04x}:{:04x})",
                     u.label, u.vid, u.pid
                 ),
             )
-            .hint("Accept the Windows permission prompt, or install WinUSB with Zadig.")
+            .hint("Accept the Windows permission prompt, or install Unisoc's USB driver from the UnisocTools of GammaOS Next's installation guide.")
             .into());
         }
     }
     Ok(())
 }
 
-/// Runs the driver script for `usb` (named `names`) through `run`; fails
-/// unless it exited 0.
+/// The bundled driver package: its folder and each file's SHA-256.
 #[cfg_attr(not(any(windows, test)), allow(dead_code))]
-fn run_install(
-    names: &str,
-    usb: &[(u16, u16, String)],
-    tool: &Path,
-    sha256: &str,
-    run: &mut dyn FnMut(&str) -> Result<Option<i32>>,
-) -> Result<()> {
-    let code = run(&driver_script(tool, sha256, usb))?;
-    if code == Some(0) {
-        return Ok(());
+fn bundled_package() -> Result<Package> {
+    let dir = crate::tools::locate_dir(UNISOC_DRIVER_DIR)?;
+    let mut files = Vec::new();
+    for f in UNISOC_DRIVER_FILES {
+        let sha = crate::util::sha256_file(&dir.join(f), |_, _| {})?;
+        files.push((f.to_string(), sha));
     }
-    let why = match code {
-        Some(DECLINED) => "the Windows permission prompt was declined".to_string(),
-        Some(3) => "the driver installer changed before it could run".to_string(),
-        Some(6) => UNSAFE_ROOT.to_string(),
-        Some(c) => format!("exit code {c}"),
-        None => "stopped".to_string(),
-    };
-    Err(EngineError::new(
-        Code::ToolFailed,
-        format!("driver install for {names} failed ({why})"),
-    )
-    .hint("Accept the Windows permission prompt, or install WinUSB with Zadig.")
-    .into())
+    Ok((dir, files))
 }
 
-/// Installs WinUSB for every flashing-mode ID of the device; whether
-/// Windows also has another package for one (Windows only).
-fn install(d: &Device, rep: &Reporter) -> Result<bool> {
+/// Installs Unisoc's driver when an ID of the device has no driver
+/// `spd_dump` can use (Windows only).
+fn install(d: &Device, rep: &Reporter) -> Result<()> {
     if let Some(r) = test_install(d, rep) {
-        return r.map(|()| false);
+        return r;
     }
     platform_install(d, rep)
 }
 
 #[cfg(windows)]
-fn platform_install(d: &Device, rep: &Reporter) -> Result<bool> {
-    let ids: Vec<(u16, u16)> = d.identify.usb.iter().map(|u| (u.vid, u.pid)).collect();
-    let (winusb, other) = store_classes(&ids);
-    let tool = crate::tools::locate("wdi-simple")?;
-    let sha = crate::util::sha256_file(&tool, |_, _| {})?;
+fn platform_install(d: &Device, rep: &Reporter) -> Result<()> {
+    let ids = usb_ids(d);
+    let before = store_covers(&ids);
     // From the one pass until the install ran; looked up again after it.
     let ran = std::cell::Cell::new(false);
     let rescan = std::cell::OnceCell::new();
     install_ids(
         d,
-        &tool,
-        &sha,
+        &bundled_package,
         rep,
         &|v, p| {
             let at = ids.iter().position(|&id| id == (v, p));
-            if ran.get() {
-                // One more pass for all IDs, after the install.
-                let (after, _) = rescan.get_or_init(|| store_classes(&ids));
-                at.is_some_and(|i| after[i])
+            let now = if ran.get() {
+                rescan.get_or_init(|| store_covers(&ids))
             } else {
-                at.is_some_and(|i| winusb[i])
-            }
+                &before
+            };
+            at.is_some_and(|i| now[i])
         },
         &mut |script| {
             ran.set(true);
             run_elevated(script)
         },
-    )?;
-    Ok(other)
+    )
 }
 
 #[cfg(not(windows))]
-fn platform_install(_d: &Device, _rep: &Reporter) -> Result<bool> {
+fn platform_install(_d: &Device, _rep: &Reporter) -> Result<()> {
     Err(EngineError::new(
         Code::UnsupportedHost,
-        "WinUSB can only be installed on Windows",
+        "Unisoc's USB driver can only be installed on Windows",
     )
     .into())
 }
@@ -698,13 +623,96 @@ pub(crate) fn powershell_path() -> Result<PathBuf> {
 /// declined. The elevated process inherits none of the engine's handles.
 #[cfg(windows)]
 fn run_elevated(script: &str) -> Result<Option<i32>> {
-    Ok(match crate::driver_watch::Process::launch(script)? {
+    Ok(match Process::launch(script)? {
         None => Some(DECLINED),
         Some(p) => {
             p.wait(u32::MAX);
             p.exit_code()
         }
     })
+}
+
+/// An elevated Windows PowerShell (the driver install).
+#[cfg(windows)]
+struct Process(windows_sys::Win32::Foundation::HANDLE);
+
+#[cfg(windows)]
+impl Process {
+    /// Runs `script` in a hidden, elevated Windows PowerShell (one UAC
+    /// prompt) without waiting for it; `None` when the prompt was
+    /// declined. It inherits none of the engine's handles.
+    fn launch(script: &str) -> Result<Option<Process>> {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::Foundation::{GetLastError, ERROR_CANCELLED};
+        use windows_sys::Win32::UI::Shell::{
+            ShellExecuteExW, SEE_MASK_NOASYNC, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW,
+        };
+        let wide = |s: &std::ffi::OsStr| -> Vec<u16> { s.encode_wide().chain([0]).collect() };
+        let exe = wide(powershell_path()?.as_os_str());
+        let verb = wide(std::ffi::OsStr::new("runas"));
+        let params = wide(std::ffi::OsStr::new(&format!(
+            "-NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand {}",
+            encode_command(script)
+        )));
+        // SAFETY: the strings outlive the call; the process handle is kept
+        // and closed when the Process is dropped.
+        unsafe {
+            let mut info: SHELLEXECUTEINFOW = std::mem::zeroed();
+            info.cbSize = std::mem::size_of::<SHELLEXECUTEINFOW>() as u32;
+            info.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC;
+            info.lpVerb = verb.as_ptr();
+            info.lpFile = exe.as_ptr();
+            info.lpParameters = params.as_ptr();
+            info.nShow = 0; // SW_HIDE
+            if ShellExecuteExW(&mut info) == 0 {
+                if GetLastError() == ERROR_CANCELLED {
+                    return Ok(None);
+                }
+                return Err(std::io::Error::last_os_error().into());
+            }
+            if info.hProcess.is_null() {
+                return Err(EngineError::new(
+                    Code::ToolFailed,
+                    "the elevated PowerShell couldn't start (Windows didn't start it); nothing was written",
+                )
+                .into());
+            }
+            Ok(Some(Process(info.hProcess)))
+        }
+    }
+
+    /// Its exit code, once it has ended.
+    fn exit_code(&self) -> Option<i32> {
+        use windows_sys::Win32::Foundation::WAIT_OBJECT_0;
+        use windows_sys::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
+        // SAFETY: the handle stays open until drop.
+        unsafe {
+            if WaitForSingleObject(self.0, 0) != WAIT_OBJECT_0 {
+                return None;
+            }
+            let mut code = 0u32;
+            (GetExitCodeProcess(self.0, &mut code) != 0).then_some(code as i32)
+        }
+    }
+
+    /// Waits up to `ms` (`u32::MAX`: as long as it takes) for it to end;
+    /// whether it has.
+    fn wait(&self, ms: u32) -> bool {
+        use windows_sys::Win32::Foundation::WAIT_OBJECT_0;
+        use windows_sys::Win32::System::Threading::WaitForSingleObject;
+        // SAFETY: the handle stays open until drop.
+        unsafe { WaitForSingleObject(self.0, ms) == WAIT_OBJECT_0 }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for Process {
+    fn drop(&mut self) {
+        // SAFETY: the handle is open and closed once, here.
+        unsafe {
+            windows_sys::Win32::Foundation::CloseHandle(self.0);
+        }
+    }
 }
 
 /// First of `candidates` that exists.
@@ -790,7 +798,7 @@ fn test_install(_d: &Device, _rep: &Reporter) -> Option<Result<()>> {
 }
 
 #[cfg(all(not(test), not(windows)))]
-fn test_winusb(_vid: u16, _pid: u16) -> bool {
+fn test_driver() -> bool {
     false
 }
 
@@ -801,16 +809,22 @@ fn test_winusb(_vid: u16, _pid: u16) -> bool {
 #[cfg(test)]
 fn test_install(d: &Device, rep: &Reporter) -> Option<Result<()>> {
     let code = test::ELEVATED_EXIT.with(|c| c.get())?;
-    let tool = Path::new(r"C:\Program Files\Thimsy Installer\engine\tools\wdi-simple.exe");
     Some(install_ids(
         d,
-        tool,
-        &"0".repeat(64),
+        &|| {
+            Ok((
+                PathBuf::from(r"C:\Program Files\Thimsy Installer\engine\tools\unisoc-driver"),
+                UNISOC_DRIVER_FILES
+                    .iter()
+                    .map(|f| (f.to_string(), "0".repeat(64)))
+                    .collect(),
+            ))
+        },
         rep,
-        &|v, p| winusb_for_all(&[(v, p)]),
+        &|v, p| covered_all(&[(v, p)]),
         &mut |_| {
             if code == 0 {
-                test::WINUSB.with(|w| w.set(true));
+                test::DRIVER.with(|w| w.set(true));
             }
             Ok(Some(code))
         },
@@ -818,8 +832,8 @@ fn test_install(d: &Device, rep: &Reporter) -> Option<Result<()>> {
 }
 
 #[cfg(all(test, not(windows)))]
-fn test_winusb(_vid: u16, _pid: u16) -> bool {
-    test::WINUSB.with(|w| w.get())
+fn test_driver() -> bool {
+    test::DRIVER.with(|w| w.get())
 }
 
 #[cfg(test)]
@@ -829,7 +843,7 @@ pub(crate) mod test {
         /// Some(code): `install` runs the Windows path with this exit code.
         pub static ELEVATED_EXIT: Cell<Option<i32>> = const { Cell::new(None) };
         /// What the driver store says (non-Windows test builds).
-        pub static WINUSB: Cell<bool> = const { Cell::new(false) };
+        pub static DRIVER: Cell<bool> = const { Cell::new(false) };
     }
 }
 
@@ -837,58 +851,66 @@ pub(crate) mod test {
 pub(crate) mod tests {
     use super::*;
 
-    /// Sample .inf texts and whether each is a WinUSB package for
-    /// 1782:4d00 (shared with the PowerShell check in `driver_watch`).
-    pub(crate) const INF_SAMPLES: &[(&str, bool)] = &[
+    /// Sample .inf texts and whether each is a WinUSB package, and
+    /// Unisoc's driver, for 1782:4d00.
+    const INF_SAMPLES: &[(&str, bool, bool)] = &[
         // libwdi's (and Zadig's) package.
         (
             "[Devices.NTamd64]\r\n\"Unisoc download mode\" = USB_Install, USB\\VID_1782&PID_4D00\r\n[USB_Install]\r\nInclude = winusb.inf\r\nNeeds = WINUSB.NT\r\n[USB_Install.Services]\r\nInclude    = winusb.inf\r\nAddService = WinUSB,0x00000002,WinUSB_ServiceInstall\r\n[WinUSB_ServiceInstall]\r\nServiceBinary = %12%\\WinUSB.sys\r\n",
             true,
+            false,
         ),
-        // Unisoc's own driver.
+        // Unisoc's own driver (as in sprdvcom.inf).
         (
-            "[SPRD]\r\n%SPRD.DeviceDesc% = SPRD_Install, USB\\VID_1782&PID_4D00\r\n[SPRD_Install.Services]\r\nAddService = sprdvcom,0x00000002,SPRD_Service\r\n[SPRD_Service]\r\nServiceBinary = %12%\\sprdvcom.sys\r\n",
+            "[SPRD.NTamd64]\r\n%USBCOMM_DL%  = Serial_Inst, USB\\VID_1782&PID_4D00\r\n[Serial_Inst.Services]\r\nAddService=sprdvcom,0x00000002,Serial_Service \r\n[Serial_Service]\r\nServiceBinary  = %12%\\sprdvcom.sys\r\n",
+            false,
+            true,
+        ),
+        // Unisoc's driver for other IDs only.
+        (
+            "%USBCOMM_DIAG% = Serial_Inst, USB\\VID_1782&PID_4D01\r\nAddService=sprdvcom,0x00000002,Serial_Service\r\n",
+            false,
             false,
         ),
         // A vendor package that also uses WinUSB, for another interface.
         (
-            "USB\\VID_1782&PID_4D00\r\nAddService = sprdvcom,2,S\r\n[Adb]\r\nInclude = winusb.inf\r\nAddService = WinUSB,0x00000002,W\r\n",
+            "USB\\VID_1782&PID_4D00\r\nAddService = rdavcom,2,S\r\n[Adb]\r\nInclude = winusb.inf\r\nAddService = WinUSB,0x00000002,W\r\n",
+            false,
             false,
         ),
-        // Mentions WinUSB only in a comment.
+        // Mentions both only in a comment.
         (
-            "; works like WinUSB\r\nUSB\\VID_1782&PID_4D00\r\nAddService = sprdvcom,2,S\r\n",
+            "; works like WinUSB or sprdvcom\r\nUSB\\VID_1782&PID_4D00\r\nAddService = usbser,2,S\r\n",
+            false,
             false,
         ),
         // A WinUSB package for another device.
         (
             "USB\\VID_18D1&PID_4EE0\r\nInclude = winusb.inf\r\nAddService = WinUSB,0x00000002,W\r\n",
             false,
+            false,
         ),
     ];
 
     #[test]
-    fn recognises_winusb_packages_but_not_vendor_drivers() {
-        for (text, winusb) in INF_SAMPLES {
+    fn recognises_the_drivers_spd_dump_can_use() {
+        for (text, winusb, unisoc) in INF_SAMPLES {
             assert_eq!(inf_is_winusb_for(text, 0x1782, 0x4d00), *winusb, "{text}");
-            // Anything else naming the ID is another driver Windows may
-            // prefer.
-            let names_it = text.contains("VID_1782&PID_4D00");
+            assert_eq!(inf_is_unisoc_for(text, 0x1782, 0x4d00), *unisoc, "{text}");
             assert_eq!(
-                inf_is_other_for(text, 0x1782, 0x4d00),
-                names_it && !winusb,
+                inf_flat_covers(&inf_flat(text), 0x1782, 0x4d00),
+                *winusb || *unisoc,
                 "{text}"
             );
         }
-        let (libwdi, _) = INF_SAMPLES[0];
+        let (libwdi, _, _) = INF_SAMPLES[0];
         assert!(!inf_is_winusb_for(libwdi, 0x1782, 0x4d01));
-        assert!(!inf_is_other_for(libwdi, 0x1782, 0x4d01));
         // Windows keeps some packages as UTF-16.
         let mut utf16 = vec![0xFF, 0xFE];
-        for u in libwdi.encode_utf16() {
+        for u in INF_SAMPLES[1].0.encode_utf16() {
             utf16.extend_from_slice(&u.to_le_bytes());
         }
-        assert!(inf_is_winusb_for(&decode_inf(&utf16), 0x1782, 0x4d00));
+        assert!(inf_is_unisoc_for(&decode_inf(&utf16), 0x1782, 0x4d00));
     }
 
     #[test]
@@ -919,14 +941,21 @@ pub(crate) mod tests {
         assert_eq!(ps_literal("\u{201C}x\u{201D}"), "'\u{201C}x\u{201D}'");
     }
 
+    fn package() -> Result<Package> {
+        Ok((
+            PathBuf::from("C:\\Users\\Ann O\u{2019}Neil\\Thimsy Installer\\tools\\unisoc-driver"),
+            UNISOC_DRIVER_FILES
+                .iter()
+                .map(|f| (f.to_string(), "abc123".to_string()))
+                .collect(),
+        ))
+    }
+
     #[test]
-    fn driver_script_copies_checks_runs_and_cleans_up() {
-        let s = driver_script(
-            Path::new("C:\\Users\\Ann O\u{2019}Neil\\Thimsy Installer\\tools\\wdi-simple.exe"),
-            "abc123",
-            &[(0x1782, 0x4d00, "Unisoc \"download\" mode".into())],
-        );
-        assert!(s.contains("Copy-Item -LiteralPath 'C:\\Users\\Ann O\u{2019}\u{2019}Neil\\Thimsy Installer\\tools\\wdi-simple.exe' -Destination $exe"), "{s}");
+    fn driver_script_copies_checks_installs_and_cleans_up() {
+        let (src, files) = package().unwrap();
+        let s = driver_script(&src, &files);
+        assert!(s.contains("$src = 'C:\\Users\\Ann O\u{2019}\u{2019}Neil\\Thimsy Installer\\tools\\unisoc-driver'"), "{s}");
         assert!(s.contains("[guid]::NewGuid()"));
         assert!(s.contains("GetFolderPath('CommonApplicationData')) 'Thimsy Installer'"));
         assert!(s.contains("SetAccessRuleProtection($true, $false)"));
@@ -942,15 +971,27 @@ pub(crate) mod tests {
         assert!(ADMIN_PRELUDE.contains("GetOwner([System.Security.Principal.SecurityIdentifier])"));
         assert!(ADMIN_PRELUDE.contains("$owner -ne $admins -and $owner -ne $system"));
         assert!(s.contains("'S-1-5-32-544'") && s.contains("'S-1-5-18'"));
-        assert!(s.contains(".Hash -ne 'ABC123'"));
-        assert!(s.contains("& $exe '--vid' '0x1782' '--pid' '0x4d00' '--type' '0' '--name' 'Unisoc download mode' '--inf' 'thimsy_1782_4d00.inf' '--dest' $dest; $code = $LASTEXITCODE"), "{s}");
+        // Every file is copied and checked, in Windows' path form.
+        for f in UNISOC_DRIVER_FILES {
+            let win = ps_literal(&f.replace('/', "\\"));
+            let copy = format!(
+                "Copy-Item -LiteralPath (Join-Path $src {win}) -Destination (Join-Path $pkg {win})"
+            );
+            let at = s.find(&copy).unwrap_or_else(|| panic!("{f}: {s}"));
+            let check = format!("(Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $pkg {win})).Hash -ne 'ABC123'");
+            assert!(at < s.find(&check).unwrap(), "{f}");
+        }
+        // Then installed with Windows' own pnputil, by absolute path.
+        assert!(s.contains("$pnputil = Join-Path ([Environment]::SystemDirectory) 'pnputil.exe'"));
+        assert!(s.contains("& $pnputil '/add-driver' (Join-Path $pkg 'sprdvcom.inf') '/install'\n  $code = $LASTEXITCODE"));
+        assert!(s.rfind("Get-FileHash").unwrap() < s.find("& $pnputil").unwrap());
+        assert!(s.contains("if ($code -eq 3010 -or $code -eq 259) { $code = 0 }"));
         // The folder is made admin-only (and checked) before anything is
         // copied into it, and removed whatever happens, if it was made.
         let made = s
             .find("New-AdminFolder $dir $false\n  $made = $true")
             .unwrap();
         assert!(made < s.find("Copy-Item").unwrap());
-        assert!(s.find("Copy-Item").unwrap() < s.find("Get-FileHash").unwrap());
         assert!(
             s.contains("finally {\n  if ($made) { Remove-Item -LiteralPath $dir -Recurse -Force")
         );
@@ -960,17 +1001,43 @@ pub(crate) mod tests {
         assert_eq!(enc, "ZQB4AGkAdAAgADAA");
     }
 
+    /// A script run by Windows PowerShell, as the installer runs them.
+    #[cfg(windows)]
+    fn powershell(script: &str) -> String {
+        let out = std::process::Command::new(powershell_path().unwrap())
+            .args(["-NoProfile", "-NonInteractive", "-EncodedCommand"])
+            .arg(encode_command(script))
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_powershell_parses_the_driver_script() {
+        let (src, files) = package().unwrap();
+        let s = driver_script(&src, &files);
+        let check = format!(
+            "$e = $null; [void][System.Management.Automation.Language.Parser]::ParseInput({}, [ref]$null, [ref]$e); $e.Count",
+            ps_literal(&s)
+        );
+        assert_eq!(powershell(&check), "0", "{s}");
+    }
+
     #[test]
     fn declined_or_ineffective_driver_installs_fail_clearly() {
         let cat = crate::catalog::Catalog::bundled().unwrap();
         let d = cat.device("anbernic-rg-cube").unwrap();
         let rep = Reporter::new(std::sync::Arc::new(crate::events::MemorySink::default()));
-        let tool = Path::new(r"C:\Thimsy\tools\wdi-simple.exe");
-        let sha = "0".repeat(64);
         let tool_failed = |e: &anyhow::Error| crate::error::code_of(e).0 == Code::ToolFailed;
         // UAC declined.
         let mut ran = Vec::new();
-        let err = install_ids(d, tool, &sha, &rep, &|_, _| false, &mut |ps| {
+        let err = install_ids(d, &package, &rep, &|_, _| false, &mut |ps| {
             ran.push(ps.to_string());
             Ok(Some(DECLINED))
         })
@@ -980,26 +1047,49 @@ pub(crate) mod tests {
             "{err}"
         );
         assert!(ran[0].starts_with("$ErrorActionPreference = 'Stop'"));
-        // PowerShell stopped by an error.
-        let err =
-            install_ids(d, tool, &sha, &rep, &|_, _| false, &mut |_| Ok(Some(1))).unwrap_err();
+        // PowerShell stopped by an error, or a changed file.
+        let err = install_ids(d, &package, &rep, &|_, _| false, &mut |_| Ok(Some(1))).unwrap_err();
         assert!(err.to_string().contains("exit code 1"), "{err}");
+        let err = install_ids(d, &package, &rep, &|_, _| false, &mut |_| Ok(Some(3))).unwrap_err();
+        assert!(err.to_string().contains("changed before"), "{err}");
         // Reported success, but Windows still has no driver for the ID.
-        let err =
-            install_ids(d, tool, &sha, &rep, &|_, _| false, &mut |_| Ok(Some(0))).unwrap_err();
+        let err = install_ids(d, &package, &rep, &|_, _| false, &mut |_| Ok(Some(0))).unwrap_err();
         assert!(
-            tool_failed(&err) && err.to_string().contains("still has no WinUSB driver"),
+            tool_failed(&err)
+                && err
+                    .to_string()
+                    .contains("still has no driver the installer can use"),
             "{err}"
         );
+        // No bundled package (as next to the test binary): says so,
+        // without asking for permission.
+        assert!(bundled_package()
+            .unwrap_err()
+            .to_string()
+            .contains("unisoc-driver isn't bundled"));
+        let err = install_ids(
+            d,
+            &|| {
+                Err(anyhow::anyhow!(
+                    "unisoc-driver isn't bundled with this installer"
+                ))
+            },
+            &rep,
+            &|_, _| false,
+            &mut |_| panic!("nothing to run"),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("isn't bundled"), "{err}");
         // Installed for real.
         let done = std::cell::Cell::new(false);
-        install_ids(d, tool, &sha, &rep, &|_, _| done.get(), &mut |_| {
+        install_ids(d, &package, &rep, &|_, _| done.get(), &mut |_| {
             done.set(true);
             Ok(Some(0))
         })
         .unwrap();
-        // Already there: nothing runs.
-        install_ids(d, tool, &sha, &rep, &|_, _| true, &mut |_| {
+        // Already there (Unisoc's own installer, or WinUSB): nothing runs,
+        // and the package isn't even looked for.
+        install_ids(d, &|| panic!("not needed"), &rep, &|_, _| true, &mut |_| {
             panic!("nothing to install")
         })
         .unwrap();

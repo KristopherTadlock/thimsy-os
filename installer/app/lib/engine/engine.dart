@@ -107,7 +107,7 @@ abstract class Engine {
     List<String> paths = const [],
   });
 
-  /// USB access check (or install): the WinUSB driver on Windows, the udev
+  /// USB access check (or install): Unisoc's USB driver on Windows, the udev
   /// rule on Linux (`status` `ok` or `missing`); `not_required` on macOS.
   /// Returns the `result` event; throws [EngineException] when the engine
   /// reports a failure (a declined or failed install).

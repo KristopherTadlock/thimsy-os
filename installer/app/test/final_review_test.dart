@@ -234,7 +234,7 @@ void main() {
       final engine = FakeEngine(step: Duration.zero, host: 'windows')
         ..driversFailure = const ErrorEvent(
           code: 'tool_failed',
-          message: 'wdi-simple exited with 5',
+          message: 'pnputil exited with 5',
           hint: 'Accept the Windows prompt to install the driver.',
         );
       final s = await start(tester, engine);

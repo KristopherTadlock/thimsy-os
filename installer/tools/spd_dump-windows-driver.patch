@@ -1,18 +1,20 @@
 diff --git a/spd_dump.c b/spd_dump.c
-index f8ba370..9d69b63 100644
+index f8ba370..093ab5b 100644
 --- a/spd_dump.c
 +++ b/spd_dump.c
-@@ -37,6 +37,25 @@
+@@ -37,6 +37,27 @@
  #endif
  #include <unistd.h>
  
 +#if USE_LIBUSB && defined(_WIN32)
-+/* Windows: while it waits, logs what Windows has for any Unisoc USB
-+   device and says when the device is in download mode with another driver
-+   than WinUSB (Unisoc's "SPRD U2S Diag", usbser, none), or that driver's
-+   port is in use, and keeps waiting. Smartphone chipsets need a control
-+   request (see "fdl" below) that only libusb can send, so such a driver
-+   can't be used; the caller switches the device to WinUSB meanwhile. */
++/* Windows: the device in download mode is opened through WinUSB (libusb)
++   or, when it has Unisoc's own driver ("SPRD U2S Diag", sprdvcom), through
++   that driver's serial port: first with plain Windows serial I/O done the
++   way Unisoc's Channel9.dll does it, then, if the device didn't answer,
++   with Channel9.dll itself when it's next to spd_dump.exe (32-bit builds).
++   While it waits, it logs what Windows has for any Unisoc USB device, and
++   says when the device has a driver neither can use, or its port is in
++   use, and keeps waiting. */
 +#define SPD_WIN 1
 +#ifndef WIN32_LEAN_AND_MEAN
 +#define WIN32_LEAN_AND_MEAN
@@ -28,7 +30,21 @@ index f8ba370..9d69b63 100644
  #include "spd_cmd.h"
  
  static void print_mem(FILE *f, uint8_t *buf, size_t len) {
-@@ -190,6 +209,125 @@ static void init_serial(int serial) {
+@@ -93,6 +114,13 @@ typedef struct {
+ #else
+ 	int serial;
+ #endif
++#if SPD_WIN
++	/* 0 libusb, 1 Windows serial I/O, 2 Channel9.dll */
++	int kind;
++	HANDLE com;
++	void *c9;
++#endif
++	int pre_ver;
+ 	int flags, recv_len, recv_pos;
+ 	int raw_len, enc_len, verbose, timeout;
+ } spdio_t;
+@@ -190,6 +218,307 @@ static void init_serial(int serial) {
  }
  #endif
  
@@ -36,20 +52,17 @@ index f8ba370..9d69b63 100644
 +/* What Windows has for the connected Unisoc USB devices (any product
 +   ID): seen gets "1782:4d00 sprdvcom Ports COM9; ..." (empty when there's
 +   none). For one in download mode (1782:4d00) that WinUSB doesn't run,
-+   other gets what it has and the result says why: 1 another driver, 2
-+   that driver's serial port is open in another program (Unisoc's tools;
-+   other gets the port), 3 no driver or a problem (also how a device
-+   looks for a moment while Windows sets it up). 0 otherwise. */
++   other gets what it has and the result says what it is: 4 Unisoc's own
++   driver with its serial port (other gets the port, "COM9"), 1 another
++   driver, 3 no driver or a problem (also how a device looks for a moment
++   while Windows sets it up). 0 otherwise. */
 +static int win_scan(char *seen, size_t seen_len, char *other, size_t other_len) {
-+	static char busy_for[200];
-+	static int busy;
 +	SP_DEVINFO_DATA info;
 +	DWORD idx;
 +	int found = 0;
 +	size_t used = 0;
 +	HDEVINFO set = SetupDiGetClassDevsA(NULL, "USB", NULL,
 +			DIGCF_PRESENT | DIGCF_ALLCLASSES);
-+	int any = 0;
 +	seen[0] = 0;
 +	if (set == INVALID_HANDLE_VALUE) return 0;
 +	for (idx = 0; ; idx++) {
@@ -93,40 +106,18 @@ index f8ba370..9d69b63 100644
 +		if (used + strlen(one) + 3 < seen_len)
 +			used += snprintf(seen + used, seen_len - used, "%s%s",
 +					used ? "; " : "", one);
-+		if (!strcmp(pid, "4d00")) any = 1;
 +		if (!found && !strcmp(pid, "4d00") &&
 +				(_stricmp(svc, "WinUSB") || prob[0])) {
-+			char path[80];
-+			HANDLE h;
 +			snprintf(other, other_len, "%s", one + 10);
 +			found = svc[0] && !prob[0] ? 1 : 3;
-+			/* Windows can't change the driver of a port in use. Opening
-+			   it can also get in the way of a driver change, so only
-+			   once for each state, and never while Windows reports a
-+			   problem (as it does while it changes the driver). */
-+			if (port[0] && !prob[0] && strcmp(one, busy_for)) {
-+				snprintf(busy_for, sizeof(busy_for), "%s", one);
-+				busy = 0;
-+				snprintf(path, sizeof(path), "\\\\.\\%s", port);
-+				h = CreateFileA(path, GENERIC_READ | GENERIC_WRITE, 0, NULL,
-+						OPEN_EXISTING, 0, NULL);
-+				if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
-+				else if (GetLastError() == ERROR_ACCESS_DENIED ||
-+						GetLastError() == ERROR_SHARING_VIOLATION)
-+					busy = 1;
-+			}
-+			if (port[0] && !prob[0] && busy) {
++			if (found == 1 && !_stricmp(svc, "sprdvcom") &&
++					!_strnicmp(port, "COM", 3) && atoi(port + 3) > 0) {
 +				snprintf(other, other_len, "%s", port);
-+				found = 2;
++				found = 4;
 +			}
 +		}
 +	}
 +	SetupDiDestroyDeviceInfoList(set);
-+	/* Gone: nothing about its port holds any more. */
-+	if (!any) {
-+		busy_for[0] = 0;
-+		busy = 0;
-+	}
 +	return found;
 +}
 +
@@ -149,23 +140,378 @@ index f8ba370..9d69b63 100644
 +	*err_out = handle ? 0 : err;
 +	return handle;
 +}
++
++/* Unisoc's driver sends the control request smartphone chipsets need
++   (see "fdl" below) itself when its port is opened ("SprdVendorRequest").
++   Its serial port, opened the way Channel9.dll opens it: overlapped,
++   buffers cleared, 115200 8N1 with the driver's own DTR/RTS handling,
++   4 KB queues, reads that return what's there, 2 s (plus 1 ms a byte)
++   for a write. 0 if it couldn't be opened (*err: why). */
++static HANDLE win_com_open(const char *port, DWORD *err) {
++	char path[32];
++	HANDLE h;
++	DCB dcb;
++	COMMTIMEOUTS t;
++	snprintf(path, sizeof(path), "\\\\.\\%s", port);
++	h = CreateFileA(path, GENERIC_READ | GENERIC_WRITE, 0, NULL,
++			OPEN_EXISTING, FILE_FLAG_OVERLAPPED | FILE_ATTRIBUTE_NORMAL, NULL);
++	if (h == INVALID_HANDLE_VALUE) {
++		*err = GetLastError();
++		return NULL;
++	}
++	PurgeComm(h, PURGE_TXABORT | PURGE_RXABORT | PURGE_TXCLEAR | PURGE_RXCLEAR);
++	memset(&dcb, 0, sizeof(dcb));
++	dcb.DCBlength = sizeof(dcb);
++	if (GetCommState(h, &dcb)) {
++		dcb.BaudRate = 115200;
++		dcb.fBinary = TRUE;
++		dcb.fParity = FALSE;
++		dcb.ByteSize = 8;
++		dcb.Parity = NOPARITY;
++		dcb.StopBits = ONESTOPBIT;
++		SetCommState(h, &dcb);
++	}
++	SetupComm(h, 4096, 4096);
++	memset(&t, 0, sizeof(t));
++	t.ReadIntervalTimeout = MAXDWORD;
++	t.WriteTotalTimeoutMultiplier = 1;
++	t.WriteTotalTimeoutConstant = 2000;
++	SetCommTimeouts(h, &t);
++	SetCommMask(h, EV_RXCHAR | EV_RX80FULL);
++	return h;
++}
++
++/* Channel9.dll's COM channel (its interface: a C++ object whose methods
++   are thiscall; the DLL is 32-bit). Loaded only from spd_dump.exe's own
++   folder. */
++#if defined(__i386__)
++#define C9 1
++typedef BOOL (*c9_create_t)(void **channel, int type);
++typedef void (*c9_release_t)(void *channel);
++typedef BOOL (__thiscall *c9_open_t)(void *self, void *attr);
++typedef void (__thiscall *c9_close_t)(void *self);
++typedef DWORD (__thiscall *c9_read_t)(void *self, void *data, DWORD size,
++		DWORD timeout, DWORD reserved);
++typedef DWORD (__thiscall *c9_write_t)(void *self, void *data, DWORD size,
++		DWORD reserved);
++enum { C9_OPEN = 4, C9_CLOSE = 5, C9_READ = 7, C9_WRITE = 8 };
++static c9_create_t c9_create;
++static c9_release_t c9_release;
++
++static void *c9_method(void *self, int n) {
++	return (*(void***)self)[n];
++}
++
++/* Whether Channel9.dll is there and could be loaded. */
++static int c9_load(void) {
++	static int tried, ok;
++	WCHAR dir[MAX_PATH + 16];
++	DWORD n;
++	HMODULE lib;
++	if (tried) return ok;
++	tried = 1;
++	n = GetModuleFileNameW(NULL, dir, MAX_PATH);
++	if (!n || n >= MAX_PATH) return 0;
++	while (n && dir[n - 1] != L'\\') n--;
++	if (!n) return 0;
++	wcscpy(dir + n, L"Channel9.dll");
++	if (GetFileAttributesW(dir) == INVALID_FILE_ATTRIBUTES) return 0;
++	lib = LoadLibraryExW(dir, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
++	if (!lib) {
++		DBG_LOG("Channel9.dll couldn't be loaded (error %lu)\n",
++				(unsigned long)GetLastError());
++		return 0;
++	}
++	c9_create = (c9_create_t)(void*)GetProcAddress(lib, "CreateChannel");
++	c9_release = (c9_release_t)(void*)GetProcAddress(lib, "ReleaseChannel");
++	ok = c9_create && c9_release;
++	if (!ok) DBG_LOG("Channel9.dll has no CreateChannel/ReleaseChannel\n");
++	return ok;
++}
++
++static void *c9_open(const char *port) {
++	struct { int type; DWORD port, baud, pad; } attr = { 0, 0, 115200, 0 };
++	void *ch = NULL;
++	attr.port = (DWORD)atoi(port + 3);
++	if (!c9_create(&ch, 0) || !ch) return NULL;
++	if (!((c9_open_t)c9_method(ch, C9_OPEN))(ch, &attr)) {
++		c9_release(ch);
++		return NULL;
++	}
++	return ch;
++}
++#else
++#define C9 0
++#endif
++
++/* Writes all of buf; -1 on error. */
++static int win_ser_write(spdio_t *io, const void *buf, int len) {
++	int done = 0;
++#if C9
++	if (io->kind == 2)
++		return (int)((c9_write_t)c9_method(io->c9, C9_WRITE))(io->c9,
++				(void*)buf, (DWORD)len, 0);
++#endif
++	while (done < len) {
++		OVERLAPPED ov;
++		DWORD n = 0, e;
++		COMSTAT cs;
++		ClearCommError(io->com, &e, &cs);
++		memset(&ov, 0, sizeof(ov));
++		ov.hEvent = CreateEventA(NULL, TRUE, FALSE, NULL);
++		if (!ov.hEvent) return -1;
++		if (!WriteFile(io->com, (const char*)buf + done, len - done, &n, &ov)) {
++			if (GetLastError() != ERROR_IO_PENDING ||
++					!GetOverlappedResult(io->com, &ov, &n, TRUE)) {
++				CloseHandle(ov.hEvent);
++				return -1;
++			}
++		}
++		CloseHandle(ov.hEvent);
++		if (!n) return -1;
++		done += n;
++	}
++	return done;
++}
++
++/* Reads what arrives within timeout ms (<= 0: no limit); 0 on timeout,
++   -1 on error. */
++static int win_ser_read(spdio_t *io, void *buf, int len, int timeout) {
++	DWORD wait = timeout > 0 ? (DWORD)timeout : INFINITE;
++	OVERLAPPED ov;
++	DWORD n = 0, e, mask = 0;
++	COMSTAT cs;
++#if C9
++	if (io->kind == 2) {
++		DWORD start = GetTickCount();
++		for (;;) {
++			n = ((c9_read_t)c9_method(io->c9, C9_READ))(io->c9, buf,
++					(DWORD)len, wait, 0);
++			if (n) return (int)n;
++			if (timeout > 0 && GetTickCount() - start >= wait) return 0;
++			Sleep(1);
++		}
++	}
++#endif
++	if (!ClearCommError(io->com, &e, &cs)) return -1;
++	if (!cs.cbInQue) {
++		/* Wait for something to arrive, as Channel9 does. */
++		memset(&ov, 0, sizeof(ov));
++		ov.hEvent = CreateEventA(NULL, TRUE, FALSE, NULL);
++		if (!ov.hEvent) return -1;
++		if (!WaitCommEvent(io->com, &mask, &ov)) {
++			if (GetLastError() != ERROR_IO_PENDING) {
++				CloseHandle(ov.hEvent);
++				return -1;
++			}
++			if (WaitForSingleObject(ov.hEvent, wait) != WAIT_OBJECT_0) {
++				/* Changing the mask ends the wait. */
++				SetCommMask(io->com, EV_RXCHAR | EV_RX80FULL);
++				GetOverlappedResult(io->com, &ov, &n, TRUE);
++				CloseHandle(ov.hEvent);
++				return 0;
++			}
++			if (!GetOverlappedResult(io->com, &ov, &n, FALSE)) {
++				CloseHandle(ov.hEvent);
++				return -1;
++			}
++		}
++		CloseHandle(ov.hEvent);
++		if (!ClearCommError(io->com, &e, &cs)) return -1;
++		if (!cs.cbInQue) return 0;
++	}
++	n = cs.cbInQue < (DWORD)len ? cs.cbInQue : (DWORD)len;
++	memset(&ov, 0, sizeof(ov));
++	ov.hEvent = CreateEventA(NULL, TRUE, FALSE, NULL);
++	if (!ov.hEvent) return -1;
++	if (!ReadFile(io->com, buf, n, &n, &ov)) {
++		if (GetLastError() != ERROR_IO_PENDING ||
++				!GetOverlappedResult(io->com, &ov, &n, TRUE)) {
++			CloseHandle(ov.hEvent);
++			return -1;
++		}
++	}
++	CloseHandle(ov.hEvent);
++	return (int)n;
++}
++
++static void win_ser_close(spdio_t *io) {
++#if C9
++	if (io->kind == 2) {
++		((c9_close_t)c9_method(io->c9, C9_CLOSE))(io->c9);
++		c9_release(io->c9);
++		io->c9 = NULL;
++		return;
++	}
++#endif
++	if (io->com != INVALID_HANDLE_VALUE) CloseHandle(io->com);
++	io->com = INVALID_HANDLE_VALUE;
++}
 +#endif
 +
  #if USE_LIBUSB
  static spdio_t* spdio_init(libusb_device_handle *dev_handle, int flags) {
  #else
-@@ -1187,6 +1325,10 @@ int main(int argc, char **argv) {
+@@ -198,8 +527,9 @@ static spdio_t* spdio_init(int serial, int flags) {
+ 	uint8_t *p; spdio_t *io;
+ 
+ #if USE_LIBUSB
+-	int endpoints[4];
+-	find_endpoints(dev_handle, endpoints);
++	int endpoints[4] = { 0, 0, 0, 0 };
++	/* No handle: the serial port of Unisoc's driver (SPD_WIN). */
++	if (dev_handle) find_endpoints(dev_handle, endpoints);
+ #else
+ 	init_serial(serial);
+ 	// fcntl(serial, F_SETFL, FNDELAY);
+@@ -227,11 +557,21 @@ static spdio_t* spdio_init(int serial, int flags) {
+ 	io->enc_buf = p;
+ 	io->verbose = 0;
+ 	io->timeout = 1000;
++	io->pre_ver = 0;
++#if SPD_WIN
++	io->kind = 0;
++	io->com = INVALID_HANDLE_VALUE;
++	io->c9 = NULL;
++#endif
+ 	return io;
+ }
+ 
+ static void spdio_free(spdio_t* io) {
+ 	if (!io) return;
++#if SPD_WIN
++	if (io->kind) win_ser_close(io);
++	else
++#endif
+ #if USE_LIBUSB
+ 	libusb_close(io->dev_handle);
+ #else
+@@ -397,6 +737,13 @@ static int send_msg(spdio_t *io) {
+ 		} else DBG_LOG("send: unknown message\n");
+ 	}
+ 
++#if SPD_WIN
++	if (io->kind) {
++		ret = win_ser_write(io, io->enc_buf, io->enc_len);
++		if (ret < 0)
++			ERR_EXIT("usb_send failed (error %lu)\n", (unsigned long)GetLastError());
++	} else
++#endif
+ #if USE_LIBUSB
+ 	{
+ 		int err = libusb_bulk_transfer(io->dev_handle,
+@@ -405,7 +752,7 @@ static int send_msg(spdio_t *io) {
+ 			ERR_EXIT("usb_send failed : %s\n", libusb_error_name(err));
+ 	}
+ 	// UMS9117 waits too long after a 512 byte block.
+-	if (io->endp_out_blk == 512 && !((unsigned)io->enc_len % 512)) {
++	if (io->dev_handle && io->endp_out_blk == 512 && !((unsigned)io->enc_len % 512)) {
+ 		int dummy;
+ 		// signal end of transfer
+ 		libusb_bulk_transfer(io->dev_handle,
+@@ -432,13 +779,22 @@ static int recv_msg1(spdio_t *io) {
+ 	pos = io->recv_pos;
+ 	for (;;) {
+ 		if (pos >= len) {
++#if SPD_WIN
++			if (io->kind) {
++				len = win_ser_read(io, io->recv_buf, RECV_BUF_LEN, io->timeout);
++				if (len < 0) ERR_EXIT("connection closed\n");
++				if (!len) break;
++			} else
++#endif
+ #if USE_LIBUSB
++			{
+ 			int err = libusb_bulk_transfer(io->dev_handle, io->endp_in, io->recv_buf, RECV_BUF_LEN, &len, io->timeout);
+ 			if (err == LIBUSB_ERROR_NO_DEVICE)
+ 				ERR_EXIT("connection closed\n");
+ 			else if (err == LIBUSB_ERROR_TIMEOUT) break;
+ 			else if (err < 0)
+ 				ERR_EXIT("usb_recv failed : %s\n", libusb_error_name(err));
++			}
+ #else
+ 			if (io->timeout >= 0) {
+ 				struct pollfd fds = { 0 };
+@@ -618,7 +974,7 @@ static void send_file(spdio_t *io, const char *fn,
+ 	uint8_t *mem; size_t size = 0;
+ 	mem = loadfile(fn, &size, 0);
+ 	if (!mem) ERR_EXIT("loadfile(\"%s\") failed\n", fn);
+-	if (size >> 32) ERR_EXIT("file too big\n");
++	if ((uint64_t)size >> 32) ERR_EXIT("file too big\n");
+ 	if (size < src_offs)
+ 		ERR_EXIT("data outside the file\n");
+ 	size -= src_offs;
+@@ -1182,13 +1538,68 @@ found:
+ 
+ #define REOPEN_FREQ 2
+ 
++#if SPD_WIN
++/* Opens the port through Unisoc's driver (kind 1: Windows serial I/O, 2:
++   Channel9.dll) and asks the bootloader for its version; the connection,
++   with the answer in raw_buf, or NULL (said why). */
++static spdio_t *win_ser_connect(const char *port, int kind) {
++	static const char *how[] = { "", "Windows serial I/O", "Channel9.dll" };
++	spdio_t *io;
++	DWORD err = 0;
++	int i;
++	HANDLE com = NULL;
++	void *c9 = NULL;
++	if (kind == 1) com = win_com_open(port, &err);
++#if C9
++	else c9 = c9_open(port);
++#endif
++	if (!com && !c9) {
++		if (err == ERROR_ACCESS_DENIED || err == ERROR_SHARING_VIOLATION)
++			DBG_LOG("serial port %s is in use by another program\n", port);
++		else if (err)
++			DBG_LOG("serial port %s couldn't be opened (%s, error %lu)\n",
++					port, how[kind], (unsigned long)err);
++		else
++			DBG_LOG("serial port %s couldn't be opened (%s)\n", port, how[kind]);
++		return NULL;
++	}
++	io = spdio_init(NULL, 0);
++	io->kind = kind;
++	if (com) io->com = com;
++	io->c9 = c9;
++	io->flags |= FLAGS_TRANSCODE | FLAGS_CRC16;
++	/* The bootloader answers the first check it gets. */
++	for (i = 0; i < 5; i++) {
++		encode_msg(io, BSL_CMD_CHECK_BAUD, NULL, 1);
++		if (win_ser_write(io, io->enc_buf, io->enc_len) != io->enc_len) {
++			DBG_LOG("no answer through Unisoc's driver (%s, %s): writing failed (error %lu)\n",
++					port, how[kind], (unsigned long)GetLastError());
++			spdio_free(io);
++			return NULL;
++		}
++		if (recv_msg(io) && recv_type(io) == BSL_REP_VER) {
++			DBG_LOG("connected through Unisoc's driver (%s, %s)\n", port, how[kind]);
++			io->pre_ver = 1;
++			return io;
++		}
++	}
++	DBG_LOG("no answer through Unisoc's driver (%s, %s)\n", port, how[kind]);
++	spdio_free(io);
++	return NULL;
++}
++#endif
++
+ int main(int argc, char **argv) {
+ #if USE_LIBUSB
  	libusb_device_handle *device;
  #else
  	int serial;
-+#endif
+ #endif
+-	spdio_t *io; int ret, i;
++	spdio_t *io = NULL; int ret, i;
 +#if SPD_WIN
 +	char win_seen[600], win_last[600] = "", win_other[200], win_said[220] = "";
-+	int usb_err = 0, usb_last_err = 0, win_unset = 0;
- #endif
- 	spdio_t *io; int ret, i;
++	int usb_err = 0, usb_last_err = 0, win_unset = 0, win_tried = 0;
++#endif
  	int wait = 300 * REOPEN_FREQ;
-@@ -1223,7 +1365,54 @@ int main(int argc, char **argv) {
+ 	const char *tty = "/dev/ttyUSB0";
+ 	int verbose = 0, fdl_loaded = 0;
+@@ -1223,7 +1634,63 @@ int main(int argc, char **argv) {
  	}
  
  	for (i = 0; ; i++) {
@@ -185,25 +531,34 @@ index f8ba370..9d69b63 100644
 +						win_seen[0] ? win_seen : "no Unisoc USB device");
 +				strcpy(win_last, win_seen);
 +				/* The caller forgets what was said with each new state:
-+				   say it again if it still holds. */
++				   say it again if it still holds. A new connection is
++				   tried again. */
 +				win_said[0] = 0;
 +				usb_last_err = 0;
++				win_tried = 0;
 +			}
++			/* Unisoc's driver: once for each connection, one way and
++			   then the other. */
++			if (other == 4 && !win_tried) {
++				win_tried = 1;
++				io = win_ser_connect(win_other, 1);
++#if C9
++				if (!io && c9_load()) io = win_ser_connect(win_other, 2);
++#endif
++				if (io) break;
++				DBG_LOG("the device didn't answer through Unisoc's driver; connect it again\n");
++			}
++			if (other == 4) other = 0;
 +			/* No driver or a problem: only once it lasts (10 s); Windows
 +			   may still be setting the device up. */
 +			win_unset = other == 3 ? win_unset + 1 : 0;
 +			if (other == 3 && win_unset < 10 * REOPEN_FREQ) other = 0;
-+			/* Said once per change; the caller decides what to do (it
-+			   may switch the driver while this keeps waiting). */
++			/* Said once per change; the caller decides what to do. */
 +			if (!other) win_said[0] = 0;
 +			else {
 +				char said[220];
-+				if (other == 2)
-+					snprintf(said, sizeof(said),
-+							"serial port %s is in use by another program", win_other);
-+				else
-+					snprintf(said, sizeof(said),
-+							"download mode uses another driver (%s), not WinUSB", win_other);
++				snprintf(said, sizeof(said),
++						"download mode uses another driver (%s), not WinUSB", win_other);
 +				if (strcmp(said, win_said)) {
 +					DBG_LOG("%s\n", said);
 +					strcpy(win_said, said);
@@ -221,3 +576,38 @@ index f8ba370..9d69b63 100644
  		device = libusb_open_device_with_vid_pid(NULL, 0x1782, 0x4d00);
  		if (device) break;
  		if (i >= wait)
+@@ -1239,7 +1706,7 @@ int main(int argc, char **argv) {
+ 	}
+ 
+ #if USE_LIBUSB
+-	io = spdio_init(device, 0);
++	if (!io) io = spdio_init(device, 0);
+ #else
+ 	io = spdio_init(serial, 0);
+ #endif
+@@ -1258,18 +1725,25 @@ int main(int argc, char **argv) {
+ 				// Required for smartphones.
+ 				// Is there a way to do the same with usb-serial?
+ #if USE_LIBUSB
++				/* (Unisoc's driver sends it itself.) */
++				if (io->dev_handle) {
+ 				ret = libusb_control_transfer(io->dev_handle,
+ 						0x21, 34, 0x601, 0, NULL, 0, io->timeout);
+ 				if (ret < 0)
+ 					ERR_EXIT("libusb_control_transfer failed : %s\n",
+ 							libusb_error_name(ret));
++				}
+ #endif
+ 				/* Bootloader (chk = crc16) */
+ 				io->flags |= FLAGS_CRC16;
+ 
++				/* The connection may have asked already. */
++				if (!io->pre_ver) {
+ 				encode_msg(io, BSL_CMD_CHECK_BAUD, NULL, 1);
+ 				send_msg(io);
+ 				ret = recv_msg(io);
++				}
++				io->pre_ver = 0;
+ 				if (recv_type(io) != BSL_REP_VER)
+ 					ERR_EXIT("ver expected\n");
+ 

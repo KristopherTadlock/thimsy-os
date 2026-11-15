@@ -40,7 +40,7 @@ class FakeEngine extends Engine {
   /// Linux: whether the udev rule is missing (`drivers` says `missing`).
   bool linuxRuleMissing;
 
-  /// Windows: whether WinUSB is installed (after `drivers --install`).
+  /// Windows: whether Unisoc's USB driver is installed (after `drivers --install`).
   bool _driverInstalled = false;
 
   /// Stand-in stderr log.
@@ -766,7 +766,7 @@ class FakeEngine extends Engine {
       'detail': status != 'missing'
           ? ''
           : host == 'windows'
-          ? 'WinUSB is not installed for 1782:4d00'
+          ? "Unisoc's USB driver will be installed for 1782:4d00 the first time you flash"
           : 'No udev rule gives access to 1782:4d00',
     });
   }

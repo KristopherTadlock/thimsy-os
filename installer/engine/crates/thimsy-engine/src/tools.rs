@@ -13,12 +13,13 @@ use std::sync::mpsc::Sender;
 
 /// Tools that may come from PATH when they aren't bundled. Never the
 /// flashing tools: the engine relies on how its own `spd_dump` asks before
-/// every write, and `wdi-simple` runs with admin rights.
+/// every write.
 const FROM_PATH: &[&str] = &["fastboot"];
 
-/// Tools that only ever come from the installer's own folders: never from
-/// THIMSY_TOOLS_DIR, even in test builds (it runs with admin rights).
-const BUNDLED_ONLY: &[&str] = &["wdi-simple"];
+/// What only ever comes from the installer's own folders: never from
+/// THIMSY_TOOLS_DIR, even in test builds (the driver package is installed
+/// with admin rights).
+const BUNDLED_ONLY: &[&str] = &[crate::drivers::UNISOC_DRIVER_DIR];
 
 /// Looks for `name` next to the engine (`tools/`), one level up
 /// (`../tools/`, the app bundle layout), and then PATH only for the tools
@@ -36,6 +37,23 @@ pub fn locate(name: &str) -> Result<PathBuf> {
     Err(EngineError::new(
         Code::ToolMissing,
         format!("{exe} isn't bundled with this installer"),
+    )
+    .hint("Reinstall Thimsy Installer: one of its tools is missing.")
+    .into())
+}
+
+/// The bundled folder `name` (next to the tools, like [`locate`]; only
+/// the installer's own folders for [`BUNDLED_ONLY`] names).
+pub fn locate_dir(name: &str) -> Result<PathBuf> {
+    for d in search_dirs(name, None) {
+        let p = d.join(name);
+        if p.is_dir() {
+            return Ok(p);
+        }
+    }
+    Err(EngineError::new(
+        Code::ToolMissing,
+        format!("{name} isn't bundled with this installer"),
     )
     .hint("Reinstall Thimsy Installer: one of its tools is missing.")
     .into())

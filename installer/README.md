@@ -15,17 +15,17 @@ USB. Design: [`../universal_installer.md`](../universal_installer.md).
 | `tests/` | End-to-end test on real RG Cube firmware (`e2e.sh`), the published-firmware check (`verify-drafts.sh`) and a fake `spd_dump` |
 | `tools/make-thimsy-build.sh` | Turns a firmware from `scripts/build.sh` into the Thimsy build the installer ships (system image + patches), checking the rebuild is byte-identical |
 | `tools/apply_pack.py` | Writes a device pack (`thimsy-installer dev pack`) into the catalog |
-| `tools/spd_dump-windows-driver.patch` | Applied to `spd_dump` for the Windows build: it says when Windows gave the device another driver than WinUSB (Unisoc's "SPRD U2S Diag", usbser, none), so the engine can switch it to WinUSB, and logs what Windows has for Unisoc USB devices |
+| `tools/spd_dump-windows-driver.patch` | Applied to `spd_dump` for the 32-bit Windows build: it opens the device through Unisoc's own driver (Windows serial I/O done the way `Channel9.dll` does it, then `Channel9.dll` itself) or WinUSB, and logs what Windows has for Unisoc USB devices |
 
 ## Status (0.1.0 test 1)
 
 - **RG Cube, Heavy profile**: builds on every desktop and matches the Thimsy
   1.0a reference PAC byte for byte; flashes with the bundled `spd_dump` on
-  Windows and Linux; macOS untested. On Windows the app installs WinUSB; when
-  Unisoc's own driver is installed too (unlocking needs it, but it can't
-  flash), the app asks for permission before the device is connected and
-  a helper switches the device to WinUSB the moment it shows up
-  (`tools/spd_dump-windows-driver.patch` reports what Windows gave it).
+  Windows and Linux; macOS untested. On Windows it flashes through
+  Unisoc's own USB driver, which unlocking needs too; the app installs it
+  (one permission prompt) when it's missing. The Windows build bundles
+  Unisoc's driver and `Channel9.dll` from GammaOS's UnisocTools (see
+  `UNISOC-NOTICE.txt` next to the tools).
 - Light and Medium are defined but their system images aren't published yet.
 - Other devices are listed as candidates. Devices that need Windows-only
   vendor tools say so on other computers.

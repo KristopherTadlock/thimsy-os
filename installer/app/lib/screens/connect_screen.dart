@@ -25,7 +25,7 @@ class ConnectScreen extends StatelessWidget {
           DetectErrorNotice(s),
           const SizedBox(height: 12),
         ],
-        // Windows: the WinUSB driver; Linux: a udev rule for USB access.
+        // Windows: Unisoc's USB driver; Linux: a udev rule for USB access.
         // macOS needs neither and never shows this.
         if (s.checksDriver && s.driverStatus == 'missing') DriverNotice(s),
         if (match != null)

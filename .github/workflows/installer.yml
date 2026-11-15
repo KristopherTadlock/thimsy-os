@@ -22,12 +22,11 @@ env:
   CARGO_TERM_COLOR: always
   SPD_DUMP_REPO: https://github.com/ilyakurdyukov/spreadtrum_flash
   SPD_DUMP_COMMIT: 3d0582579f3521f35a4937b2e871312e4dd6c308
-  LIBWDI_REPO: https://github.com/pbatard/libwdi
-  LIBWDI_COMMIT: 30df0c0e051b0132c4b9ebed8c054bc8eb3aaaec
-  # Windows Driver Kit 8.0 redistributable components (WinUSB co-installers
-  # for wdi-simple), as served by the fwlink below on 2026-11-12.
-  WDK_REDIST_URL: https://go.microsoft.com/fwlink/p/?LinkID=253170
-  WDK_REDIST_SHA256: 29314207814ce9d5d73695f7e9239539cf37c79e750b9d5ea5a5ef5487a583d6
+  # Windows: Unisoc's USB driver (sprdvcom, signed by Microsoft) and
+  # Unisoc's Channel9.dll, as GammaOS distributes them. Each file used is
+  # checked below too.
+  UNISOC_TOOLS_URL: https://github.com/TheGammaSqueeze/GammaOSNext/releases/download/v.1.0.0-T820/UnisocTools.7z
+  UNISOC_TOOLS_SHA256: 5caa80610ce86aebfc572815df76b2270d3d3a59ada0e2796eb2e79e7c985e75
   # libusb for the macOS spd_dump, built from source for both Mac
   # architectures (Homebrew's is only the runner's own).
   LIBUSB_URL: https://github.com/libusb/libusb/releases/download/v1.0.29/libusb-1.0.29.tar.bz2
@@ -191,7 +190,7 @@ jobs:
           path: out/*
 
   tools-windows:
-    name: spd_dump + wdi-simple (Windows)
+    name: spd_dump + Unisoc driver (Windows)
     runs-on: windows-latest
     defaults:
       run:
@@ -212,44 +211,77 @@ jobs:
           install: >-
             mingw-w64-ucrt-x86_64-toolchain
             mingw-w64-ucrt-x86_64-libusb
+            mingw-w64-i686-toolchain
+            mingw-w64-i686-libusb
             base-devel
-            autotools
             git
             p7zip
       - name: MSYS2 package versions
         run: |
           pacman -Q
           gcc --version | head -1
+          MSYSTEM=MINGW32 bash -lc 'gcc --version | head -1'
+      # 32-bit, so it can load Unisoc's Channel9.dll (32-bit too).
       - name: Build spd_dump
+        env:
+          MSYSTEM: MINGW32
         run: |
+          gcc -dumpmachine | grep -q '^i686-' || { echo "::error::not the 32-bit toolchain"; exit 1; }
           git -c core.autocrlf=false clone "$SPD_DUMP_REPO" spd && cd spd && git checkout "$SPD_DUMP_COMMIT"
-          # Windows only: says when Windows bound the device to another driver
-          # than WinUSB (Unisoc's own, usbser, none), so the engine can switch
-          # it to WinUSB, and logs what Windows has for Unisoc USB devices.
+          # Windows only: opens the device through WinUSB or Unisoc's own
+          # driver (Windows serial I/O, then Channel9.dll), and logs what
+          # Windows has for Unisoc USB devices.
           # (The checkout may have turned its line ends into CRLF.)
           tr -d '\r' < ../thimsy/installer/tools/spd_dump-windows-driver.patch | git apply
-          make LIBS="-Wl,-Bstatic -lusb-1.0 -Wl,-Bdynamic -lsetupapi -lcfgmgr32"
+          make LIBS="-static-libgcc -Wl,-Bstatic -lusb-1.0 -Wl,-Bdynamic -lsetupapi -lcfgmgr32"
           mkdir -p ../out && cp spd_dump.exe ../out/ && cp LICENSE ../out/spd_dump-LICENSE
-      - name: Build wdi-simple (WinUSB driver installer)
+      - name: Unisoc's driver and Channel9.dll
         run: |
-          curl -fL "$WDK_REDIST_URL" -o wdk-redist.msi
-          sha256sum wdk-redist.msi
-          echo "$WDK_REDIST_SHA256  wdk-redist.msi" | sha256sum -c - || { echo "::error::the WDK redistributable changed; check it and update WDK_REDIST_SHA256"; exit 1; }
-          msiexec //a wdk-redist.msi //qn TARGETDIR="$(cygpath -w "$PWD/wdk")"
-          git clone "$LIBWDI_REPO" libwdi && cd libwdi && git checkout "$LIBWDI_COMMIT"
-          ./bootstrap.sh
-          ./configure --build=x86_64-w64-mingw32 --host=x86_64-w64-mingw32 --enable-examples-build --disable-debug --disable-shared --disable-32bit \
-            --with-wdkdir="../wdk/Windows Kits/8.0" --with-wdfver=1011
-          make
-          cp examples/wdi-simple.exe ../out/ && cp COPYING ../out/libwdi-COPYING
+          curl -fL "$UNISOC_TOOLS_URL" -o UnisocTools.7z
+          sha256sum UnisocTools.7z
+          echo "$UNISOC_TOOLS_SHA256  UnisocTools.7z" | sha256sum -c - || { echo "::error::UnisocTools.7z changed; check it and update UNISOC_TOOLS_SHA256"; exit 1; }
+          mkdir unisoc && (cd unisoc && 7z x -y ../UnisocTools.7z >/dev/null)
+          D=unisoc/UnisocDrivers/Win10/Drivers
+          sha256sum -c - <<'SUMS'
+          2ea32417ee9d81751d936d318b1147c1ba5066bfdba84bfad1136254a4f33c20  unisoc/UnlockBootloader/Channel9.dll
+          7aa924930285803b50f4468f071657da11c4764b4364d4cca43757e766cd6987  unisoc/UnisocDrivers/Win10/Drivers/sprdvcom.inf
+          bd421e4efffd1629a3efd8b7112f7aba675ad36b8816ebcac6c947a7cfeab9ff  unisoc/UnisocDrivers/Win10/Drivers/sprdvcom.cat
+          53e573cd4d5371ede7846f0f6e5243367e24b18e1d374dd999c052302c65e182  unisoc/UnisocDrivers/Win10/Drivers/amd64/sprdvcom.sys
+          dd80f68489a7444bee1cc0014407aaa7144d55b79ae653a0852c4d158702932c  unisoc/UnisocDrivers/Win10/Drivers/i386/sprdvcom.sys
+          4cf39fae9f8e3a2ed6f479ab24dd669b0fcdd28879e70785afa3d5f13c12f3ae  unisoc/UnisocDrivers/Win10/Drivers/amd64/WdfCoInstaller01009.dll
+          363c33a2cae7e8c1cca7e2dff66774c7a3343c705af09a7a93c240e02f8f8482  unisoc/UnisocDrivers/Win10/Drivers/i386/WdfCoInstaller01009.dll
+          SUMS
+          cp unisoc/UnlockBootloader/Channel9.dll out/
+          mkdir -p out/unisoc-driver/amd64 out/unisoc-driver/i386
+          cp "$D/sprdvcom.inf" "$D/sprdvcom.cat" out/unisoc-driver/
+          for a in amd64 i386; do cp "$D/$a/sprdvcom.sys" "$D/$a/WdfCoInstaller01009.dll" out/unisoc-driver/$a/; done
+          printf '%s\n' \
+            "Channel9.dll and unisoc-driver/ (Unisoc's USB driver, sprdvcom) are Unisoc's" \
+            "software, not Thimsy's, and aren't covered by Thimsy's license. They come" \
+            "unchanged from UnisocTools.7z as GammaOS distributes it:" \
+            "$UNISOC_TOOLS_URL" \
+            "(SHA-256 $UNISOC_TOOLS_SHA256)." > out/UNISOC-NOTICE.txt
+          find out -type f | sort
       - name: Check the tools
         run: |
-          test -x out/spd_dump.exe && test -x out/wdi-simple.exe
+          test -x out/spd_dump.exe
+          test -f out/Channel9.dll && test -f out/unisoc-driver/sprdvcom.inf
           grep -q 'download mode uses another driver' out/spd_dump.exe || { echo "::error::spd_dump.exe was built without the Windows driver patch"; exit 1; }
+          grep -q "through Unisoc's driver" out/spd_dump.exe || { echo "::error::spd_dump.exe can't use Unisoc's driver"; exit 1; }
+          # 32-bit, like Channel9.dll.
+          objdump -f out/spd_dump.exe | grep -q 'pei-i386' || { echo "::error::spd_dump.exe isn't 32-bit"; exit 1; }
+          objdump -f out/Channel9.dll | grep -q 'pei-i386' || { echo "::error::Channel9.dll isn't 32-bit"; exit 1; }
+          # The driver package installs as the engine installs it (the
+          # runner is a throwaway administrator): pnputil takes it, and
+          # Windows then publishes it.
+          rc=0; "$(cygpath -u "$WINDIR")/System32/pnputil.exe" //add-driver "$(cygpath -w out/unisoc-driver/sprdvcom.inf)" //install || rc=$?
+          echo "pnputil: exit $rc"
+          case "$rc" in 0|259|3010) ;; *) echo "::error::pnputil couldn't install the Unisoc driver package"; exit 1 ;; esac
+          grep -il 'AddService *= *sprdvcom' "$(cygpath -u "$WINDIR")"/INF/oem*.inf || { echo "::error::Windows didn't publish the Unisoc driver package"; exit 1; }
           # Only DLLs that come with Windows: anything from MSYS2 (libusb,
           # libgcc_s, libwinpthread, ...) isn't on a user's PC.
           allowed='^(kernel32|user32|gdi32|advapi32|shell32|ole32|oleaut32|comctl32|comdlg32|setupapi|cfgmgr32|newdev|version|shlwapi|ws2_32|crypt32|wintrust|bcrypt|ntdll|msvcrt|ucrtbase|rpcrt4|userenv|imagehlp|dbghelp|winmm|secur32|ncrypt|iphlpapi|winhttp|wininet|psapi|hid|winusb|uxtheme|dwmapi|imm32|mpr|netapi32|api-ms-win-[a-z0-9-]+)\.dll$'
-          for exe in out/spd_dump.exe out/wdi-simple.exe; do
+          for exe in out/spd_dump.exe; do
             dlls=$(objdump -p "$exe" | awk '/DLL Name:/ {print $3}' | tr 'A-Z' 'a-z' | tr -d '\r')
             echo "$exe imports:" $dlls
             bad=$(printf '%s\n' $dlls | grep -Ev "$allowed" || true)
@@ -260,10 +292,6 @@ jobs:
           rc=0; msg=$(PATH=$WINPATH out/spd_dump.exe --help 2>&1) || rc=$?
           echo "spd_dump: exit $rc: $msg"
           [ "$rc" -eq 1 ] && printf '%s' "$msg" | grep -qE 'unknown option|libusb_init failed' || { echo "::error::spd_dump.exe didn't start"; exit 1; }
-          # wdi-simple prints its usage for --help and exits 0.
-          rc=0; msg=$(PATH=$WINPATH out/wdi-simple.exe --help 2>&1) || rc=$?
-          echo "wdi-simple: exit $rc: $msg"
-          [ "$rc" -eq 0 ] && printf '%s' "$msg" | grep -q -- '--help' || { echo "::error::wdi-simple.exe didn't start"; exit 1; }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: tools-Windows
@@ -323,16 +351,17 @@ jobs:
           esac
           if [ "$RUNNER_OS" = macOS ]; then ENG="$APP/Contents/MacOS/engine"; else ENG="$APP/engine"; fi
           mkdir -p "$ENG/tools"
-          cp dl/engine/* "$ENG/" && cp dl/tools/* "$ENG/tools/"
-          chmod +x "$ENG"/thimsy-installer* "$ENG"/tools/* || true
+          cp dl/engine/* "$ENG/" && cp -R dl/tools/. "$ENG/tools/"
+          chmod +x "$ENG"/thimsy-installer* "$ENG"/tools/* 2>/dev/null || true
           cp ../../LICENSE ../../NOTICE "$ENG/" 2>/dev/null || true
           # Everything the engine runs must be there and executable.
           X=""; [ "$RUNNER_OS" = Windows ] && X=.exe
           need=("$ENG/thimsy-installer$X" "$ENG/tools/spd_dump$X")
-          [ "$RUNNER_OS" = Windows ] && need+=("$ENG/tools/wdi-simple.exe")
+          [ "$RUNNER_OS" = Windows ] && need+=("$ENG/tools/Channel9.dll" "$ENG/tools/unisoc-driver/sprdvcom.inf")
           [ "$RUNNER_OS" = macOS ] && need+=("$ENG/tools/libusb-1.0.0.dylib")
           for f in "${need[@]}"; do
-            [ -f "$f" ] && { [ -x "$f" ] || [ "${f##*.}" = dylib ]; } || { echo "::error::missing or not executable: $f"; exit 1; }
+            # (Libraries and driver files needn't be executable.)
+            [ -f "$f" ] && { [ -x "$f" ] || case "${f##*.}" in dylib|dll|inf) true ;; *) false ;; esac; } || { echo "::error::missing or not executable: $f"; exit 1; }
           done
           if [ "$RUNNER_OS" = macOS ]; then
             # Everything that runs is universal, like the app itself.
@@ -367,11 +396,6 @@ jobs:
           echo "spd_dump: exit $rc: $msg"
           [ "$rc" -eq 1 ] && printf '%s' "$msg" | grep -qE 'unknown option|libusb_init failed' || { echo "::error::the bundled spd_dump didn't start"; exit 1; }
           if [ "$RUNNER_OS" = Windows ]; then
-            rc=0; msg=$(PATH=$RUNPATH "$ENG/tools/wdi-simple.exe" --help 2>&1) || rc=$?
-            echo "wdi-simple: exit $rc: $msg"
-            [ "$rc" -eq 0 ] && printf '%s' "$msg" | grep -q -- '--help' || { echo "::error::the bundled wdi-simple didn't start"; exit 1; }
-          fi
-          if [ "$RUNNER_OS" = Windows ]; then
             # The Flutter runner needs the Visual C++ runtime, which a clean
             # PC may not have: ship it next to the app (unless Flutter did).
             VSWHERE="/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe"
@@ -397,7 +421,9 @@ jobs:
           names = sorted(n.replace("\\", "/") for n in zipfile.ZipFile(sys.argv[1]).namelist())
           print("\n".join(names))
           need = ["thimsy_installer.exe", "vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll",
-                  "engine/thimsy-installer.exe", "engine/tools/spd_dump.exe", "engine/tools/wdi-simple.exe"]
+                  "engine/thimsy-installer.exe", "engine/tools/spd_dump.exe",
+                  "engine/tools/Channel9.dll", "engine/tools/unisoc-driver/sprdvcom.inf",
+                  "engine/tools/unisoc-driver/sprdvcom.cat", "engine/tools/unisoc-driver/amd64/sprdvcom.sys"]
           missing = [n for n in need if n not in names]
           sys.exit(f"missing from the zip: {missing}" if missing else 0)
           PY

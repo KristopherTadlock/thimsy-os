@@ -230,7 +230,7 @@ fn bytes_that_arent_utf8_dont_stop_the_output() {
 fn flashing_tools_never_come_from_path() {
     let path = std::env::join_paths(["/somewhere/on/path"]).unwrap();
     let on_path = std::path::PathBuf::from("/somewhere/on/path");
-    for tool in ["spd_dump", "wdi-simple"] {
+    for tool in ["spd_dump", crate::drivers::UNISOC_DRIVER_DIR] {
         assert!(
             !tools::search_dirs(tool, Some(path.clone())).contains(&on_path),
             "{tool} must only be the bundled one"
@@ -240,7 +240,7 @@ fn flashing_tools_never_come_from_path() {
 }
 
 #[test]
-fn tools_dir_variable_only_counts_in_test_hook_builds_and_never_for_wdi_simple() {
+fn tools_dir_variable_only_counts_in_test_hook_builds_and_never_for_the_driver() {
     // Process-wide, but only ever adds a folder that doesn't exist.
     std::env::set_var("THIMSY_TOOLS_DIR", "/thimsy-test-tools-dir");
     let dir = std::path::PathBuf::from("/thimsy-test-tools-dir");
@@ -248,7 +248,7 @@ fn tools_dir_variable_only_counts_in_test_hook_builds_and_never_for_wdi_simple()
         tools::search_dirs("spd_dump", None).contains(&dir),
         cfg!(feature = "test-hooks")
     );
-    assert!(!tools::search_dirs("wdi-simple", None).contains(&dir));
+    assert!(!tools::search_dirs(crate::drivers::UNISOC_DRIVER_DIR, None).contains(&dir));
 }
 
 #[test]
