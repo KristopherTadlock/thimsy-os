@@ -138,6 +138,7 @@ ro.product.system.model=RG Cube
         write(f"{system}/bin/setup.sh", SETUP_NANO, 0o755)
         write(f"{system}/etc/gammaos/apps.list", APPS_LIST)
         os.makedirs(f"{system}/etc/nano_xmb/audio")
+        write(f"{system}/etc/nano_esde_themes/slate-es-de.zip", b"PK stock theme")
     else:
         write(f"{system}/bin/setup.sh", SETUP_12, 0o755)
     return system

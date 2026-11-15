@@ -182,6 +182,25 @@ class Assets(util.TestCase):
             self.assertNotIn(profile["id"], ids, path)
             ids.add(profile["id"])
 
+    def test_button_map_emulators_have_profiles(self):
+        """The button map finds the emulator in front by these profiles' packages (NanoButtonMap.cpp
+        emulatorForPackage): an emulator with a reader but no profile never gets a map."""
+        readers = os.path.join(util.AOSP, "frameworks/base/cmds/gammaos-nano/NanoButtonMapReaders.cpp")
+        if not os.path.isfile(readers):
+            self.skipTest(f"no {readers}")
+        fn = re.search(r"ReadResult readEmulator\(.*?\n}\n", util.slurp(readers, text=True), re.S)
+        self.assertIsNotNone(fn)
+        emulators = set(re.findall(r'if \(e == "([a-z0-9-]+)"\)', fn.group(0)))
+        self.assertIn("retroarch", emulators)
+        packages = {}
+        for path in glob.glob(f"{M}/hotkeys/*.json"):
+            with open(path) as f:
+                profile = json.load(f)
+            packages[profile["id"]] = profile.get("packages", [])
+        # drastic-nano is Nano's own player: the drastic profile's packages lead to it.
+        for e in sorted(emulators - {"drastic-nano"}):
+            self.assertTrue(packages.get(e), e)
+
     def test_bootanimation(self):
         with zipfile.ZipFile(f"{M}/bootanimation/bootanimation.zip") as z:
             infos = z.infolist()

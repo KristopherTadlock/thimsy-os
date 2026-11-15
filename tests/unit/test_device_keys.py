@@ -15,6 +15,7 @@ TABLE = os.path.join(util.MODS, "device-keys.json")
 POLICY = os.path.join(util.AOSP, "frameworks/base/services/core/java/com/android/server/policy")
 ORG_JSON = os.path.join(util.AOSP, "libcore/json/src/main/java/org/json")
 NANO_CASES = os.path.join(util.AOSP, "frameworks/base/cmds/gammaos-nano/test/fixtures/devkeys/cases.json")
+PADS = os.path.join(util.AOSP, "frameworks/base/cmds/gammaos-nano/ps3xmb/buttonmap/pads.json")
 CASES = os.path.join(util.TESTS, "fixtures/device_keys/cases.json")
 CHECK = os.path.join(util.TESTS, "fixtures/device_keys/DeviceKeysCheck.java")
 FIELDS = ("id", "function_linux", "function_android", "gamepad_only", "back_linux", "shared_back")
@@ -110,6 +111,27 @@ class KeyLayouts(util.TestCase):
             self.skipTest(f"no {kl}")
         self.assertRegex(util.slurp(kl, text=True), r"(?m)^key\s+68\s+F10\s*$")
 
+    def test_button_map_pad_matches_the_rg_cube_layout(self):
+        """The button map's built-in pad (pads.json) gives each code the keycode the Cube's layout does.
+
+        Nano and drastic-nano find the Button Map Button through pads.json, PhoneWindowManager through
+        the key layout; if they disagree the chord is on another button over a game than in the menus.
+        """
+        if not os.path.isfile(PADS):
+            self.skipTest(f"no {PADS}")
+        with open(PADS) as f:
+            pad = json.load(f)["pads"][0]
+        self.assertEqual((pad["vendor"], pad["product"]), ("484b", "1101"))
+        kl = util.slurp(os.path.join(util.MODS, "keylayout/Vendor_484b_Product_1101.kl"), text=True)
+        keys = {int(c): name for c, name in re.findall(r"(?m)^key\s+(\d+)\s+(\w+)", kl)}
+        axes = {int(c, 16): name for c, name in re.findall(r"(?m)^axis\s+0x([0-9a-fA-F]+)\s+(\w+)", kl)}
+        for b in pad["buttons"]:
+            self.assertEqual(keys.get(b["linux"]), b["android"], b["phys"])
+        for a in pad["axes"]:
+            self.assertEqual(axes.get(a["linux"]), a["android"], a)
+        south = next(b for b in pad["buttons"] if b["phys"] == "south")
+        self.assertEqual((south["label"], south["android"]), ("B", "BUTTON_A"))
+
 
 class JavaResolver(util.TestCase):
     classes = None
@@ -189,6 +211,18 @@ class JavaResolver(util.TestCase):
         got = json.loads(proc.stdout)
         self.assertEqual(got["function_release"], [c["want"] for c in doc["function_release"]])
         self.assertEqual(got["function_hold"], [c["want"] for c in doc["function_hold"]])
+
+    def test_button_map_button_same_as_nano(self):
+        """The keycode the Button Map Button arrives as, per device and gammapad state (NanoButtonMap.cpp)."""
+        if not os.path.isfile(NANO_CASES):
+            self.skipTest(f"no {NANO_CASES}")
+        with open(NANO_CASES) as f:
+            cases = json.load(f)["button_map"]
+        self.assertTrue(cases)
+        proc = self.assertOk(util.run(["java", "-cp", self.classes,
+                                       "com.android.server.policy.DeviceKeysCheck", NANO_CASES]))
+        got = json.loads(proc.stdout)["button_map"]
+        self.assertEqual(got, [c["want"] for c in cases], [c["name"] for c in cases])
 
     def test_the_table(self):
         self.check_cases(CASES)

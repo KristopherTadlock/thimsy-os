@@ -49,7 +49,9 @@ shipped and can be chosen per game or for the system.
 
 RetroArch's core info files are refreshed to match the new cores, and the
 PPSSPP core's assets are removed with the core (PSP uses the standalone
-PPSSPP app). Mupen64Plus FZ stays at 3.0.335 because newer builds
+PPSSPP app). Its default config is marked as set up for the shipped APK's
+version (`scripts/ra_bundle_version.py`), so RetroArch's first start from its
+icon doesn't extract the APK's own assets over these files. Mupen64Plus FZ stays at 3.0.335 because newer builds
 are only on Google Play, and DraStic r2.6.0.4a is its latest release.
 
 Other apps:
@@ -230,6 +232,9 @@ It also changes Nano:
   shows the network you are connected to, with its signal bars. Android's own
   Settings app is in **Settings → System Settings → Android Settings**, and
   GammaRGB and GammaEQ are named RGB and EQ.
+- **Quick Resume** (Game Settings, and Device in the Quick Menu) is On by
+  default (`persist.gammaos.nano.quick_resume`): a game still running when the
+  console is shut down or restarted starts again at the next boot.
 - **Settings lists:** a setting's name too long for its row wraps onto a second
   line, and a choice too wide for the side panel is drawn smaller to fit.
   **System Information** shows the Thimsy release (Thimsy 1.0a).
@@ -450,7 +455,10 @@ It also changes Nano:
 - **Browser controls:** with Brave, or [Fulguris](https://github.com/Slion/Fulguris)
   if it is installed, in front, gammapad turns the controller into a mouse and
   the browser's keyboard shortcuts, and the browser's own controller support
-  never sees the pad:
+  never sees the pad. They need gammapad running: **Controller Enable**
+  (Settings → Gamepad Settings), which is off by default, and **Controller
+  Bindings** (Quick Menu) on. The [button map](#button-map) shows this list
+  in a browser, greyed with what to turn on when they are off:
 
   | Control | Action |
   |---|---|
@@ -495,27 +503,67 @@ It also changes Nano:
   picks them up too.
 - **Move Emulator Files to microSD** (Game Settings): moves the settings of
   every emulator GammaOS ships, and the saves and states kept with them, to
-  `emulator_config/<emulator>` on the card and points each emulator there:
+  `emulator_config/<emulator>` on the card and points each emulator there
+  (all but WatermelonDS, whose settings stay where they are):
   RetroArch (its `RetroArch` folder, apart from the box-art thumbnails, which
   stay on internal storage; the shaders, overlays, filters and controller
   profiles it keeps in its app folder stay there), PPSSPP, Flycast, DraStic
   (its whole system folder), M64Plus FZ (its game data, which it copies in and
-  out around each game), the built-in DS emulator, ARMSX2 (its data folder, without the BIOS and caches), ScummVM (its
-  saves), Vita3K (its whole memory card and system, installed games included)
-  and Azahar (its folder, without caches). They reach the card by plain folder
+  out around each game), the built-in DS emulator (its folder, and a cheats
+  folder chosen elsewhere), ARMSX2 (its data folder, without the BIOS, caches,
+  resources and logs), ScummVM (its saves), Vita3K (its whole memory card and
+  system, installed games included) and Azahar (its folder, without caches,
+  logs and shader caches). They reach the card by plain folder
   paths, which GammaOS's MediaProvider allows every app. Azahar only takes a
   folder picked in Android's folder picker, so Nano gives it the card's folder
   that way, through system_server. Dolphin (`Config`, `GameSettings`,
   `StateSaves`, `GC`, `Wii`) and hakuX (its `native` folder: hard disk, save
   states, caches) have no setting for these folders, so each moved folder is
   replaced by a link to the card; apps reach `Android/data` and their own
-  folder directly here, not through FUSE, so they follow it. GammaOS keeps
-  RetroArch's and WatermelonDS's saves next to the ROMs, so those stay where
-  they are. SeedlessDS, if installed, does the same by default; set to keep its
+  folder directly here, not through FUSE, so they follow it. GammaOS's
+  RetroArch config keeps saves, save states and screenshots next to the ROMs
+  (`savefiles_in_content_dir` and the like; anything already in RetroArch's own
+  `saves` or `states` folder moves with that folder), and WatermelonDS keeps
+  its saves there too, so those stay where they are. SeedlessDS, if installed,
+  does the same by default; set to keep its
   saves and states in its app folder or a folder of their own, they move to
   `emulator_config/seedlessds`, given to it like Azahar's folder. Its settings
   stay in its app folder, which it has no setting for. An emulator that keeps
   its files on the card needs the card in to start.
+- After the move, every game Nano starts in RetroArch, from the home screen or
+  from the menu over a game, uses the card's
+  `emulator_config/retroarch/retroarch.cfg`; with the card out, RetroArch falls
+  back to its default config (`Android/data/com.retroarch.aarch64/files/retroarch.cfg`).
+  Earlier builds gave games started from the home screen the default config, so
+  RetroArch settings changed in those games after a move stay in that file:
+  nothing is copied over the card's config.
+- The first RetroArch start after the move no longer says it failed to save to
+  its folder, resets its settings and leaves Back doing nothing: the move
+  rewrote RetroArch's default config as root, readable by root alone. The
+  rewrite keeps each config's owner and mode, and Nano gives a config left that
+  way by an earlier build back to RetroArch.
+- RetroArch falls back to its internal folders whenever it can't read the config
+  it is given, and saves them into that config when it closes. After a move Nano
+  checks both configs at every boot, and after every game until a RetroArch
+  session has saved them still pointing at the card, and points any such folder
+  back at the card. A path counts in every spelling Android has for the folder
+  (`/sdcard`, `/storage/self/primary`, `/data/media/0`, any letter case). The
+  move also rewrites the per-core overrides, core options, shader presets and
+  playlists in the folder. It reads each config back, and if either still names
+  the old folders, RetroArch's part of the move is called off: its files stay
+  on internal storage, what was copied to the card for it is removed, and the
+  other emulators still move.
+- Running **Move Emulator Files to microSD** again repairs a card moved by an
+  earlier build: both configs are pointed at the card, and files RetroArch made
+  again in its internal folder join the card's (the card's copy of a file wins,
+  as in any move).
+- Flycast's `emu.cfg` and ARMSX2's `PCSX2-Android.ini` and `inis/PCSX2.ini`
+  folders set by full path follow the move. ARMSX2's BIOS stays in its app
+  folder, where ARMSX2 itself points it.
+- The universal hotkeys are bound where the emulators look after the move:
+  PPSSPP's `controls.ini` on its memory stick, Flycast's mappings in its new home,
+  and Dolphin's `Hotkeys.ini` on the card itself rather than through the link to it.
+  RetroArch's go into both its configs, the card's and the default one.
 - Both moves ask first, show their progress and never overwrite what is already
   on the card. Internal copies of files the card already had go to
   `Internal storage/Nano Backup`, and you choose: keep them there as a backup,
@@ -597,6 +645,11 @@ It also changes Nano:
   (`service.bootanim.exit`) the framework reads as "the app has taken over", and
   it now restores the system and game the launch came from.
 - **ES-DE menu:** B at the top of the menu closes it.
+- **Charging while off:** the battery showed "?" for the whole charge. The
+  charger looks for the battery once, when it starts, and started before the
+  vendor's module loader had loaded the battery driver; on the RG Cube it now
+  waits for it, 10 s at most (`init.rc` in the Nano patch). `scripts/build.sh`
+  refuses a `SYSTEM_IMG` without that wait (`scripts/check_charger_rc.py`).
 
 1.4.4 adds GammaOS Nano, a console-style home. The build makes the device
 boot into it from the first boot, where Nano's setup wizard runs first-boot
@@ -648,6 +701,53 @@ Building it needs a JDK 17 (`javac`, `keytool`), the Android build tools
 `aapt2`, `d8`, `zipalign` and `apksigner`, and `ANDROID_JAR` set to an API 34
 `android.jar`; a GammaOS source tree has all of them after a build.
 
+### Button map
+
+Anbernic + the bottom face button (printed B) shows how the controller in your
+hands maps onto the console being emulated: the console's controller drawing,
+each button labelled with the button that presses it, or a two-column table,
+then the hotkeys (the universal chords and the emulator's own).
+
+- **Where:** over a running game or app, and in Nano's own menus (XMB, DSi,
+  ES-DE and Minima). In the menus it is the focused system's emulator, a
+  game's own emulator (Game Options → Emulator) or a Recently Played entry's
+  (nothing at the DSi or Minima category list, or with a dialog or a settings
+  screen up); Start + Select + the Button Map Button opens it there too. With
+  the Quick Menu up over a game it shows that game's map, and closing it goes
+  back to the Quick Menu. Over a game it is the emulator in front: the
+  RetroArch core Nano launched, or the one RetroArch's own history names when
+  content was loaded inside RetroArch. Over a game or app the chord needs the
+  Anbernic button to be Nano's (Toolbox → Anbernic Button Opens Quick Menu
+  on). On Android Games
+  (the system and its games), in Settings and in most apps it does nothing; in a
+  browser, or on a browser's entry in Applications, it shows the
+  [browser controls](#144-base-and-the-nano-home), greyed with a line saying
+  what to turn on when Controller Enable or Controller Bindings is off (the map
+  never turns gammapad on). In drastic-nano it shows the DS map, with no table
+  view, while drastic-nano's own menu is closed.
+- **The game keeps running** under the map, with its input held back as under
+  the Quick Menu; the map never pauses it.
+- **Reading it:** the labels are the printed names of the pad in hand (on the
+  RG Cube A right, B bottom, X top, Y left), and follow **ABXY Swap** when
+  gammapad is running. The map reads each emulator's own binding files
+  (RetroArch's binds, autoconfig and remaps; PPSSPP, Dolphin, Azahar, Flycast,
+  ARMSX2, Vita3K, WatermelonDS, M64Plus FZ, ScummVM, SeedlessDS, hakuX, DraStic
+  and drastic-nano), and says when it shows the emulator's defaults or when the
+  emulator has nothing mapped yet (Dolphin and Azahar out of the box).
+- **Moving around:** the D-pad or left stick moves a row (left / right change
+  section), L1 / R1 turn a page, the footer's Table button (Y) switches
+  between the drawing and the table, and its Close button (B), Back,
+  Start or the chord again closes it; with ABXY Swap on, the footer names the
+  swapped buttons. A mouse wheel scrolls. On the touchscreen a drag scrolls
+  (flinging when let go), a swipe left or right changes section, and a tap
+  outside the panel closes it (in drastic-nano on two screens, the bottom
+  screen only scrolls).
+- **Layout:** a centred panel on 16:9 and wider screens (an HDMI TV), the full
+  width on the others (the 1:1 panel, 4:3).
+- **Setting:** **Button Map Button** (Gamepad Settings → Hotkeys) picks the
+  button (by position) or turns the chord off. It never shares a button with a
+  universal hotkey: picking a hotkey's button swaps the two.
+
 ### Pack-in games
 
 The bundled ROM pack is replaced with one game per platform, each with an
@@ -665,8 +765,8 @@ screenshots are captured from the games; `tools/pack-in-art` has the scripts.
 
 On Linux with `curl`, 7-Zip (`7zz` or `7z`), `xz`, `zstd`, `unzip`, `e2fsck` and
 `resize2fs`, `setfattr`, `flock`, `cc`, `python3`, `sudo` (to loop-mount the system
-image), erofs-utils' `fsck.erofs` and `mkfs.erofs` (1.7 or later), AOSP's
-`unpack_bootimg`, `lz4` and `avbtool` on `PATH`, `MKBOOTIMG`
+image), `debugfs`, erofs-utils' `fsck.erofs` and `mkfs.erofs` (1.7 or later),
+AOSP's `unpack_bootimg`, `lz4`, `avbtool` and `secilc` on `PATH`, `MKBOOTIMG`
 naming AOSP's `mkbootimg` (or `mkbootimg.py`), `AVB_KEY` naming AOSP's
 `external/avb/test/data/testkey_rsa4096.pem`, and about 40 GB free:
 
@@ -723,6 +823,12 @@ The tools it uses:
   policy hashes. Anbernic's odm carries the policy for the 1.2 system, so
   without this init compiled the policy at every boot, about a second before
   anything else could start.
+- With `SYSTEM_IMG`, `scripts/check_charger_rc.py` and
+  `scripts/check_buttonmap_assets.py` read the image (with `debugfs`) before
+  the long steps and stop the build when its `init.rc` starts the off-mode
+  charger before waiting for the RG Cube's battery, or when it lacks the files
+  Nano's button map reads (`/system/etc/nano_xmb/buttonmap` and the controller
+  drawings).
 
 ### Tests
 

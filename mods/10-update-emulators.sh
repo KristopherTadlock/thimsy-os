@@ -207,6 +207,12 @@ for path, prefix in zip(sys.argv[1:], ("input_", "input_player1_")):
     open(path, "w").write(text)
 PY
 
+# The payload's app folder already holds what the APK bundles, and the core info
+# files pinned above: marked as extracted for this APK, RetroArch's first start
+# from its icon doesn't extract the APK's assets over them.
+python3 -I "$MODS/../scripts/ra_bundle_version.py" "$CACHE/RetroArch_aarch64.apk" \
+  "$work/tree/sdcard/Android/data/com.retroarch.aarch64/files/retroarch.cfg"
+
 # RetroArch's copies of the 4:3 and 8:7 Cropped shaders.
 install -m 600 -t "$work/tree/$RA_DATA/shaders/shaders_slang" "$MODS"/retroarch-shaders/rg_cube_{4_3,8_7}_cropped.slang{,p}
 echo "added the rg_cube_4_3_cropped and rg_cube_8_7_cropped shaders"

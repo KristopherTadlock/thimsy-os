@@ -36,6 +36,10 @@
 # power-on carries straight into Nano's. That needs nano-bootlogo (from the AOSP
 # host build) on PATH; BOOT_LOGO_SVG and BOOT_LOGO_FONT default to the logo and
 # Roboto in the AOSP tree MKBOOTIMG is in (or AOSP=<tree>).
+#
+# A SYSTEM_IMG whose init.rc starts the off-mode charger before the RG Cube's
+# battery driver is up is refused (scripts/check_charger_rc.py), and so is one
+# without the button map's files (scripts/check_buttonmap_assets.py).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -90,6 +94,8 @@ if [[ -n "${SYSTEM_IMG:-}" ]]; then
   command -v nano-bootlogo >/dev/null || { echo "nano-bootlogo is required (boot picture)" >&2; exit 1; }
   [[ -f "$BOOT_LOGO_SVG" && -f "$BOOT_LOGO_FONT" ]] || {
     echo "BOOT_LOGO_SVG and BOOT_LOGO_FONT are required (boot picture)" >&2; exit 1; }
+  python3 -I "$ROOT/scripts/check_charger_rc.py" "$SYSTEM_IMG"
+  python3 -I "$ROOT/scripts/check_buttonmap_assets.py" "$SYSTEM_IMG"
 fi
 
 mkdir -p "$WORK/bin" "$WORK/images" "$WORK/mnt" "$OUT"

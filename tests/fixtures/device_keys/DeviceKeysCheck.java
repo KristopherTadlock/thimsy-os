@@ -11,9 +11,11 @@ import java.nio.file.Paths;
 /**
  * Runs ThimsyDeviceKeys.resolve over a cases file ({"table": path relative to it, "cases": [{"props":
  * {...}}, ...], "back_release": [{"shared", "used", "held"}, ...], "function_release": [{"home",
- * "hotkeys", "used", "held"}, ...], "function_hold": [{"home", "hotkeys"}, ...]}) and prints
- * {"resolved": [...], "back_release": [...], "function_release": [...], "function_hold": [...]}, in
- * the cases' order. "table": null resolves with no table.
+ * "hotkeys", "used", "held"}, ...], "function_hold": [{"home", "hotkeys"}, ...], "button_map":
+ * [{"setting", "vendor", "product", "gammapad", "swap", "gammapad_vendor", "gammapad_product",
+ * "remap"}, ...]}) and prints {"resolved": [...], "back_release": [...], "function_release": [...],
+ * "function_hold": [...], "button_map": [keycode, ...]}, in the cases' order. "table": null resolves
+ * with no table.
  */
 public final class DeviceKeysCheck {
     public static void main(String[] args) throws Exception {
@@ -75,7 +77,18 @@ public final class DeviceKeysCheck {
             fnHold.put(h == ThimsyDeviceKeys.FUNCTION_HOLD_HOME ? "home"
                     : h == ThimsyDeviceKeys.FUNCTION_HOLD_QUIT ? "quit" : "nothing");
         }
+        JSONArray buttonMap = new JSONArray();
+        JSONArray bm = doc.optJSONArray("button_map");
+        for (int i = 0; bm != null && i < bm.length(); i++) {
+            JSONObject c = bm.getJSONObject(i);
+            buttonMap.put(ThimsyDeviceKeys.buttonMapKeycode(c.getString("setting"),
+                    Integer.parseInt(c.getString("vendor"), 16), Integer.parseInt(c.getString("product"), 16),
+                    c.getBoolean("gammapad"), c.getBoolean("swap"),
+                    Integer.parseInt(c.getString("gammapad_vendor"), 16),
+                    Integer.parseInt(c.getString("gammapad_product"), 16), c.getString("remap")));
+        }
         JSONObject result = new JSONObject();
+        result.put("button_map", buttonMap);
         result.put("resolved", out);
         result.put("back_release", release);
         result.put("function_release", fnRelease);

@@ -192,6 +192,9 @@ class CacheMods(ModCase):
             for _, _, fields in util.load_script("nano_systems").parse(f"{util.MODS}/nano-systems.txt"):
                 if "package" in fields:
                     f.write(f"X|{fields['package']}|/system/etc/x.apk||\n")
+            # What 40-added-apps.sh installs before this mod (the players' emulators among them).
+            f.writelines(f"X|{p}|/system/etc/x.apk||\n"
+                         for p in re.findall(r"\bpackage=(\S+)", util.slurp(f"{util.MODS}/added-apps.txt", text=True)))
         proc = self.run_mod("50", env={"ANDROID_JAR": os.environ["ANDROID_JAR"]})
         self.assertOk(proc)
         prop = util.slurp(f"{self.system}/build.prop", text=True)
@@ -231,6 +234,11 @@ class CacheMods(ModCase):
         self.assertEqual(cores, sorted(w for w in wanted if w.endswith(".so")))
         self.assertEqual(out[f"{ra}/cores/fake08_libretro_android.so"], b"bundled fake08")
         self.assertIn('input_a_btn = "97"', out[f"{ra}/autoconfig/android/retrogame_joypad.cfg"].decode())
+        ra_cfg = out["sdcard/Android/data/com.retroarch.aarch64/files/retroarch.cfg"].decode()
+        self.assertIn('input_player1_a_btn = "97"', ra_cfg)
+        # RetroArch 1.22.2's versionCode, from the pinned APK's binary manifest.
+        for key in ("bundle_assets_extract_last_version", "bundle_assets_extract_version_current"):
+            self.assertEqual(ra_cfg.count(f'{key} = "1763607214"\n'), 1, key)
         self.assertIn("sdcard/RetroArch/system/Machines/MSX2 - C-BIOS/cbios_main_msx2.rom", out)
         # The ScummVM core lists the ROM pack's Beneath a Steel Sky; neither the core nor its data ships.
         self.assertIn(b"path=/storage/emulated/0/ROMs/scummvm/Beneath a Steel Sky\n",
