@@ -232,7 +232,7 @@ jobs:
           mkdir libusb32 && tar -xjf libusb.tar.bz2 -C libusb32 --strip-components=1
           USB="$PWD/usb32"
           (cd libusb32 && ./configure --host=i686-w64-mingw32 --prefix="$USB" --enable-static --disable-shared \
-             --disable-dependency-tracking && make -j3 && make install)
+             && make -j3 && make install)
           git -c core.autocrlf=false clone "$SPD_DUMP_REPO" spd && cd spd && git checkout "$SPD_DUMP_COMMIT"
           # Windows only: opens the device through WinUSB or Unisoc's own
           # driver (Windows serial I/O, then Channel9.dll), and logs what
