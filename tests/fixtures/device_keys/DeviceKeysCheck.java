@@ -50,6 +50,7 @@ public final class DeviceKeysCheck {
             r.put("back_android", ba);
             r.put("shared_back", k.sharedBack);
             r.put("home_function", k.hasHomeFunction());
+            r.put("function_prompt", k.functionPrompt());
             out.put(r);
         }
         JSONArray release = new JSONArray();

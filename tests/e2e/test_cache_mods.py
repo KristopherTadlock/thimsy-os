@@ -185,6 +185,9 @@ class CacheMods(ModCase):
         self.seed("nano")
         etc = f"{self.system}/etc"
         subprocess.run(["cp", "-r", f"{NANO_SRC}/daijishou", f"{etc}/nano_xmb/daijishou"], check=True)
+        # The real Slate: check_system_art.py looks in it for every system's logo.
+        subprocess.run(["cp", os.path.join(os.path.dirname(NANO_SRC), "nano_esde_themes/slate-es-de.zip"),
+                        f"{etc}/nano_esde_themes/slate-es-de.zip"], check=True)
         icons = os.path.join(NANO_SRC, "icons_retroarch")
         if os.path.isdir(icons):
             subprocess.run(["cp", "-r", icons, f"{etc}/nano_xmb/icons_retroarch"], check=True)

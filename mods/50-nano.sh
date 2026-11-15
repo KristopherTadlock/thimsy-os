@@ -14,6 +14,8 @@
 #
 # The theme's Gilroy and Akrobat fonts, and Nano's Akrobat, are replaced by OFL
 # fonts (Urbanist, Barlow Semi Condensed), and its Quake picture is left out.
+# Every game system must have its art in every bundled theme
+# (scripts/check_system_art.py).
 #
 # It also builds in the Android Games helper (tools/android-games), which lists
 # the installed Android games as the Android Games system and starts them;
@@ -175,6 +177,7 @@ install_system_file "$work/android-games-exclude.txt" "$ETC/gammaos/android-game
 python3 -I "$MODS/../scripts/nano_systems.py" "$MODS/nano-systems.txt" "$ETC/nano_xmb/daijishou" \
   "$ETC/nano_xmb/icons_retroarch" "$ETC/gammaos/apps.list" "$MODS/retroarch-cores.txt" "$work/nano_systems.json" \
   "$GAMES_PKG"
+python3 -I "$MODS/../scripts/check_system_art.py" "$work/nano_systems.json" "$ETC/nano_esde_themes"
 install_system_file "$work/nano_systems.json" "$ETC/gammaos/nano_systems.json"
 
 # Nano's setup wizard starts Nano before setup.sh runs, and Nano writes its

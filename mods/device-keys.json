@@ -1,9 +1,9 @@
 {
   "version": 1,
-  "note": "The function button (the Anbernic button on the RG Cube) and the Back button of each handheld GammaOS supports. PhoneWindowManager (ThimsyDeviceKeys.java), Nano and drastic-nano (NanoDeviceKeys.cpp) pick the first entry whose match fits the device's properties, else the default. HOTKEYS.md, Devices, explains the fields. linux is the evdev code Nano and drastic-nano read; android is the keycode PhoneWindowManager sees after the key layout.",
+  "note": "The function button (the Anbernic button on the RG Cube) and the Back button of each handheld GammaOS supports. PhoneWindowManager (ThimsyDeviceKeys.java), Nano and drastic-nano (NanoDeviceKeys.cpp) pick the first entry whose match fits the device's properties, else the default. HOTKEYS.md, Devices, explains the fields. linux is the evdev code Nano and drastic-nano read; android is the keycode PhoneWindowManager sees after the key layout; prompt, where the label is not the name printed on the button, is the name hotkey prompts use.",
   "default": {
     "function": [
-      {"label": "Anbernic", "linux": 68, "android": "F10", "gamepad_only": true},
+      {"label": "Anbernic", "prompt": "Function", "linux": 68, "android": "F10", "gamepad_only": true},
       {"label": "Mode / Guide", "linux": 316, "android": "BUTTON_MODE"},
       {"label": "Home", "linux": 172, "android": "HOME"}
     ],
@@ -37,7 +37,7 @@
         {"ro.board.platform": "ums9620", "ro.product.vendor.manufacturer": "Anbernic"}
       ],
       "function": [
-        {"label": "Anbernic / Home", "linux": 68, "android": "F10", "gamepad_only": true}
+        {"label": "Anbernic / Home", "prompt": "Anbernic", "linux": 68, "android": "F10", "gamepad_only": true}
       ],
       "back": [{"label": "Back", "linux": 158, "android": "BACK"}],
       "verified": "verified (level 1): v1.2 Lite dtbo of each model, retrogame_joypad 0x1101 sw17 KEY_BACK, sw18 KEY_F10, no BTN_MODE; vendor Vendor_484b_Product_1101.kl. The RG406V reports model 'RG 406H' and the RG Slide 'RG 476H' (shared stock vendor)"
@@ -70,7 +70,7 @@
         {"ro.product.vendor.model": "RG Rotate"}
       ],
       "function": [
-        {"label": "Function (side)", "linux": 68, "android": "F10", "gamepad_only": true},
+        {"label": "Function (side)", "prompt": "Function", "linux": 68, "android": "F10", "gamepad_only": true},
         {"label": "F9 key", "linux": 67, "android": "F9", "gamepad_only": true}
       ],
       "back": [{"label": "Back (centre)", "linux": 158, "android": "BACK"}],
@@ -101,7 +101,7 @@
         {"ro.product.vendor.model": "RG405V"}
       ],
       "function": [
-        {"label": "Function (left side)", "linux": 68, "android": "F10", "gamepad_only": true}
+        {"label": "Function (left side)", "prompt": "Function", "linux": 68, "android": "F10", "gamepad_only": true}
       ],
       "back": [{"label": "Home / Back (front)", "linux": 158, "android": "BACK"}],
       "verified": "likely: v1.1 dtbo retrogame_joypad key-resetn 'Home' KEY_F10 (GPIO 126), sw11 KEY_BACK (GPIO 124); side Function and front Home from the droix KB; model string RG405V assumed, not seen"
@@ -122,7 +122,7 @@
       "function": [
         {"label": "F10 (no button on these models)", "linux": 68, "android": "F10", "gamepad_only": true}
       ],
-      "back": [{"label": "Home / Back", "linux": 158, "android": "BACK"}],
+      "back": [{"label": "Home / Back", "prompt": "Back", "linux": 158, "android": "BACK"}],
       "fallback": "back",
       "verified": "verified codes (level 1): v1.1 dtbo retrogame_joypad sw11 KEY_BACK, key-resetn KEY_F10 wired to no button on the 405M/505 (one front button each, per reviews); RG405M vendor/odm model verified, RG505 string assumed; no pad keylayout, Generic.kl"
     },
@@ -231,7 +231,7 @@
         {"ro.product.vendor.model": "Retroid Pocket Classic"}
       ],
       "function": [],
-      "back": [{"label": "Back / Home", "linux": 158, "android": "BACK"}],
+      "back": [{"label": "Back / Home", "prompt": "Back", "linux": 158, "android": "BACK"}],
       "fallback": "back",
       "verified": "verified (level 2): vendor retroidpad (GammaOS v1.0) emits KEY_BACK for both MCU bit 14 (Home) and bit 15 (Back), no BTN_MODE"
     },

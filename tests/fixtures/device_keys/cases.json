@@ -27,6 +27,7 @@
    ],
    "shared_back": false,
    "home_function": false,
+   "function_prompt": "Anbernic",
    "back_android": [
     "BACK"
    ]
@@ -53,7 +54,8 @@
     158
    ],
    "shared_back": false,
-   "home_function": false
+   "home_function": false,
+   "function_prompt": "Anbernic"
   },
   {
    "name": "RG556",
@@ -76,7 +78,8 @@
     158
    ],
    "shared_back": false,
-   "home_function": false
+   "home_function": false,
+   "function_prompt": "Anbernic"
   },
   {
    "name": "RG406H and RG406V report 'RG 406H'",
@@ -99,7 +102,8 @@
     158
    ],
    "shared_back": false,
-   "home_function": false
+   "home_function": false,
+   "function_prompt": "Anbernic"
   },
   {
    "name": "RG476H and RG Slide report 'RG 476H'",
@@ -122,7 +126,8 @@
     158
    ],
    "shared_back": false,
-   "home_function": false
+   "home_function": false,
+   "function_prompt": "Anbernic"
   },
   {
    "name": "RG477V (odm model, generic vendor model)",
@@ -145,7 +150,8 @@
     158
    ],
    "shared_back": false,
-   "home_function": false
+   "home_function": false,
+   "function_prompt": "Home"
   },
   {
    "name": "RG557",
@@ -167,7 +173,8 @@
     158
    ],
    "shared_back": false,
-   "home_function": false
+   "home_function": false,
+   "function_prompt": "Home"
   },
   {
    "name": "RG Rotate",
@@ -194,7 +201,8 @@
     158
    ],
    "shared_back": false,
-   "home_function": false
+   "home_function": false,
+   "function_prompt": "Function"
   },
   {
    "name": "RG Vita (T618) with the GammaPad remap",
@@ -224,7 +232,8 @@
     158
    ],
    "shared_back": false,
-   "home_function": false
+   "home_function": false,
+   "function_prompt": "Anbernic"
   },
   {
    "name": "RG405V: side Function button",
@@ -247,7 +256,8 @@
     158
    ],
    "shared_back": false,
-   "home_function": false
+   "home_function": false,
+   "function_prompt": "Function"
   },
   {
    "name": "RG405M: Back doubles as the function button",
@@ -271,7 +281,8 @@
     158
    ],
    "shared_back": true,
-   "home_function": false
+   "home_function": false,
+   "function_prompt": "Back"
   },
   {
    "name": "an unknown ums512 Anbernic falls to the T618 entry",
@@ -294,7 +305,8 @@
     158
    ],
    "shared_back": true,
-   "home_function": false
+   "home_function": false,
+   "function_prompt": "Back"
   },
   {
    "name": "RG Vita Pro",
@@ -323,7 +335,8 @@
     158
    ],
    "shared_back": false,
-   "home_function": false
+   "home_function": false,
+   "function_prompt": "Anbernic"
   },
   {
    "name": "RG DS",
@@ -352,7 +365,8 @@
     158
    ],
    "shared_back": false,
-   "home_function": false
+   "home_function": false,
+   "function_prompt": "Mode"
   },
   {
    "name": "RG DS Plus",
@@ -380,7 +394,8 @@
     158
    ],
    "shared_back": false,
-   "home_function": false
+   "home_function": false,
+   "function_prompt": "Mode"
   },
   {
    "name": "TrimUI Brick: Menu (158) is Back and doubles as the function button",
@@ -398,6 +413,7 @@
    ],
    "shared_back": true,
    "home_function": false,
+   "function_prompt": "Menu",
    "back_android": [
     "BACK"
    ]
@@ -416,6 +432,7 @@
    ],
    "shared_back": true,
    "home_function": false,
+   "function_prompt": "Menu",
    "back_android": [
     "BACK"
    ]
@@ -435,6 +452,7 @@
    ],
    "shared_back": true,
    "home_function": false,
+   "function_prompt": "Menu",
    "back_android": [
     "BACK"
    ]
@@ -460,7 +478,8 @@
     158
    ],
    "shared_back": false,
-   "home_function": false
+   "home_function": false,
+   "function_prompt": "F1"
   },
   {
    "name": "AYANEO Pocket Air Mini: raw codes and the GammaPad remaps",
@@ -494,7 +513,8 @@
     "BACK"
    ],
    "shared_back": false,
-   "home_function": false
+   "home_function": false,
+   "function_prompt": "≡"
   },
   {
    "name": "Retroid Pocket 4 Pro",
@@ -517,7 +537,8 @@
     158
    ],
    "shared_back": false,
-   "home_function": false
+   "home_function": false,
+   "function_prompt": "Home"
   },
   {
    "name": "Retroid Pocket Classic: Home and Back both send 158",
@@ -533,7 +554,8 @@
     158
    ],
    "shared_back": true,
-   "home_function": false
+   "home_function": false,
+   "function_prompt": "Back"
   },
   {
    "name": "Retroid Pocket Duo Lite",
@@ -555,7 +577,8 @@
     158
    ],
    "shared_back": false,
-   "home_function": false
+   "home_function": false,
+   "function_prompt": "Home"
   },
   {
    "name": "GameMT E6 Max",
@@ -577,7 +600,8 @@
     158
    ],
    "shared_back": false,
-   "home_function": false
+   "home_function": false,
+   "function_prompt": "Home"
   },
   {
    "name": "Mangmi Air X MQ66",
@@ -599,7 +623,8 @@
     158
    ],
    "shared_back": false,
-   "home_function": false
+   "home_function": false,
+   "function_prompt": "Home"
   },
   {
    "name": "KT Pocket KT-R1: detection only, the default keys",
@@ -627,7 +652,8 @@
     158
    ],
    "shared_back": false,
-   "home_function": true
+   "home_function": true,
+   "function_prompt": "Function"
   },
   {
    "name": "ZPG A1 Unicorn: detection only",
@@ -654,7 +680,8 @@
     158
    ],
    "shared_back": false,
-   "home_function": true
+   "home_function": true,
+   "function_prompt": "Function"
   },
   {
    "name": "AYANEO Pocket Micro: detection only",
@@ -682,7 +709,8 @@
     158
    ],
    "shared_back": false,
-   "home_function": true
+   "home_function": true,
+   "function_prompt": "Function"
   },
   {
    "name": "an unknown device",
@@ -710,7 +738,8 @@
     158
    ],
    "shared_back": false,
-   "home_function": true
+   "home_function": true,
+   "function_prompt": "Function"
   }
  ]
 }

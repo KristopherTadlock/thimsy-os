@@ -309,7 +309,7 @@ Evidence and variants. Paths are in each core's tree; docs are `docs/library/<co
 - **fbneo:** the descriptors are the game's own button names (`src/burner/libretro/retro_input.cpp:58-84`, `395-400` for CPS LP/MP/HP = Y/X/L and LK/MK/HK = B/A/R, Neo Geo `2455-2468`). The reader shows the generic row with the badge "Per-game layout". Reading the game's descriptors needs the running core, so it is out of scope.
 - **mamearcade** `src/osd/modules/input/input_retro.cpp:206-231`. **mame2003_plus** `src/mame2003/mame2003.c:1100-1168`.
 - **pce_fast:** 2-button default (`libretro_core_options.h:463-474`).
-- **wswan:** rotation via Select; the portrait mapping is in `libretro.c:1315-1377`.
+- **wswan:** rotation via Select; the portrait mapping is in `libretro.c:1315-1377`. `retropad.json` applies it when `wswan_rotate_display` is `portrait` (with `wswan_rotate_keymap` on `auto`) or `wswan_rotate_keymap` is `enabled`; Manual rotation by Select at run time can't be seen, so the map stays landscape then.
 - **lynx:** the core's descriptor text is wrong. The code is A→A, B→B, L→Option 2, R→Option 1 (`libretro.cpp:322-376`), and the table follows the code.
 - Others: `vb/libretro.cpp:1134-1175`, `ngp/libretro.c:534-542`, `stella/src/os/libretro/libretro.cxx:1769-1790`, `a5200/libretro/libretro.c:532-551`, `prosystem/core/libretro.c:484-494`, `opera/lr_input.c:85-96`, `gearcoleco/platforms/libretro/libretro.cpp:392-411`, `bluemsx/libretro.c:711-726`, `fake08/platform/libretro/libretro.cpp:192-198`.
 

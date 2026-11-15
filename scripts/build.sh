@@ -39,7 +39,8 @@
 #
 # A SYSTEM_IMG whose init.rc starts the off-mode charger before the RG Cube's
 # battery driver is up is refused (scripts/check_charger_rc.py), and so is one
-# without the button map's files (scripts/check_buttonmap_assets.py).
+# whose charger looks for the battery only once (scripts/check_charger_binary.py),
+# or one without the button map's files (scripts/check_buttonmap_assets.py).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -95,6 +96,7 @@ if [[ -n "${SYSTEM_IMG:-}" ]]; then
   [[ -f "$BOOT_LOGO_SVG" && -f "$BOOT_LOGO_FONT" ]] || {
     echo "BOOT_LOGO_SVG and BOOT_LOGO_FONT are required (boot picture)" >&2; exit 1; }
   python3 -I "$ROOT/scripts/check_charger_rc.py" "$SYSTEM_IMG"
+  python3 -I "$ROOT/scripts/check_charger_binary.py" "$SYSTEM_IMG"
   python3 -I "$ROOT/scripts/check_buttonmap_assets.py" "$SYSTEM_IMG"
 fi
 

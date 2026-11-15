@@ -201,6 +201,37 @@ class Assets(util.TestCase):
         for e in sorted(emulators - {"drastic-nano"}):
             self.assertTrue(packages.get(e), e)
 
+    def test_button_map_covers_every_nano_system(self):
+        """Each Nano system has a drawing in controllers.json, and its player leads to a reader: a
+        RetroArch core whose retropad.json entry plays the system, or an app with a hotkey profile."""
+        nano = os.path.join(util.AOSP, "frameworks/base/cmds/gammaos-nano")
+        if not os.path.isdir(CATALOG):
+            self.skipTest(f"no Nano catalog at {CATALOG}")
+        art = json.loads(util.slurp(f"{nano}/ps3xmb/controllers/controllers.json", text=True))
+        cores = json.loads(util.slurp(f"{nano}/ps3xmb/buttonmap/retropad.json", text=True))["cores"]
+        profiles = {}
+        for path in glob.glob(f"{M}/hotkeys/*.json"):
+            with open(path) as f:
+                profile = json.load(f)
+            for package in profile.get("packages", []):
+                profiles[package] = profile["id"]
+        catalog = ns.read_catalog(CATALOG)
+        for n, rom_dir, f in ns.parse(f"{M}/nano-systems.txt"):
+            where = f"nano-systems.txt:{n} {rom_dir}"
+            if rom_dir == "androidgames":   # the Android games have no map
+                continue
+            self.assertIn(art["systems"].get(rom_dir, {}).get("drawing"), art["drawings"], where)
+            package = f.get("package")
+            if "player" in f:
+                args = " ".join(catalog[f["player"]][0]["amStartArguments"].split())
+                core = ns.CORE_RE.search(args)
+                if "com.retroarch.aarch64/" in args and core:
+                    self.assertIn(core.group(1), cores, where)
+                    self.assertIn(rom_dir, cores[core.group(1)]["systems"], where)
+                    continue
+                package = re.search(r"-n (\S+?)/", args).group(1)
+            self.assertIn(package, profiles, where)
+
     def test_bootanimation(self):
         with zipfile.ZipFile(f"{M}/bootanimation/bootanimation.zip") as z:
             infos = z.infolist()

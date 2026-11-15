@@ -52,6 +52,23 @@ def check_key(tc, key, where):
         tc.assertRegex(key["android"], r"^[A-Z][A-Z0-9_]*$", where)
         tc.assertFalse(key["android"].startswith("KEYCODE_"), where)
     tc.assertIn(key.get("gamepad_only", False), (True, False), where)
+    if "prompt" in key:
+        tc.assertIsInstance(key["prompt"], str, where)
+        tc.assertTrue(key["prompt"], where)
+
+
+# The name a hotkey prompt gives the button ("Mode + R1"): a short name as printed on it.
+PROMPT = re.compile(r"^[^\s/()]{1,10}$")
+
+
+def prompt_of(doc, entry):
+    """devkeys::functionPrompt for a table entry: Back's name where Back doubles as the function button."""
+    shared = entry.get("fallback") == "back"
+    keys = entry.get("back" if shared else "function", doc["default"]["back" if shared else "function"])
+    for key in keys:
+        if key.get("prompt") or key.get("label"):
+            return key.get("prompt") or key["label"]
+    return "Back" if shared else "Anbernic"
 
 
 class Table(util.TestCase):
@@ -86,6 +103,16 @@ class Table(util.TestCase):
             self.assertIn(entry.get("fallback", "none"), ("none", "back"), where)
             if entry.get("fallback") == "back":
                 self.assertNotEqual(entry.get("back", doc["default"]["back"]), [], where)
+
+    def test_prompts_are_printed_names(self):
+        """Every device's prompt name is a short button name, not a description like "Anbernic / Home"."""
+        doc = load_table()
+        for entry in [doc["default"]] + doc["devices"]:
+            name = prompt_of(doc, entry)
+            self.assertRegex(name, PROMPT, entry.get("id", "default"))
+        cube = next(e for e in doc["devices"] if e["id"] == "anbernic-rgcube")
+        self.assertEqual(prompt_of(doc, cube), "Anbernic")
+        self.assertEqual(prompt_of(doc, doc["default"]), "Function")
 
     def test_rg_cube_keys_unchanged(self):
         """The Cube's own entry is the keys Thimsy always used: F10 from its pad, BUTTON_MODE, Back."""
@@ -181,7 +208,7 @@ class JavaResolver(util.TestCase):
         got = self.resolve(cases_path)
         self.assertEqual(len(got), len(cases))
         for case, result in zip(cases, got):
-            for field in FIELDS + tuple(f for f in ("back_android", "home_function") if f in case):
+            for field in FIELDS + tuple(f for f in ("back_android", "home_function", "function_prompt") if f in case):
                 self.assertEqual(result[field], case[field], f"{case['name']}: {field}")
 
     def test_same_cases_as_nano(self):
@@ -227,6 +254,18 @@ class JavaResolver(util.TestCase):
     def test_the_table(self):
         self.check_cases(CASES)
 
+    def test_every_device_has_a_prompt_case(self):
+        """The fixture pins each table entry's prompt name, and agrees with the table's own reading."""
+        doc = load_table()
+        with open(CASES) as f:
+            cases = json.load(f)["cases"]
+        by_id = {e["id"]: e for e in doc["devices"]}
+        for case in cases:
+            self.assertIn("function_prompt", case, case["name"])
+            entry = by_id.get(case["id"], doc["default"])
+            self.assertEqual(case["function_prompt"], prompt_of(doc, entry), case["name"])
+        self.assertEqual(set(by_id) - {c["id"] for c in cases}, set())
+
     def test_home_function_devices(self):
         """Every device whose function button is Android's HOME is one the table says so for."""
         with open(CASES) as f:
@@ -246,6 +285,7 @@ class JavaResolver(util.TestCase):
         self.assertEqual(r["back_android"], ["BACK"])
         self.assertFalse(r["shared_back"])
         self.assertFalse(r["home_function"])
+        self.assertEqual(r["function_prompt"], "Anbernic")
 
     def test_malformed_table_is_the_rg_cube(self):
         for bad in ("", "{", "[]", "null"):

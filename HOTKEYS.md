@@ -259,6 +259,8 @@ Holding the power button for 7 s shuts the console down, in a game or in Nano. `
 
 "The Anbernic button" in this document means the device's **function button**. On the RG Cube it is the Anbernic logo button. Other handhelds GammaOS supports have a Mode, Home or Menu button instead, or only a Back button. Every chord above, Anbernic + the Button Map Button included, works through the same lookup, so they work the same on every device.
 
+Nano's prompts and settings text name the button as it is printed on the device (`devkeys::functionPrompt()`, `ThimsyDeviceKeys.functionPrompt()`; the *Prompt* column below): on the RG DS the Hotkeys page says *Mode + this button saves the game's state.* and the Toolbox row is *Mode Button Opens Quick Menu*. Where Back doubles as the function button they name Back's button instead (*Menu* on the TrimUI Brick and MagicX, *Back* on the RG405M, RG505 and Retroid Pocket Classic), since the chords are made with it there, and the Universal Hotkeys and Toolbox texts say that a tap is still Back. The texts are translatable formats with the name as their `%s` (`fnText` in `NanoMenuPS3Menu.cpp`), so each language keeps its own word order; `test/i18n_check.py` fails on "Anbernic" in a translation or in a Nano string outside log lines and the device table.
+
 ### How a device's buttons are found
 
 One table, `/system/etc/gammaos/device_keys.json` (from `mods/device-keys.json`, installed by `mods/55-hotkeys.sh`), lists each device's function and Back buttons. Every reader picks the first entry whose `match` fits the device's system properties, or the table's `default` if none does:
@@ -271,7 +273,7 @@ One table, `/system/etc/gammaos/device_keys.json` (from `mods/device-keys.json`,
 
 `ThimsyHotkeyController` doesn't change. It only injects keyboard keys, and never reads the pad.
 
-The two resolvers are held to the same test cases (`gammaos-nano/test/fixtures/devkeys/cases.json`), so they always pick the same keys.
+The two resolvers are held to the same test cases (`gammaos-nano/test/fixtures/devkeys/cases.json`), so they always pick the same keys and the same prompt name.
 
 - **No table, or a broken one:** the RG Cube's keys, the ones Thimsy always used. Those are F10 from a gamepad, `BUTTON_MODE` and Back.
 - **`match`:** a list of alternatives. All the properties an alternative names must match, and any one alternative is enough. A value matches case-insensitively, or as a prefix when it ends in `*`.
@@ -283,7 +285,8 @@ The two resolvers are held to the same test cases (`gammaos-nano/test/fixtures/d
 - **A key:**
   - `linux`, the evdev code Nano and drastic-nano read;
   - `android`, the keycode name PhoneWindowManager sees after the key layout. A key without one (the AYANEO codes 753 and 754, which no layout maps) is for Nano and drastic-nano only;
-  - `gamepad_only`, so a keyboard's F10 still reaches the app.
+  - `gamepad_only`, so a keyboard's F10 still reaches the app;
+  - `prompt`, the name printed on the button, where `label` describes the key instead (`Anbernic / Home`, `Function (side)`, `Home / Back`). Prompts use the first function key's `prompt`, else its `label`, or the first Back key's where Back doubles as the function button; with no name at all, Anbernic (Back where Back doubles).
 - **A function key without `gamepad_only`** counts over apps only from a built-in device or a gamepad, so a plugged-in keyboard's Home stays Home.
 - **An entry without `function` or `back`:** takes the default's. `"function": []` means the device has no function button.
 - **`"fallback": "back"`:** Back doubles as the function button (below).
@@ -330,28 +333,28 @@ Sources:
 
 The research notes are `work/device-buttons-research.md`. "GP" is the code after GammaOS's default GammaPad remap.
 
-| Device | SoC | Detected by | Function button → evdev / Android | Back button → evdev / Android | Confidence (source) |
-|---|---|---|---|---|---|
-| RG Cube | T820 | vendor/odm model `RGCUBE` | Anbernic logo → 68 / `F10`; 316 / `BUTTON_MODE` kept | Back → 158 / `BACK` | verified (1: v1.2 dtbo, vendor key layout, `build.prop`) |
-| RG556, RG406H, RG406V, RG476H, RG Slide | T820 | `RG556`, `RG 406H`, `RG 476H`, or `ums9620` + Anbernic | Anbernic / Home → 68 / `F10` | Back → 158 / `BACK` (Slide: right of the screen) | verified (1: each model's dtbo) |
-| RG477M, RG477V, RG557 | Dimensity 8300 | odm model `RG477M`, `RG 477V`, `RG557` | Home → 68 / `F10` | Back → 158 / `BACK` | verified (1: stock dtbo from the Unbricker dumps) |
-| RG Rotate | T618 | `anbernicrgrotate` | side Function → 68 / `F10`; a second key sends 67 / `F9` | centre home/return → 158 / `BACK` | codes verified (1), labels likely (4); which side key is 67 or 68 unconfirmed |
-| RG Vita | **T618** | `anbernicrgvita`, `RG VITA` | Anbernic → 68 / `F10` (GP 204 / `NOTIFICATION`) | Back → 158 / `BACK` | verified (1, 3) |
-| RG405V | T618 | odm/vendor model `RG405V` (assumed string) | side Function → 68 / `F10` | front Home → 158 / `BACK` | likely (1 codes, 4 labels) |
-| RG405M, RG505 | T618 | `RG405M` (verified), `RG505` (assumed), or `ums512` + Anbernic | **None** (68 is wired to no button) | Home / Back → 158 / `BACK` | codes verified (1), labels likely (4). **Back doubles as function** |
-| RG Vita Pro | RK3576 | `anbernicrgvitapro`, `RG VITA Pro` | Anbernic → 68 / `F10` (GP 204) | Back → 158 / `BACK` (on `adc-keys`) | verified (1, 3) |
-| RG DS, RG DS Plus | RK3568 | `anbernicrgds`, `anbernicrgdsplus` | Mode → 316 / `BUTTON_MODE` (GP 204) | adc-keys button → 158 / `BACK` | codes verified (1: v1.4.4 OTA dtb), labels unverified |
-| TrimUI Brick, MagicX Zero 40, Mini Zero 28, XU20 V32 | A133P | `trimuibrick`, `magicxzero40`, `magicxminizero28`, `magicxxu20v32`, or `ceres` + `QUAD-CORE A133 aw4` | **None** | **Menu** → 158 / `BACK` | verified (1, 2). **Menu doubles as function** |
-| GKD 350H Ultra | RK3576 | `gkd350hultra` | "F1" → 316 / `BUTTON_MODE` | "F" → 158 / `BACK` | codes verified (1), labels from the device tree |
-| AYANEO Pocket Air Mini | MT6785 | `pocketairmini` | ≡ → 753 / none (GP 204 / `NOTIFICATION`) | AYANEO → 754 / none (GP 158 / `BACK`) | codes verified (1, 3); the role split is GammaOS's |
-| Retroid Pocket 4 Pro | Dimensity 1100 | `mt6893` + `Moorechip` | Home → 316 / `BUTTON_MODE` | Back → 158 / `BACK` | verified (2: `retroidpad` binary) |
-| Retroid Pocket Classic | Qualcomm `parrot` | `Retroid Pocket Classic` | **None distinct** (Home also sends 158) | Back and Home → 158 / `BACK` | verified (2). **Back doubles as function** |
-| Retroid Pocket Duo Lite (beta), Duo | Qualcomm | `retroidpocketduolite`, `retroidpocketduo` | Home → 316 / `BUTTON_MODE` | Back → 158 / `BACK` | verified (2: `RetroidPad.c`) |
-| GameMT E6 Max | A527 `saturn` | `A527 PRO` + `saturn` | Home → 316 / `BUTTON_MODE` (likely) | default (unverified) | partial (1: stock dtb) |
-| Mangmi Air X | SD680 | `mangmiairxmq65`, `mangmiairxmq66` | Home → 316 / `BUTTON_MODE` (likely) | default (unverified) | likely (3) |
-| KT Pocket KT-R1 | `mt6789` | odm model `KTPocket-R1` | default list | default | unverified: detection only |
-| ZPG A1 Unicorn | `mt6789` | odm model `ZPG A1` | default list | default | unverified: detection only |
-| AYANEO Pocket Micro | `mt6789` | `Pocket Micro` + AYANEO | default list | default | unverified: detection only |
+| Device | SoC | Detected by | Function button → evdev / Android | Back button → evdev / Android | Prompt | Confidence (source) |
+|---|---|---|---|---|---|---|
+| RG Cube | T820 | vendor/odm model `RGCUBE` | Anbernic logo → 68 / `F10`; 316 / `BUTTON_MODE` kept | Back → 158 / `BACK` | Anbernic | verified (1: v1.2 dtbo, vendor key layout, `build.prop`) |
+| RG556, RG406H, RG406V, RG476H, RG Slide | T820 | `RG556`, `RG 406H`, `RG 476H`, or `ums9620` + Anbernic | Anbernic / Home → 68 / `F10` | Back → 158 / `BACK` (Slide: right of the screen) | Anbernic | verified (1: each model's dtbo) |
+| RG477M, RG477V, RG557 | Dimensity 8300 | odm model `RG477M`, `RG 477V`, `RG557` | Home → 68 / `F10` | Back → 158 / `BACK` | Home | verified (1: stock dtbo from the Unbricker dumps) |
+| RG Rotate | T618 | `anbernicrgrotate` | side Function → 68 / `F10`; a second key sends 67 / `F9` | centre home/return → 158 / `BACK` | Function | codes verified (1), labels likely (4); which side key is 67 or 68 unconfirmed |
+| RG Vita | **T618** | `anbernicrgvita`, `RG VITA` | Anbernic → 68 / `F10` (GP 204 / `NOTIFICATION`) | Back → 158 / `BACK` | Anbernic | verified (1, 3) |
+| RG405V | T618 | odm/vendor model `RG405V` (assumed string) | side Function → 68 / `F10` | front Home → 158 / `BACK` | Function | likely (1 codes, 4 labels) |
+| RG405M, RG505 | T618 | `RG405M` (verified), `RG505` (assumed), or `ums512` + Anbernic | **None** (68 is wired to no button) | Home / Back → 158 / `BACK` | Back | codes verified (1), labels likely (4). **Back doubles as function** |
+| RG Vita Pro | RK3576 | `anbernicrgvitapro`, `RG VITA Pro` | Anbernic → 68 / `F10` (GP 204) | Back → 158 / `BACK` (on `adc-keys`) | Anbernic | verified (1, 3) |
+| RG DS, RG DS Plus | RK3568 | `anbernicrgds`, `anbernicrgdsplus` | Mode → 316 / `BUTTON_MODE` (GP 204) | adc-keys button → 158 / `BACK` | Mode | codes verified (1: v1.4.4 OTA dtb), labels unverified |
+| TrimUI Brick, MagicX Zero 40, Mini Zero 28, XU20 V32 | A133P | `trimuibrick`, `magicxzero40`, `magicxminizero28`, `magicxxu20v32`, or `ceres` + `QUAD-CORE A133 aw4` | **None** | **Menu** → 158 / `BACK` | Menu | verified (1, 2). **Menu doubles as function** |
+| GKD 350H Ultra | RK3576 | `gkd350hultra` | "F1" → 316 / `BUTTON_MODE` | "F" → 158 / `BACK` | F1 | codes verified (1), labels from the device tree |
+| AYANEO Pocket Air Mini | MT6785 | `pocketairmini` | ≡ → 753 / none (GP 204 / `NOTIFICATION`) | AYANEO → 754 / none (GP 158 / `BACK`) | ≡ | codes verified (1, 3); the role split is GammaOS's |
+| Retroid Pocket 4 Pro | Dimensity 1100 | `mt6893` + `Moorechip` | Home → 316 / `BUTTON_MODE` | Back → 158 / `BACK` | Home | verified (2: `retroidpad` binary) |
+| Retroid Pocket Classic | Qualcomm `parrot` | `Retroid Pocket Classic` | **None distinct** (Home also sends 158) | Back and Home → 158 / `BACK` | Back | verified (2). **Back doubles as function** |
+| Retroid Pocket Duo Lite (beta), Duo | Qualcomm | `retroidpocketduolite`, `retroidpocketduo` | Home → 316 / `BUTTON_MODE` | Back → 158 / `BACK` | Home | verified (2: `RetroidPad.c`) |
+| GameMT E6 Max | A527 `saturn` | `A527 PRO` + `saturn` | Home → 316 / `BUTTON_MODE` (likely) | default (unverified) | Home | partial (1: stock dtb) |
+| Mangmi Air X | SD680 | `mangmiairxmq65`, `mangmiairxmq66` | Home → 316 / `BUTTON_MODE` (likely) | default (unverified) | Home | likely (3) |
+| KT Pocket KT-R1 | `mt6789` | odm model `KTPocket-R1` | default list | default | Function (default) | unverified: detection only |
+| ZPG A1 Unicorn | `mt6789` | odm model `ZPG A1` | default list | default | Function (default) | unverified: detection only |
+| AYANEO Pocket Micro | `mt6789` | `Pocket Micro` + AYANEO | default list | default | Function (default) | unverified: detection only |
 
 Not supported, so not in the table: AYN Thor, the GammaOS Core (Android TV) devices, and the planned AYANEO Pocket S/DMG and Air, Retroid Pocket Mini, Flip 2 and 5, and Powkiddy X28. They get the default.
 

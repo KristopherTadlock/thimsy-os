@@ -241,7 +241,9 @@ It also changes Nano:
 - **Anbernic button:** opens the Quick Menu when it is released, on the home
   screen and over a running game (pressing it again, or B, goes back to the
   game). The RG Cube reports it as F10. **Toolbox → Anbernic Button Opens Quick
-  Menu** gives the button back to games.
+  Menu** gives the button back to games. On other handhelds the menus name the
+  button as it is printed there, such as Mode, Home or Menu, or Back where Back
+  doubles as it ([HOTKEYS.md, Devices](HOTKEYS.md#devices)).
 - **Universal hotkeys:** in a game, hold the Anbernic button and press R1 to
   save, L1 to load, R2 for fast forward, L2 for rewind, or hold it on its own
   for 3 seconds to quit, in every emulator that can (**Gamepad Settings → Hotkeys** changes the buttons
@@ -650,6 +652,11 @@ It also changes Nano:
   vendor's module loader had loaded the battery driver; on the RG Cube it now
   waits for it, 10 s at most (`init.rc` in the Nano patch). `scripts/build.sh`
   refuses a `SYSTEM_IMG` without that wait (`scripts/check_charger_rc.py`).
+  The charger also looks for the battery again on every update until it finds
+  one, and replaces a "?" it already drew with the level (`system/core/healthd`
+  in the Nano patch; `scripts/check_charger_binary.py` refuses a charger
+  without it). The kernel's random seed is no longer loaded in charging mode,
+  whose 2 s wait for it used to give the battery driver its head start.
 
 1.4.4 adds GammaOS Nano, a console-style home. The build makes the device
 boot into it from the first boot, where Nano's setup wizard runs first-boot
@@ -688,6 +695,17 @@ its own launcher, Trebuchet), and **Boot Nano** back. `mods/50-nano.sh` sets it 
 
 The boot mode, theme, sounds, LEDs and performance mode are `build.prop`
 defaults, so changes made in Nano stick.
+
+Nano's first start takes its game systems from the build's list
+(`/system/etc/gammaos/nano_systems.json`), not from Nano's own table, which
+names cores this build doesn't ship (Nestopia for NES, Gambatte for Game Boy).
+A list saved from that table by an earlier build is repaired once the user is
+unlocked: a built-in system still on such a core gets the build's core (its
+Recently Played entries too), and the build's systems missing from the list
+then come back. A system Nano made from its emulator catalog whose emulator
+can't run here (an app that isn't installed, a core RetroArch doesn't have)
+gets the first one in the emulator picker that does. **Reset to Default** on
+a built-in system (Game Systems) restores the build's entry.
 
 Nano also gets an **Android Games** system listing the installed Android
 games: the apps that declare themselves games, apart from the emulators and
@@ -734,6 +752,10 @@ then the hotkeys (the universal chords and the emulator's own).
   ARMSX2, Vita3K, WatermelonDS, M64Plus FZ, ScummVM, SeedlessDS, hakuX, DraStic
   and drastic-nano), and says when it shows the emulator's defaults or when the
   emulator has nothing mapped yet (Dolphin and Azahar out of the box).
+  Dolphin's files are read on the microSD card too, after **Move Emulator
+  Files to microSD**. An emulator app it has no reader for shows the console's
+  drawing with "No reader for" and the app; over a game, only when Nano
+  started that app.
 - **Moving around:** the D-pad or left stick moves a row (left / right change
   section), L1 / R1 turn a page, the footer's Table button (Y) switches
   between the drawing and the table, and its Close button (B), Back,
@@ -823,10 +845,12 @@ The tools it uses:
   policy hashes. Anbernic's odm carries the policy for the 1.2 system, so
   without this init compiled the policy at every boot, about a second before
   anything else could start.
-- With `SYSTEM_IMG`, `scripts/check_charger_rc.py` and
+- With `SYSTEM_IMG`, `scripts/check_charger_rc.py`,
+  `scripts/check_charger_binary.py` and
   `scripts/check_buttonmap_assets.py` read the image (with `debugfs`) before
   the long steps and stop the build when its `init.rc` starts the off-mode
-  charger before waiting for the RG Cube's battery, or when it lacks the files
+  charger before waiting for the RG Cube's battery, when its charger looks
+  for the battery only once, or when it lacks the files
   Nano's button map reads (`/system/etc/nano_xmb/buttonmap` and the controller
   drawings).
 
