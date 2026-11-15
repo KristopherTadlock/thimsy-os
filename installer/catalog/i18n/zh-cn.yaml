@@ -59,7 +59,7 @@
 "Don't install on units made in March 2026 or later.": "请勿在 2026 年 3 月或之后生产的设备上安装。"
 "Don't install on units whose stock firmware is v1.26.": "请勿在原厂固件为 v1.26 的设备上安装。"
 "Don't put the card back in a computer to copy games: it holds an encrypted Android layout, so the computer won't show your storage. Copy games over USB file transfer (MTP), with ADB Explorer or from a network share instead.": "不要把存储卡放回电脑里复制游戏：卡上是加密的 Android 分区布局，电脑不会显示你的存储空间。请改用 USB 文件传输（MTP）、ADB Explorer 或网络共享来复制游戏。"
-"Download Thimsy-1.0a-anbernic-rg-cube-heavy.tar from the Thimsy Installer release page, then choose it with Use a file I already downloaded.": "请从 Thimsy Installer 发布页面下载 Thimsy-1.0a-anbernic-rg-cube-heavy.tar，然后通过“使用我已下载的文件”选择它。"
+"Download Thimsy-1.0a-anbernic-rg-cube-heavy.tar from the Thimsy release page, then choose it with Use a file I already downloaded.": "请从 Thimsy 发布页面下载 Thimsy-1.0a-anbernic-rg-cube-heavy.tar，然后通过“使用我已下载的文件”选择它。"
 "Download the file yourself, then choose it with Use a file I already downloaded.": "请自行下载该文件，然后通过“使用我已下载的文件”选择它。"
 "Downloading": "正在下载"
 "Downloading {file}": "正在下载 {file}"

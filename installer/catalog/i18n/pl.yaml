@@ -59,7 +59,7 @@
 "Don't install on units made in March 2026 or later.": "Nie instaluj na urządzeniach wyprodukowanych w marcu 2026 lub później."
 "Don't install on units whose stock firmware is v1.26.": "Nie instaluj na urządzeniach z fabrycznym oprogramowaniem w wersji v1.26."
 "Don't put the card back in a computer to copy games: it holds an encrypted Android layout, so the computer won't show your storage. Copy games over USB file transfer (MTP), with ADB Explorer or from a network share instead.": "Nie wkładaj karty z powrotem do komputera, aby skopiować gry: zawiera ona zaszyfrowany układ Androida, więc komputer nie pokaże Twojej pamięci. Zamiast tego kopiuj gry przez przesyłanie plików USB (MTP), za pomocą ADB Explorer lub z udziału sieciowego."
-"Download Thimsy-1.0a-anbernic-rg-cube-heavy.tar from the Thimsy Installer release page, then choose it with Use a file I already downloaded.": "Pobierz Thimsy-1.0a-anbernic-rg-cube-heavy.tar ze strony wydań Thimsy Installer, a następnie wybierz go opcją „Użyj już pobranego pliku”."
+"Download Thimsy-1.0a-anbernic-rg-cube-heavy.tar from the Thimsy release page, then choose it with Use a file I already downloaded.": "Pobierz Thimsy-1.0a-anbernic-rg-cube-heavy.tar ze strony wydań Thimsy, a następnie wybierz go opcją „Użyj już pobranego pliku”."
 "Download the file yourself, then choose it with Use a file I already downloaded.": "Pobierz plik samodzielnie, a następnie wybierz go opcją „Użyj już pobranego pliku”."
 "Downloading": "Pobieranie"
 "Downloading {file}": "Pobieranie pliku {file}"

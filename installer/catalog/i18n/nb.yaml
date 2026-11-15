@@ -59,7 +59,7 @@
 "Don't install on units made in March 2026 or later.": "Ikke installer på enheter produsert i mars 2026 eller senere."
 "Don't install on units whose stock firmware is v1.26.": "Ikke installer på enheter med original fastvare v1.26."
 "Don't put the card back in a computer to copy games: it holds an encrypted Android layout, so the computer won't show your storage. Copy games over USB file transfer (MTP), with ADB Explorer or from a network share instead.": "Ikke sett kortet tilbake i en datamaskin for å kopiere spill: det inneholder en kryptert Android-inndeling, så datamaskinen viser ikke lagringsplassen din. Kopier heller spill med USB-filoverføring (MTP), med ADB Explorer eller fra en nettverksdeling."
-"Download Thimsy-1.0a-anbernic-rg-cube-heavy.tar from the Thimsy Installer release page, then choose it with Use a file I already downloaded.": "Last ned Thimsy-1.0a-anbernic-rg-cube-heavy.tar fra utgivelsessiden til Thimsy Installer, og velg den deretter med «Bruk en fil jeg allerede har lastet ned»."
+"Download Thimsy-1.0a-anbernic-rg-cube-heavy.tar from the Thimsy release page, then choose it with Use a file I already downloaded.": "Last ned Thimsy-1.0a-anbernic-rg-cube-heavy.tar fra utgivelsessiden til Thimsy, og velg den deretter med «Bruk en fil jeg allerede har lastet ned»."
 "Download the file yourself, then choose it with Use a file I already downloaded.": "Last ned filen selv, og velg den deretter med «Bruk en fil jeg allerede har lastet ned»."
 "Downloading": "Laster ned"
 "Downloading {file}": "Laster ned {file}"

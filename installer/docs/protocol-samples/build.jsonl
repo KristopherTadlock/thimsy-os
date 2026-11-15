@@ -1,5 +1,5 @@
 {"stage":"plan","title":"Checking the plan","type":"stage"}
-{"level":"info","message":"Needs about 31.01 MB free in <workspace>; 120.15 GB available","type":"log"}
+{"level":"info","message":"Needs about 31.01 MB free in <workspace>; 114.94 GB available","type":"log"}
 {"stage":"fetch","title":"Downloading","type":"stage"}
 {"done":382435,"label":"Importing fw.7z.001","stage":"fetch","total":382435,"type":"progress"}
 {"done":382435,"label":"Checking fw.7z.001","stage":"fetch","total":382435,"type":"progress"}
