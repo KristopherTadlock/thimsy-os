@@ -165,6 +165,9 @@ while i < len(args):
             log_line(f"load_partition: {name}, target: 0x{size:x}, written: 0x{size // 2:x}")
             i += 3
             continue
+        # Long writes report how far they've got, like the real tool.
+        if size >= 256 << 20:
+            log_line(f"writing: {name}, 0x{128 << 20:x} of 0x{size:x}")
         log_line(f"load_partition: {name}, target: 0x{size:x}, written: 0x{size:x}")
         log.write(f"write_part {name} {f} {size}\n")
         # Writing takes the real tool a while; without questions in between

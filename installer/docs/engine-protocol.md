@@ -387,6 +387,16 @@ Errors while flashing:
   the error says so when `spd_dump` gives up. What `spd_dump` said about
   the driver and its port is forgotten whenever it logs a new `Windows
   has:` line.
+- Writing: when FDL2's answer to EXEC (`FDL2: incompatible partition`,
+  carrying "newt" and what it supports) offers them, `spd_dump` turns
+  transcoding off and raw data writes on, as Unisoc's tools do (`FDL2
+  offers: …`, `transcoding off`, `raw data writes on (2048 KB at a
+  time)` on the RG Cube): each partition then goes as one raw start and
+  plain chunks of that size, each answered with an ACK, instead of 4 KB
+  messages. Otherwise, or if FDL2 refuses, it writes the usual way. For
+  partitions of 256 MB or more it logs `writing: NAME, 0xDONE of
+  0xTOTAL` every 128 MB, which the engine shows as progress (`Writing
+  {partition}`) without counting the partition written.
 - `tool_failed` (the tool is killed at once) when `spd_dump` reports a
   partial write (`load_partition: …, target: T, written: W` with W ≠ T),
   logs `unexpected response`, or writes anything before the checks above

@@ -1,5 +1,5 @@
 diff --git a/spd_dump.c b/spd_dump.c
-index f8ba370..6b869ac 100644
+index f8ba370..0792890 100644
 --- a/spd_dump.c
 +++ b/spd_dump.c
 @@ -37,6 +37,28 @@
@@ -580,7 +580,164 @@ index f8ba370..6b869ac 100644
  	if (size < src_offs)
  		ERR_EXIT("data outside the file\n");
  	size -= src_offs;
-@@ -1182,13 +1677,153 @@ found:
+@@ -1000,11 +1495,109 @@ static void erase_partition(spdio_t *io, const char *name) {
+ 	send_and_check(io);
+ }
+ 
++/* Raw data writes (what FDL2 offers in its answer to EXEC, as Unisoc's
++   tools use it): the bytes of each chunk sent as they are, raw_step at a
++   time, each answered with an ACK. 0: off. */
++static unsigned raw_step;
++
++/* Reads FDL2's answer to EXEC (BSL_REP_INCOMPATIBLE_PARTITION): "newt"
++   and tag/length/value fields (little-endian) saying what it supports.
++   Turns off transcoding and turns on raw data writes when it offers
++   them, as Unisoc's tools do. */
++static void fdl2_setup(spdio_t *io) {
++	const uint8_t *p = io->raw_buf + 4, *end;
++	unsigned len = READ16_BE(io->raw_buf + 2);
++	uint32_t no_hdlc = 0, raw = 0, flush_kb = 0;
++	if (len < 4 || memcmp(p, "newt", 4)) return;
++	end = p + len;
++	p += 4;
++	while (end - p >= 4) {
++		unsigned tag = p[0] | p[1] << 8, n = p[2] | p[3] << 8;
++		uint32_t v = 0;
++		p += 4;
++		if (n > (unsigned)(end - p)) break;
++		if (n >= 4) v = READ32_LE(p);
++		else if (n >= 1) v = p[0];
++		if (tag == 0) no_hdlc = v;
++		else if (tag == 2) raw = v & 0xff;
++		else if (tag == 3) flush_kb = v;
++		p += n;
++	}
++	DBG_LOG("FDL2 offers: no transcoding %u, raw data %u, %u KB at a time\n",
++			(unsigned)no_hdlc, (unsigned)raw, (unsigned)flush_kb);
++	if (no_hdlc) {
++		encode_msg(io, BSL_CMD_DISABLE_TRANSCODE, NULL, 0);
++		send_msg(io);
++		if (recv_msg(io) && recv_type(io) == BSL_REP_ACK) {
++			io->flags &= ~FLAGS_TRANSCODE;
++			DBG_LOG("transcoding off\n");
++		} else DBG_LOG("FDL2 didn't turn transcoding off; carrying on with it\n");
++	}
++	/* Level 2 (one start, then the whole file in chunks) is what Unisoc's
++	   tools use on the RG Cube; chunks up to 16 MB. */
++	if (raw >= 2 && flush_kb >= 4 && flush_kb <= 0x4000) {
++		encode_msg(io, BSL_CMD_WRITE_RAW_DATA_ENABLE, NULL, 0);
++		send_msg(io);
++		if (recv_msg(io) && recv_type(io) == BSL_REP_ACK) {
++			raw_step = flush_kb << 10;
++			DBG_LOG("raw data writes on (%u KB at a time)\n", (unsigned)flush_kb);
++		} else DBG_LOG("FDL2 didn't turn raw data writes on; writing the usual way\n");
++	}
++}
++
++/* Sends n bytes as they are (raw data). */
++static void send_raw(spdio_t *io, const uint8_t *buf, unsigned n) {
++	int ret;
++#if SPD_WIN
++	if (io->kind) {
++		ret = win_ser_write(io, buf, (int)n);
++		if (ret < 0)
++			ERR_EXIT("usb_send failed (error %lu)\n", (unsigned long)GetLastError());
++	} else
++#endif
++#if USE_LIBUSB
++	{
++		int err = libusb_bulk_transfer(io->dev_handle, io->endp_out,
++				(uint8_t*)buf, (int)n, &ret, 15000);
++		if (err < 0)
++			ERR_EXIT("usb_send failed : %s\n", libusb_error_name(err));
++		if (io->endp_out_blk > 0 && !(n % (unsigned)io->endp_out_blk)) {
++			int dummy;
++			libusb_bulk_transfer(io->dev_handle,
++					io->endp_out, NULL, 0, &dummy, io->timeout);
++		}
++	}
++#else
++	{
++		unsigned done = 0;
++		while (done < n) {
++			ret = write(io->serial, buf + done, n - done);
++			if (ret <= 0) break;
++			done += ret;
++		}
++		ret = done;
++		tcdrain(io->serial);
++	}
++#endif
++	if (ret != (int)n)
++		ERR_EXIT("usb_send failed (%d / %u)\n", ret, n);
++}
++
++/* How far a long write has got, every 128 MB (the caller shows it). */
++static void write_progress(const char *name, uint64_t done, uint64_t len,
++		uint64_t *shown) {
++	if (len < (256u << 20) || done - *shown < (128u << 20)) return;
++	*shown = done;
++	DBG_LOG("writing: %s, 0x%llx of 0x%llx\n", name,
++			(long long)done, (long long)len);
++}
++
+ static void load_partition(spdio_t *io, const char *name,
+ 		const char *fn, unsigned step) {
+-	uint64_t offset, len, n64;
++	uint64_t offset, len, n64, shown = 0;
+ 	unsigned mode64, n; int ret;
+ 	FILE *fi;
++	uint8_t *rawbuf = NULL;
+ 
+ 	fi = fopen(fn, "rb");
+ 	if (!fi) ERR_EXIT("fopen(load) failed\n");
+@@ -1019,19 +1612,39 @@ static void load_partition(spdio_t *io, const char *name,
+ 	select_partition(io, name, len, mode64, BSL_CMD_START_DATA);
+ 	send_and_check(io);
+ 
+-	for (offset = 0; (n64 = len - offset); offset += n) {
+-		n = n64 > step ? step : n64;
+-		if (fread(io->temp_buf, 1, n, fi) != n) 
+-			ERR_EXIT("fread(load) failed\n");
+-		encode_msg(io, BSL_CMD_MIDST_DATA, io->temp_buf, n);
++	if (raw_step) {
++		encode_msg(io, BSL_CMD_DLOAD_RAW_START2, NULL, 0);
+ 		send_msg(io);
+-		recv_msg_timeout(io, 15000);
++		if (recv_msg(io) && recv_type(io) == BSL_REP_ACK) {
++			rawbuf = (uint8_t*)malloc(raw_step);
++			if (!rawbuf) ERR_EXIT("malloc failed\n");
++		} else {
++			DBG_LOG("FDL2 didn't start a raw data write; writing the usual way\n");
++			raw_step = 0;
++		}
++	}
++	for (offset = 0; (n64 = len - offset); offset += n) {
++		if (rawbuf) {
++			n = n64 > raw_step ? raw_step : n64;
++			if (fread(rawbuf, 1, n, fi) != n)
++				ERR_EXIT("fread(load) failed\n");
++			send_raw(io, rawbuf, n);
++		} else {
++			n = n64 > step ? step : n64;
++			if (fread(io->temp_buf, 1, n, fi) != n)
++				ERR_EXIT("fread(load) failed\n");
++			encode_msg(io, BSL_CMD_MIDST_DATA, io->temp_buf, n);
++			send_msg(io);
++		}
++		ret = recv_msg_timeout(io, 15000);
+ 		if (!ret) ERR_EXIT("timeout reached\n");
+ 		if ((ret = recv_type(io)) != BSL_REP_ACK) {
+ 			DBG_LOG("unexpected response (0x%04x)\n", ret);
+ 			break;
+ 		}
++		write_progress(name, offset + n, len, &shown);
+ 	}
++	free(rawbuf);
+ 	DBG_LOG("load_partition: %s, target: 0x%llx, written: 0x%llx\n",
+ 			name, (long long)len, (long long)offset);
+ 	fclose(fi);
+@@ -1182,13 +1795,153 @@ found:
  
  #define REOPEN_FREQ 2
  
@@ -735,7 +892,7 @@ index f8ba370..6b869ac 100644
  	int wait = 300 * REOPEN_FREQ;
  	const char *tty = "/dev/ttyUSB0";
  	int verbose = 0, fdl_loaded = 0;
-@@ -1197,6 +1832,11 @@ int main(int argc, char **argv) {
+@@ -1197,6 +1950,11 @@ int main(int argc, char **argv) {
  	int keep_charge = 0, end_data = 1, blk_size = 0;
  	int secure_boot = 0;
  
@@ -747,7 +904,7 @@ index f8ba370..6b869ac 100644
  #if USE_LIBUSB
  	(void)tty;
  	ret = libusb_init(NULL);
-@@ -1223,7 +1863,75 @@ int main(int argc, char **argv) {
+@@ -1223,7 +1981,75 @@ int main(int argc, char **argv) {
  	}
  
  	for (i = 0; ; i++) {
@@ -824,7 +981,7 @@ index f8ba370..6b869ac 100644
  		device = libusb_open_device_with_vid_pid(NULL, 0x1782, 0x4d00);
  		if (device) break;
  		if (i >= wait)
-@@ -1239,7 +1947,7 @@ int main(int argc, char **argv) {
+@@ -1239,7 +2065,7 @@ int main(int argc, char **argv) {
  	}
  
  #if USE_LIBUSB
@@ -833,7 +990,7 @@ index f8ba370..6b869ac 100644
  #else
  	io = spdio_init(serial, 0);
  #endif
-@@ -1258,18 +1966,25 @@ int main(int argc, char **argv) {
+@@ -1258,18 +2084,25 @@ int main(int argc, char **argv) {
  				// Required for smartphones.
  				// Is there a way to do the same with usb-serial?
  #if USE_LIBUSB
@@ -859,7 +1016,7 @@ index f8ba370..6b869ac 100644
  				if (recv_type(io) != BSL_REP_VER)
  					ERR_EXIT("ver expected\n");
  
-@@ -1292,17 +2007,35 @@ int main(int argc, char **argv) {
+@@ -1292,17 +2125,35 @@ int main(int argc, char **argv) {
  					encode_msg(io, BSL_CMD_EXEC_DATA, NULL, 0);
  					send_and_check(io);
  				}
@@ -896,7 +1053,7 @@ index f8ba370..6b869ac 100644
  				}
  				if (recv_type(io) != BSL_REP_VER)
  					ERR_EXIT("ver expected\n");
-@@ -1330,8 +2063,14 @@ int main(int argc, char **argv) {
+@@ -1330,8 +2181,14 @@ int main(int argc, char **argv) {
  				send_and_check(io);
  
  				if (keep_charge) {
@@ -912,3 +1069,16 @@ index f8ba370..6b869ac 100644
  				}
  
  			} else {
+@@ -1347,9 +2204,10 @@ int main(int argc, char **argv) {
+ 				if (!ret) ERR_EXIT("timeout reached\n");
+ 				ret = recv_type(io);
+ 				// Is it always bullshit?
+-				if (ret == BSL_REP_INCOMPATIBLE_PARTITION)
++				if (ret == BSL_REP_INCOMPATIBLE_PARTITION) {
+ 					DBG_LOG("FDL2: incompatible partition\n");
+-				else if (ret != BSL_REP_ACK)
++					fdl2_setup(io);
++				} else if (ret != BSL_REP_ACK)
+ 					ERR_EXIT("unexpected response (0x%04x)\n", ret);
+ 			}
+ 

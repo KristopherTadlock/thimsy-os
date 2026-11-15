@@ -881,7 +881,12 @@ fn finish_backups(plan: &SpdPlan, run_dir: &Path) -> Vec<String> {
 }
 
 /// Lines `spd_dump` prints only once it's writing or erasing.
-const WRITE_LINES: &[&str] = &["load_partition", "erase_partition", "write_partition"];
+const WRITE_LINES: &[&str] = &[
+    "load_partition",
+    "erase_partition",
+    "write_partition",
+    "writing:",
+];
 
 /// Follows `spd_dump`'s output while it flashes: progress, and the signs
 /// that a write went wrong or ran without being confirmed.
@@ -907,9 +912,10 @@ impl SpdWatch {
 
     /// Reads one output line. `checked`: whether the device's partition
     /// table has been checked (the first answer approved). Returns the
-    /// partition just written with the bytes written so far and in total;
-    /// fails when the run must stop at once.
-    pub fn line(&mut self, line: &str, checked: bool) -> Result<Option<(String, u64, u64)>> {
+    /// partition just written, or being written, with the bytes written so
+    /// far and in total, and whether that partition is finished; fails when
+    /// the run must stop at once.
+    pub fn line(&mut self, line: &str, checked: bool) -> Result<Option<(String, u64, u64, bool)>> {
         let l = line.trim();
         if l.contains("unexpected response") {
             return Err(write_failed(format!(
@@ -923,6 +929,32 @@ impl SpdWatch {
             )
             .hint("Reinstall Thimsy Installer: its flashing tool isn't the version it expects.")
             .into());
+        }
+        // "writing: super, 0x8000000 of 0x15e000000": how far a long write
+        // has got (progress only; a partition counts once it's finished).
+        if let Some(rest) = l.strip_prefix("writing:") {
+            let mut it = rest.split(',');
+            let name = it.next().unwrap_or_default().trim();
+            let done = it
+                .next()
+                .and_then(|r| r.split(" of ").next())
+                .and_then(pac::parse_num);
+            let Some(w) = self
+                .writes
+                .iter()
+                .find(|(n, _, _)| n.eq_ignore_ascii_case(name))
+            else {
+                return Ok(None);
+            };
+            return Ok(match done {
+                Some(d) if !w.2 => Some((
+                    name.to_string(),
+                    self.written + d.min(w.1),
+                    self.total,
+                    false,
+                )),
+                _ => None,
+            });
         }
         let Some(rest) = l.strip_prefix("load_partition:") else {
             return Ok(None);
@@ -965,7 +997,7 @@ impl SpdWatch {
             w.2 = true;
             self.written += target;
         }
-        Ok(Some((name.to_string(), self.written, self.total)))
+        Ok(Some((name.to_string(), self.written, self.total, true)))
     }
 
     /// Once `spd_dump` has finished: every planned write must have been
@@ -1369,8 +1401,12 @@ pub fn flash(cat: &Catalog, opts: &FlashOptions, rep: &Reporter) -> Result<Flash
             connected.set(true);
             rep.stage("flash", "Installing Thimsy");
         }
-        if let Some((name, written, total)) = watch.line(line, checked.get())? {
-            rep.progress_for("Wrote {partition}", &name, written, total);
+        if let Some((name, written, total, done)) = watch.line(line, checked.get())? {
+            if done {
+                rep.progress_for("Wrote {partition}", &name, written, total);
+            } else {
+                rep.progress_for("Writing {partition}", &name, written, total);
+            }
         }
         Ok(())
     };
@@ -1643,7 +1679,22 @@ mod tests {
                 true,
             )
             .unwrap();
-        assert_eq!(got, Some(("uboot_a".to_string(), 0x1000, 0x15e001000)));
+        assert_eq!(
+            got,
+            Some(("uboot_a".to_string(), 0x1000, 0x15e001000, true))
+        );
+        // Progress within a long write shows, but doesn't count it written.
+        let got = w
+            .line("writing: super, 0x8000000 of 0x15e000000", true)
+            .unwrap();
+        assert_eq!(
+            got,
+            Some(("super".to_string(), 0x8001000, 0x15e001000, false))
+        );
+        assert!(w
+            .line("writing: misc, 0x10 of 0x20", true)
+            .unwrap()
+            .is_none());
         // Not every write was reported: spd_dump's exit status isn't enough.
         let err = w.finish().unwrap_err();
         assert!(err.to_string().contains("super"), "{err}");
@@ -1705,6 +1756,7 @@ mod tests {
             .unwrap_err();
         assert!(err.to_string().contains("without asking first"), "{err}");
         assert!(w.line("erase_partition: userdata", false).is_err());
+        assert!(w.line("writing: super, 0x8000000 of 0x10", false).is_err());
     }
 
     #[test]
