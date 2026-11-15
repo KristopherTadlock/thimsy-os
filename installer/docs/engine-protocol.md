@@ -301,8 +301,10 @@ Before anything is written:
   differs is unpacked again once, and if it still differs the command fails
   with `hash_mismatch`.
 - `spd_dump` reads the device's partition table into this run's backup
-  folder (`DIR/backup/run-<time>/device-partitions.xml`) and `device.json`
-  is written next to it. Every partition to be backed up, written, erased
+  folder (`DIR/backup/run-<time>/device-partitions.xml`; with
+  `partition_list_4k` for devices whose recipe says their sizes come in
+  8 KiB units, such as the RG Cube) and `device.json` is written next to
+  it. Every partition to be backed up, written, erased
   or compared must be in the firmware's partition table and exist on the
   device with that size (names compared ignoring case); otherwise nothing is
   confirmed, nothing is written, and the command fails with `wrong_device`

@@ -43,7 +43,7 @@ grep -q '"type":"progress"' "$WS/build.jsonl" && pass "progress events" || fail 
 grep -q 'write_part super super.img' "$WS/dry.jsonl" && pass "full dry run writes super" || fail "full dry run"
 grep -q 'write_part prodnv' "$WS/dry.jsonl" && fail "prodnv must never be written" || pass "prodnv not written"
 grep -q 'read_part prodnv 0 0x4000000 ' "$WS/dry.jsonl" && pass "prodnv backed up at its full size" || fail "prodnv backup"
-grep -q 'partition_list ../backup/run-[0-9-]*/device-partitions.xml read_part' "$WS/dry.jsonl" && pass "device partition table read first, into the run's backup folder" || fail "partition_list"
+grep -q 'partition_list_4k ../backup/run-[0-9-]*/device-partitions.xml read_part' "$WS/dry.jsonl" && pass "device partition table read first, into the run's backup folder" || fail "partition_list"
 python3 -I -c "
 import json, re, sys
 plan = json.load(open(sys.argv[1]))

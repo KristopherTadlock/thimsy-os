@@ -27,6 +27,8 @@ fn rg_cube_recipe_never_writes_device_unique_partitions() {
     assert_eq!(f.erase_full, ["userdata", "metadata"]);
     // The boot-area loaders aren't in the PAC's partition table.
     assert_eq!(f.unchecked_partitions, ["splloader", "splloader_bak"]);
+    // Its sizes come in 8 KiB units (prodnv: 8192 for 64 MiB).
+    assert!(f.partition_list_4k);
     assert!(
         Mode::parse("full").is_ok() && Mode::parse("update").is_ok() && Mode::parse("x").is_err()
     );

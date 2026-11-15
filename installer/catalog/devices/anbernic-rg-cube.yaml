@@ -86,6 +86,9 @@ flash:
   # partition table, so the device's table can't confirm them; everything
   # else written or erased must match it first.
   unchecked_partitions: [splloader, splloader_bak]
+  # The UMS9620 reports partition sizes in 8 KiB units (prodnv: 8192 for
+  # the PAC's 64 MiB): plain partition_list says the unit size is wrong.
+  partition_list_4k: true
   wait_seconds: 300
 update_requires: "Keeps your data. Only when the RG Cube already runs GammaOS Next 1.2 or a Thimsy build."
 guides:

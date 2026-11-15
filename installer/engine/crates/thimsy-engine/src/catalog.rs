@@ -236,6 +236,12 @@ pub struct Flash {
     /// refused. Each name must be a PAC entry's partition outside the table.
     #[serde(default)]
     pub unchecked_partitions: Vec<String>,
+    /// The device reports its partition sizes in 8 KiB units rather than
+    /// KiB (UMS9620, as on the RG Cube), so `spd_dump partition_list_4k`
+    /// reads its table. Either way the table is in MiB and checked against
+    /// the PAC's before the first write.
+    #[serde(default)]
+    pub partition_list_4k: bool,
     /// Seconds the tool waits for the device.
     #[serde(default = "default_wait")]
     pub wait_seconds: u32,

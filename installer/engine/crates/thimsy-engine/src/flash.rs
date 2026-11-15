@@ -315,10 +315,12 @@ pub fn spd_invocation(d: &Device, plan: &SpdPlan, run_dir: &str) -> Invocation {
         args.extend(["fdl".into(), file_for(id), format!("0x{base:x}")]);
     }
     // Read before the first question, checked before it's answered.
-    args.extend([
-        "partition_list".into(),
-        format!("{run_dir}/{DEVICE_PARTITIONS}"),
-    ]);
+    let list = if f.partition_list_4k {
+        "partition_list_4k"
+    } else {
+        "partition_list"
+    };
+    args.extend([list.into(), format!("{run_dir}/{DEVICE_PARTITIONS}")]);
     for b in &plan.backups {
         args.extend([
             "read_part".into(),
@@ -1530,7 +1532,7 @@ mod tests {
         let s = inv.display();
         assert!(
             s.starts_with(
-                "spd_dump --wait 300 keep_charge 1 fdl fdl.img 0x65000800 fdl fdl2.img 0xb4fffe00 partition_list backup/device-partitions.xml read_part"
+                "spd_dump --wait 300 keep_charge 1 fdl fdl.img 0x65000800 fdl fdl2.img 0xb4fffe00 partition_list_4k backup/device-partitions.xml read_part"
             ),
             "{s}"
         );

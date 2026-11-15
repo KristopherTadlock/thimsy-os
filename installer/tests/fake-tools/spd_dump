@@ -142,9 +142,9 @@ while i < len(args):
             log_line('BSL_REP_VER: "Spreadtrum Boot Block version 1.1"')
             connected = True
         log.write(f"fdl {f} {addr}\n"); log_line(f"FDL loaded from {f} at {addr}"); i += 3
-    elif a == "partition_list":
+    elif a in ("partition_list", "partition_list_4k"):
         partition_list(args[i+1])
-        log.write(f"partition_list {args[i+1]}\n"); i += 2
+        log.write(f"{a} {args[i+1]}\n"); i += 2
     elif a == "read_part":
         name, off, size, out = args[i+1:i+5]
         # Like fopen(fn, "wb"): the folder must exist.
