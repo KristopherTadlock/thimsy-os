@@ -351,7 +351,8 @@ Errors while flashing:
   command while an answer of its own is still waiting to be read. It asks
   for the bootloader's version up to five times each way. It logs `FDL1
   started` once the bootloader runs FDL1, then sends FDL1 a single 0x7E
-  (as Unisoc's tools do) and logs `no answer from FDL1 yet (try n, … ms
+  (as Unisoc's tools do; the RG Cube's FDL1 stops taking data after a
+  longer first message, so every platform sends one byte) and logs `no answer from FDL1 yet (try n, … ms
   after it started)` for each try that gets no answer. If FDL1 doesn't
   take the message (it may restart the USB connection as it starts), it
   logs `FDL1 didn't take the message on COMn (how: wrote …, error …, in

@@ -1,5 +1,5 @@
 diff --git a/spd_dump.c b/spd_dump.c
-index f8ba370..e1e27eb 100644
+index f8ba370..6b869ac 100644
 --- a/spd_dump.c
 +++ b/spd_dump.c
 @@ -37,6 +37,28 @@
@@ -859,7 +859,7 @@ index f8ba370..e1e27eb 100644
  				if (recv_type(io) != BSL_REP_VER)
  					ERR_EXIT("ver expected\n");
  
-@@ -1292,17 +2007,37 @@ int main(int argc, char **argv) {
+@@ -1292,17 +2007,35 @@ int main(int argc, char **argv) {
  					encode_msg(io, BSL_CMD_EXEC_DATA, NULL, 0);
  					send_and_check(io);
  				}
@@ -873,12 +873,11 @@ index f8ba370..e1e27eb 100644
  				/* FDL1 (chk = sum) */
  				io->flags &= ~FLAGS_CRC16;
  
-+#if SPD_WIN
-+				/* One byte, as Unisoc's tools send it. */
-+				encode_msg(io, BSL_CMD_CHECK_BAUD, NULL, io->kind ? 1 : 4);
-+#else
- 				encode_msg(io, BSL_CMD_CHECK_BAUD, NULL, 4);
-+#endif
+-				encode_msg(io, BSL_CMD_CHECK_BAUD, NULL, 4);
++				/* One byte, as Unisoc's tools send it: the RG Cube's FDL1
++				   (UMS9620) stops taking data after a longer first
++				   message. */
++				encode_msg(io, BSL_CMD_CHECK_BAUD, NULL, 1);
  				for (i = 0; i < 10; i++) {
  					if (io->verbose >= 1)
  						DBG_LOG("checkbaud %d\n", i + 1);
@@ -897,3 +896,19 @@ index f8ba370..e1e27eb 100644
  				}
  				if (recv_type(io) != BSL_REP_VER)
  					ERR_EXIT("ver expected\n");
+@@ -1330,8 +2063,14 @@ int main(int argc, char **argv) {
+ 				send_and_check(io);
+ 
+ 				if (keep_charge) {
++					/* Not every FDL1 knows it (Unisoc's tools don't send
++					   it): carry on without. */
+ 					encode_msg(io, BSL_CMD_KEEP_CHARGE, NULL, 0);
+-					send_and_check(io);
++					send_msg(io);
++					ret = recv_msg(io);
++					if (!ret) DBG_LOG("FDL1 didn't answer keep_charge; carrying on\n");
++					else if ((ret = recv_type(io)) != BSL_REP_ACK)
++						DBG_LOG("FDL1 doesn't take keep_charge (0x%04x); carrying on\n", ret);
+ 				}
+ 
+ 			} else {
