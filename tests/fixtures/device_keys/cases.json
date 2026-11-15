@@ -366,7 +366,7 @@
    ],
    "shared_back": false,
    "home_function": false,
-   "function_prompt": "Mode"
+   "function_prompt": "RG"
   },
   {
    "name": "RG DS Plus",
@@ -395,7 +395,7 @@
    ],
    "shared_back": false,
    "home_function": false,
-   "function_prompt": "Mode"
+   "function_prompt": "RG"
   },
   {
    "name": "TrimUI Brick: Menu (158) is Back and doubles as the function button",

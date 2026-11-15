@@ -155,7 +155,7 @@
         }
       ],
       "function": [
-        {"label": "Mode", "linux": 316, "android": "BUTTON_MODE"},
+        {"label": "Mode", "prompt": "RG", "linux": 316, "android": "BUTTON_MODE"},
         {"label": "Mode (GammaPad remap)", "linux": 204, "android": "NOTIFICATION"},
         {"label": "Mode (GammaPad remap, 02fd layout)", "linux": 204, "android": "ALL_APPS"}
       ],
