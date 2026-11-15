@@ -1,5 +1,6 @@
 <!-- Thimsy OS console picture metadata. CC BY-NC 4.0, the Thimsy OS project. -->
 <theme>
+    <!-- Colours: the magenta of the Elektor TV Games Computer's Signetics 2636 video chip (the stand-in board has no brand colour); palette: the chip's magenta, yellow, cyan, the board's green. -->
     <variables>
         <systemName>Elektor TV Games Computer</systemName>
         <systemDescription>The Elektor TV Games Computer is a home-built computer published as a project by the electronics magazine Elektor in 1979. It uses the same Signetics 2650 processor and 2636 video chip as the Interton VC 4000 consoles, and is programmed from its hexadecimal keyboard.</systemDescription>
@@ -9,11 +10,11 @@
         <systemReleaseDateFormated>1979</systemReleaseDateFormated>
         <systemHardwareType>Computer</systemHardwareType>
         <systemCoverSize>1-1</systemCoverSize>
-        <systemColor>8A5A2E</systemColor>
-        <systemColorPalette1>3A3430</systemColorPalette1>
-        <systemColorPalette2>F0C040</systemColorPalette2>
-        <systemColorPalette3>1A3A9A</systemColorPalette3>
-        <systemColorPalette4>E8E0D0</systemColorPalette4>
+        <systemColor>8E3A9E</systemColor>
+        <systemColorPalette1>FF40FF</systemColorPalette1>
+        <systemColorPalette2>FFFF40</systemColorPalette2>
+        <systemColorPalette3>40E0E0</systemColorPalette3>
+        <systemColorPalette4>48502E</systemColorPalette4>
         <systemCartSize>1-1</systemCartSize>
     </variables>
 </theme>

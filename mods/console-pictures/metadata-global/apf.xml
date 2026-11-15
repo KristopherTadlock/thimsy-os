@@ -1,5 +1,6 @@
 <!-- Thimsy OS console picture metadata. CC BY-NC 4.0, the Thimsy OS project. -->
 <theme>
+    <!-- Colours: the orange of its MC6847 video chip, darkened for white text; palette: the chip's green, orange, blue and red. -->
     <variables>
         <systemName>APF M-1000</systemName>
         <systemDescription>The APF M-1000 is a cartridge console released by APF Electronics in 1978. Its two controllers each have a joystick, a 12-key keypad and a fire button, and it is the base unit of the Imagination Machine home computer.</systemDescription>
@@ -9,11 +10,11 @@
         <systemReleaseDateFormated>1978</systemReleaseDateFormated>
         <systemHardwareType>Console</systemHardwareType>
         <systemCoverSize>1-1</systemCoverSize>
-        <systemColor>4A4A52</systemColor>
-        <systemColorPalette1>232326</systemColorPalette1>
-        <systemColorPalette2>C8C8CC</systemColorPalette2>
-        <systemColorPalette3>F0B030</systemColorPalette3>
-        <systemColorPalette4>E03030</systemColorPalette4>
+        <systemColor>C8620E</systemColor>
+        <systemColorPalette1>07FF00</systemColorPalette1>
+        <systemColorPalette2>FF8100</systemColorPalette2>
+        <systemColorPalette3>3B08FF</systemColorPalette3>
+        <systemColorPalette4>CC003B</systemColorPalette4>
         <systemCartSize>1-1</systemCartSize>
     </variables>
 </theme>

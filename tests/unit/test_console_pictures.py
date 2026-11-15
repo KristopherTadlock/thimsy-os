@@ -80,6 +80,54 @@ class Pictures(util.TestCase):
                 self.assertIn(f"_inc/systems/metadata-global/{name}.xml", files, name)
 
 
+def white_contrast(hex_colour):
+    """WCAG contrast of white text on the colour."""
+    def lin(c):
+        c /= 255
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+    r, g, b = (int(hex_colour[i:i + 2], 16) for i in (0, 2, 4))
+    return 1.05 / (0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b) + 0.05)
+
+
+class ThemeColours(util.TestCase):
+    """theme-colours.json recolours only theme-owned metadata of systems that show this project's picture."""
+
+    def colours(self):
+        with open(f"{PICTURES}/theme-colours.json", encoding="utf-8") as f:
+            return json.load(f)
+
+    def test_only_theme_owned_systems_with_our_picture(self):
+        own = {f[:-4] for f in os.listdir(f"{PICTURES}/metadata-global")}
+        for system, values in self.colours().items():
+            self.assertIn(system, images())
+            self.assertNotIn(system, own)
+            self.assertTrue(values.get("why", "").strip(), system)
+
+    def test_values(self):
+        tags = {"why", "systemColor"} | {f"systemColorPalette{i}" for i in range(1, 5)}
+        for system, values in self.colours().items():
+            self.assertEqual(tags, set(values), system)
+            for tag, value in values.items():
+                if tag != "why":
+                    self.assertRegex(value, r"^[0-9A-F]{6}$", f"{system} {tag}")
+            self.assertGreaterEqual(white_contrast(values["systemColor"]), 2.4, system)
+
+    def test_every_tag_is_in_the_theme_once(self):
+        import zipfile
+        from tests.unit.test_check_system_art import colorful_zip
+        zip_path = colorful_zip()
+        if not os.path.isfile(zip_path):
+            self.skipTest(f"{zip_path} isn't on this host")
+        with zipfile.ZipFile(zip_path) as z:
+            names = z.namelist()
+            for system, values in self.colours().items():
+                name = next(n for n in names if n.endswith(f"/_inc/systems/metadata-global/{system}.xml"))
+                text = z.read(name).decode("utf-8")
+                for tag in values:
+                    if tag != "why":
+                        self.assertEqual(1, len(re.findall(rf"<{tag}>[0-9A-Fa-f]{{6}}</{tag}>", text)), f"{system} {tag}")
+
+
 class Credits(util.TestCase):
     """Every picture's source photos are freely licensed and credited wherever the pictures are."""
 

@@ -1,5 +1,6 @@
 <!-- Thimsy OS console picture metadata. CC BY-NC 4.0, the Thimsy OS project. -->
 <theme>
+    <!-- Colours: Flashback's teal jungle palette, as on the picture's screen; palette: night jungle, jungle teal, sand, Compaq's red badge. -->
     <variables>
         <systemName>Flashback</systemName>
         <systemDescription>Flashback is a 1992 cinematic platform game by Delphine Software, first released for the Amiga. REminiscence re-implements its engine and plays the original game data.</systemDescription>
@@ -9,11 +10,11 @@
         <systemReleaseDateFormated>1992</systemReleaseDateFormated>
         <systemHardwareType>Engine</systemHardwareType>
         <systemCoverSize>1-1</systemCoverSize>
-        <systemColor>1F5A5E</systemColor>
+        <systemColor>1F6E70</systemColor>
         <systemColorPalette1>0E2A3A</systemColorPalette1>
-        <systemColorPalette2>2A5A5A</systemColorPalette2>
-        <systemColorPalette3>6A7A82</systemColorPalette3>
-        <systemColorPalette4>E8D8B0</systemColorPalette4>
+        <systemColorPalette2>4FA08C</systemColorPalette2>
+        <systemColorPalette3>E8D8B0</systemColorPalette3>
+        <systemColorPalette4>D52B1E</systemColorPalette4>
         <systemCartSize>1-1</systemCartSize>
     </variables>
 </theme>

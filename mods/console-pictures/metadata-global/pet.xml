@@ -1,5 +1,6 @@
 <!-- Thimsy OS console picture metadata. CC BY-NC 4.0, the Thimsy OS project. -->
 <theme>
+    <!-- Colours: the blue of its Commodore badge; palette: badge blue, chrome, the case, the bezel. -->
     <variables>
         <systemName>Commodore PET</systemName>
         <systemDescription>The Commodore PET is a line of home and business computers introduced in 1977. Each has a built-in monochrome monitor and keyboard, and the first model a built-in cassette deck.</systemDescription>
@@ -9,11 +10,11 @@
         <systemReleaseDateFormated>1977</systemReleaseDateFormated>
         <systemHardwareType>Computer</systemHardwareType>
         <systemCoverSize>1-1</systemCoverSize>
-        <systemColor>3E5A78</systemColor>
-        <systemColorPalette1>E6DFCC</systemColorPalette1>
-        <systemColorPalette2>2A3240</systemColorPalette2>
-        <systemColorPalette3>7AFF8A</systemColorPalette3>
-        <systemColorPalette4>0A160C</systemColorPalette4>
+        <systemColor>2D4FA0</systemColor>
+        <systemColorPalette1>1E3A8C</systemColorPalette1>
+        <systemColorPalette2>C0C0C0</systemColorPalette2>
+        <systemColorPalette3>E6DFCC</systemColorPalette3>
+        <systemColorPalette4>1A1A1A</systemColorPalette4>
         <systemCartSize>1-1</systemCartSize>
     </variables>
 </theme>

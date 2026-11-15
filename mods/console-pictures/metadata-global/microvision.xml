@@ -1,5 +1,6 @@
 <!-- Thimsy OS console picture metadata. CC BY-NC 4.0, the Thimsy OS project. -->
 <theme>
+    <!-- Colours: the blue of its cartridge label, measured from the photo; palette: label blue, yellow and orange, the case. -->
     <variables>
         <systemName>Microvision</systemName>
         <systemDescription>The Microvision is a handheld console released by Milton Bradley in 1979, the first with interchangeable cartridges. Each cartridge carries the game's processor and covers the face of the console with its own keypad overlay around a small LCD.</systemDescription>
@@ -9,11 +10,11 @@
         <systemReleaseDateFormated>1979</systemReleaseDateFormated>
         <systemHardwareType>Portable</systemHardwareType>
         <systemCoverSize>1-1</systemCoverSize>
-        <systemColor>2A5AA8</systemColor>
-        <systemColorPalette1>3A3A3E</systemColorPalette1>
-        <systemColorPalette2>2A6AD0</systemColorPalette2>
-        <systemColorPalette3>F0C040</systemColorPalette3>
-        <systemColorPalette4>B8C4A0</systemColorPalette4>
+        <systemColor>3D6BB3</systemColor>
+        <systemColorPalette1>5078C1</systemColorPalette1>
+        <systemColorPalette2>E9CE4B</systemColorPalette2>
+        <systemColorPalette3>E98D41</systemColorPalette3>
+        <systemColorPalette4>D9D3C4</systemColorPalette4>
         <systemCartSize>1-1</systemCartSize>
     </variables>
 </theme>

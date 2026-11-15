@@ -1,5 +1,6 @@
 <!-- Thimsy OS console picture metadata. CC BY-NC 4.0, the Thimsy OS project. -->
 <theme>
+    <!-- Colours: Amazon orange (the white Kindle would vanish on Kindle grey); palette: Amazon orange and navy, the Kindle's white, e-ink grey. -->
     <variables>
         <systemName>Book Reader</systemName>
         <systemDescription>Reads the e-books and comics on the console's storage.</systemDescription>
@@ -9,11 +10,11 @@
         <systemReleaseDateFormated>Various</systemReleaseDateFormated>
         <systemHardwareType>Reader</systemHardwareType>
         <systemCoverSize>1-1</systemCoverSize>
-        <systemColor>7A6A58</systemColor>
-        <systemColorPalette1>E8E6DC</systemColorPalette1>
-        <systemColorPalette2>3A3A3A</systemColorPalette2>
-        <systemColorPalette3>B0A08A</systemColorPalette3>
-        <systemColorPalette4>5A4A3A</systemColorPalette4>
+        <systemColor>E47911</systemColor>
+        <systemColorPalette1>FF9900</systemColorPalette1>
+        <systemColorPalette2>232F3E</systemColorPalette2>
+        <systemColorPalette3>F2F2F2</systemColorPalette3>
+        <systemColorPalette4>6E6E6E</systemColorPalette4>
         <systemCartSize>1-1</systemCartSize>
     </variables>
 </theme>

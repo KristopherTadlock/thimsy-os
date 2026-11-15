@@ -63,12 +63,10 @@ SC/MP system, per the photo's file name). `mods/console-pictures/LICENSE`
 | switch2 | CC BY-SA 4.0 | Nintendo Switch 2 in Docking Console.jpg | Crisco 1492 | CC BY-SA 4.0 | https://commons.wikimedia.org/wiki/File:Nintendo_Switch_2_in_Docking_Console.jpg |
 | varcade | CC BY-SA 2.0 | "Custom" multigame arcade cabinet (2137119547).jpg | Lukas Mathis | CC BY-SA 2.0 | https://commons.wikimedia.org/wiki/File:%22Custom%22_multigame_arcade_cabinet_(2137119547).jpg |
 | vc4000 | CC BY-NC 4.0 | Interton-Electronic-VC-4000-Console-01.jpg | Evan-Amos | Public domain | https://commons.wikimedia.org/wiki/File:Interton-Electronic-VC-4000-Console-01.jpg |
-| videos | CC BY-SA 4.0 | Panasonic Tau TH-15FA5.jpg | Qurren | CC BY-SA 4.0 | https://commons.wikimedia.org/wiki/File:Panasonic_Tau_TH-15FA5.jpg |
-| videos | CC BY-SA 4.0 | 8mm-projector hg.jpg | Hannes Grobe | CC BY 3.0 | https://commons.wikimedia.org/wiki/File:8mm-projector_hg.jpg |
-| videos | CC BY-SA 4.0 | VHS-Video-Tape-Top-Flat.jpg | Evan-Amos | Public domain | https://commons.wikimedia.org/wiki/File:VHS-Video-Tape-Top-Flat.jpg |
-| videos | CC BY-SA 4.0 | Popcorn-Ball.jpg | Evan-Amos | CC0 | https://commons.wikimedia.org/wiki/File:Popcorn-Ball.jpg |
-| xcloud | CC BY-SA 3.0 | Galaxy S III SC-06D Pebble Blue 1.jpg | Qurren | CC BY-SA 3.0 | https://commons.wikimedia.org/wiki/File:Galaxy_S_III_SC-06D_Pebble_Blue_1.jpg |
-| xcloud | CC BY-SA 3.0 | Xbox-360-Controller-Black.jpg | Evan-Amos | Public domain | https://commons.wikimedia.org/wiki/File:Xbox-360-Controller-Black.jpg |
+| videos | CC BY-NC 4.0 | Projection-screen-home.jpg | Derek Jensen (Tysto) | Public domain | https://commons.wikimedia.org/wiki/File:Projection-screen-home.jpg |
+| videos | CC BY-NC 4.0 | 8mm-projector hg.jpg | Hannes Grobe | CC BY 3.0 | https://commons.wikimedia.org/wiki/File:8mm-projector_hg.jpg |
+| xcloud | CC BY-SA 4.0 | Google Pixel 8 Rose front.jpg | IXTA9839 | CC BY-SA 4.0 | https://commons.wikimedia.org/wiki/File:Google_Pixel_8_Rose_front.jpg |
+| xcloud | CC BY-SA 4.0 | Xbox-360-Controller-Black.jpg | Evan-Amos | Public domain | https://commons.wikimedia.org/wiki/File:Xbox-360-Controller-Black.jpg |
 
 ## Pack-in games' pictures
 

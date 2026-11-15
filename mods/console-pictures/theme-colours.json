@@ -1,0 +1,18 @@
+{
+  "moonlight": {
+    "why": "Steam blue: the picture is a gaming PC streaming to a Steam Deck (Steam blue, light blue, dark, white)",
+    "systemColor": "1A9FFF",
+    "systemColorPalette1": "1A9FFF",
+    "systemColorPalette2": "66C0F4",
+    "systemColorPalette3": "171A21",
+    "systemColorPalette4": "FFFFFF"
+  },
+  "quake": {
+    "why": "Quake's brown, from the theme's own Quake palette; red sat poorly with the beige PC",
+    "systemColor": "905630",
+    "systemColorPalette1": "905630",
+    "systemColorPalette2": "6A3822",
+    "systemColorPalette3": "3A0901",
+    "systemColorPalette4": "111111"
+  }
+}

@@ -1,5 +1,6 @@
 <!-- Thimsy OS console picture metadata. CC BY-NC 4.0, the Thimsy OS project. -->
 <theme>
+    <!-- Colours: Quake II's rust orange (Stroggos); palette: rust brown, fire orange, gunmetal, the Aptiva's grey. -->
     <variables>
         <systemName>Quake II</systemName>
         <systemDescription>Quake II is a 1997 first-person shooter by id Software. Its engine source code was released in 2001, and source ports such as Yamagi Quake II play the original game data.</systemDescription>
@@ -9,7 +10,7 @@
         <systemReleaseDateFormated>1997</systemReleaseDateFormated>
         <systemHardwareType>Engine</systemHardwareType>
         <systemCoverSize>1-1</systemCoverSize>
-        <systemColor>8C4A22</systemColor>
+        <systemColor>A8461E</systemColor>
         <systemColorPalette1>5A3A2A</systemColorPalette1>
         <systemColorPalette2>FF8A30</systemColorPalette2>
         <systemColorPalette3>2A2A2E</systemColorPalette3>

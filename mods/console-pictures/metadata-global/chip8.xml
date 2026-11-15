@@ -1,5 +1,6 @@
 <!-- Thimsy OS console picture metadata. CC BY-NC 4.0, the Thimsy OS project. -->
 <theme>
+    <!-- Colours: the phosphor green of CHIP-8's two-colour 64x32 games; the ELF is bare wood and metal; palette: lit and dark pixels, the ELF's wood, its black panel. -->
     <variables>
         <systemName>CHIP-8</systemName>
         <systemDescription>CHIP-8 is a simple interpreted language created by Joseph Weisbecker for the COSMAC VIP and Telmac 1800 kit computers of the mid-1970s. Its programs are typed in on a hexadecimal keypad and draw monochrome sprites on a 64 by 32 pixel screen.</systemDescription>
@@ -9,11 +10,11 @@
         <systemReleaseDateFormated>1977</systemReleaseDateFormated>
         <systemHardwareType>Engine</systemHardwareType>
         <systemCoverSize>1-1</systemCoverSize>
-        <systemColor>2E7D4F</systemColor>
-        <systemColorPalette1>2A8A52</systemColorPalette1>
-        <systemColorPalette2>F4F2EA</systemColorPalette2>
-        <systemColorPalette3>202020</systemColorPalette3>
-        <systemColorPalette4>C8A050</systemColorPalette4>
+        <systemColor>1E7F5C</systemColor>
+        <systemColorPalette1>33FF66</systemColorPalette1>
+        <systemColorPalette2>0A1A10</systemColorPalette2>
+        <systemColorPalette3>DDB58A</systemColorPalette3>
+        <systemColorPalette4>2A2A2A</systemColorPalette4>
         <systemCartSize>1-1</systemCartSize>
     </variables>
 </theme>

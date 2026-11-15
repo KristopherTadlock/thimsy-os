@@ -132,6 +132,21 @@ for kind in images metadata-global metadata-custom; do
   done
 done
 cp "$pictures/LICENSE" "$src/_inc/systems/THIMSY-PICTURES-LICENSE.txt"
+# The theme's own colours for systems whose picture is now this project's,
+# matched to the new picture (theme-colours.json says why).
+python3 -I - "$src/_inc/systems/metadata-global" "$pictures/theme-colours.json" <<'PYEOF'
+import json, os, re, sys
+meta, colours = sys.argv[1], json.load(open(sys.argv[2], encoding="utf-8"))
+for system, values in colours.items():
+    path = os.path.join(meta, f"{system}.xml")
+    s = open(path, encoding="utf-8").read()
+    for tag, value in values.items():
+        if tag == "why":
+            continue
+        s, n = re.subn(rf"<{tag}>[0-9A-Fa-f]{{6}}</{tag}>", f"<{tag}>{value}</{tag}>", s)
+        assert n == 1, f"{path}: <{tag}> not found once"
+    open(path, "w", encoding="utf-8").write(s)
+PYEOF
 cat >>"$src/README.md" <<'EOF'
 
 ## Changes in Thimsy OS
@@ -158,6 +173,8 @@ with these changes, under the same CC BY-NC-SA 2.0 license:
   `_inc/systems/THIMSY-PICTURES-LICENSE.txt` gives, for each picture, its
   source photos with their authors and licenses, and its own license (CC
   BY-SA where a source photo is CC BY-SA, otherwise CC BY-NC 4.0).
+- The colours in `_inc/systems/metadata-global/moonlight.xml` and
+  `quake.xml` are changed to match those systems' new pictures.
 EOF
 
 dest="$ETC/nano_esde_themes/$THEME"

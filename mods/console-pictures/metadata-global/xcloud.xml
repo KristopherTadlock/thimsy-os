@@ -1,5 +1,6 @@
 <!-- Thimsy OS console picture metadata. CC BY-NC 4.0, the Thimsy OS project. -->
 <theme>
+    <!-- Colours: Xbox green; palette: Xbox lime, white, black, the phone's dark grey. -->
     <variables>
         <systemName>Xbox Cloud Gaming</systemName>
         <systemDescription>Xbox Cloud Gaming streams games from Microsoft's servers to phones, tablets and other devices, for Game Pass Ultimate members. It launched in 2020.</systemDescription>
@@ -9,11 +10,11 @@
         <systemReleaseDateFormated>2020</systemReleaseDateFormated>
         <systemHardwareType>Streaming</systemHardwareType>
         <systemCoverSize>1-1</systemCoverSize>
-        <systemColor>2F6F9F</systemColor>
-        <systemColorPalette1>E8E8EC</systemColorPalette1>
-        <systemColorPalette2>4AB4FF</systemColorPalette2>
-        <systemColorPalette3>BFE8FF</systemColorPalette3>
-        <systemColorPalette4>3A3A40</systemColorPalette4>
+        <systemColor>107C10</systemColor>
+        <systemColorPalette1>9BF00B</systemColorPalette1>
+        <systemColorPalette2>F4F4F4</systemColorPalette2>
+        <systemColorPalette3>1A1A1A</systemColorPalette3>
+        <systemColorPalette4>3A3A3A</systemColorPalette4>
         <systemCartSize>1-1</systemCartSize>
     </variables>
 </theme>

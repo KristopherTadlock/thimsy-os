@@ -267,14 +267,14 @@
     ]
   },
   "videos": {
-    "licence": "CC BY-SA 4.0",
+    "licence": "CC BY-NC 4.0",
     "photos": [
       {
-        "title": "Panasonic Tau TH-15FA5.jpg",
-        "url": "https://commons.wikimedia.org/wiki/File:Panasonic_Tau_TH-15FA5.jpg",
-        "author": "Qurren",
-        "licence": "CC BY-SA 4.0",
-        "licence_url": "https://creativecommons.org/licenses/by-sa/4.0/"
+        "title": "Projection-screen-home.jpg",
+        "url": "https://commons.wikimedia.org/wiki/File:Projection-screen-home.jpg",
+        "author": "Derek Jensen (Tysto)",
+        "licence": "Public domain",
+        "licence_url": null
       },
       {
         "title": "8mm-projector hg.jpg",
@@ -282,32 +282,18 @@
         "author": "Hannes Grobe",
         "licence": "CC BY 3.0",
         "licence_url": "https://creativecommons.org/licenses/by/3.0/"
-      },
-      {
-        "title": "VHS-Video-Tape-Top-Flat.jpg",
-        "url": "https://commons.wikimedia.org/wiki/File:VHS-Video-Tape-Top-Flat.jpg",
-        "author": "Evan-Amos",
-        "licence": "Public domain",
-        "licence_url": null
-      },
-      {
-        "title": "Popcorn-Ball.jpg",
-        "url": "https://commons.wikimedia.org/wiki/File:Popcorn-Ball.jpg",
-        "author": "Evan-Amos",
-        "licence": "CC0",
-        "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/"
       }
     ]
   },
   "xcloud": {
-    "licence": "CC BY-SA 3.0",
+    "licence": "CC BY-SA 4.0",
     "photos": [
       {
-        "title": "Galaxy S III SC-06D Pebble Blue 1.jpg",
-        "url": "https://commons.wikimedia.org/wiki/File:Galaxy_S_III_SC-06D_Pebble_Blue_1.jpg",
-        "author": "Qurren",
-        "licence": "CC BY-SA 3.0",
-        "licence_url": "https://creativecommons.org/licenses/by-sa/3.0/"
+        "title": "Google Pixel 8 Rose front.jpg",
+        "url": "https://commons.wikimedia.org/wiki/File:Google_Pixel_8_Rose_front.jpg",
+        "author": "IXTA9839",
+        "licence": "CC BY-SA 4.0",
+        "licence_url": "https://creativecommons.org/licenses/by-sa/4.0/"
       },
       {
         "title": "Xbox-360-Controller-Black.jpg",

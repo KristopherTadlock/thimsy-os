@@ -1,5 +1,6 @@
 <!-- Thimsy OS console picture metadata. CC BY-NC 4.0, the Thimsy OS project. -->
 <theme>
+    <!-- Colours: the red-orange of the cabinet's art, measured from the photo; palette: the cabinet's four main colours. -->
     <variables>
         <systemName>Arcade (Vertical)</systemName>
         <systemDescription>Arcade games made for an upright, portrait screen, such as many shoot 'em ups and maze games, shown the way they were meant to be.</systemDescription>
@@ -9,11 +10,11 @@
         <systemReleaseDateFormated>Various</systemReleaseDateFormated>
         <systemHardwareType>Arcade</systemHardwareType>
         <systemCoverSize>1-1</systemCoverSize>
-        <systemColor>4A2C8A</systemColor>
-        <systemColorPalette1>060A24</systemColorPalette1>
-        <systemColorPalette2>FFD040</systemColorPalette2>
-        <systemColorPalette3>FF60C0</systemColorPalette3>
-        <systemColorPalette4>50E070</systemColorPalette4>
+        <systemColor>B8402E</systemColor>
+        <systemColorPalette1>BC5448</systemColorPalette1>
+        <systemColorPalette2>464D1F</systemColorPalette2>
+        <systemColorPalette3>6E1A17</systemColorPalette3>
+        <systemColorPalette4>222B73</systemColorPalette4>
         <systemCartSize>1-1</systemCartSize>
     </variables>
 </theme>

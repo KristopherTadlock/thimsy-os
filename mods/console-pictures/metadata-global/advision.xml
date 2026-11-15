@@ -1,5 +1,6 @@
 <!-- Thimsy OS console picture metadata. CC BY-NC 4.0, the Thimsy OS project. -->
 <theme>
+    <!-- Colours: the red of its LED display; palette: lit and unlit LED red, the black case, the silver trim. -->
     <variables>
         <systemName>Adventure Vision</systemName>
         <systemDescription>The Entex Adventure Vision is a tabletop console released in 1982. Its built-in screen is a column of red LEDs swept by a spinning mirror, and its games come on cartridges played with a joystick and four buttons.</systemDescription>
@@ -9,11 +10,11 @@
         <systemReleaseDateFormated>1982</systemReleaseDateFormated>
         <systemHardwareType>Console</systemHardwareType>
         <systemCoverSize>1-1</systemCoverSize>
-        <systemColor>A82428</systemColor>
-        <systemColorPalette1>C8282C</systemColorPalette1>
-        <systemColorPalette2>0E0E10</systemColorPalette2>
-        <systemColorPalette3>FF3A2A</systemColorPalette3>
-        <systemColorPalette4>FFE070</systemColorPalette4>
+        <systemColor>C4161C</systemColor>
+        <systemColorPalette1>FF2A1A</systemColorPalette1>
+        <systemColorPalette2>6E0A0A</systemColorPalette2>
+        <systemColorPalette3>1C1C1E</systemColorPalette3>
+        <systemColorPalette4>C8C8CC</systemColorPalette4>
         <systemCartSize>1-1</systemCartSize>
     </variables>
 </theme>

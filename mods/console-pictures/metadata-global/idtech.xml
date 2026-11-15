@@ -1,5 +1,6 @@
 <!-- Thimsy OS console picture metadata. CC BY-NC 4.0, the Thimsy OS project. -->
 <theme>
+    <!-- Colours: Dell blue, the XPS in the picture; palette: Doom 3's Mars red and fire orange, the black monitor, the silver case. -->
     <variables>
         <systemName>id Tech 4</systemName>
         <systemDescription>idTech4A++ is an Android port of id Tech 4, the 2004 engine of Doom 3 and Quake 4. It plays those games and their mods from the original game data.</systemDescription>
@@ -9,11 +10,11 @@
         <systemReleaseDateFormated>2004</systemReleaseDateFormated>
         <systemHardwareType>Engine</systemHardwareType>
         <systemCoverSize>1-1</systemCoverSize>
-        <systemColor>1E3A4C</systemColor>
-        <systemColorPalette1>0A1A22</systemColorPalette1>
-        <systemColorPalette2>3AE0A0</systemColorPalette2>
-        <systemColorPalette3>4A9AE0</systemColorPalette3>
-        <systemColorPalette4>141416</systemColorPalette4>
+        <systemColor>007DB8</systemColor>
+        <systemColorPalette1>B5341F</systemColorPalette1>
+        <systemColorPalette2>E8862A</systemColorPalette2>
+        <systemColorPalette3>1A1A1C</systemColorPalette3>
+        <systemColorPalette4>9AA0A6</systemColorPalette4>
         <systemCartSize>1-1</systemCartSize>
     </variables>
 </theme>

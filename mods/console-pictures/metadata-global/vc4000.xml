@@ -1,5 +1,6 @@
 <!-- Thimsy OS console picture metadata. CC BY-NC 4.0, the Thimsy OS project. -->
 <theme>
+    <!-- Colours: the blue of its Signetics 2636 video chip's palette; palette: the chip's yellow, red, cyan, the black console. -->
     <variables>
         <systemName>Interton VC 4000</systemName>
         <systemDescription>The Interton VC 4000 is a cartridge console released by the German company Interton in 1978. It is one of a family of compatible consoles built around the Signetics 2650 processor, with two controllers that each have a joystick and a 12-key keypad.</systemDescription>
@@ -9,11 +10,11 @@
         <systemReleaseDateFormated>1978</systemReleaseDateFormated>
         <systemHardwareType>Console</systemHardwareType>
         <systemCoverSize>1-1</systemCoverSize>
-        <systemColor>B5762A</systemColor>
-        <systemColorPalette1>E8E0D0</systemColorPalette1>
-        <systemColorPalette2>2A2A2A</systemColorPalette2>
-        <systemColorPalette3>F0C040</systemColorPalette3>
-        <systemColorPalette4>1A3A9A</systemColorPalette4>
+        <systemColor>2747B8</systemColor>
+        <systemColorPalette1>FFFF40</systemColorPalette1>
+        <systemColorPalette2>FF3030</systemColorPalette2>
+        <systemColorPalette3>30E0E0</systemColorPalette3>
+        <systemColorPalette4>1A1A1A</systemColorPalette4>
         <systemCartSize>1-1</systemCartSize>
     </variables>
 </theme>
