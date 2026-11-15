@@ -1,5 +1,5 @@
 diff --git a/spd_dump.c b/spd_dump.c
-index f8ba370..093ab5b 100644
+index f8ba370..d863361 100644
 --- a/spd_dump.c
 +++ b/spd_dump.c
 @@ -37,6 +37,27 @@
@@ -441,7 +441,7 @@ index f8ba370..093ab5b 100644
  	if (size < src_offs)
  		ERR_EXIT("data outside the file\n");
  	size -= src_offs;
-@@ -1182,13 +1538,68 @@ found:
+@@ -1182,13 +1538,69 @@ found:
  
  #define REOPEN_FREQ 2
  
@@ -475,6 +475,7 @@ index f8ba370..093ab5b 100644
 +	if (com) io->com = com;
 +	io->c9 = c9;
 +	io->flags |= FLAGS_TRANSCODE | FLAGS_CRC16;
++	DBG_LOG("asking the device through Unisoc's driver (%s, %s)\n", port, how[kind]);
 +	/* The bootloader answers the first check it gets. */
 +	for (i = 0; i < 5; i++) {
 +		encode_msg(io, BSL_CMD_CHECK_BAUD, NULL, 1);
@@ -505,13 +506,25 @@ index f8ba370..093ab5b 100644
 -	spdio_t *io; int ret, i;
 +	spdio_t *io = NULL; int ret, i;
 +#if SPD_WIN
-+	char win_seen[600], win_last[600] = "", win_other[200], win_said[220] = "";
++	char win_seen[600], win_last[600] = "-", win_other[200], win_said[220] = "";
 +	int usb_err = 0, usb_last_err = 0, win_unset = 0, win_tried = 0;
 +#endif
  	int wait = 300 * REOPEN_FREQ;
  	const char *tty = "/dev/ttyUSB0";
  	int verbose = 0, fdl_loaded = 0;
-@@ -1223,7 +1634,63 @@ int main(int argc, char **argv) {
+@@ -1197,6 +1609,11 @@ int main(int argc, char **argv) {
+ 	int keep_charge = 0, end_data = 1, blk_size = 0;
+ 	int secure_boot = 0;
+ 
++#if SPD_WIN
++	/* msvcrt.dll buffers piped output: the caller reads it as it comes. */
++	setvbuf(stderr, NULL, _IONBF, 0);
++	setvbuf(stdout, NULL, _IONBF, 0);
++#endif
+ #if USE_LIBUSB
+ 	(void)tty;
+ 	ret = libusb_init(NULL);
+@@ -1223,7 +1640,63 @@ int main(int argc, char **argv) {
  	}
  
  	for (i = 0; ; i++) {
@@ -576,7 +589,7 @@ index f8ba370..093ab5b 100644
  		device = libusb_open_device_with_vid_pid(NULL, 0x1782, 0x4d00);
  		if (device) break;
  		if (i >= wait)
-@@ -1239,7 +1706,7 @@ int main(int argc, char **argv) {
+@@ -1239,7 +1712,7 @@ int main(int argc, char **argv) {
  	}
  
  #if USE_LIBUSB
@@ -585,7 +598,7 @@ index f8ba370..093ab5b 100644
  #else
  	io = spdio_init(serial, 0);
  #endif
-@@ -1258,18 +1725,25 @@ int main(int argc, char **argv) {
+@@ -1258,18 +1731,25 @@ int main(int argc, char **argv) {
  				// Required for smartphones.
  				// Is there a way to do the same with usb-serial?
  #if USE_LIBUSB

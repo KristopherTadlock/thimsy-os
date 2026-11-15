@@ -299,6 +299,19 @@ jobs:
           rc=0; msg=$(PATH=$WINPATH out/spd_dump.exe --help 2>&1) || rc=$?
           echo "spd_dump: exit $rc: $msg"
           [ "$rc" -eq 1 ] && printf '%s' "$msg" | grep -qE 'unknown option|libusb_init failed' || { echo "::error::spd_dump.exe didn't start"; exit 1; }
+          # Its log reaches the installer (a pipe) as it's written, not when
+          # it exits: msvcrt.dll holds piped output back unless told not to,
+          # and the installer would see nothing while the device connects.
+          # The first scan's line has to arrive well before --wait 6 ends.
+          start=$(date +%s%N)
+          first=$(PATH=$WINPATH out/spd_dump.exe --wait 6 2>&1 >/dev/null | {
+            IFS= read -r l; echo "$(( ($(date +%s%N) - start) / 1000000 )) ms: $l"; cat > /dev/null; }) || true
+          echo "first line after $first"
+          case "$first" in
+            *" ms: Windows has: "*) ;;
+            *) echo "::error::spd_dump.exe didn't log what Windows has first"; exit 1 ;;
+          esac
+          [ "${first%% ms:*}" -lt 3000 ] || { echo "::error::spd_dump.exe's log is held back until it exits (buffered output)"; exit 1; }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: tools-Windows
