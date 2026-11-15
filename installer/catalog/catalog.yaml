@@ -11,7 +11,7 @@ systems:
 artifacts:
   - id: thimsy-system-1.0a-heavy
     file: thimsy-system-1.0a-heavy.img.zst
-    size: 2071820524
-    sha256: "0934f560c4292d974c991854c4784895e0c1294b357e3b47df5fff04fa7b2ee0"
+    size: 2071510976
+    sha256: "5b3deaadfb3432a2da37176341146d4b068a2375b8221910dded78992727e787"
     note: "Inside the device pack."
-    unpack: { format: zstd, size: 4630966272, sha256: "7e07ac29e2423be3d175df4911a290b381696a5f7c99f09cef129612951ad371" }
+    unpack: { format: zstd, size: 4630966272, sha256: "463ca21002953279a0c8b637412ec405541114c472adf9c08b2dac77fda0015d" }

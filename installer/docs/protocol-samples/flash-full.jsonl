@@ -25,14 +25,14 @@
 {"level":"info","message":"Answer \"yes\" to confirm the \"write partition\" command: ","type":"log"}
 {"level":"info","message":"The device's partition table matches this firmware","type":"log"}
 {"level":"info","message":"file size : 0x10000","type":"log"}
+{"level":"info","message":"Answer \"yes\" to confirm the \"write partition\" command: ","type":"log"}
 {"level":"info","message":"load_partition: vendor_boot_a, target: 0x10000, written: 0x10000","type":"log"}
-{"level":"info","message":"Answer \"yes\" to confirm the \"write partition\" command: ","type":"log"}
 {"level":"info","message":"file size : 0x10000","type":"log"}
-{"level":"info","message":"Answer \"yes\" to confirm the \"write partition\" command: ","type":"log"}
 {"level":"info","message":"load_partition: vendor_boot_b, target: 0x10000, written: 0x10000","type":"log"}
-{"level":"info","message":"file size : 0x2000","type":"log"}
-{"level":"info","message":"load_partition: boot_a, target: 0x2000, written: 0x2000","type":"log"}
 {"level":"info","message":"Answer \"yes\" to confirm the \"write partition\" command: ","type":"log"}
+{"level":"info","message":"file size : 0x2000","type":"log"}
+{"level":"info","message":"Answer \"yes\" to confirm the \"write partition\" command: ","type":"log"}
+{"level":"info","message":"load_partition: boot_a, target: 0x2000, written: 0x2000","type":"log"}
 {"level":"info","message":"file size : 0xc00000","type":"log"}
 {"level":"info","message":"Answer \"yes\" to confirm the \"erase partition\" command: ","type":"log"}
 {"level":"info","message":"load_partition: super, target: 0xc00000, written: 0xc00000","type":"log"}

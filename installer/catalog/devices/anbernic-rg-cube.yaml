@@ -40,7 +40,7 @@ artifacts:
   - { id: "rgcube-vendor-dlkm-a-delta", file: "rgcube-vendor-dlkm-a-delta.bsdiff", size: 5481, sha256: "ea53af39c933ad8eb4e6b73ed7aabd3a5aa666ca3c5882c6682a378e08e3d23f" }
 
 bundles:
-  heavy: { id: "Thimsy-1.0a-anbernic-rg-cube-heavy.tar", file: "Thimsy-1.0a-anbernic-rg-cube-heavy.tar", size: 2072211968, sha256: "5cfb14c06f061a29537b10f382445a9822694d6e8b14ad33d629448db2add6c6", note: "Download Thimsy-1.0a-anbernic-rg-cube-heavy.tar from the Thimsy Installer release page, then choose it with Use a file I already downloaded.", urls: ["https://github.com/KristopherTadlock/thimsy-os/releases/download/installer-v0.1.0-test2/Thimsy-1.0a-anbernic-rg-cube-heavy.tar"] }
+  heavy: { id: "Thimsy-1.0a-anbernic-rg-cube-heavy.tar", file: "Thimsy-1.0a-anbernic-rg-cube-heavy.tar", size: 2071902208, sha256: "bc7b72687c7d6b362f81bb4c52002241bfb35d2ca92e72b15791ced17712e056", note: "Download Thimsy-1.0a-anbernic-rg-cube-heavy.tar from the Thimsy Installer release page, then choose it with Use a file I already downloaded.", urls: ["https://github.com/KristopherTadlock/thimsy-os/releases/download/installer-v0.1.0-test16/Thimsy-1.0a-anbernic-rg-cube-heavy.tar"] }
 build:
   - { artifact: "rgcube-bootlogo-delta", entry: "BootLogo", in_sha256: "cd992ab38d7e360eda8676035d0775a04c0001b13902b4036fb49ec8a3f80a95", op: "pac_delta", out_sha256: "4e757baa863b6962553b47043d3abf07ae0331f3676257f0583afdf9db1da283" }
   - { artifact: "rgcube-bootlogo-delta", entry: "Fastboot_Logo", in_sha256: "cd992ab38d7e360eda8676035d0775a04c0001b13902b4036fb49ec8a3f80a95", op: "pac_delta", out_sha256: "4e757baa863b6962553b47043d3abf07ae0331f3676257f0583afdf9db1da283" }
@@ -53,7 +53,7 @@ build:
   - { alias: "RG_Cube_Thimsy_OS", op: "pac_set_info", version: "Thimsy_OS_v1.0a" }
   - { op: "pac_fix_crc" }
 
-expect: { heavy: "7984ee5f1e9b11115599825d57daaf1eea5e052f6145408e4707071017a81e15" }
+expect: { heavy: "da607a753f1cd99469352d9c2089dec590afed847313d78880cb32140e9a5bb4" }
 flash:
   method: spd
   fdl: [FDL, FDL2]
