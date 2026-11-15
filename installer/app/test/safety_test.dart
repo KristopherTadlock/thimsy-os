@@ -475,7 +475,8 @@ void main() {
       expect(s.job, isNotNull);
       s.setDryRun(true);
       s.install();
-      await settle();
+      // Waits for the error (a fixed wait was too short on slow CI).
+      await until(() => s.spaceProblem != null && !s.flashRun.running);
       expect(s.spaceProblem?.kind, SpaceProblemKind.flash);
       return (engine, s);
     }
