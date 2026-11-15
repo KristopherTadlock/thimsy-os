@@ -72,7 +72,7 @@ class ApplyPackTest(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp)
 
-    def apply(self, profile, c, ops, with_bundle=True, extra=(), ok=True):
+    def apply(self, profile, c, ops, with_bundle=True, extra=(), ok=True, tag="installer-vtest"):
         d = os.path.join(self.tmp, profile)
         shutil.rmtree(d, ignore_errors=True)
         os.makedirs(d)
@@ -86,7 +86,7 @@ class ApplyPackTest(unittest.TestCase):
                 json.dump(bundle(profile, c), f)
             args += ["--bundle", bj]
         args += list(extra)
-        args += [pj, self.dev_yaml, self.cat_yaml, profile, "installer-vtest"]
+        args += [pj, self.dev_yaml, self.cat_yaml, profile, tag]
         r = subprocess.run(args, capture_output=True, text=True,
                            env={**os.environ, "LC_ALL": "C", "PYTHONIOENCODING": "ascii"})
         if ok:
@@ -142,6 +142,15 @@ class ApplyPackTest(unittest.TestCase):
         self.assertEqual(exp, {"heavy": sha("3"), "medium": sha("2")})
         self.assertEqual(len(re.findall(r"^  heavy: ", top_block(dev, "bundles"), flags=re.M)), 1)
         self.assertEqual(len(re.findall(r"^  heavy: ", top_block(cat, "systems"), flags=re.M)), 1)
+
+    def test_bundle_note_names_the_release_hosting_it(self):
+        self.apply("heavy", "1", TRICKY)
+        self.assertIn("from the Thimsy Installer release page", top_block(self.read(self.dev_yaml), "bundles"))
+        # Thimsy's own release (v1.0a-testNN) hosts it.
+        self.apply("heavy", "2", TRICKY, tag="v1.0a-test30")
+        b = top_block(self.read(self.dev_yaml), "bundles")
+        self.assertIn("from the Thimsy release page", b)
+        self.assertIn("releases/download/v1.0a-test30/", b)
 
     def test_without_bundle_lists_download_addresses(self):
         self.apply("heavy", "1", TRICKY)

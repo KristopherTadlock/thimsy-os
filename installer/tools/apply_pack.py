@@ -262,8 +262,12 @@ def main(argv):
     dev = set_entry(dev, "expect", profile, scalar(expect or pack['reference_sha256']),
                     before=r"^flash:")
     if bundle:
+        # Installer releases (installer-v…) or Thimsy's own (v1.0a-testNN)
+        # host the device pack.
+        page = ("Thimsy Installer release page" if tag.startswith("installer-")
+                else "Thimsy release page")
         b = {'id': bundle['id'], 'file': bundle['file'], 'size': bundle['size'], 'sha256': bundle['sha256'],
-             'note': f"Download {bundle['file']} from the Thimsy Installer release page, then choose it with Use a file I already downloaded."}
+             'note': f"Download {bundle['file']} from the {page}, then choose it with Use a file I already downloaded."}
         if bundle.get('parts'):
             b['parts'] = [{'id': p['id'], 'file': p['file'], 'size': p['size'], 'sha256': p['sha256'],
                            'urls': [base + '/' + p['file']]} for p in bundle['parts']]
