@@ -350,11 +350,16 @@ Errors while flashing:
   thread that keeps reading the port). The bootloader won't take a
   command while an answer of its own is still waiting to be read. It asks
   for the bootloader's version up to five times each way. It logs `FDL1
-  started` once the bootloader runs FDL1; if FDL1 then doesn't take the
-  first message (it may restart the USB connection as it starts), it logs
-  `FDL1 didn't take the message on COMn (…); waiting for the device to
-  come back`, then `Windows has: …` lines and `reopened COMn (how)`, or
-  fails with `the device didn't come back after FDL1 started` after 15 s. It logs `connected through Unisoc's driver (COMn, how)`,
+  started` once the bootloader runs FDL1, then sends FDL1 a single 0x7E
+  (as Unisoc's tools do) and logs `no answer from FDL1 yet (try n, … ms
+  after it started)` for each try that gets no answer. If FDL1 doesn't
+  take the message (it may restart the USB connection as it starts), it
+  logs `FDL1 didn't take the message on COMn (how: wrote …, error …, in
+  … ms, … ms after FDL1 started); waiting for the device to come back`,
+  then `Windows has: …` lines and, opening the port again each way in
+  turn, `opened COMn again (how), but FDL1 didn't take the message (…)`
+  or `reopened COMn (how) … ms after FDL1 started`; it fails with `the
+  device didn't come back after FDL1 started` after 30 s. It logs `connected through Unisoc's driver (COMn, how)`,
   or `no answer through Unisoc's driver (COMn, how)` for each way and then
   `the device didn't answer through Unisoc's driver; connect it again`;
   the engine then shows `enter_download_mode` again, and `spd_dump` tries

@@ -1,5 +1,5 @@
 diff --git a/spd_dump.c b/spd_dump.c
-index f8ba370..ce4393b 100644
+index f8ba370..e1e27eb 100644
 --- a/spd_dump.c
 +++ b/spd_dump.c
 @@ -37,6 +37,28 @@
@@ -580,7 +580,7 @@ index f8ba370..ce4393b 100644
  	if (size < src_offs)
  		ERR_EXIT("data outside the file\n");
  	size -= src_offs;
-@@ -1182,13 +1677,127 @@ found:
+@@ -1182,13 +1677,153 @@ found:
  
  #define REOPEN_FREQ 2
  
@@ -659,32 +659,58 @@ index f8ba370..ce4393b 100644
 +	return NULL;
 +}
 +
-+/* The first message to FDL1, the loader the bootloader just started. FDL1
-+   may restart the device's USB connection as it starts (its port goes
-+   away and comes back, as Unisoc's tools expect): then the port is opened
-+   again, the same way, once the device is back (up to 15 s). */
++/* When FDL1 started (GetTickCount), for the log. */
++static DWORD win_fdl1_t0;
++
++/* The first message to FDL1, the loader the bootloader just started: a
++   single 0x7E, as Unisoc's tools send it. FDL1 may restart the device's
++   USB connection as it starts: then the port is opened again, each way
++   in turn, once the device is back (up to 30 s). Everything is logged
++   with the time since FDL1 started. */
 +static void win_fdl1_send(spdio_t *io) {
 +	char seen[600], other[200], last[600] = "-";
-+	DWORD err = 0;
-+	int i;
-+	if (win_ser_write(io, io->enc_buf, io->enc_len) == io->enc_len) return;
-+	DBG_LOG("FDL1 didn't take the message on %s (error %lu); waiting for the device to come back\n",
-+			io->port, (unsigned long)GetLastError());
++	DWORD err = 0, t, e;
++	int i, n, tries = 0, c9 = io->kind == 2;
++	t = GetTickCount();
++	n = win_ser_write(io, io->enc_buf, io->enc_len);
++	e = GetLastError();
++	if (n == io->enc_len) return;
++	DBG_LOG("FDL1 didn't take the message on %s (%s: wrote %d of %d, error %lu, in %lu ms, %lu ms after FDL1 started); waiting for the device to come back\n",
++			io->port, win_how[io->kind], n, io->enc_len, (unsigned long)e,
++			(unsigned long)(GetTickCount() - t),
++			(unsigned long)(GetTickCount() - win_fdl1_t0));
 +	win_ser_close(io);
-+	for (i = 0; i < 150; i++) {
++	for (i = 0; i < 300; i++) {
 +		int found = win_scan(seen, sizeof(seen), other, sizeof(other));
 +		if (strcmp(seen, last)) {
-+			DBG_LOG("Windows has: %s\n", seen[0] ? seen : "no Unisoc USB device");
++			DBG_LOG("Windows has: %s (%lu ms after FDL1 started)\n",
++					seen[0] ? seen : "no Unisoc USB device",
++					(unsigned long)(GetTickCount() - win_fdl1_t0));
 +			strcpy(last, seen);
 +		}
 +		if (found == 4) {
-+			if (win_ser_open(io, other, &err)) {
++			/* Channel9.dll, then Windows serial I/O, and so on. */
++			io->kind = c9 && !(tries & 1) ? 2 : 1;
++			tries++;
++			if (!win_ser_open(io, other, &err)) {
++				DBG_LOG("couldn't open %s again (%s, error %lu)\n", other,
++						win_how[io->kind], (unsigned long)err);
++			} else {
 +				rx_clear(io->rx);
 +				io->recv_len = io->recv_pos = 0;
-+				if (win_ser_write(io, io->enc_buf, io->enc_len) == io->enc_len) {
-+					DBG_LOG("reopened %s (%s)\n", io->port, win_how[io->kind]);
++				t = GetTickCount();
++				n = win_ser_write(io, io->enc_buf, io->enc_len);
++				e = GetLastError();
++				if (n == io->enc_len) {
++					DBG_LOG("reopened %s (%s) %lu ms after FDL1 started\n",
++							io->port, win_how[io->kind],
++							(unsigned long)(GetTickCount() - win_fdl1_t0));
 +					return;
 +				}
++				DBG_LOG("opened %s again (%s), but FDL1 didn't take the message (wrote %d, error %lu, in %lu ms, %lu ms after FDL1 started)\n",
++						io->port, win_how[io->kind], n, (unsigned long)e,
++						(unsigned long)(GetTickCount() - t),
++						(unsigned long)(GetTickCount() - win_fdl1_t0));
 +			}
 +			win_ser_close(io);
 +		}
@@ -709,7 +735,7 @@ index f8ba370..ce4393b 100644
  	int wait = 300 * REOPEN_FREQ;
  	const char *tty = "/dev/ttyUSB0";
  	int verbose = 0, fdl_loaded = 0;
-@@ -1197,6 +1806,11 @@ int main(int argc, char **argv) {
+@@ -1197,6 +1832,11 @@ int main(int argc, char **argv) {
  	int keep_charge = 0, end_data = 1, blk_size = 0;
  	int secure_boot = 0;
  
@@ -721,7 +747,7 @@ index f8ba370..ce4393b 100644
  #if USE_LIBUSB
  	(void)tty;
  	ret = libusb_init(NULL);
-@@ -1223,7 +1837,75 @@ int main(int argc, char **argv) {
+@@ -1223,7 +1863,75 @@ int main(int argc, char **argv) {
  	}
  
  	for (i = 0; ; i++) {
@@ -798,7 +824,7 @@ index f8ba370..ce4393b 100644
  		device = libusb_open_device_with_vid_pid(NULL, 0x1782, 0x4d00);
  		if (device) break;
  		if (i >= wait)
-@@ -1239,7 +1921,7 @@ int main(int argc, char **argv) {
+@@ -1239,7 +1947,7 @@ int main(int argc, char **argv) {
  	}
  
  #if USE_LIBUSB
@@ -807,7 +833,7 @@ index f8ba370..ce4393b 100644
  #else
  	io = spdio_init(serial, 0);
  #endif
-@@ -1258,18 +1940,25 @@ int main(int argc, char **argv) {
+@@ -1258,18 +1966,25 @@ int main(int argc, char **argv) {
  				// Required for smartphones.
  				// Is there a way to do the same with usb-serial?
  #if USE_LIBUSB
@@ -833,17 +859,26 @@ index f8ba370..ce4393b 100644
  				if (recv_type(io) != BSL_REP_VER)
  					ERR_EXIT("ver expected\n");
  
-@@ -1292,6 +1981,9 @@ int main(int argc, char **argv) {
+@@ -1292,17 +2007,37 @@ int main(int argc, char **argv) {
  					encode_msg(io, BSL_CMD_EXEC_DATA, NULL, 0);
  					send_and_check(io);
  				}
 +#if SPD_WIN
-+				if (io->kind) DBG_LOG("FDL1 started\n");
++				if (io->kind) {
++					win_fdl1_t0 = GetTickCount();
++					DBG_LOG("FDL1 started\n");
++				}
 +#endif
  
  				/* FDL1 (chk = sum) */
  				io->flags &= ~FLAGS_CRC16;
-@@ -1300,6 +1992,10 @@ int main(int argc, char **argv) {
+ 
++#if SPD_WIN
++				/* One byte, as Unisoc's tools send it. */
++				encode_msg(io, BSL_CMD_CHECK_BAUD, NULL, io->kind ? 1 : 4);
++#else
+ 				encode_msg(io, BSL_CMD_CHECK_BAUD, NULL, 4);
++#endif
  				for (i = 0; i < 10; i++) {
  					if (io->verbose >= 1)
  						DBG_LOG("checkbaud %d\n", i + 1);
@@ -854,3 +889,11 @@ index f8ba370..ce4393b 100644
  					send_msg(io);
  					ret = recv_msg(io);
  					if (ret) break;
++#if SPD_WIN
++					if (io->kind)
++						DBG_LOG("no answer from FDL1 yet (try %d, %lu ms after it started)\n",
++								i + 1, (unsigned long)(GetTickCount() - win_fdl1_t0));
++#endif
+ 				}
+ 				if (recv_type(io) != BSL_REP_VER)
+ 					ERR_EXIT("ver expected\n");
