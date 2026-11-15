@@ -1,0 +1,19 @@
+<!-- Thimsy OS console picture metadata. CC BY-NC 4.0, the Thimsy OS project. -->
+<theme>
+    <variables>
+        <systemName>Cannonball</systemName>
+        <systemDescription>Cannonball is an enhanced game engine for OutRun, the 1986 Sega arcade racer. It plays the original arcade game's data, with options such as a widescreen view and a higher frame rate.</systemDescription>
+        <systemManufacturer>Sega</systemManufacturer>
+        <systemReleaseYear>1986</systemReleaseYear>
+        <systemReleaseDate>1986</systemReleaseDate>
+        <systemReleaseDateFormated>1986</systemReleaseDateFormated>
+        <systemHardwareType>Engine</systemHardwareType>
+        <systemCoverSize>1-1</systemCoverSize>
+        <systemColor>C2364A</systemColor>
+        <systemColorPalette1>FF9A5A</systemColorPalette1>
+        <systemColorPalette2>D0508C</systemColorPalette2>
+        <systemColorPalette3>3A2C7A</systemColorPalette3>
+        <systemColorPalette4>F4F0E0</systemColorPalette4>
+        <systemCartSize>1-1</systemCartSize>
+    </variables>
+</theme>

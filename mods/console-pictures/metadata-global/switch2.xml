@@ -1,0 +1,19 @@
+<!-- Thimsy OS console picture metadata. CC BY-NC 4.0, the Thimsy OS project. -->
+<theme>
+    <variables>
+        <systemName>Nintendo Switch 2</systemName>
+        <systemDescription>The Nintendo Switch 2 is a hybrid home and handheld console released in 2025, the successor to the Nintendo Switch, with a larger screen and detachable controllers.</systemDescription>
+        <systemManufacturer>Nintendo</systemManufacturer>
+        <systemReleaseYear>2025</systemReleaseYear>
+        <systemReleaseDate>2025</systemReleaseDate>
+        <systemReleaseDateFormated>2025</systemReleaseDateFormated>
+        <systemHardwareType>Console</systemHardwareType>
+        <systemCoverSize>1-1</systemCoverSize>
+        <systemColor>C8323C</systemColor>
+        <systemColorPalette1>2A2A2E</systemColorPalette1>
+        <systemColorPalette2>4AB4FF</systemColorPalette2>
+        <systemColorPalette3>5AC85A</systemColorPalette3>
+        <systemColorPalette4>F4F4F4</systemColorPalette4>
+        <systemCartSize>1-1</systemCartSize>
+    </variables>
+</theme>

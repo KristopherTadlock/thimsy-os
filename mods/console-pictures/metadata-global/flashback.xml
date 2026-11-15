@@ -1,0 +1,19 @@
+<!-- Thimsy OS console picture metadata. CC BY-NC 4.0, the Thimsy OS project. -->
+<theme>
+    <variables>
+        <systemName>Flashback</systemName>
+        <systemDescription>Flashback is a 1992 cinematic platform game by Delphine Software, first released for the Amiga. REminiscence re-implements its engine and plays the original game data.</systemDescription>
+        <systemManufacturer>Delphine Software</systemManufacturer>
+        <systemReleaseYear>1992</systemReleaseYear>
+        <systemReleaseDate>1992</systemReleaseDate>
+        <systemReleaseDateFormated>1992</systemReleaseDateFormated>
+        <systemHardwareType>Engine</systemHardwareType>
+        <systemCoverSize>1-1</systemCoverSize>
+        <systemColor>1F5A5E</systemColor>
+        <systemColorPalette1>0E2A3A</systemColorPalette1>
+        <systemColorPalette2>2A5A5A</systemColorPalette2>
+        <systemColorPalette3>6A7A82</systemColorPalette3>
+        <systemColorPalette4>E8D8B0</systemColorPalette4>
+        <systemCartSize>1-1</systemCartSize>
+    </variables>
+</theme>

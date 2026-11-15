@@ -1,0 +1,19 @@
+<!-- Thimsy OS console picture metadata. CC BY-NC 4.0, the Thimsy OS project. -->
+<theme>
+    <variables>
+        <systemName>Acorn Atom</systemName>
+        <systemDescription>The Acorn Atom is a home computer released by Acorn Computers in 1980, sold as a kit or ready built. It has a full keyboard, BASIC in ROM and loads programs from cassette, and it led to the BBC Micro.</systemDescription>
+        <systemManufacturer>Acorn Computers</systemManufacturer>
+        <systemReleaseYear>1980</systemReleaseYear>
+        <systemReleaseDate>1980</systemReleaseDate>
+        <systemReleaseDateFormated>1980</systemReleaseDateFormated>
+        <systemHardwareType>Computer</systemHardwareType>
+        <systemCoverSize>1-1</systemCoverSize>
+        <systemColor>8A6A3A</systemColor>
+        <systemColorPalette1>E8DCC0</systemColorPalette1>
+        <systemColorPalette2>26262A</systemColorPalette2>
+        <systemColorPalette3>7AFF8A</systemColorPalette3>
+        <systemColorPalette4>E03030</systemColorPalette4>
+        <systemCartSize>1-1</systemCartSize>
+    </variables>
+</theme>

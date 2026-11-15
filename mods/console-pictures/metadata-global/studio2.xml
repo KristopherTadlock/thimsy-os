@@ -1,0 +1,19 @@
+<!-- Thimsy OS console picture metadata. CC BY-NC 4.0, the Thimsy OS project. -->
+<theme>
+    <variables>
+        <systemName>RCA Studio II</systemName>
+        <systemDescription>The RCA Studio II is a home console released by RCA in 1977. It shows black-and-white graphics, has five games built in, and is played on two 12-key keypads built into the console itself.</systemDescription>
+        <systemManufacturer>RCA</systemManufacturer>
+        <systemReleaseYear>1977</systemReleaseYear>
+        <systemReleaseDate>1977</systemReleaseDate>
+        <systemReleaseDateFormated>1977</systemReleaseDateFormated>
+        <systemHardwareType>Console</systemHardwareType>
+        <systemCoverSize>1-1</systemCoverSize>
+        <systemColor>7A5232</systemColor>
+        <systemColorPalette1>ECE4D2</systemColorPalette1>
+        <systemColorPalette2>2A2A2A</systemColorPalette2>
+        <systemColorPalette3>E04030</systemColorPalette3>
+        <systemColorPalette4>F4F4F4</systemColorPalette4>
+        <systemCartSize>1-1</systemCartSize>
+    </variables>
+</theme>

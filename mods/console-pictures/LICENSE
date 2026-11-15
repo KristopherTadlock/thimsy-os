@@ -1,0 +1,195 @@
+Thimsy OS console pictures
+
+Each picture in images/ is listed below with the photo(s) it is made from,
+each photo's author and licence, and the licence of the picture itself. The
+photos are from Wikimedia Commons. Thimsy OS cut each subject out of its
+photo, scaled and placed it on a transparent 1080x1080 canvas with a soft
+floor shadow and, where a screen shows, filled the screen with an original
+pixel scene of its own.
+
+- Where a source photo is under CC BY-SA, the picture is offered under that
+  same CC BY-SA licence.
+- Otherwise Thimsy OS's work in the picture is by the Thimsy OS project,
+  licensed under the Creative Commons Attribution-NonCommercial 4.0
+  International licence (CC BY-NC 4.0), with the photo credits kept: credit
+  "Console picture by the Thimsy OS project", plus the photo's credit.
+- Public-domain and CC0 photos are credited as a courtesy.
+- elektor.webp is a stand-in: no freely licensed photo of the Elektor TV
+  Games Computer was found, so it shows a home-built microcomputer from an
+  Elektor design of 1977 (an SC/MP system, per the photo's file name).
+
+The theme metadata in metadata-global/ and metadata-custom/ is by the Thimsy
+OS project, CC BY-NC 4.0. mods/console-pictures/sources.json in the Thimsy OS
+repository holds the same per-picture data as this file.
+
+Licences:
+  CC BY-NC 4.0     https://creativecommons.org/licenses/by-nc/4.0/legalcode
+  CC BY-SA 2.0     https://creativecommons.org/licenses/by-sa/2.0/legalcode
+  CC BY-SA 2.0 de  https://creativecommons.org/licenses/by-sa/2.0/de/legalcode
+  CC BY-SA 3.0     https://creativecommons.org/licenses/by-sa/3.0/legalcode
+  CC BY-SA 4.0     https://creativecommons.org/licenses/by-sa/4.0/legalcode
+  CC BY 2.0        https://creativecommons.org/licenses/by/2.0/legalcode
+  CC BY 3.0        https://creativecommons.org/licenses/by/3.0/legalcode
+  CC0 1.0          https://creativecommons.org/publicdomain/zero/1.0/legalcode
+
+advision.webp: CC BY-SA 4.0, the licence of its source photo
+  Photo:   Entex-AdventureVision.jpg
+  Author:  Rik1138
+  Licence: CC BY-SA 4.0
+  Source:  https://commons.wikimedia.org/wiki/File:Entex-AdventureVision.jpg
+
+apf.webp: CC BY-NC 4.0, the Thimsy OS project, with the photo credits
+  Photo:   APF-M1000-FL.jpg
+  Author:  Evan-Amos
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:APF-M1000-FL.jpg
+
+atom.webp: CC BY-NC 4.0, the Thimsy OS project, with the photo credits
+  Photo:   Acorn Atom 1981.jpg
+  Author:  Simon Inns
+  Licence: CC BY 2.0
+  Source:  https://commons.wikimedia.org/wiki/File:Acorn_Atom_1981.jpg
+
+cannonball.webp: CC BY-SA 3.0, the licence of its source photo
+  Photo:   Outrun-sit-down-cabinet.jpg
+  Author:  Liftarn
+  Licence: CC BY-SA 3.0
+  Source:  https://commons.wikimedia.org/wiki/File:Outrun-sit-down-cabinet.jpg
+
+cavestory.webp: CC BY-NC 4.0, the Thimsy OS project, with the photo credits
+  Photo:   ThinkPad X61 Tablet.jpg
+  Author:  Evan-Amos
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:ThinkPad_X61_Tablet.jpg
+
+chip8.webp: CC BY-NC 4.0, the Thimsy OS project, with the photo credits
+  Photo:   COSMAC ELF CHM.jpg
+  Author:  Michael Holley (Swtpc6800)
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:COSMAC_ELF_CHM.jpg
+
+ebook.webp: CC BY-NC 4.0, the Thimsy OS project, with the photo credits
+  Photo:   Amazon-kindle-gen2.jpg
+  Author:  Evan-Amos
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:Amazon-kindle-gen2.jpg
+
+elektor.webp: CC BY-SA 2.0 de, the licence of its source photo
+  Photo:   SCMP Computer.jpg
+  Author:  Jörg Behrens
+  Licence: CC BY-SA 2.0 de
+  Source:  https://commons.wikimedia.org/wiki/File:SCMP_Computer.jpg
+
+flashback.webp: CC BY-NC 4.0, the Thimsy OS project, with the photo credits
+  Photo:   Compaq Deskpro 386 16Mhz edit.jpg
+  Author:  Tecnoxarxa
+  Licence: CC0
+  Source:  https://commons.wikimedia.org/wiki/File:Compaq_Deskpro_386_16Mhz_edit.jpg
+
+idtech.webp: CC BY-SA 2.0, the licence of its source photo
+  Photo:   LG L194WT-SF LCD monitor.jpg
+  Author:  florisla
+  Licence: CC BY-SA 2.0
+  Source:  https://commons.wikimedia.org/wiki/File:LG_L194WT-SF_LCD_monitor.jpg
+  Photo:   DellXPSGen4.png
+  Author:  NerdBoy1392
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:DellXPSGen4.png
+
+microvision.webp: CC BY-NC 4.0, the Thimsy OS project, with the photo credits
+  Photo:   Milton-Bradley-Microvision-Handheld-FL.png
+  Author:  Evan-Amos
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:Milton-Bradley-Microvision-Handheld-FL.png
+
+moonlight.webp: CC BY-SA 4.0, the licence of its source photo
+  Photo:   Corsair 780T Gehäuse.jpg
+  Author:  Lucamon97
+  Licence: CC0
+  Source:  https://commons.wikimedia.org/wiki/File:Corsair_780T_Geh%C3%A4use.jpg
+  Photo:   Steam Deck (front).png
+  Author:  Liam Dawe/GamingOnLinux, PNG version by VulcanSphere
+  Licence: CC BY-SA 4.0
+  Source:  https://commons.wikimedia.org/wiki/File:Steam_Deck_(front).png
+
+namcops2.webp: CC BY-NC 4.0, the Thimsy OS project, with the photo credits
+  Photo:   Sega astro city candy cab.jpg
+  Author:  The real dog god
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:Sega_astro_city_candy_cab.jpg
+
+pet.webp: CC BY-NC 4.0, the Thimsy OS project, with the photo credits
+  Photo:   Commodore PET 2001 (1).jpg
+  Author:  Alexander Svensson
+  Licence: CC BY 2.0
+  Source:  https://commons.wikimedia.org/wiki/File:Commodore_PET_2001_(1).jpg
+
+pico.webp: CC BY-SA 4.0, the licence of its source photo
+  Photo:   SEGA Pico folded.png
+  Author:  Tagg the Wolf
+  Licence: CC BY-SA 4.0
+  Source:  https://commons.wikimedia.org/wiki/File:SEGA_Pico_folded.png
+
+quake.webp: CC BY-SA 4.0, the licence of its source photo
+  Photo:   Gateway 2000.jpg
+  Author:  MBlairMartin
+  Licence: CC BY-SA 4.0
+  Source:  https://commons.wikimedia.org/wiki/File:Gateway_2000.jpg
+
+quake2.webp: CC BY-SA 4.0, the licence of its source photo
+  Photo:   IBM Aptiva 2144-M51.jpg
+  Author:  Ruben de Rijcke
+  Licence: CC BY-SA 4.0
+  Source:  https://commons.wikimedia.org/wiki/File:IBM_Aptiva_2144-M51.jpg
+
+studio2.webp: CC BY-NC 4.0, the Thimsy OS project, with the photo credits
+  Photo:   RCA-Studio-II-FL.jpg
+  Author:  Evan-Amos
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:RCA-Studio-II-FL.jpg
+
+switch2.webp: CC BY-SA 4.0, the licence of its source photo
+  Photo:   Nintendo Switch 2 in Docking Console.jpg
+  Author:  Crisco 1492
+  Licence: CC BY-SA 4.0
+  Source:  https://commons.wikimedia.org/wiki/File:Nintendo_Switch_2_in_Docking_Console.jpg
+
+varcade.webp: CC BY-SA 2.0, the licence of its source photo
+  Photo:   "Custom" multigame arcade cabinet (2137119547).jpg
+  Author:  Lukas Mathis
+  Licence: CC BY-SA 2.0
+  Source:  https://commons.wikimedia.org/wiki/File:%22Custom%22_multigame_arcade_cabinet_(2137119547).jpg
+
+vc4000.webp: CC BY-NC 4.0, the Thimsy OS project, with the photo credits
+  Photo:   Interton-Electronic-VC-4000-Console-01.jpg
+  Author:  Evan-Amos
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:Interton-Electronic-VC-4000-Console-01.jpg
+
+videos.webp: CC BY-SA 4.0, the licence of its source photo
+  Photo:   Panasonic Tau TH-15FA5.jpg
+  Author:  Qurren
+  Licence: CC BY-SA 4.0
+  Source:  https://commons.wikimedia.org/wiki/File:Panasonic_Tau_TH-15FA5.jpg
+  Photo:   8mm-projector hg.jpg
+  Author:  Hannes Grobe
+  Licence: CC BY 3.0
+  Source:  https://commons.wikimedia.org/wiki/File:8mm-projector_hg.jpg
+  Photo:   VHS-Video-Tape-Top-Flat.jpg
+  Author:  Evan-Amos
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:VHS-Video-Tape-Top-Flat.jpg
+  Photo:   Popcorn-Ball.jpg
+  Author:  Evan-Amos
+  Licence: CC0
+  Source:  https://commons.wikimedia.org/wiki/File:Popcorn-Ball.jpg
+
+xcloud.webp: CC BY-SA 3.0, the licence of its source photo
+  Photo:   Galaxy S III SC-06D Pebble Blue 1.jpg
+  Author:  Qurren
+  Licence: CC BY-SA 3.0
+  Source:  https://commons.wikimedia.org/wiki/File:Galaxy_S_III_SC-06D_Pebble_Blue_1.jpg
+  Photo:   Xbox-360-Controller-Black.jpg
+  Author:  Evan-Amos
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:Xbox-360-Controller-Black.jpg

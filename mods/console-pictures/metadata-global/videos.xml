@@ -1,0 +1,19 @@
+<!-- Thimsy OS console picture metadata. CC BY-NC 4.0, the Thimsy OS project. -->
+<theme>
+    <variables>
+        <systemName>Video Player</systemName>
+        <systemDescription>Plays the video files on the console's storage.</systemDescription>
+        <systemManufacturer>Various</systemManufacturer>
+        <systemReleaseYear>Various</systemReleaseYear>
+        <systemReleaseDate>Various</systemReleaseDate>
+        <systemReleaseDateFormated>Various</systemReleaseDateFormated>
+        <systemHardwareType>Media</systemHardwareType>
+        <systemCoverSize>1-1</systemCoverSize>
+        <systemColor>3A3F52</systemColor>
+        <systemColorPalette1>1A2A6A</systemColorPalette1>
+        <systemColorPalette2>FFB070</systemColorPalette2>
+        <systemColorPalette3>E0608A</systemColorPalette3>
+        <systemColorPalette4>FF4A4A</systemColorPalette4>
+        <systemCartSize>1-1</systemCartSize>
+    </variables>
+</theme>

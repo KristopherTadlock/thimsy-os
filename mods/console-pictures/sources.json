@@ -1,0 +1,321 @@
+{
+  "advision": {
+    "licence": "CC BY-SA 4.0",
+    "photos": [
+      {
+        "title": "Entex-AdventureVision.jpg",
+        "url": "https://commons.wikimedia.org/wiki/File:Entex-AdventureVision.jpg",
+        "author": "Rik1138",
+        "licence": "CC BY-SA 4.0",
+        "licence_url": "https://creativecommons.org/licenses/by-sa/4.0/"
+      }
+    ]
+  },
+  "apf": {
+    "licence": "CC BY-NC 4.0",
+    "photos": [
+      {
+        "title": "APF-M1000-FL.jpg",
+        "url": "https://commons.wikimedia.org/wiki/File:APF-M1000-FL.jpg",
+        "author": "Evan-Amos",
+        "licence": "Public domain",
+        "licence_url": null
+      }
+    ]
+  },
+  "atom": {
+    "licence": "CC BY-NC 4.0",
+    "photos": [
+      {
+        "title": "Acorn Atom 1981.jpg",
+        "url": "https://commons.wikimedia.org/wiki/File:Acorn_Atom_1981.jpg",
+        "author": "Simon Inns",
+        "licence": "CC BY 2.0",
+        "licence_url": "https://creativecommons.org/licenses/by/2.0/"
+      }
+    ]
+  },
+  "cannonball": {
+    "licence": "CC BY-SA 3.0",
+    "photos": [
+      {
+        "title": "Outrun-sit-down-cabinet.jpg",
+        "url": "https://commons.wikimedia.org/wiki/File:Outrun-sit-down-cabinet.jpg",
+        "author": "Liftarn",
+        "licence": "CC BY-SA 3.0",
+        "licence_url": "https://creativecommons.org/licenses/by-sa/3.0/"
+      }
+    ]
+  },
+  "cavestory": {
+    "licence": "CC BY-NC 4.0",
+    "photos": [
+      {
+        "title": "ThinkPad X61 Tablet.jpg",
+        "url": "https://commons.wikimedia.org/wiki/File:ThinkPad_X61_Tablet.jpg",
+        "author": "Evan-Amos",
+        "licence": "Public domain",
+        "licence_url": null
+      }
+    ]
+  },
+  "chip8": {
+    "licence": "CC BY-NC 4.0",
+    "photos": [
+      {
+        "title": "COSMAC ELF CHM.jpg",
+        "url": "https://commons.wikimedia.org/wiki/File:COSMAC_ELF_CHM.jpg",
+        "author": "Michael Holley (Swtpc6800)",
+        "licence": "Public domain",
+        "licence_url": null
+      }
+    ]
+  },
+  "ebook": {
+    "licence": "CC BY-NC 4.0",
+    "photos": [
+      {
+        "title": "Amazon-kindle-gen2.jpg",
+        "url": "https://commons.wikimedia.org/wiki/File:Amazon-kindle-gen2.jpg",
+        "author": "Evan-Amos",
+        "licence": "Public domain",
+        "licence_url": null
+      }
+    ]
+  },
+  "elektor": {
+    "licence": "CC BY-SA 2.0 de",
+    "note": "A stand-in: no freely licensed photo of the Elektor TV Games Computer was found. The photo shows a home-built microcomputer from an Elektor design of 1977 (an SC/MP system, per the photo's file name), its keyboard and display unit.",
+    "photos": [
+      {
+        "title": "SCMP Computer.jpg",
+        "url": "https://commons.wikimedia.org/wiki/File:SCMP_Computer.jpg",
+        "author": "Jörg Behrens",
+        "licence": "CC BY-SA 2.0 de",
+        "licence_url": "https://creativecommons.org/licenses/by-sa/2.0/de/"
+      }
+    ]
+  },
+  "flashback": {
+    "licence": "CC BY-NC 4.0",
+    "photos": [
+      {
+        "title": "Compaq Deskpro 386 16Mhz edit.jpg",
+        "url": "https://commons.wikimedia.org/wiki/File:Compaq_Deskpro_386_16Mhz_edit.jpg",
+        "author": "Tecnoxarxa",
+        "licence": "CC0",
+        "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+      }
+    ]
+  },
+  "idtech": {
+    "licence": "CC BY-SA 2.0",
+    "photos": [
+      {
+        "title": "LG L194WT-SF LCD monitor.jpg",
+        "url": "https://commons.wikimedia.org/wiki/File:LG_L194WT-SF_LCD_monitor.jpg",
+        "author": "florisla",
+        "licence": "CC BY-SA 2.0",
+        "licence_url": "https://creativecommons.org/licenses/by-sa/2.0/"
+      },
+      {
+        "title": "DellXPSGen4.png",
+        "url": "https://commons.wikimedia.org/wiki/File:DellXPSGen4.png",
+        "author": "NerdBoy1392",
+        "licence": "Public domain",
+        "licence_url": null
+      }
+    ]
+  },
+  "microvision": {
+    "licence": "CC BY-NC 4.0",
+    "photos": [
+      {
+        "title": "Milton-Bradley-Microvision-Handheld-FL.png",
+        "url": "https://commons.wikimedia.org/wiki/File:Milton-Bradley-Microvision-Handheld-FL.png",
+        "author": "Evan-Amos",
+        "licence": "Public domain",
+        "licence_url": null
+      }
+    ]
+  },
+  "moonlight": {
+    "licence": "CC BY-SA 4.0",
+    "photos": [
+      {
+        "title": "Corsair 780T Gehäuse.jpg",
+        "url": "https://commons.wikimedia.org/wiki/File:Corsair_780T_Geh%C3%A4use.jpg",
+        "author": "Lucamon97",
+        "licence": "CC0",
+        "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+      },
+      {
+        "title": "Steam Deck (front).png",
+        "url": "https://commons.wikimedia.org/wiki/File:Steam_Deck_(front).png",
+        "author": "Liam Dawe/GamingOnLinux, PNG version by VulcanSphere",
+        "licence": "CC BY-SA 4.0",
+        "licence_url": "https://creativecommons.org/licenses/by-sa/4.0/"
+      }
+    ]
+  },
+  "namcops2": {
+    "licence": "CC BY-NC 4.0",
+    "photos": [
+      {
+        "title": "Sega astro city candy cab.jpg",
+        "url": "https://commons.wikimedia.org/wiki/File:Sega_astro_city_candy_cab.jpg",
+        "author": "The real dog god",
+        "licence": "Public domain",
+        "licence_url": null
+      }
+    ]
+  },
+  "pet": {
+    "licence": "CC BY-NC 4.0",
+    "photos": [
+      {
+        "title": "Commodore PET 2001 (1).jpg",
+        "url": "https://commons.wikimedia.org/wiki/File:Commodore_PET_2001_(1).jpg",
+        "author": "Alexander Svensson",
+        "licence": "CC BY 2.0",
+        "licence_url": "https://creativecommons.org/licenses/by/2.0/"
+      }
+    ]
+  },
+  "pico": {
+    "licence": "CC BY-SA 4.0",
+    "photos": [
+      {
+        "title": "SEGA Pico folded.png",
+        "url": "https://commons.wikimedia.org/wiki/File:SEGA_Pico_folded.png",
+        "author": "Tagg the Wolf",
+        "licence": "CC BY-SA 4.0",
+        "licence_url": "https://creativecommons.org/licenses/by-sa/4.0/"
+      }
+    ]
+  },
+  "quake": {
+    "licence": "CC BY-SA 4.0",
+    "photos": [
+      {
+        "title": "Gateway 2000.jpg",
+        "url": "https://commons.wikimedia.org/wiki/File:Gateway_2000.jpg",
+        "author": "MBlairMartin",
+        "licence": "CC BY-SA 4.0",
+        "licence_url": "https://creativecommons.org/licenses/by-sa/4.0/"
+      }
+    ]
+  },
+  "quake2": {
+    "licence": "CC BY-SA 4.0",
+    "photos": [
+      {
+        "title": "IBM Aptiva 2144-M51.jpg",
+        "url": "https://commons.wikimedia.org/wiki/File:IBM_Aptiva_2144-M51.jpg",
+        "author": "Ruben de Rijcke",
+        "licence": "CC BY-SA 4.0",
+        "licence_url": "https://creativecommons.org/licenses/by-sa/4.0/"
+      }
+    ]
+  },
+  "studio2": {
+    "licence": "CC BY-NC 4.0",
+    "photos": [
+      {
+        "title": "RCA-Studio-II-FL.jpg",
+        "url": "https://commons.wikimedia.org/wiki/File:RCA-Studio-II-FL.jpg",
+        "author": "Evan-Amos",
+        "licence": "Public domain",
+        "licence_url": null
+      }
+    ]
+  },
+  "switch2": {
+    "licence": "CC BY-SA 4.0",
+    "photos": [
+      {
+        "title": "Nintendo Switch 2 in Docking Console.jpg",
+        "url": "https://commons.wikimedia.org/wiki/File:Nintendo_Switch_2_in_Docking_Console.jpg",
+        "author": "Crisco 1492",
+        "licence": "CC BY-SA 4.0",
+        "licence_url": "https://creativecommons.org/licenses/by-sa/4.0/"
+      }
+    ]
+  },
+  "varcade": {
+    "licence": "CC BY-SA 2.0",
+    "photos": [
+      {
+        "title": "\"Custom\" multigame arcade cabinet (2137119547).jpg",
+        "url": "https://commons.wikimedia.org/wiki/File:%22Custom%22_multigame_arcade_cabinet_(2137119547).jpg",
+        "author": "Lukas Mathis",
+        "licence": "CC BY-SA 2.0",
+        "licence_url": "https://creativecommons.org/licenses/by-sa/2.0/"
+      }
+    ]
+  },
+  "vc4000": {
+    "licence": "CC BY-NC 4.0",
+    "photos": [
+      {
+        "title": "Interton-Electronic-VC-4000-Console-01.jpg",
+        "url": "https://commons.wikimedia.org/wiki/File:Interton-Electronic-VC-4000-Console-01.jpg",
+        "author": "Evan-Amos",
+        "licence": "Public domain",
+        "licence_url": null
+      }
+    ]
+  },
+  "videos": {
+    "licence": "CC BY-SA 4.0",
+    "photos": [
+      {
+        "title": "Panasonic Tau TH-15FA5.jpg",
+        "url": "https://commons.wikimedia.org/wiki/File:Panasonic_Tau_TH-15FA5.jpg",
+        "author": "Qurren",
+        "licence": "CC BY-SA 4.0",
+        "licence_url": "https://creativecommons.org/licenses/by-sa/4.0/"
+      },
+      {
+        "title": "8mm-projector hg.jpg",
+        "url": "https://commons.wikimedia.org/wiki/File:8mm-projector_hg.jpg",
+        "author": "Hannes Grobe",
+        "licence": "CC BY 3.0",
+        "licence_url": "https://creativecommons.org/licenses/by/3.0/"
+      },
+      {
+        "title": "VHS-Video-Tape-Top-Flat.jpg",
+        "url": "https://commons.wikimedia.org/wiki/File:VHS-Video-Tape-Top-Flat.jpg",
+        "author": "Evan-Amos",
+        "licence": "Public domain",
+        "licence_url": null
+      },
+      {
+        "title": "Popcorn-Ball.jpg",
+        "url": "https://commons.wikimedia.org/wiki/File:Popcorn-Ball.jpg",
+        "author": "Evan-Amos",
+        "licence": "CC0",
+        "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+      }
+    ]
+  },
+  "xcloud": {
+    "licence": "CC BY-SA 3.0",
+    "photos": [
+      {
+        "title": "Galaxy S III SC-06D Pebble Blue 1.jpg",
+        "url": "https://commons.wikimedia.org/wiki/File:Galaxy_S_III_SC-06D_Pebble_Blue_1.jpg",
+        "author": "Qurren",
+        "licence": "CC BY-SA 3.0",
+        "licence_url": "https://creativecommons.org/licenses/by-sa/3.0/"
+      },
+      {
+        "title": "Xbox-360-Controller-Black.jpg",
+        "url": "https://commons.wikimedia.org/wiki/File:Xbox-360-Controller-Black.jpg",
+        "author": "Evan-Amos",
+        "licence": "Public domain",
+        "licence_url": null
+      }
+    ]
+  }
+}

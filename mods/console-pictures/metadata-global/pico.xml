@@ -1,0 +1,19 @@
+<!-- Thimsy OS console picture metadata. CC BY-NC 4.0, the Thimsy OS project. -->
+<theme>
+    <variables>
+        <systemName>Sega Pico</systemName>
+        <systemDescription>The Sega Pico is an educational console for young children, released in 1993. Its cartridges are picture books: the child turns the pages and touches them with a stylus pen to play.</systemDescription>
+        <systemManufacturer>Sega</systemManufacturer>
+        <systemReleaseYear>1993</systemReleaseYear>
+        <systemReleaseDate>1993</systemReleaseDate>
+        <systemReleaseDateFormated>1993</systemReleaseDateFormated>
+        <systemHardwareType>Console</systemHardwareType>
+        <systemCoverSize>1-1</systemCoverSize>
+        <systemColor>2E8BC9</systemColor>
+        <systemColorPalette1>FFD83A</systemColorPalette1>
+        <systemColorPalette2>FF5A4A</systemColorPalette2>
+        <systemColorPalette3>7AD05A</systemColorPalette3>
+        <systemColorPalette4>F4F4F4</systemColorPalette4>
+        <systemCartSize>1-1</systemCartSize>
+    </variables>
+</theme>

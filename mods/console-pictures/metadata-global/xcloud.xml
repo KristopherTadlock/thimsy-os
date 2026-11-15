@@ -1,0 +1,19 @@
+<!-- Thimsy OS console picture metadata. CC BY-NC 4.0, the Thimsy OS project. -->
+<theme>
+    <variables>
+        <systemName>Xbox Cloud Gaming</systemName>
+        <systemDescription>Xbox Cloud Gaming streams games from Microsoft's servers to phones, tablets and other devices, for Game Pass Ultimate members. It launched in 2020.</systemDescription>
+        <systemManufacturer>Microsoft</systemManufacturer>
+        <systemReleaseYear>2020</systemReleaseYear>
+        <systemReleaseDate>2020</systemReleaseDate>
+        <systemReleaseDateFormated>2020</systemReleaseDateFormated>
+        <systemHardwareType>Streaming</systemHardwareType>
+        <systemCoverSize>1-1</systemCoverSize>
+        <systemColor>2F6F9F</systemColor>
+        <systemColorPalette1>E8E8EC</systemColorPalette1>
+        <systemColorPalette2>4AB4FF</systemColorPalette2>
+        <systemColorPalette3>BFE8FF</systemColorPalette3>
+        <systemColorPalette4>3A3A40</systemColorPalette4>
+        <systemCartSize>1-1</systemCartSize>
+    </variables>
+</theme>

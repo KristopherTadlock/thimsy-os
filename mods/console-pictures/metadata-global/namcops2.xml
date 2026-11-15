@@ -1,0 +1,19 @@
+<!-- Thimsy OS console picture metadata. CC BY-NC 4.0, the Thimsy OS project. -->
+<theme>
+    <variables>
+        <systemName>Namco System 246/256</systemName>
+        <systemDescription>Namco System 246 is an arcade board based on PlayStation 2 hardware, introduced in 2000; the System 256 and Super System 256 followed it. They ran many arcade games of the 2000s.</systemDescription>
+        <systemManufacturer>Namco</systemManufacturer>
+        <systemReleaseYear>2000</systemReleaseYear>
+        <systemReleaseDate>2000</systemReleaseDate>
+        <systemReleaseDateFormated>2000</systemReleaseDateFormated>
+        <systemHardwareType>Arcade</systemHardwareType>
+        <systemCoverSize>1-1</systemCoverSize>
+        <systemColor>2A5AB8</systemColor>
+        <systemColorPalette1>EEF0F4</systemColorPalette1>
+        <systemColorPalette2>2A6AD8</systemColorPalette2>
+        <systemColorPalette3>FFD040</systemColorPalette3>
+        <systemColorPalette4>E02A2A</systemColorPalette4>
+        <systemCartSize>1-1</systemCartSize>
+    </variables>
+</theme>

@@ -13,9 +13,12 @@
 # Android" in the power menu, stick. Runs after 40-added-apps.sh.
 #
 # The theme's Gilroy and Akrobat fonts, and Nano's Akrobat, are replaced by OFL
-# fonts (Urbanist, Barlow Semi Condensed), and its Quake picture is left out.
-# Every game system must have its art in every bundled theme
-# (scripts/check_system_art.py).
+# fonts (Urbanist, Barlow Semi Condensed), and its Quake picture is replaced by
+# one of this project's console pictures (mods/console-pictures, made from
+# freely licensed photos; its LICENSE credits each), which also cover the
+# catalog platforms the theme has no picture for. Every game system must have
+# its art in every bundled theme, and every catalog platform its picture in
+# Colorful (scripts/check_system_art.py).
 #
 # It also builds in the Android Games helper (tools/android-games), which lists
 # the installed Android games as the Android Games system and starts them;
@@ -93,7 +96,7 @@ rm -f "$src/.gitignore"
 # Everything shipped must be free to redistribute. Gilroy is commercial and
 # Akrobat's free-font EULA forbids redistributing it, so OFL fonts replace them,
 # with their licenses. quake.webp is a Quake Champions render (id Software);
-# the Quake system falls back to the theme's _default.webp.
+# this project's own picture replaces it below.
 fonts="$src/_inc/fonts"
 rm "$fonts"/Gilroy-{Light,Regular,SemiBold,Bold}.ttf "$fonts/Akrobat-Bold.ttf" "$src/_inc/systems/images/quake.webp"
 for weight in Light Regular SemiBold Bold; do
@@ -116,6 +119,19 @@ for xml in glob.glob(os.path.join(src, "**", "*.xml"), recursive=True):
     t = open(xml, encoding="utf-8").read()
     assert "Gilroy" not in t and "Akrobat" not in t and "quake.webp" not in t, f"{xml} still names a removed file"
 PYEOF
+# This project's console pictures and their metadata, for systems the theme
+# has none for; none of them may replace a file of the theme's.
+pictures="$MODS/console-pictures"
+for kind in images metadata-global metadata-custom; do
+  for f in "$pictures/$kind"/*; do
+    if [[ -e "$src/_inc/systems/$kind/$(basename "$f")" ]]; then
+      echo "the theme already has _inc/systems/$kind/$(basename "$f")" >&2
+      exit 1
+    fi
+    cp "$f" "$src/_inc/systems/$kind/"
+  done
+done
+cp "$pictures/LICENSE" "$src/_inc/systems/THIMSY-PICTURES-LICENSE.txt"
 cat >>"$src/README.md" <<'EOF'
 
 ## Changes in Thimsy OS
@@ -134,8 +150,14 @@ with these changes, under the same CC BY-NC-SA 2.0 license:
   (`_inc/fonts/Barlow-OFL.txt`).
 - `theme.xml` names the new font files.
 - `_inc/systems/images/quake.webp`, a Quake Champions render (id Software),
-  is removed; the Quake system shows the theme's default image
-  (`_inc/systems/images/_default.webp`) until a replacement is made.
+  is replaced by a Thimsy OS picture.
+- Pictures, with their `metadata-global` and `metadata-custom` entries, are
+  added for the systems the theme had no picture for (the Quake picture is
+  one of them). They are not under this theme's license: they are made by the
+  Thimsy OS project from freely licensed photos on Wikimedia Commons, and
+  `_inc/systems/THIMSY-PICTURES-LICENSE.txt` gives, for each picture, its
+  source photos with their authors and licenses, and its own license (CC
+  BY-SA where a source photo is CC BY-SA, otherwise CC BY-NC 4.0).
 EOF
 
 dest="$ETC/nano_esde_themes/$THEME"
@@ -177,7 +199,8 @@ install_system_file "$work/android-games-exclude.txt" "$ETC/gammaos/android-game
 python3 -I "$MODS/../scripts/nano_systems.py" "$MODS/nano-systems.txt" "$ETC/nano_xmb/daijishou" \
   "$ETC/nano_xmb/icons_retroarch" "$ETC/gammaos/apps.list" "$MODS/retroarch-cores.txt" "$work/nano_systems.json" \
   "$GAMES_PKG"
-python3 -I "$MODS/../scripts/check_system_art.py" "$work/nano_systems.json" "$ETC/nano_esde_themes"
+python3 -I "$MODS/../scripts/check_system_art.py" "$work/nano_systems.json" "$ETC/nano_esde_themes" \
+  "$ETC/nano_xmb/daijishou"
 install_system_file "$work/nano_systems.json" "$ETC/gammaos/nano_systems.json"
 
 # Nano's setup wizard starts Nano before setup.sh runs, and Nano writes its

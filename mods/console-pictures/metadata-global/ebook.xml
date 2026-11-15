@@ -1,0 +1,19 @@
+<!-- Thimsy OS console picture metadata. CC BY-NC 4.0, the Thimsy OS project. -->
+<theme>
+    <variables>
+        <systemName>Book Reader</systemName>
+        <systemDescription>Reads the e-books and comics on the console's storage.</systemDescription>
+        <systemManufacturer>Various</systemManufacturer>
+        <systemReleaseYear>Various</systemReleaseYear>
+        <systemReleaseDate>Various</systemReleaseDate>
+        <systemReleaseDateFormated>Various</systemReleaseDateFormated>
+        <systemHardwareType>Reader</systemHardwareType>
+        <systemCoverSize>1-1</systemCoverSize>
+        <systemColor>7A6A58</systemColor>
+        <systemColorPalette1>E8E6DC</systemColorPalette1>
+        <systemColorPalette2>3A3A3A</systemColorPalette2>
+        <systemColorPalette3>B0A08A</systemColorPalette3>
+        <systemColorPalette4>5A4A3A</systemColorPalette4>
+        <systemCartSize>1-1</systemCartSize>
+    </variables>
+</theme>

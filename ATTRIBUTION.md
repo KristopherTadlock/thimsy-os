@@ -15,11 +15,60 @@ Files still to be replaced are not listed here; they are not covered by any lice
 | The Thimsy logo, an elf in a thimble helmet raising a sword (`nano/bootscreen/thimsy.svg`, `docs/thimsy.png`) | Nano's boot screen (`/system/etc/nano_xmb/boot/logo.svg`), the bootloader's boot picture (`scripts/bootlogo.py`) | the Thimsy OS project | [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/): free to use and redistribute, with credit to the Thimsy OS project; no commercial use |
 | Android boot animation: the Thimsy logo fading in on Midnight blue (`mods/bootanimation/bootanimation.zip`, drawn by `tools/bootanimation/make_bootanimation.py`) | `/system/product/media/bootanimation.zip` (`mods/58-bootanimation.sh`) | the Thimsy OS project | as the logo |
 | Controller drawings for the button map (`ps3xmb/controllers/svg/*.svg`, `controllers.json`, from `work/controller-art`) | Nano's button map (`/system/etc/nano_xmb/controllers/`, with its `LICENSE`) | the Thimsy OS project | CC BY-NC 4.0, credited as "Controller drawings by the Thimsy OS project, CC BY-NC 4.0" |
+| The metadata of every console picture (`mods/console-pictures/metadata-global`, `metadata-custom`) | the Colorful theme's system view (`/system/etc/nano_esde_themes/colorful-simplified-es-de/_inc/systems/`, `mods/50-nano.sh`) | the Thimsy OS project | CC BY-NC 4.0, credited as "Console pictures by the Thimsy OS project" |
 | Box art and title marquees of the pack-in games (`mods/pack-in-art`, drawn by `tools/pack-in-art/make_boxes.py` around each game's own pictures), and the screenshots and title screens captured from the games (`tools/pack-in-art/capture.py`) | `/sdcard/ES-DE` after setup | Thimsy OS, from each game's pictures | each game's license (below) |
 
 The box art's lettering is drawn with Archivo Black, Russo One, Exo 2 and other
 Google Fonts faces under the SIL Open Font License 1.1 (`make_boxes.py`, `STYLES`).
 Only the pictures ship, not the fonts.
+
+## Console pictures
+
+The pictures Thimsy OS adds to the Colorful (Simplified) theme for the systems
+it has no art for (`mods/console-pictures/images/`, installed in
+`/system/etc/nano_esde_themes/colorful-simplified-es-de/_inc/systems/images/` by
+`mods/50-nano.sh`) are made by the Thimsy OS project from the photos below, all
+from Wikimedia Commons: each subject is cut out, scaled and placed on a
+transparent background with a floor shadow, and screens show original pixel
+scenes. A picture with a CC BY-SA source photo is under that CC BY-SA license;
+the others are CC BY-NC 4.0, by the Thimsy OS project, with the photo credits
+below. No freely licensed photo of the Elektor TV Games Computer was found, so
+elektor shows a home-built microcomputer from an Elektor design of 1977 (an
+SC/MP system, per the photo's file name). `mods/console-pictures/LICENSE`
+(shipped as `_inc/systems/THIMSY-PICTURES-LICENSE.txt`) and
+`mods/console-pictures/sources.json` hold the same data.
+
+| picture | picture's license | source photo | author | photo's license | URL |
+|---|---|---|---|---|---|
+| advision | CC BY-SA 4.0 | Entex-AdventureVision.jpg | Rik1138 | CC BY-SA 4.0 | https://commons.wikimedia.org/wiki/File:Entex-AdventureVision.jpg |
+| apf | CC BY-NC 4.0 | APF-M1000-FL.jpg | Evan-Amos | Public domain | https://commons.wikimedia.org/wiki/File:APF-M1000-FL.jpg |
+| atom | CC BY-NC 4.0 | Acorn Atom 1981.jpg | Simon Inns | CC BY 2.0 | https://commons.wikimedia.org/wiki/File:Acorn_Atom_1981.jpg |
+| cannonball | CC BY-SA 3.0 | Outrun-sit-down-cabinet.jpg | Liftarn | CC BY-SA 3.0 | https://commons.wikimedia.org/wiki/File:Outrun-sit-down-cabinet.jpg |
+| cavestory | CC BY-NC 4.0 | ThinkPad X61 Tablet.jpg | Evan-Amos | Public domain | https://commons.wikimedia.org/wiki/File:ThinkPad_X61_Tablet.jpg |
+| chip8 | CC BY-NC 4.0 | COSMAC ELF CHM.jpg | Michael Holley (Swtpc6800) | Public domain | https://commons.wikimedia.org/wiki/File:COSMAC_ELF_CHM.jpg |
+| ebook | CC BY-NC 4.0 | Amazon-kindle-gen2.jpg | Evan-Amos | Public domain | https://commons.wikimedia.org/wiki/File:Amazon-kindle-gen2.jpg |
+| elektor | CC BY-SA 2.0 de | SCMP Computer.jpg | Jörg Behrens | CC BY-SA 2.0 de | https://commons.wikimedia.org/wiki/File:SCMP_Computer.jpg |
+| flashback | CC BY-NC 4.0 | Compaq Deskpro 386 16Mhz edit.jpg | Tecnoxarxa | CC0 | https://commons.wikimedia.org/wiki/File:Compaq_Deskpro_386_16Mhz_edit.jpg |
+| idtech | CC BY-SA 2.0 | LG L194WT-SF LCD monitor.jpg | florisla | CC BY-SA 2.0 | https://commons.wikimedia.org/wiki/File:LG_L194WT-SF_LCD_monitor.jpg |
+| idtech | CC BY-SA 2.0 | DellXPSGen4.png | NerdBoy1392 | Public domain | https://commons.wikimedia.org/wiki/File:DellXPSGen4.png |
+| microvision | CC BY-NC 4.0 | Milton-Bradley-Microvision-Handheld-FL.png | Evan-Amos | Public domain | https://commons.wikimedia.org/wiki/File:Milton-Bradley-Microvision-Handheld-FL.png |
+| moonlight | CC BY-SA 4.0 | Corsair 780T Gehäuse.jpg | Lucamon97 | CC0 | https://commons.wikimedia.org/wiki/File:Corsair_780T_Geh%C3%A4use.jpg |
+| moonlight | CC BY-SA 4.0 | Steam Deck (front).png | Liam Dawe/GamingOnLinux, PNG version by VulcanSphere | CC BY-SA 4.0 | https://commons.wikimedia.org/wiki/File:Steam_Deck_(front).png |
+| namcops2 | CC BY-NC 4.0 | Sega astro city candy cab.jpg | The real dog god | Public domain | https://commons.wikimedia.org/wiki/File:Sega_astro_city_candy_cab.jpg |
+| pet | CC BY-NC 4.0 | Commodore PET 2001 (1).jpg | Alexander Svensson | CC BY 2.0 | https://commons.wikimedia.org/wiki/File:Commodore_PET_2001_(1).jpg |
+| pico | CC BY-SA 4.0 | SEGA Pico folded.png | Tagg the Wolf | CC BY-SA 4.0 | https://commons.wikimedia.org/wiki/File:SEGA_Pico_folded.png |
+| quake | CC BY-SA 4.0 | Gateway 2000.jpg | MBlairMartin | CC BY-SA 4.0 | https://commons.wikimedia.org/wiki/File:Gateway_2000.jpg |
+| quake2 | CC BY-SA 4.0 | IBM Aptiva 2144-M51.jpg | Ruben de Rijcke | CC BY-SA 4.0 | https://commons.wikimedia.org/wiki/File:IBM_Aptiva_2144-M51.jpg |
+| studio2 | CC BY-NC 4.0 | RCA-Studio-II-FL.jpg | Evan-Amos | Public domain | https://commons.wikimedia.org/wiki/File:RCA-Studio-II-FL.jpg |
+| switch2 | CC BY-SA 4.0 | Nintendo Switch 2 in Docking Console.jpg | Crisco 1492 | CC BY-SA 4.0 | https://commons.wikimedia.org/wiki/File:Nintendo_Switch_2_in_Docking_Console.jpg |
+| varcade | CC BY-SA 2.0 | "Custom" multigame arcade cabinet (2137119547).jpg | Lukas Mathis | CC BY-SA 2.0 | https://commons.wikimedia.org/wiki/File:%22Custom%22_multigame_arcade_cabinet_(2137119547).jpg |
+| vc4000 | CC BY-NC 4.0 | Interton-Electronic-VC-4000-Console-01.jpg | Evan-Amos | Public domain | https://commons.wikimedia.org/wiki/File:Interton-Electronic-VC-4000-Console-01.jpg |
+| videos | CC BY-SA 4.0 | Panasonic Tau TH-15FA5.jpg | Qurren | CC BY-SA 4.0 | https://commons.wikimedia.org/wiki/File:Panasonic_Tau_TH-15FA5.jpg |
+| videos | CC BY-SA 4.0 | 8mm-projector hg.jpg | Hannes Grobe | CC BY 3.0 | https://commons.wikimedia.org/wiki/File:8mm-projector_hg.jpg |
+| videos | CC BY-SA 4.0 | VHS-Video-Tape-Top-Flat.jpg | Evan-Amos | Public domain | https://commons.wikimedia.org/wiki/File:VHS-Video-Tape-Top-Flat.jpg |
+| videos | CC BY-SA 4.0 | Popcorn-Ball.jpg | Evan-Amos | CC0 | https://commons.wikimedia.org/wiki/File:Popcorn-Ball.jpg |
+| xcloud | CC BY-SA 3.0 | Galaxy S III SC-06D Pebble Blue 1.jpg | Qurren | CC BY-SA 3.0 | https://commons.wikimedia.org/wiki/File:Galaxy_S_III_SC-06D_Pebble_Blue_1.jpg |
+| xcloud | CC BY-SA 3.0 | Xbox-360-Controller-Black.jpg | Evan-Amos | Public domain | https://commons.wikimedia.org/wiki/File:Xbox-360-Controller-Black.jpg |
 
 ## Pack-in games' pictures
 
@@ -125,8 +174,8 @@ Changes in Thimsy OS's copy (also noted at the end of its README):
   [Barlow](https://github.com/jpt/barlow/tree/1.422) Semi Condensed Bold 1.422, Copyright 2017 The
   Barlow Project Authors, SIL Open Font License 1.1 (`_inc/fonts/Barlow-OFL.txt`).
 - `quake.webp`, a Quake Champions render credited to noorkabir (imgbin.com), is removed: its
-  rights are id Software's. A replacement is needed; until then the Quake system shows the
-  theme's default picture (`_default.webp`). Quake is not one of Thimsy's systems.
+  rights are id Software's. The Quake system shows a Thimsy OS console picture instead (see
+  "Console pictures"), as do the catalog systems the theme has no art for.
 
 ### Slate
 

@@ -673,9 +673,11 @@ its own launcher, Trebuchet), and **Boot Nano** back. `mods/50-nano.sh` sets it 
   line height match it, and Akrobat, in the theme and as ES-DE's default face
   in Nano, by [Barlow](https://github.com/jpt/barlow) Semi Condensed, both
   under the SIL Open Font License and downloaded at build time with their
-  licenses. Its Quake picture, a Quake Champions render, is left out, so a
-  Quake system would show the theme's default picture. Both changes are noted
-  in the theme's README;
+  licenses. Its Quake picture, a Quake Champions render, is replaced by a
+  Thimsy OS console picture, and console pictures are added for the catalog
+  systems the theme has no art for, all made from freely licensed photos
+  (`mods/console-pictures`; [ATTRIBUTION.md](ATTRIBUTION.md) credits each
+  photo). These changes are noted in the theme's README;
 - the settings screens (Nano Settings and the Quick Menu) have the Minima
   theme's look on a Midnight background (**Theme Settings → Settings Theme**
   sets it back to the XMB's, **Background Colour** changes the colour);

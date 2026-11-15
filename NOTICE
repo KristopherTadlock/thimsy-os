@@ -18,6 +18,18 @@ International license (https://creativecommons.org/licenses/by-nc/4.0/): free
 to use, share and adapt, with credit to the Thimsy OS project, for
 non-commercial purposes only. No commercial use is permitted.
 
+The console pictures Thimsy OS adds to the Colorful (Simplified) theme
+(mods/console-pictures) are made by the Thimsy OS project from freely
+licensed photos on Wikimedia Commons (public domain, CC0, CC BY and CC BY-SA).
+mods/console-pictures/LICENSE, installed with the theme as
+_inc/systems/THIMSY-PICTURES-LICENSE.txt, and ATTRIBUTION.md give each
+picture's source photos with their authors and licenses. A picture made from
+a CC BY-SA photo is under that photo's CC BY-SA license; the others and the
+pictures' theme metadata are by the Thimsy OS project, under the same
+Creative Commons Attribution-NonCommercial 4.0 International license,
+credited as "Console pictures by the Thimsy OS project", with the photo
+credits kept.
+
 With ES-DE, the build includes MAGISK_ES-DE_fix.zip from GammaOS Next
 (https://github.com/TheGammaSqueeze/GammaOSNext), unchanged, Copyright
 TheGammaSqueeze, Apache License 2.0.
@@ -63,8 +75,10 @@ Thimsy OS's copy of the theme is changed, as noted at the end of its README:
     Authors, SIL Open Font License 1.1, installed with its OFL.txt;
   - theme.xml names the new font files;
   - quake.webp, a Quake Champions render (id Software) credited to noorkabir
-    (imgbin.com), is removed; a replacement is needed, and until then the
-    Quake system shows the theme's default picture.
+    (imgbin.com), is replaced by a Thimsy OS picture;
+  - Thimsy OS pictures and metadata are added for the catalog systems the
+    theme has no art for (mods/console-pictures; each picture's source
+    photos and license are in _inc/systems/THIMSY-PICTURES-LICENSE.txt).
 
 On the 1.4.4 base, Barlow Semi Condensed Medium and SemiBold also replace
 Nano's copies of Akrobat (/system/etc/nano_xmb/fonts/akrobat-regular.ttf and
