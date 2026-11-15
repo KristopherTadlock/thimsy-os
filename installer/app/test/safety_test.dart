@@ -1006,63 +1006,50 @@ void main() {
       expect(s.canProceed(WizardStep.build), isTrue);
     });
 
-    test('Install while preparing waits for it, then installs', () async {
+    test('Install waits until the image is ready', () async {
       final engine = ControlledEngine()
         ..holdPrepare = true
         ..holdFlash = true;
       final s = await built(engine);
       await toReviewState(s);
+      expect(s.imagePreparing, isTrue);
+      expect(s.canInstallForReal, isFalse);
       s.install();
-      expect(s.step, WizardStep.install);
-      expect(s.installPending, isTrue);
-      expect(s.busy, isTrue);
+      expect(s.step, WizardStep.review);
+      expect(s.busy, isFalse);
       expect(flashCalls(engine), isEmpty);
 
       await engine.prepares.single.finish(prepared());
+      await settle();
+      expect(s.imagePreparing, isFalse);
+      expect(s.canInstallForReal, isTrue);
+      s.install();
+      expect(s.step, WizardStep.install);
       await until(() => engine.flashes.isNotEmpty);
       expect(flashCalls(engine), ['flash full']);
-      expect(s.installPending, isFalse);
       expect(s.flashRun.running, isTrue);
     });
 
     test(
-      'a failed preparation still starts the install, which reports it',
+      'a failed preparation still allows the install, which reports it',
       () async {
         final engine = ControlledEngine()
           ..holdPrepare = true
           ..holdFlash = true;
         final s = await built(engine);
         await toReviewState(s);
-        s.install();
         final run = engine.prepares.single;
         run.add(
           const ErrorEvent(code: 'not_enough_space', message: 'needs 7 GB'),
         );
         await run.finish(ResultEvent(false, {'type': 'result', 'ok': false}));
-        await until(() => engine.flashes.isNotEmpty);
-        expect(flashCalls(engine), ['flash full']);
+        await settle();
         // The background run never raised the space dialog itself.
         expect(s.spaceProblem, isNull);
-      },
-    );
-
-    test(
-      'Stop while waiting: nothing starts, the preparation goes on',
-      () async {
-        final engine = ControlledEngine()
-          ..holdPrepare = true
-          ..holdFlash = true;
-        final s = await built(engine);
-        await toReviewState(s);
+        expect(s.canInstallForReal, isTrue);
         s.install();
-        await s.cancelFlash();
-        expect(s.installPending, isFalse);
-        expect(s.busy, isFalse);
-        expect(engine.prepares.single.cancelled, isFalse);
-        await engine.prepares.single.finish(prepared());
-        await settle();
-        expect(flashCalls(engine), isEmpty);
-        expect(s.prepareRun.ok, isTrue);
+        await until(() => engine.flashes.isNotEmpty);
+        expect(flashCalls(engine), ['flash full']);
       },
     );
 
@@ -1074,7 +1061,7 @@ void main() {
       await toReviewState(s);
       s.setDryRun(true);
       s.install();
-      expect(s.installPending, isFalse);
+      expect(s.imagePreparing, isTrue);
       expect(flashCalls(engine), ['flash full dry']);
     });
 
@@ -1191,7 +1178,7 @@ void main() {
       await tester.pumpAndSettle();
     });
 
-    testWidgets('Install while preparing shows the preparation first', (
+    testWidgets('Install is off on Review until the image is ready', (
       tester,
     ) async {
       final engine = ControlledEngine()
@@ -1218,16 +1205,19 @@ void main() {
       await pumpFor(tester);
       expect(key('preparing-image'), findsOneWidget);
       expect(find.textContaining('25%'), findsOne);
-
-      await tapRunning(tester, key('install-button'));
-      await tapRunning(tester, key('confirm-install-yes'));
-      expect(find.text('Getting ready'), findsOneWidget);
-      expect(find.textContaining('Preparing partitions'), findsOne);
-      expect(engine.flashes, isEmpty);
+      FilledButton install() =>
+          tester.widget<FilledButton>(key('install-button'));
+      expect(install().onPressed, isNull);
 
       await prep.finish(
         ResultEvent(true, {'type': 'result', 'ok': true, 'files': 60}),
       );
+      await pumpFor(tester);
+      expect(key('image-ready'), findsOneWidget);
+      expect(install().onPressed, isNotNull);
+
+      await tapRunning(tester, key('install-button'));
+      await tapRunning(tester, key('confirm-install-yes'));
       await pumpFor(tester);
       expect(engine.flashes, hasLength(1));
       await engine.flashes.single.finish(

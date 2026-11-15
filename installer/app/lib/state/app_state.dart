@@ -364,28 +364,25 @@ class AppState extends ChangeNotifier {
   // --------------------------------------------------------------- prepare
   /// Getting the build ready to install (`prepare`: the image checked, the
   /// partitions unpacked), started in the background as soon as the build
-  /// finishes. Install then goes straight to asking for the device.
+  /// finishes. Review's Install waits for it; the install then goes
+  /// straight to asking for the device.
   final RunState prepareRun = RunState();
   EngineRun? _prepareHandle;
 
   /// The build [prepareRun] is for.
   String? _preparedJob;
 
-  /// Install was confirmed while [prepareRun] was still going: the install
-  /// starts as soon as it ends (whether or not it worked: the install then
-  /// does any preparation still needed itself, and reports any problem).
-  bool installPending = false;
-
   /// [prepareRun] is for the current build.
   bool get preparingCurrent => _preparedJob != null && _preparedJob == job;
 
+  /// The current build is still being got ready: a real install can't
+  /// start until that ends (whether or not it worked: the install does any
+  /// preparation still needed itself, and reports any problem).
+  bool get imagePreparing => preparingCurrent && prepareRun.running;
+
   /// A build, unlock or install is running (or waiting to start): the
   /// selection and the step rail are locked until it ends.
-  bool get busy =>
-      buildRun.running ||
-      flashRun.running ||
-      unlockRun.running ||
-      installPending;
+  bool get busy => buildRun.running || flashRun.running || unlockRun.running;
 
   /// Set by [shutdown]: the app is closing, nothing new starts.
   bool _shutDown = false;
@@ -746,20 +743,15 @@ class AppState extends ChangeNotifier {
       onDone: () {
         if (!identical(_prepareHandle, run)) return;
         _prepareHandle = null;
-        if (installPending) {
-          installPending = false;
-          _startConfirmed();
-        }
       },
     );
   }
 
   /// Stops [prepareRun] (waiting for its engine to exit, so the workspace
-  /// is free) and drops a pending install.
+  /// is free).
   Future<void> _cancelPrepare() async {
     final h = _prepareHandle;
     _prepareHandle = null;
-    installPending = false;
     _preparedJob = null;
     prepareRun.reset();
     await h?.cancel();
@@ -906,16 +898,17 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Whether Review may start a real install: devices that must already be
-  /// connected (not Unisoc, whose tool waits) need to have been detected.
+  /// Whether Review may start a real install: the image is ready (not
+  /// still being got ready), and devices that must already be connected
+  /// (not Unisoc, whose tool waits) have been detected.
   bool get canInstallForReal =>
-      plan?.connectFirst == false || matchedDevice != null;
+      !imagePreparing && (plan?.connectFirst == false || matchedDevice != null);
 
   /// Whether "Run again" may repeat the install confirmed on Review: the
   /// same build, mode and dry/real choice.
   bool get canRunAgain {
     final c = _confirmed;
-    return c != null && c.job == job && !busy;
+    return c != null && c.job == job && !busy && (c.dry || !imagePreparing);
   }
 
   /// Repeats exactly what was confirmed on Review (never switches a dry run
@@ -927,7 +920,7 @@ class AppState extends ChangeNotifier {
       goTo(WizardStep.review);
       return;
     }
-    _startOrWait();
+    _startConfirmed();
   }
 
   /// Review's Install button (after the confirmation dialog): records what
@@ -937,28 +930,15 @@ class AppState extends ChangeNotifier {
     if (busy || j == null || (!dryRun && !canInstallForReal)) return;
     _confirmed = FlashConfirmation(j, flashMode, dryRun);
     _advanceTo(WizardStep.install);
-    _startOrWait();
-  }
-
-  /// Starts the confirmed install, or, while the build is still being got
-  /// ready, has it start when that ends (the install screen shows the
-  /// preparation meanwhile). A dry run needs none of it.
-  void _startOrWait() {
-    final c = _confirmed;
-    if (busy || _shutDown || c == null || c.job != job) return;
-    if (!c.dry && prepareRun.running && preparingCurrent) {
-      flashRun.reset();
-      flashRunDry = false;
-      installPending = true;
-      notifyListeners();
-      return;
-    }
     _startConfirmed();
   }
 
+  /// Starts the confirmed install. A real one never starts while the image
+  /// is still being got ready (a dry run needs none of it).
   void _startConfirmed() {
     final c = _confirmed;
     if (busy || _shutDown || c == null || c.job != job) return;
+    if (!c.dry && imagePreparing) return;
     flashRun.reset();
     flashRun.running = true;
     flashRunDry = c.dry;
@@ -993,15 +973,8 @@ class AppState extends ChangeNotifier {
     if (furthest.index > back.index) furthest = back;
   }
 
-  /// Stop on the install screen: stops the install, or (while it waits for
-  /// the preparation) keeps it from starting. The preparation itself goes
-  /// on in the background.
+  /// Stop on the install screen: stops the install.
   Future<void> cancelFlash() async {
-    if (installPending) {
-      installPending = false;
-      notifyListeners();
-      return;
-    }
     await _flashHandle?.cancel();
   }
 
