@@ -1,5 +1,5 @@
 diff --git a/spd_dump.c b/spd_dump.c
-index f8ba370..d863361 100644
+index f8ba370..c7c531d 100644
 --- a/spd_dump.c
 +++ b/spd_dump.c
 @@ -37,6 +37,27 @@
@@ -524,18 +524,15 @@ index f8ba370..d863361 100644
  #if USE_LIBUSB
  	(void)tty;
  	ret = libusb_init(NULL);
-@@ -1223,7 +1640,63 @@ int main(int argc, char **argv) {
+@@ -1223,7 +1640,73 @@ int main(int argc, char **argv) {
  	}
  
  	for (i = 0; ; i++) {
 -#if USE_LIBUSB
 +#if SPD_WIN
-+		device = win_usb_open(&usb_err);
-+		if (device) {
-+			DBG_LOG("connected through libusb (WinUSB)\n");
-+			break;
-+		}
++		device = NULL;
 +		{
++			/* Windows' own list first: it never touches the device. */
 +			int other = win_scan(win_seen, sizeof(win_seen),
 +					win_other, sizeof(win_other));
 +			/* What Windows has, whenever it changes. */
@@ -578,6 +575,19 @@ index f8ba370..d863361 100644
 +				}
 +			}
 +		}
++		/* libusb only for a device WinUSB runs: it never touches one on
++		   Unisoc's driver (or any other). */
++		usb_err = 0;
++		if (strstr(win_seen, "1782:4d00 WinUSB ")) {
++			device = win_usb_open(&usb_err);
++			if (device) {
++				DBG_LOG("connected through libusb (WinUSB)\n");
++				break;
++			}
++		}
++		/* Still looking: say so now and then. */
++		if (i && !(i % (30 * REOPEN_FREQ)))
++			DBG_LOG("still waiting (%ds)\n", i / REOPEN_FREQ);
 +		/* Connected, but libusb can't open it: say why (once). */
 +		if (usb_err < 0 && usb_err != usb_last_err)
 +			DBG_LOG("download mode is connected, but libusb can't open it : %s\n",
@@ -589,7 +599,7 @@ index f8ba370..d863361 100644
  		device = libusb_open_device_with_vid_pid(NULL, 0x1782, 0x4d00);
  		if (device) break;
  		if (i >= wait)
-@@ -1239,7 +1712,7 @@ int main(int argc, char **argv) {
+@@ -1239,7 +1722,7 @@ int main(int argc, char **argv) {
  	}
  
  #if USE_LIBUSB
@@ -598,7 +608,7 @@ index f8ba370..d863361 100644
  #else
  	io = spdio_init(serial, 0);
  #endif
-@@ -1258,18 +1731,25 @@ int main(int argc, char **argv) {
+@@ -1258,18 +1741,25 @@ int main(int argc, char **argv) {
  				// Required for smartphones.
  				// Is there a way to do the same with usb-serial?
  #if USE_LIBUSB
