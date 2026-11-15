@@ -1,5 +1,5 @@
 diff --git a/spd_dump.c b/spd_dump.c
-index f8ba370..c4561ec 100644
+index f8ba370..ce4393b 100644
 --- a/spd_dump.c
 +++ b/spd_dump.c
 @@ -37,6 +37,28 @@
@@ -31,7 +31,7 @@ index f8ba370..c4561ec 100644
  #include "spd_cmd.h"
  
  static void print_mem(FILE *f, uint8_t *buf, size_t len) {
-@@ -93,6 +115,14 @@ typedef struct {
+@@ -93,6 +115,15 @@ typedef struct {
  #else
  	int serial;
  #endif
@@ -41,12 +41,13 @@ index f8ba370..c4561ec 100644
 +	HANDLE com;
 +	void *c9;
 +	struct win_rx *rx;
++	char port[16];
 +#endif
 +	int pre_ver;
  	int flags, recv_len, recv_pos;
  	int raw_len, enc_len, verbose, timeout;
  } spdio_t;
-@@ -190,6 +220,441 @@ static void init_serial(int serial) {
+@@ -190,6 +221,441 @@ static void init_serial(int serial) {
  }
  #endif
  
@@ -488,7 +489,7 @@ index f8ba370..c4561ec 100644
  #if USE_LIBUSB
  static spdio_t* spdio_init(libusb_device_handle *dev_handle, int flags) {
  #else
-@@ -198,8 +663,9 @@ static spdio_t* spdio_init(int serial, int flags) {
+@@ -198,8 +664,9 @@ static spdio_t* spdio_init(int serial, int flags) {
  	uint8_t *p; spdio_t *io;
  
  #if USE_LIBUSB
@@ -500,7 +501,7 @@ index f8ba370..c4561ec 100644
  #else
  	init_serial(serial);
  	// fcntl(serial, F_SETFL, FNDELAY);
-@@ -227,11 +693,22 @@ static spdio_t* spdio_init(int serial, int flags) {
+@@ -227,11 +694,23 @@ static spdio_t* spdio_init(int serial, int flags) {
  	io->enc_buf = p;
  	io->verbose = 0;
  	io->timeout = 1000;
@@ -510,6 +511,7 @@ index f8ba370..c4561ec 100644
 +	io->com = INVALID_HANDLE_VALUE;
 +	io->c9 = NULL;
 +	io->rx = NULL;
++	io->port[0] = 0;
 +#endif
  	return io;
  }
@@ -523,7 +525,7 @@ index f8ba370..c4561ec 100644
  #if USE_LIBUSB
  	libusb_close(io->dev_handle);
  #else
-@@ -397,6 +874,13 @@ static int send_msg(spdio_t *io) {
+@@ -397,6 +876,13 @@ static int send_msg(spdio_t *io) {
  		} else DBG_LOG("send: unknown message\n");
  	}
  
@@ -537,7 +539,7 @@ index f8ba370..c4561ec 100644
  #if USE_LIBUSB
  	{
  		int err = libusb_bulk_transfer(io->dev_handle,
-@@ -405,7 +889,7 @@ static int send_msg(spdio_t *io) {
+@@ -405,7 +891,7 @@ static int send_msg(spdio_t *io) {
  			ERR_EXIT("usb_send failed : %s\n", libusb_error_name(err));
  	}
  	// UMS9117 waits too long after a 512 byte block.
@@ -546,7 +548,7 @@ index f8ba370..c4561ec 100644
  		int dummy;
  		// signal end of transfer
  		libusb_bulk_transfer(io->dev_handle,
-@@ -432,13 +916,22 @@ static int recv_msg1(spdio_t *io) {
+@@ -432,13 +918,22 @@ static int recv_msg1(spdio_t *io) {
  	pos = io->recv_pos;
  	for (;;) {
  		if (pos >= len) {
@@ -569,7 +571,7 @@ index f8ba370..c4561ec 100644
  #else
  			if (io->timeout >= 0) {
  				struct pollfd fds = { 0 };
-@@ -618,7 +1111,7 @@ static void send_file(spdio_t *io, const char *fn,
+@@ -618,7 +1113,7 @@ static void send_file(spdio_t *io, const char *fn,
  	uint8_t *mem; size_t size = 0;
  	mem = loadfile(fn, &size, 0);
  	if (!mem) ERR_EXIT("loadfile(\"%s\") failed\n", fn);
@@ -578,38 +580,48 @@ index f8ba370..c4561ec 100644
  	if (size < src_offs)
  		ERR_EXIT("data outside the file\n");
  	size -= src_offs;
-@@ -1182,13 +1675,83 @@ found:
+@@ -1182,13 +1677,127 @@ found:
  
  #define REOPEN_FREQ 2
  
 +#if SPD_WIN
++static const char *win_how[] = { "", "Windows serial I/O", "Channel9.dll" };
++
++/* Opens port for io (its kind says how), with what the device sends read
++   as it arrives; 0 if it couldn't be (*err: why, when known). */
++static int win_ser_open(spdio_t *io, const char *port, DWORD *err) {
++	int opened = 0;
++	*err = 0;
++	snprintf(io->port, sizeof(io->port), "%s", port);
++	io->rx = rx_new();
++	if (!io->rx) return 0;
++	if (io->kind == 1) {
++		HANDLE com = win_com_open(port, err);
++		if (com) {
++			io->com = com;
++			io->rx->thread = CreateThread(NULL, 0, com_reader, io, 0,
++					&io->rx->tid);
++			opened = io->rx->thread != NULL;
++			if (!opened) *err = GetLastError();
++		}
++	}
++#if C9
++	else opened = c9_open(io, port);
++#endif
++	return opened;
++}
++
 +/* Opens the port through Unisoc's driver (kind 1: Windows serial I/O, 2:
 +   Channel9.dll) and asks the bootloader for its version; the connection,
 +   with the answer in raw_buf, or NULL (said why). */
 +static spdio_t *win_ser_connect(const char *port, int kind) {
-+	static const char *how[] = { "", "Windows serial I/O", "Channel9.dll" };
++	const char **how = win_how;
 +	spdio_t *io;
 +	DWORD err = 0;
-+	int i, opened = 0;
++	int i;
 +	io = spdio_init(NULL, 0);
 +	io->kind = kind;
-+	io->rx = rx_new();
-+	if (io->rx) {
-+		if (kind == 1) {
-+			HANDLE com = win_com_open(port, &err);
-+			if (com) {
-+				io->com = com;
-+				io->rx->thread = CreateThread(NULL, 0, com_reader, io, 0,
-+						&io->rx->tid);
-+				opened = io->rx->thread != NULL;
-+				if (!opened) err = GetLastError();
-+			}
-+		}
-+#if C9
-+		else opened = c9_open(io, port);
-+#endif
-+	}
-+	if (!opened) {
++	if (!win_ser_open(io, port, &err)) {
 +		if (err == ERROR_ACCESS_DENIED || err == ERROR_SHARING_VIOLATION)
 +			DBG_LOG("serial port %s is in use by another program\n", port);
 +		else if (err)
@@ -646,6 +658,40 @@ index f8ba370..c4561ec 100644
 +	spdio_free(io);
 +	return NULL;
 +}
++
++/* The first message to FDL1, the loader the bootloader just started. FDL1
++   may restart the device's USB connection as it starts (its port goes
++   away and comes back, as Unisoc's tools expect): then the port is opened
++   again, the same way, once the device is back (up to 15 s). */
++static void win_fdl1_send(spdio_t *io) {
++	char seen[600], other[200], last[600] = "-";
++	DWORD err = 0;
++	int i;
++	if (win_ser_write(io, io->enc_buf, io->enc_len) == io->enc_len) return;
++	DBG_LOG("FDL1 didn't take the message on %s (error %lu); waiting for the device to come back\n",
++			io->port, (unsigned long)GetLastError());
++	win_ser_close(io);
++	for (i = 0; i < 150; i++) {
++		int found = win_scan(seen, sizeof(seen), other, sizeof(other));
++		if (strcmp(seen, last)) {
++			DBG_LOG("Windows has: %s\n", seen[0] ? seen : "no Unisoc USB device");
++			strcpy(last, seen);
++		}
++		if (found == 4) {
++			if (win_ser_open(io, other, &err)) {
++				rx_clear(io->rx);
++				io->recv_len = io->recv_pos = 0;
++				if (win_ser_write(io, io->enc_buf, io->enc_len) == io->enc_len) {
++					DBG_LOG("reopened %s (%s)\n", io->port, win_how[io->kind]);
++					return;
++				}
++			}
++			win_ser_close(io);
++		}
++		Sleep(100);
++	}
++	ERR_EXIT("the device didn't come back after FDL1 started\n");
++}
 +#endif
 +
  int main(int argc, char **argv) {
@@ -663,7 +709,7 @@ index f8ba370..c4561ec 100644
  	int wait = 300 * REOPEN_FREQ;
  	const char *tty = "/dev/ttyUSB0";
  	int verbose = 0, fdl_loaded = 0;
-@@ -1197,6 +1760,11 @@ int main(int argc, char **argv) {
+@@ -1197,6 +1806,11 @@ int main(int argc, char **argv) {
  	int keep_charge = 0, end_data = 1, blk_size = 0;
  	int secure_boot = 0;
  
@@ -675,7 +721,7 @@ index f8ba370..c4561ec 100644
  #if USE_LIBUSB
  	(void)tty;
  	ret = libusb_init(NULL);
-@@ -1223,7 +1791,75 @@ int main(int argc, char **argv) {
+@@ -1223,7 +1837,75 @@ int main(int argc, char **argv) {
  	}
  
  	for (i = 0; ; i++) {
@@ -752,7 +798,7 @@ index f8ba370..c4561ec 100644
  		device = libusb_open_device_with_vid_pid(NULL, 0x1782, 0x4d00);
  		if (device) break;
  		if (i >= wait)
-@@ -1239,7 +1875,7 @@ int main(int argc, char **argv) {
+@@ -1239,7 +1921,7 @@ int main(int argc, char **argv) {
  	}
  
  #if USE_LIBUSB
@@ -761,7 +807,7 @@ index f8ba370..c4561ec 100644
  #else
  	io = spdio_init(serial, 0);
  #endif
-@@ -1258,18 +1894,25 @@ int main(int argc, char **argv) {
+@@ -1258,18 +1940,25 @@ int main(int argc, char **argv) {
  				// Required for smartphones.
  				// Is there a way to do the same with usb-serial?
  #if USE_LIBUSB
@@ -787,3 +833,24 @@ index f8ba370..c4561ec 100644
  				if (recv_type(io) != BSL_REP_VER)
  					ERR_EXIT("ver expected\n");
  
+@@ -1292,6 +1981,9 @@ int main(int argc, char **argv) {
+ 					encode_msg(io, BSL_CMD_EXEC_DATA, NULL, 0);
+ 					send_and_check(io);
+ 				}
++#if SPD_WIN
++				if (io->kind) DBG_LOG("FDL1 started\n");
++#endif
+ 
+ 				/* FDL1 (chk = sum) */
+ 				io->flags &= ~FLAGS_CRC16;
+@@ -1300,6 +1992,10 @@ int main(int argc, char **argv) {
+ 				for (i = 0; i < 10; i++) {
+ 					if (io->verbose >= 1)
+ 						DBG_LOG("checkbaud %d\n", i + 1);
++#if SPD_WIN
++					if (io->kind) win_fdl1_send(io);
++					else
++#endif
+ 					send_msg(io);
+ 					ret = recv_msg(io);
+ 					if (ret) break;
