@@ -1,17 +1,18 @@
 diff --git a/spd_dump.c b/spd_dump.c
-index f8ba370..c7c531d 100644
+index f8ba370..c4561ec 100644
 --- a/spd_dump.c
 +++ b/spd_dump.c
-@@ -37,6 +37,27 @@
+@@ -37,6 +37,28 @@
  #endif
  #include <unistd.h>
  
 +#if USE_LIBUSB && defined(_WIN32)
 +/* Windows: the device in download mode is opened through WinUSB (libusb)
 +   or, when it has Unisoc's own driver ("SPRD U2S Diag", sprdvcom), through
-+   that driver's serial port: first with plain Windows serial I/O done the
-+   way Unisoc's Channel9.dll does it, then, if the device didn't answer,
-+   with Channel9.dll itself when it's next to spd_dump.exe (32-bit builds).
++   that driver's serial port: first with Unisoc's Channel9.dll when it's
++   next to spd_dump.exe (32-bit builds), then, if that didn't work, with
++   plain Windows serial I/O done the same way. Either way, what the device
++   sends is read as it arrives, as Unisoc's tools do.
 +   While it waits, it logs what Windows has for any Unisoc USB device, and
 +   says when the device has a driver neither can use, or its port is in
 +   use, and keeps waiting. */
@@ -30,7 +31,7 @@ index f8ba370..c7c531d 100644
  #include "spd_cmd.h"
  
  static void print_mem(FILE *f, uint8_t *buf, size_t len) {
-@@ -93,6 +114,13 @@ typedef struct {
+@@ -93,6 +115,14 @@ typedef struct {
  #else
  	int serial;
  #endif
@@ -39,12 +40,13 @@ index f8ba370..c7c531d 100644
 +	int kind;
 +	HANDLE com;
 +	void *c9;
++	struct win_rx *rx;
 +#endif
 +	int pre_ver;
  	int flags, recv_len, recv_pos;
  	int raw_len, enc_len, verbose, timeout;
  } spdio_t;
-@@ -190,6 +218,307 @@ static void init_serial(int serial) {
+@@ -190,6 +220,441 @@ static void init_serial(int serial) {
  }
  #endif
  
@@ -145,8 +147,9 @@ index f8ba370..c7c531d 100644
 +   (see "fdl" below) itself when its port is opened ("SprdVendorRequest").
 +   Its serial port, opened the way Channel9.dll opens it: overlapped,
 +   buffers cleared, 115200 8N1 with the driver's own DTR/RTS handling,
-+   4 KB queues, reads that return what's there, 2 s (plus 1 ms a byte)
-+   for a write. 0 if it couldn't be opened (*err: why). */
++   4 KB queues, 2 s (plus 1 ms a byte) for a write. Reads return as soon
++   as anything arrives, or after 100 ms (the reader thread keeps one
++   going). 0 if it couldn't be opened (*err: why). */
 +static HANDLE win_com_open(const char *port, DWORD *err) {
 +	char path[32];
 +	HANDLE h;
@@ -174,11 +177,159 @@ index f8ba370..c7c531d 100644
 +	SetupComm(h, 4096, 4096);
 +	memset(&t, 0, sizeof(t));
 +	t.ReadIntervalTimeout = MAXDWORD;
++	t.ReadTotalTimeoutMultiplier = MAXDWORD;
++	t.ReadTotalTimeoutConstant = 100;
 +	t.WriteTotalTimeoutMultiplier = 1;
 +	t.WriteTotalTimeoutConstant = 2000;
 +	SetCommTimeouts(h, &t);
-+	SetCommMask(h, EV_RXCHAR | EV_RX80FULL);
 +	return h;
++}
++
++/* What the device sends, read as it arrives (the way Channel9.dll does
++   for Unisoc's tools): a thread keeps reading the port, so the device is
++   never left waiting to send, and the protocol takes the data from here.
++   (The bootloader won't take a command while an answer of its own is
++   still waiting to be read.) */
++struct win_rx {
++	CRITICAL_SECTION lock;
++	HANDLE event;	/* set while there's data, or after a failure */
++	HANDLE thread, ready;
++	DWORD tid;
++	uint8_t *buf;
++	size_t head, len, cap;
++	volatile LONG stop;
++	int failed;
++};
++
++static struct win_rx *rx_new(void) {
++	struct win_rx *rx = (struct win_rx*)calloc(1, sizeof(*rx));
++	if (!rx) return NULL;
++	rx->cap = 1 << 20;
++	rx->buf = (uint8_t*)malloc(rx->cap);
++	rx->event = CreateEventA(NULL, TRUE, FALSE, NULL);
++	rx->ready = CreateEventA(NULL, TRUE, FALSE, NULL);
++	if (!rx->buf || !rx->event || !rx->ready) {
++		if (rx->event) CloseHandle(rx->event);
++		if (rx->ready) CloseHandle(rx->ready);
++		free(rx->buf);
++		free(rx);
++		return NULL;
++	}
++	InitializeCriticalSection(&rx->lock);
++	return rx;
++}
++
++static void rx_put(struct win_rx *rx, const void *data, size_t n) {
++	EnterCriticalSection(&rx->lock);
++	if (rx->len + n > rx->cap && rx->head) {
++		memmove(rx->buf, rx->buf + rx->head, rx->len - rx->head);
++		rx->len -= rx->head;
++		rx->head = 0;
++	}
++	if (rx->len + n > rx->cap) {
++		size_t cap = rx->cap;
++		uint8_t *b;
++		while (cap < rx->len + n) cap *= 2;
++		b = (uint8_t*)realloc(rx->buf, cap);
++		if (!b) rx->failed = 1;
++		else {
++			rx->buf = b;
++			rx->cap = cap;
++		}
++	}
++	if (!rx->failed) {
++		memcpy(rx->buf + rx->len, data, n);
++		rx->len += n;
++	}
++	SetEvent(rx->event);
++	LeaveCriticalSection(&rx->lock);
++}
++
++static void rx_fail(struct win_rx *rx) {
++	EnterCriticalSection(&rx->lock);
++	rx->failed = 1;
++	SetEvent(rx->event);
++	LeaveCriticalSection(&rx->lock);
++}
++
++/* Up to len bytes of what arrived, waiting up to timeout ms (<= 0: no
++   limit) for some; 0 on timeout, -1 once reading failed. */
++static int rx_get(struct win_rx *rx, void *buf, int len, int timeout) {
++	DWORD start = GetTickCount();
++	for (;;) {
++		DWORD wait = INFINITE, spent;
++		EnterCriticalSection(&rx->lock);
++		if (rx->len > rx->head) {
++			size_t n = rx->len - rx->head;
++			if (n > (size_t)len) n = (size_t)len;
++			memcpy(buf, rx->buf + rx->head, n);
++			rx->head += n;
++			if (rx->head == rx->len) {
++				rx->head = rx->len = 0;
++				if (!rx->failed) ResetEvent(rx->event);
++			}
++			LeaveCriticalSection(&rx->lock);
++			return (int)n;
++		}
++		if (rx->failed) {
++			LeaveCriticalSection(&rx->lock);
++			return -1;
++		}
++		ResetEvent(rx->event);
++		LeaveCriticalSection(&rx->lock);
++		if (timeout > 0) {
++			spent = GetTickCount() - start;
++			if (spent >= (DWORD)timeout) return 0;
++			wait = (DWORD)timeout - spent;
++		}
++		if (WaitForSingleObject(rx->event, wait) != WAIT_OBJECT_0) return 0;
++	}
++}
++
++/* Forgets what arrived and wasn't read. */
++static void rx_clear(struct win_rx *rx) {
++	EnterCriticalSection(&rx->lock);
++	rx->head = rx->len = 0;
++	if (!rx->failed) ResetEvent(rx->event);
++	LeaveCriticalSection(&rx->lock);
++}
++
++static void rx_free(struct win_rx *rx) {
++	if (!rx) return;
++	if (rx->thread) CloseHandle(rx->thread);
++	CloseHandle(rx->event);
++	CloseHandle(rx->ready);
++	DeleteCriticalSection(&rx->lock);
++	free(rx->buf);
++	free(rx);
++}
++
++/* The reader thread for Windows serial I/O. */
++static DWORD WINAPI com_reader(LPVOID arg) {
++	spdio_t *io = (spdio_t*)arg;
++	struct win_rx *rx = io->rx;
++	uint8_t buf[4096];
++	OVERLAPPED ov;
++	memset(&ov, 0, sizeof(ov));
++	ov.hEvent = CreateEventA(NULL, TRUE, FALSE, NULL);
++	if (!ov.hEvent) {
++		rx_fail(rx);
++		return 1;
++	}
++	while (!rx->stop) {
++		DWORD n = 0;
++		ResetEvent(ov.hEvent);
++		if (!ReadFile(io->com, buf, sizeof(buf), &n, &ov)) {
++			if (GetLastError() != ERROR_IO_PENDING ||
++					!GetOverlappedResult(io->com, &ov, &n, TRUE)) {
++				if (!rx->stop) rx_fail(rx);
++				break;
++			}
++		}
++		if (n) rx_put(rx, buf, n);
++	}
++	CloseHandle(ov.hEvent);
++	return 0;
 +}
 +
 +/* Channel9.dll's COM channel (its interface: a C++ object whose methods
@@ -190,11 +341,16 @@ index f8ba370..c7c531d 100644
 +typedef void (*c9_release_t)(void *channel);
 +typedef BOOL (__thiscall *c9_open_t)(void *self, void *attr);
 +typedef void (__thiscall *c9_close_t)(void *self);
-+typedef DWORD (__thiscall *c9_read_t)(void *self, void *data, DWORD size,
-+		DWORD timeout, DWORD reserved);
 +typedef DWORD (__thiscall *c9_write_t)(void *self, void *data, DWORD size,
 +		DWORD reserved);
-+enum { C9_OPEN = 4, C9_CLOSE = 5, C9_READ = 7, C9_WRITE = 8 };
++typedef BOOL (__thiscall *c9_set_receiver_t)(void *self, ULONG msg,
++		BOOL by_thread, const void *receiver);
++typedef void (__thiscall *c9_free_mem_t)(void *self, void *mem);
++enum { C9_SET_RECEIVER = 2, C9_OPEN = 4, C9_CLOSE = 5, C9_WRITE = 8,
++		C9_FREE_MEM = 9 };
++/* The message its reading thread sends ours: wParam the data (freed with
++   FreeMem), lParam its size. */
++#define C9_MSG (WM_USER + 1)
 +static c9_create_t c9_create;
 +static c9_release_t c9_release;
 +
@@ -229,16 +385,40 @@ index f8ba370..c7c531d 100644
 +	return ok;
 +}
 +
-+static void *c9_open(const char *port) {
++/* Our thread that takes what Channel9.dll's own reading thread got. */
++static DWORD WINAPI c9_receiver(LPVOID arg) {
++	spdio_t *io = (spdio_t*)arg;
++	MSG msg;
++	/* The thread's message queue exists from here. */
++	PeekMessageA(&msg, NULL, 0, 0, PM_NOREMOVE);
++	SetEvent(io->rx->ready);
++	while (GetMessageA(&msg, NULL, 0, 0) > 0) {
++		if (msg.message != C9_MSG) continue;
++		if (msg.wParam && msg.lParam > 0)
++			rx_put(io->rx, (const void*)msg.wParam, (size_t)msg.lParam);
++		if (msg.wParam)
++			((c9_free_mem_t)c9_method(io->c9, C9_FREE_MEM))(io->c9,
++					(void*)msg.wParam);
++	}
++	return 0;
++}
++
++/* Opens the port through Channel9.dll the way Unisoc's tools do: with
++   its reading thread sending what arrives to ours ("async" mode). */
++static int c9_open(spdio_t *io, const char *port) {
 +	struct { int type; DWORD port, baud, pad; } attr = { 0, 0, 115200, 0 };
 +	void *ch = NULL;
 +	attr.port = (DWORD)atoi(port + 3);
-+	if (!c9_create(&ch, 0) || !ch) return NULL;
-+	if (!((c9_open_t)c9_method(ch, C9_OPEN))(ch, &attr)) {
-+		c9_release(ch);
-+		return NULL;
-+	}
-+	return ch;
++	if (!c9_create(&ch, 0) || !ch) return 0;
++	io->c9 = ch;
++	io->rx->thread = CreateThread(NULL, 0, c9_receiver, io, 0, &io->rx->tid);
++	if (!io->rx->thread ||
++			WaitForSingleObject(io->rx->ready, 5000) != WAIT_OBJECT_0)
++		return 0;
++	if (!((c9_set_receiver_t)c9_method(ch, C9_SET_RECEIVER))(ch, C9_MSG,
++			TRUE, (const void*)(ULONG_PTR)io->rx->tid))
++		return 0;
++	return ((c9_open_t)c9_method(ch, C9_OPEN))(ch, &attr) ? 1 : 0;
 +}
 +#else
 +#define C9 0
@@ -274,85 +454,41 @@ index f8ba370..c7c531d 100644
 +	return done;
 +}
 +
-+/* Reads what arrives within timeout ms (<= 0: no limit); 0 on timeout,
++/* Reads what arrived within timeout ms (<= 0: no limit); 0 on timeout,
 +   -1 on error. */
 +static int win_ser_read(spdio_t *io, void *buf, int len, int timeout) {
-+	DWORD wait = timeout > 0 ? (DWORD)timeout : INFINITE;
-+	OVERLAPPED ov;
-+	DWORD n = 0, e, mask = 0;
-+	COMSTAT cs;
-+#if C9
-+	if (io->kind == 2) {
-+		DWORD start = GetTickCount();
-+		for (;;) {
-+			n = ((c9_read_t)c9_method(io->c9, C9_READ))(io->c9, buf,
-+					(DWORD)len, wait, 0);
-+			if (n) return (int)n;
-+			if (timeout > 0 && GetTickCount() - start >= wait) return 0;
-+			Sleep(1);
-+		}
-+	}
-+#endif
-+	if (!ClearCommError(io->com, &e, &cs)) return -1;
-+	if (!cs.cbInQue) {
-+		/* Wait for something to arrive, as Channel9 does. */
-+		memset(&ov, 0, sizeof(ov));
-+		ov.hEvent = CreateEventA(NULL, TRUE, FALSE, NULL);
-+		if (!ov.hEvent) return -1;
-+		if (!WaitCommEvent(io->com, &mask, &ov)) {
-+			if (GetLastError() != ERROR_IO_PENDING) {
-+				CloseHandle(ov.hEvent);
-+				return -1;
-+			}
-+			if (WaitForSingleObject(ov.hEvent, wait) != WAIT_OBJECT_0) {
-+				/* Changing the mask ends the wait. */
-+				SetCommMask(io->com, EV_RXCHAR | EV_RX80FULL);
-+				GetOverlappedResult(io->com, &ov, &n, TRUE);
-+				CloseHandle(ov.hEvent);
-+				return 0;
-+			}
-+			if (!GetOverlappedResult(io->com, &ov, &n, FALSE)) {
-+				CloseHandle(ov.hEvent);
-+				return -1;
-+			}
-+		}
-+		CloseHandle(ov.hEvent);
-+		if (!ClearCommError(io->com, &e, &cs)) return -1;
-+		if (!cs.cbInQue) return 0;
-+	}
-+	n = cs.cbInQue < (DWORD)len ? cs.cbInQue : (DWORD)len;
-+	memset(&ov, 0, sizeof(ov));
-+	ov.hEvent = CreateEventA(NULL, TRUE, FALSE, NULL);
-+	if (!ov.hEvent) return -1;
-+	if (!ReadFile(io->com, buf, n, &n, &ov)) {
-+		if (GetLastError() != ERROR_IO_PENDING ||
-+				!GetOverlappedResult(io->com, &ov, &n, TRUE)) {
-+			CloseHandle(ov.hEvent);
-+			return -1;
-+		}
-+	}
-+	CloseHandle(ov.hEvent);
-+	return (int)n;
++	return rx_get(io->rx, buf, len, timeout);
 +}
 +
 +static void win_ser_close(spdio_t *io) {
++	struct win_rx *rx = io->rx;
 +#if C9
 +	if (io->kind == 2) {
-+		((c9_close_t)c9_method(io->c9, C9_CLOSE))(io->c9);
-+		c9_release(io->c9);
++		if (io->c9) ((c9_close_t)c9_method(io->c9, C9_CLOSE))(io->c9);
++		if (rx && rx->thread) {
++			PostThreadMessageA(rx->tid, WM_QUIT, 0, 0);
++			WaitForSingleObject(rx->thread, 5000);
++		}
++		if (io->c9) c9_release(io->c9);
 +		io->c9 = NULL;
-+		return;
 +	}
 +#endif
++	if (io->kind == 1 && rx && rx->thread) {
++		/* Its read ends within 100 ms. */
++		InterlockedExchange(&rx->stop, 1);
++		WaitForSingleObject(rx->thread, 5000);
++	}
 +	if (io->com != INVALID_HANDLE_VALUE) CloseHandle(io->com);
 +	io->com = INVALID_HANDLE_VALUE;
++	rx_free(rx);
++	io->rx = NULL;
 +}
 +#endif
 +
  #if USE_LIBUSB
  static spdio_t* spdio_init(libusb_device_handle *dev_handle, int flags) {
  #else
-@@ -198,8 +527,9 @@ static spdio_t* spdio_init(int serial, int flags) {
+@@ -198,8 +663,9 @@ static spdio_t* spdio_init(int serial, int flags) {
  	uint8_t *p; spdio_t *io;
  
  #if USE_LIBUSB
@@ -364,7 +500,7 @@ index f8ba370..c7c531d 100644
  #else
  	init_serial(serial);
  	// fcntl(serial, F_SETFL, FNDELAY);
-@@ -227,11 +557,21 @@ static spdio_t* spdio_init(int serial, int flags) {
+@@ -227,11 +693,22 @@ static spdio_t* spdio_init(int serial, int flags) {
  	io->enc_buf = p;
  	io->verbose = 0;
  	io->timeout = 1000;
@@ -373,6 +509,7 @@ index f8ba370..c7c531d 100644
 +	io->kind = 0;
 +	io->com = INVALID_HANDLE_VALUE;
 +	io->c9 = NULL;
++	io->rx = NULL;
 +#endif
  	return io;
  }
@@ -386,7 +523,7 @@ index f8ba370..c7c531d 100644
  #if USE_LIBUSB
  	libusb_close(io->dev_handle);
  #else
-@@ -397,6 +737,13 @@ static int send_msg(spdio_t *io) {
+@@ -397,6 +874,13 @@ static int send_msg(spdio_t *io) {
  		} else DBG_LOG("send: unknown message\n");
  	}
  
@@ -400,7 +537,7 @@ index f8ba370..c7c531d 100644
  #if USE_LIBUSB
  	{
  		int err = libusb_bulk_transfer(io->dev_handle,
-@@ -405,7 +752,7 @@ static int send_msg(spdio_t *io) {
+@@ -405,7 +889,7 @@ static int send_msg(spdio_t *io) {
  			ERR_EXIT("usb_send failed : %s\n", libusb_error_name(err));
  	}
  	// UMS9117 waits too long after a 512 byte block.
@@ -409,7 +546,7 @@ index f8ba370..c7c531d 100644
  		int dummy;
  		// signal end of transfer
  		libusb_bulk_transfer(io->dev_handle,
-@@ -432,13 +779,22 @@ static int recv_msg1(spdio_t *io) {
+@@ -432,13 +916,22 @@ static int recv_msg1(spdio_t *io) {
  	pos = io->recv_pos;
  	for (;;) {
  		if (pos >= len) {
@@ -432,7 +569,7 @@ index f8ba370..c7c531d 100644
  #else
  			if (io->timeout >= 0) {
  				struct pollfd fds = { 0 };
-@@ -618,7 +974,7 @@ static void send_file(spdio_t *io, const char *fn,
+@@ -618,7 +1111,7 @@ static void send_file(spdio_t *io, const char *fn,
  	uint8_t *mem; size_t size = 0;
  	mem = loadfile(fn, &size, 0);
  	if (!mem) ERR_EXIT("loadfile(\"%s\") failed\n", fn);
@@ -441,7 +578,7 @@ index f8ba370..c7c531d 100644
  	if (size < src_offs)
  		ERR_EXIT("data outside the file\n");
  	size -= src_offs;
-@@ -1182,13 +1538,69 @@ found:
+@@ -1182,13 +1675,83 @@ found:
  
  #define REOPEN_FREQ 2
  
@@ -453,14 +590,26 @@ index f8ba370..c7c531d 100644
 +	static const char *how[] = { "", "Windows serial I/O", "Channel9.dll" };
 +	spdio_t *io;
 +	DWORD err = 0;
-+	int i;
-+	HANDLE com = NULL;
-+	void *c9 = NULL;
-+	if (kind == 1) com = win_com_open(port, &err);
++	int i, opened = 0;
++	io = spdio_init(NULL, 0);
++	io->kind = kind;
++	io->rx = rx_new();
++	if (io->rx) {
++		if (kind == 1) {
++			HANDLE com = win_com_open(port, &err);
++			if (com) {
++				io->com = com;
++				io->rx->thread = CreateThread(NULL, 0, com_reader, io, 0,
++						&io->rx->tid);
++				opened = io->rx->thread != NULL;
++				if (!opened) err = GetLastError();
++			}
++		}
 +#if C9
-+	else c9 = c9_open(port);
++		else opened = c9_open(io, port);
 +#endif
-+	if (!com && !c9) {
++	}
++	if (!opened) {
 +		if (err == ERROR_ACCESS_DENIED || err == ERROR_SHARING_VIOLATION)
 +			DBG_LOG("serial port %s is in use by another program\n", port);
 +		else if (err)
@@ -468,12 +617,9 @@ index f8ba370..c7c531d 100644
 +					port, how[kind], (unsigned long)err);
 +		else
 +			DBG_LOG("serial port %s couldn't be opened (%s)\n", port, how[kind]);
++		spdio_free(io);
 +		return NULL;
 +	}
-+	io = spdio_init(NULL, 0);
-+	io->kind = kind;
-+	if (com) io->com = com;
-+	io->c9 = c9;
 +	io->flags |= FLAGS_TRANSCODE | FLAGS_CRC16;
 +	DBG_LOG("asking the device through Unisoc's driver (%s, %s)\n", port, how[kind]);
 +	/* The bootloader answers the first check it gets. */
@@ -486,6 +632,11 @@ index f8ba370..c7c531d 100644
 +			return NULL;
 +		}
 +		if (recv_msg(io) && recv_type(io) == BSL_REP_VER) {
++			/* Answers to earlier checks may follow: they aren't answers
++			   to what's sent next. */
++			Sleep(200);
++			rx_clear(io->rx);
++			io->recv_len = io->recv_pos = 0;
 +			DBG_LOG("connected through Unisoc's driver (%s, %s)\n", port, how[kind]);
 +			io->pre_ver = 1;
 +			return io;
@@ -512,7 +663,7 @@ index f8ba370..c7c531d 100644
  	int wait = 300 * REOPEN_FREQ;
  	const char *tty = "/dev/ttyUSB0";
  	int verbose = 0, fdl_loaded = 0;
-@@ -1197,6 +1609,11 @@ int main(int argc, char **argv) {
+@@ -1197,6 +1760,11 @@ int main(int argc, char **argv) {
  	int keep_charge = 0, end_data = 1, blk_size = 0;
  	int secure_boot = 0;
  
@@ -524,7 +675,7 @@ index f8ba370..c7c531d 100644
  #if USE_LIBUSB
  	(void)tty;
  	ret = libusb_init(NULL);
-@@ -1223,7 +1640,73 @@ int main(int argc, char **argv) {
+@@ -1223,7 +1791,75 @@ int main(int argc, char **argv) {
  	}
  
  	for (i = 0; ; i++) {
@@ -551,10 +702,12 @@ index f8ba370..c7c531d 100644
 +			   then the other. */
 +			if (other == 4 && !win_tried) {
 +				win_tried = 1;
-+				io = win_ser_connect(win_other, 1);
++				/* Channel9.dll first: Unisoc's tools reach the device
++				   that way. */
 +#if C9
-+				if (!io && c9_load()) io = win_ser_connect(win_other, 2);
++				if (c9_load()) io = win_ser_connect(win_other, 2);
 +#endif
++				if (!io) io = win_ser_connect(win_other, 1);
 +				if (io) break;
 +				DBG_LOG("the device didn't answer through Unisoc's driver; connect it again\n");
 +			}
@@ -599,7 +752,7 @@ index f8ba370..c7c531d 100644
  		device = libusb_open_device_with_vid_pid(NULL, 0x1782, 0x4d00);
  		if (device) break;
  		if (i >= wait)
-@@ -1239,7 +1722,7 @@ int main(int argc, char **argv) {
+@@ -1239,7 +1875,7 @@ int main(int argc, char **argv) {
  	}
  
  #if USE_LIBUSB
@@ -608,7 +761,7 @@ index f8ba370..c7c531d 100644
  #else
  	io = spdio_init(serial, 0);
  #endif
-@@ -1258,18 +1741,25 @@ int main(int argc, char **argv) {
+@@ -1258,18 +1894,25 @@ int main(int argc, char **argv) {
  				// Required for smartphones.
  				// Is there a way to do the same with usb-serial?
  #if USE_LIBUSB

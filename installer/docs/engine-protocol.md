@@ -344,10 +344,12 @@ Errors while flashing:
   or, when it has Unisoc's own driver ("SPRD U2S Diag", sprdvcom), through
   that driver's serial port. That driver sends the USB request smartphone
   chipsets need itself when its port is opened. `spd_dump` first uses
-  plain Windows serial I/O done the way `Channel9.dll` does it, then, if
-  the bootloader didn't answer, `Channel9.dll` itself (loaded only from
-  `spd_dump.exe`'s folder), asking for the bootloader's version up to five
-  times each way. It logs `connected through Unisoc's driver (COMn, how)`,
+  `Channel9.dll` (loaded only from `spd_dump.exe`'s folder) in the mode
+  Unisoc's tools use, where its own thread reads what arrives, then, if
+  that didn't work, plain Windows serial I/O done the same way (with a
+  thread that keeps reading the port). The bootloader won't take a
+  command while an answer of its own is still waiting to be read. It asks
+  for the bootloader's version up to five times each way. It logs `connected through Unisoc's driver (COMn, how)`,
   or `no answer through Unisoc's driver (COMn, how)` for each way and then
   `the device didn't answer through Unisoc's driver; connect it again`;
   the engine then shows `enter_download_mode` again, and `spd_dump` tries

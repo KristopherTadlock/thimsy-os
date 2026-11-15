@@ -15,7 +15,7 @@ USB. Design: [`../universal_installer.md`](../universal_installer.md).
 | `tests/` | End-to-end test on real RG Cube firmware (`e2e.sh`), the published-firmware check (`verify-drafts.sh`) and a fake `spd_dump` |
 | `tools/make-thimsy-build.sh` | Turns a firmware from `scripts/build.sh` into the Thimsy build the installer ships (system image + patches), checking the rebuild is byte-identical |
 | `tools/apply_pack.py` | Writes a device pack (`thimsy-installer dev pack`) into the catalog |
-| `tools/spd_dump-windows-driver.patch` | Applied to `spd_dump` for the 32-bit Windows build: it opens the device through Unisoc's own driver (Windows serial I/O done the way `Channel9.dll` does it, then `Channel9.dll` itself) or WinUSB, and logs what Windows has for Unisoc USB devices |
+| `tools/spd_dump-windows-driver.patch` | Applied to `spd_dump` for the 32-bit Windows build: it opens the device through Unisoc's own driver (`Channel9.dll` the way Unisoc's tools use it, then Windows serial I/O done the same way) or WinUSB, and logs what Windows has for Unisoc USB devices |
 
 ## Status (0.1.0 test 1)
 

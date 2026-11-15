@@ -235,7 +235,7 @@ jobs:
              && make -j3 && make install)
           git -c core.autocrlf=false clone "$SPD_DUMP_REPO" spd && cd spd && git checkout "$SPD_DUMP_COMMIT"
           # Windows only: opens the device through WinUSB or Unisoc's own
-          # driver (Windows serial I/O, then Channel9.dll), and logs what
+          # driver (Channel9.dll, then Windows serial I/O), and logs what
           # Windows has for Unisoc USB devices.
           # (The checkout may have turned its line ends into CRLF.)
           tr -d '\r' < ../thimsy/installer/tools/spd_dump-windows-driver.patch | git apply
