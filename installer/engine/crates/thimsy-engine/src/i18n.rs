@@ -82,18 +82,10 @@ pub fn source_strings(
         }
     }
     // Shown as hints when a file can't be downloaded.
-    let mut notes = |a: &crate::catalog::Artifact| {
-        set.extend(a.note.iter().cloned());
-        for p in &a.parts {
-            set.extend(p.note.iter().cloned());
-        }
-    };
-    cat.root.artifacts.iter().for_each(&mut notes);
     for d in &cat.devices {
-        d.artifacts.iter().for_each(&mut notes);
-        d.bundles.values().for_each(&mut notes);
+        set.extend(d.packages.values().filter_map(|p| p.note.clone()));
         if let Some(src) = &d.source {
-            src.parts.iter().for_each(&mut notes);
+            set.extend(src.parts.iter().filter_map(|a| a.note.clone()));
         }
     }
     for d in &cat.devices {

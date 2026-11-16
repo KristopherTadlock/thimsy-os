@@ -6,6 +6,7 @@ mod fetch_http;
 mod flash;
 mod lp;
 mod pac;
+mod package;
 mod parity;
 mod resolve;
 mod samples;

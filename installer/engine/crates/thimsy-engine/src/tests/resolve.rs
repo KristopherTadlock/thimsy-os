@@ -3,7 +3,7 @@ use crate::host::Host;
 use crate::i18n;
 use crate::resolve;
 
-const ROOT: &str = "version: t\nrelease: R\nsystems: { heavy: sys }\nartifacts: [{ id: sys, file: s, size: 1, sha256: \"0000000000000000000000000000000000000000000000000000000000000000\" }]\n";
+const ROOT: &str = "version: t\nrelease: R\n";
 const PROFILE: &str = r#"id: heavy
 name: Heavy
 summary: s
@@ -102,7 +102,7 @@ fn settings_precedence_profile_device_user() {
 fn availability_host_and_journeys() {
     let c = cat(&dev(34, true, true, 8));
     let p = resolve::resolve(&c, "d", "heavy", &[], Host::Linux).unwrap();
-    assert!(!p.available, "no source/build steps → not buildable");
+    assert!(!p.available, "no source/packages → not buildable");
     assert!(p.unavailable_reason.unwrap().contains("isn't supported"));
     assert!(p.host_message.unwrap().contains("Windows PC"));
     assert!(resolve::require_host(c.device("d").unwrap(), Host::Linux).is_err());

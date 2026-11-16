@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # For each published RG Cube firmware release: download it, check its
-# SHA256SUMS, make a device pack (shared system image + deltas) from the
-# official GammaOS 1.2 firmware, rebuild with the installer, and check the
-# result is byte-identical to the published PAC.
+# SHA256SUMS, make a Thimsy package (shared system image + deltas + pack.json)
+# from the official GammaOS 1.2 firmware, rebuild with the installer from that
+# package alone, and check the result is byte-identical to the published PAC.
 #
 #   verify-drafts.sh WORKDIR SOURCE_PAC TAG...
 # WORKDIR/ws/cache may already hold the GammaOS download (reused).
@@ -55,32 +55,22 @@ for TAG in "$@"; do
   if [ -n "$LISTED" ] && [ "$LISTED" != "$REF_SHA" ]; then
     echo -e "$TAG\tFAIL\textracted PAC doesn't match SHA256SUMS" | tee -a "$RESULTS"; rm -rf "$D"; continue
   fi
-  if ! "$ENGINE" dev pack --source "$SRC" --reference "$REF" --out "$D/pack" --device rgcube --system-name "thimsy-system-$TAG" > "$D/pack.log" 2>&1; then
+  if ! "$ENGINE" dev pack --source "$SRC" --reference "$REF" --out "$D/pack" --device anbernic-rg-cube --profile heavy \
+       --release "$TAG" --system-name "thimsy-system-$TAG" > "$D/pack.log" 2>&1; then
     echo -e "$TAG\tFAIL\tpack: $(tail -1 "$D/pack.log")" | tee -a "$RESULTS"; rm -rf "$D"; continue
   fi
   rm -f "$REF"
-  cp -r "$HERE/../catalog" "$D/catalog"
-  # Build from this release's loose pack files: drop the device's published
-  # bundles, or the engine would want (and download) the 1.0a archive. This
-  # copy only builds heavy: other profiles' entries may go (--replace-others).
-  python3 -I - "$D/catalog/devices/anbernic-rg-cube.yaml" <<'PY'
-import re, sys
-p = sys.argv[1]
-s = open(p, encoding="utf-8").read()
-s = re.sub(r"^bundles:[ \t]*\n(?:[ \t]+\S.*\n|[ \t]*\n(?=[ \t]+\S))*\n?", "", s, flags=re.M)
-open(p, "w", encoding="utf-8").write(s)
-PY
-  if grep -q '^bundles:' "$D/catalog/devices/anbernic-rg-cube.yaml" ||
-     ! python3 -I "$HERE/../tools/apply_pack.py" --replace-others "$D/pack/pack.json" "$D/catalog/devices/anbernic-rg-cube.yaml" "$D/catalog/catalog.yaml" heavy "$TAG" > "$D/apply.log" 2>&1; then
-    echo -e "$TAG\tFAIL\tapply_pack: $(tail -1 "$D/apply.log" 2>/dev/null)" | tee -a "$RESULTS"; rm -rf "$D"; continue
+  # One package, as releases ship it (never split here).
+  mapfile -t members < <(python3 -I -c '
+import json, sys
+p = json.load(open(sys.argv[1], encoding="utf-8"))
+print("pack.json"); print(p["system"]["file"])
+for a in p["artifacts"]: print(a["file"])' "$D/pack/pack.json")
+  if ! (cd "$D/pack" && "$ENGINE" dev bundle --out "$D/package.tar" --max-asset 999999999999 "${members[@]}") > "$D/bundle.log" 2>&1; then
+    echo -e "$TAG\tFAIL\tbundle: $(tail -1 "$D/bundle.log")" | tee -a "$RESULTS"; rm -rf "$D"; continue
   fi
-  # Keep only the published-size parts, when apply_pack split the image
-  # into parts (it doesn't for a small one: then the image is what's used).
-  for img in "$D/pack"/thimsy-system-*.img.zst; do
-    [ -f "$img" ] && [ -f "$img.001" ] && rm -f "$img"
-  done
   WS="$WORK/ws"; rm -rf "$WS/jobs"
-  if ! "$ENGINE" --catalog "$D/catalog" --json build --device anbernic-rg-cube --profile heavy --workspace "$WS" --import "$D/pack" > "$D/build.jsonl" 2>"$D/build.err"; then
+  if ! "$ENGINE" --json build --device anbernic-rg-cube --profile heavy --workspace "$WS" --import "$D/package.tar" > "$D/build.jsonl" 2>"$D/build.err"; then
     echo -e "$TAG\tFAIL\tbuild: $(grep '"type":"error"' "$D/build.jsonl" | tail -1)" | tee -a "$RESULTS"; rm -rf "$D"; continue
   fi
   OUT=$(ls "$WS"/jobs/*/out/*.pac)
@@ -93,8 +83,7 @@ PY
     echo -e "$TAG\tFAIL\tbuilt $OUT_SHA, published $REF_SHA" | tee -a "$RESULTS"
   fi
   # Keep the per-release packs small for the record; drop the big files.
-  rm -rf "$WS/jobs" "$D/pack"/thimsy-system-* "$WS/cache"/thimsy-system-*
-  find "$WS/cache" -name 'rgcube-*' -delete
+  rm -rf "$WS/jobs" "$D/pack"/thimsy-system-* "$D/package.tar"
 done
 echo "== done"; cat "$RESULTS"
 if grep -q "$(printf '\tFAIL\t')" "$RESULTS"; then

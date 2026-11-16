@@ -1,7 +1,7 @@
 //! Downloads against a tiny local HTTP server: resume with Range, servers
 //! that ignore Range, errors, and size limits.
 
-use crate::catalog::Artifact;
+use crate::catalog::{Artifact, Package};
 use crate::events::{MemorySink, Reporter};
 use crate::fetch::Cache;
 use crate::testutil::pattern;
@@ -136,9 +136,7 @@ fn art(data: &[u8], url: &str) -> Artifact {
         size: data.len() as u64,
         sha256: sha256_hex(data),
         urls: vec![format!("{url}/x.bin")],
-        unpack: None,
         note: None,
-        parts: vec![],
     }
 }
 
@@ -325,4 +323,55 @@ fn wrong_content_is_a_hash_mismatch_and_leaves_no_file() {
     assert_eq!(crate::error::code_of(&err).0, Code::HashMismatch);
     assert!(!ws.path().join("c/x.bin").exists());
     assert!(!ws.path().join("c/x.bin.partial").exists());
+}
+
+fn package(url: &str) -> Package {
+    Package {
+        file: "p.tar".into(),
+        urls: vec![format!("{url}/p.tar")],
+        parts: vec![],
+        approx_size: 1,
+        note: Some("Get it from the release page.".into()),
+    }
+}
+
+/// A package's size and hash aren't known before it's downloaded: it's
+/// fetched whole (resuming after a cut) and kept for the next run.
+#[test]
+fn a_package_is_downloaded_without_a_known_size_and_kept() {
+    let data = pattern(400_000, 15);
+    let (url, hits) = serve(data.clone(), Mode::CutAfter(150_000));
+    let ws = tempfile::tempdir().unwrap();
+    let dir = ws.path().join("c");
+    let cache = quick_cache(&dir);
+    let pkg = package(&url);
+    assert!(crate::fetch::cached_package(&dir, &pkg).is_none());
+    let paths = cache.download_package(&pkg, &rep()).unwrap();
+    assert_eq!(std::fs::read(&paths[0]).unwrap(), data);
+    let n = hits.load(Ordering::SeqCst);
+    assert!(n >= 2, "cut, then resumed");
+    assert_eq!(
+        crate::fetch::cached_package(&dir, &pkg),
+        Some(paths.clone())
+    );
+    assert_eq!(cache.download_package(&pkg, &rep()).unwrap(), paths);
+    assert_eq!(hits.load(Ordering::SeqCst), n, "not downloaded again");
+    // Forgotten (it failed its checks): downloaded again next time.
+    cache.forget_package(&pkg);
+    assert!(crate::fetch::cached_package(&dir, &pkg).is_none());
+    cache.download_package(&pkg, &rep()).unwrap();
+    assert!(hits.load(Ordering::SeqCst) > n);
+}
+
+#[test]
+fn a_missing_package_is_a_download_failure_with_the_catalogs_note() {
+    let (url, hits) = serve(vec![], Mode::NotFound);
+    let ws = tempfile::tempdir().unwrap();
+    let cache = quick_cache(&ws.path().join("c"));
+    let err = cache.download_package(&package(&url), &rep()).unwrap_err();
+    let (code, hint) = crate::error::code_of(&err);
+    assert_eq!(code, Code::DownloadFailed);
+    assert_eq!(hint.as_deref(), Some("Get it from the release page."));
+    assert_eq!(hits.load(Ordering::SeqCst), 1);
+    assert!(crate::fetch::cached_package(&ws.path().join("c"), &package(&url)).is_none());
 }

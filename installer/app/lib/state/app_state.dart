@@ -124,7 +124,7 @@ String driveOf(String path) {
   return m != null ? m.group(1)!.toUpperCase() : path;
 }
 
-/// Where the build gets the Thimsy device pack.
+/// Where the build gets the Thimsy package.
 enum ImageSource {
   /// The engine downloads it (the default).
   download,
@@ -275,7 +275,7 @@ class AppState extends ChangeNotifier {
   String workspace;
   ImageSource imageSource = ImageSource.download;
 
-  /// The device pack files chosen for [ImageSource.files], sorted so
+  /// The package files chosen for [ImageSource.files], sorted so
   /// numbered parts are in order.
   List<String> importFiles = const [];
 

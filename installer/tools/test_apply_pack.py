@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests for apply_pack.py (stdlib only): run it on a temporary copy of the
-catalog for two profiles and check neither wipes the other, and that a pack
-that would break another profile is refused unless --replace-others.
+catalog and check it sets one profile's package entry, keeps the others and
+the rest of the device file, and never writes build pins.
 
   python3 installer/tools/test_apply_pack.py
 """
@@ -11,10 +11,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 TOOL = os.path.join(HERE, "apply_pack.py")
 CATALOG = os.path.join(os.path.dirname(HERE), "catalog")
 DEVICE = "anbernic-rg-cube"
-
-
-def sha(c):
-    return c * 64
+LATEST = "https://github.com/KristopherTadlock/thimsy-os/releases/latest/download"
 
 
 def flow_to_json(text):
@@ -28,37 +25,9 @@ def top_block(text, name):
     return m.group(1) if m else None
 
 
-def pack(profile, c, ops):
-    return {
-        "reference_sha256": sha(c),
-        "source_sha256": sha("5"),
-        "system": {
-            "id": f"thimsy-system-test-{profile}",
-            "file": f"thimsy-system-test-{profile}.img.zst",
-            "size": 1000,
-            "sha256": sha(c),
-            "unpack": {"size": 4000, "sha256": sha("e")},
-        },
-        "artifacts": [
-            {"id": "rgcube-odm-a-delta", "file": "rgcube-odm-a-delta.bsdiff", "size": 10, "sha256": sha("a")},
-        ],
-        "build": ops,
-    }
-
-
-def bundle(profile, c):
-    name = f"Thimsy-test-{DEVICE}-{profile}.tar"
-    return {"id": name, "file": name, "size": 2000, "sha256": sha(c)}
-
-
-# Build steps with text the regex replacement must not mangle: backslashes
-# (`\1`, `\g<0>`, `\u` are special in re.sub templates) and non-ASCII.
-TRICKY = [
-    {"artifact": "@system", "entry": "Super", "op": "lp_write", "partition": "system_a"},
-    {"alias": "RG_Cube_Thimsy_OS", "op": "pac_set_info", "version": "Thimsy\\1 \\g<0> \\u00e9 C:\\new\\path"},
-    {"op": "pac_set_info", "alias": "Thimsy — Ünïcødé 日本語 😀", "version": "v1"},
-    {"op": "pac_fix_crc"},
-]
+def entries(text):
+    """profile → package entry of the device file's `packages:`."""
+    return {k: flow_to_json(v) for k, v in re.findall(r"^  (\w+): (\{.*\})$", top_block(text, "packages"), flags=re.M)}
 
 
 class ApplyPackTest(unittest.TestCase):
@@ -67,26 +36,15 @@ class ApplyPackTest(unittest.TestCase):
         self.cat = os.path.join(self.tmp, "catalog")
         shutil.copytree(CATALOG, self.cat)
         self.dev_yaml = os.path.join(self.cat, "devices", f"{DEVICE}.yaml")
-        self.cat_yaml = os.path.join(self.cat, "catalog.yaml")
 
     def tearDown(self):
         shutil.rmtree(self.tmp)
 
-    def apply(self, profile, c, ops, with_bundle=True, extra=(), ok=True, tag="installer-vtest"):
-        d = os.path.join(self.tmp, profile)
-        shutil.rmtree(d, ignore_errors=True)
-        os.makedirs(d)
-        pj = os.path.join(d, "pack.json")
-        with open(pj, "w", encoding="utf-8") as f:
-            json.dump(pack(profile, c, ops), f, ensure_ascii=False)
-        args = [sys.executable, "-I", TOOL]
-        if with_bundle:
-            bj = os.path.join(d, "bundle.json")
-            with open(bj, "w", encoding="utf-8") as f:
-                json.dump(bundle(profile, c), f)
-            args += ["--bundle", bj]
-        args += list(extra)
-        args += [pj, self.dev_yaml, self.cat_yaml, profile, tag]
+    def apply(self, profile, bundle, tag=None, ok=True):
+        bj = os.path.join(self.tmp, f"{profile}.json")
+        with open(bj, "w", encoding="utf-8") as f:
+            json.dump(bundle, f)
+        args = [sys.executable, "-I", TOOL] + (["--tag", tag] if tag else []) + [bj, self.dev_yaml, profile]
         r = subprocess.run(args, capture_output=True, text=True,
                            env={**os.environ, "LC_ALL": "C", "PYTHONIOENCODING": "ascii"})
         if ok:
@@ -99,158 +57,64 @@ class ApplyPackTest(unittest.TestCase):
         with open(path, encoding="utf-8") as f:
             return f.read()
 
-    def test_heavy_then_medium_keeps_both(self):
-        self.apply("heavy", "1", TRICKY)
-        self.apply("medium", "2", TRICKY)
-        dev, cat = self.read(self.dev_yaml), self.read(self.cat_yaml)
-
-        exp = flow_to_json(re.search(r"^expect: (\{.*\})$", dev, flags=re.M).group(1))
-        self.assertEqual(exp, {"heavy": sha("1"), "medium": sha("2")})
-
-        bundles = top_block(dev, "bundles")
-        entries = dict(re.findall(r"^  (\w+): (\{.*\})$", bundles, flags=re.M))
-        self.assertEqual(set(entries), {"heavy", "medium"})
-        self.assertEqual(flow_to_json(entries["heavy"])["sha256"], sha("1"))
-        self.assertEqual(flow_to_json(entries["medium"])["sha256"], sha("2"))
-        self.assertEqual(len(re.findall(r"^bundles:", dev, flags=re.M)), 1)
-
-        systems = dict(re.findall(r"^  (\w+): (\S+)$", top_block(cat, "systems"), flags=re.M))
-        self.assertEqual(systems, {"heavy": "thimsy-system-test-heavy", "medium": "thimsy-system-test-medium"})
-        for p in ("heavy", "medium"):
-            self.assertEqual(len(re.findall(rf"^  - id: thimsy-system-test-{p}$", cat, flags=re.M)), 1)
-        # The system image already in the catalog is kept too.
-        self.assertIn("  - id: thimsy-system-1.0a-heavy\n", cat)
-
-    def test_build_steps_keep_backslashes_and_non_ascii(self):
-        self.apply("heavy", "1", TRICKY)
+    def test_points_the_profile_at_the_latest_release(self):
+        before = self.read(self.dev_yaml)
+        self.apply("heavy", {"id": "T.tar", "file": "Thimsy-1.0b-anbernic-rg-cube-heavy.tar", "size": 2_100_000_000,
+                             "sha256": "1" * 64})
         dev = self.read(self.dev_yaml)
-        steps = [flow_to_json(l[4:]) for l in top_block(dev, "build").splitlines()]
-        self.assertEqual(steps, TRICKY)
-        self.assertIn("Ünïcødé 日本語 😀", dev)  # written as is, not escaped
-        # The rest of the device file is untouched.
-        self.assertIn('display: "720×720"', dev)
+        self.assertEqual(entries(dev)["heavy"], {
+            "file": "Thimsy-1.0b-anbernic-rg-cube-heavy.tar",
+            "approx_size": 2_100_000_000,
+            "note": "Download Thimsy-1.0b-anbernic-rg-cube-heavy.tar from the Thimsy release page, then choose it "
+                    "with Use a file I already downloaded.",
+            "urls": [f"{LATEST}/Thimsy-1.0b-anbernic-rg-cube-heavy.tar"],
+        })
+        # Only that line changed; no build pins appear.
+        self.assertEqual([l for l in dev.splitlines() if l not in before.splitlines()],
+                         [l for l in dev.splitlines() if l.startswith("  heavy: ")])
+        self.assertNotIn("1" * 64, dev)
+        for pin in ("build", "expect", "artifacts", "bundles"):
+            self.assertIsNone(re.search(rf"^{pin}:", dev, flags=re.M), pin)
+
+    def test_a_tag_and_parts(self):
+        parts = [{"id": f"T.tar.{i:03d}", "file": f"T.tar.{i:03d}", "size": 1000, "sha256": "2" * 64} for i in (1, 2)]
+        self.apply("medium", {"id": "T.tar", "file": "T.tar", "size": 2000, "sha256": "3" * 64, "parts": parts},
+                   tag="installer-v0.1.0-test18")
+        e = entries(self.read(self.dev_yaml))
+        base = "https://github.com/KristopherTadlock/thimsy-os/releases/download/installer-v0.1.0-test18"
+        self.assertEqual(e["medium"]["parts"], [{"file": "T.tar.001", "urls": [f"{base}/T.tar.001"]},
+                                                 {"file": "T.tar.002", "urls": [f"{base}/T.tar.002"]}])
+        self.assertNotIn("urls", e["medium"])
+        self.assertIn("from the Thimsy Installer release page", e["medium"]["note"])
+        # The heavy package is kept.
+        self.assertEqual(e["heavy"]["file"], "Thimsy-1.0a-anbernic-rg-cube-heavy.tar")
+
+    def test_reapplying_replaces_only_that_profile(self):
+        self.apply("medium", {"file": "M.tar", "size": 5})
+        self.apply("heavy", {"file": "H1.tar", "size": 6})
+        self.apply("heavy", {"file": "H2.tar", "size": 7})
+        dev = self.read(self.dev_yaml)
+        e = entries(dev)
+        self.assertEqual({k: v["file"] for k, v in e.items()}, {"heavy": "H2.tar", "medium": "M.tar"})
+        self.assertEqual(len(re.findall(r"^packages:", dev, flags=re.M)), 1)
         self.assertIn("flash:\n  method: spd\n", dev)
-        self.assertEqual(len(re.findall(r"^build:", dev, flags=re.M)), 1)
 
-    def test_reapplying_a_profile_replaces_only_its_entries(self):
-        self.apply("heavy", "1", TRICKY)
-        self.apply("medium", "2", TRICKY)
-        shutil.rmtree(os.path.join(self.tmp, "heavy"))
-        self.apply("heavy", "3", TRICKY)
-        dev, cat = self.read(self.dev_yaml), self.read(self.cat_yaml)
-        exp = flow_to_json(re.search(r"^expect: (\{.*\})$", dev, flags=re.M).group(1))
-        self.assertEqual(exp, {"heavy": sha("3"), "medium": sha("2")})
-        self.assertEqual(len(re.findall(r"^  heavy: ", top_block(dev, "bundles"), flags=re.M)), 1)
-        self.assertEqual(len(re.findall(r"^  heavy: ", top_block(cat, "systems"), flags=re.M)), 1)
-
-    def test_bundle_note_names_the_release_hosting_it(self):
-        self.apply("heavy", "1", TRICKY)
-        self.assertIn("from the Thimsy Installer release page", top_block(self.read(self.dev_yaml), "bundles"))
-        # Thimsy's own release (v1.0a-testNN) hosts it.
-        self.apply("heavy", "2", TRICKY, tag="v1.0a-test30")
-        b = top_block(self.read(self.dev_yaml), "bundles")
-        self.assertIn("from the Thimsy release page", b)
-        self.assertIn("releases/download/v1.0a-test30/", b)
-
-    def test_without_bundle_lists_download_addresses(self):
-        self.apply("heavy", "1", TRICKY)
-        # Same artifacts and steps (only download addresses added): allowed.
-        self.apply("medium", "2", TRICKY, with_bundle=False)
-        dev, cat = self.read(self.dev_yaml), self.read(self.cat_yaml)
-        arts = [flow_to_json(l[4:]) for l in top_block(dev, "artifacts").splitlines()]
-        self.assertEqual(arts[0]["urls"], [
-            "https://github.com/KristopherTadlock/thimsy-os/releases/download/installer-vtest/rgcube-odm-a-delta.bsdiff"])
-        # The heavy bundle is left alone.
-        self.assertIn("  heavy: {", top_block(dev, "bundles"))
-        self.assertIn("thimsy-system-test-medium.img.zst\"]", cat)
-
-    def test_changed_steps_are_refused_while_another_profile_uses_them(self):
-        # The catalog's heavy profile has a bundle and an expected hash made
-        # with the current artifacts and build steps; this pack changes them.
-        dev_before, cat_before = self.read(self.dev_yaml), self.read(self.cat_yaml)
-        r = self.apply("medium", "2", TRICKY, ok=False)
-        self.assertIn("heavy", r.stderr)
-        self.assertIn("--replace-others", r.stderr)
-        self.assertEqual(self.read(self.dev_yaml), dev_before)
-        self.assertEqual(self.read(self.cat_yaml), cat_before)
-        # Without a bundle too.
-        self.apply("medium", "2", TRICKY, with_bundle=False, ok=False)
-        self.assertEqual(self.read(self.dev_yaml), dev_before)
-
-    def test_changed_artifacts_are_refused_too(self):
-        self.apply("heavy", "1", TRICKY)
-        # Same steps, another artifact hash: medium's pack, heavy's bundle.
-        d = os.path.join(self.tmp, "medium")
-        os.makedirs(d)
-        p = pack("medium", "2", TRICKY)
-        p["artifacts"][0]["sha256"] = sha("9")
-        pj = os.path.join(d, "pack.json")
-        with open(pj, "w", encoding="utf-8") as f:
-            json.dump(p, f)
-        r = subprocess.run([sys.executable, "-I", TOOL, pj, self.dev_yaml, self.cat_yaml, "medium",
-                            "installer-vtest"], capture_output=True, text=True)
-        self.assertNotEqual(r.returncode, 0)
-        self.assertIn("heavy", r.stderr)
-
-    def test_replace_others_drops_their_entries(self):
-        r = self.apply("medium", "2", TRICKY, extra=["--replace-others"])
-        self.assertIn("heavy", r.stdout)
-        dev, cat = self.read(self.dev_yaml), self.read(self.cat_yaml)
-        self.assertRegex(dev, r"(?m)^expect:\n  medium: \"2{64}\"\n(?!  )")
-        self.assertEqual(len(re.findall(r"^(expect|bundles):", dev, flags=re.M)), 2)
-        bundles = dict(re.findall(r"^  (\w+): (\{.*\})$", top_block(dev, "bundles"), flags=re.M))
-        self.assertEqual(set(bundles), {"medium"})
-        systems = dict(re.findall(r"^  (\w+): (\S+)$", top_block(cat, "systems"), flags=re.M))
-        self.assertEqual(systems, {"medium": "thimsy-system-test-medium"})
-        self.assertEqual([flow_to_json(l[4:]) for l in top_block(dev, "build").splitlines()], TRICKY)
-
-    def test_replace_others_with_block_style_entries(self):
-        # Two other profiles, written in block style.
-        dev = self.read(self.dev_yaml)
-        dev = re.sub(r"^expect: .*$", 'expect:\n  heavy: "' + sha("7") + '"\n  light: "' + sha("8") + '"',
-                     dev, flags=re.M)
-        with open(self.dev_yaml, "w", encoding="utf-8") as f:
-            f.write(dev)
-        r = self.apply("medium", "2", TRICKY, ok=False)
-        self.assertIn("heavy, light", r.stderr)
-        self.apply("medium", "2", TRICKY, extra=["--replace-others"])
-        dev = self.read(self.dev_yaml)
-        self.assertRegex(dev, r"(?m)^expect:\n  medium: \"2{64}\"\n")
-        self.assertNotIn("light:", dev)
-        self.assertNotIn("  heavy:", dev)
-        self.assertEqual(len(re.findall(r"^expect:", dev, flags=re.M)), 1)
-
-    def test_without_bundle_drops_the_profiles_own_bundle(self):
-        # heavy is the only profile with entries: its own old archive goes.
-        self.apply("heavy", "1", TRICKY, with_bundle=False)
-        dev = self.read(self.dev_yaml)
-        self.assertIsNone(re.search(r"^bundles:", dev, flags=re.M))
-        self.assertNotIn("Thimsy-1.0a-anbernic-rg-cube-heavy.tar", dev)
-        exp = flow_to_json(re.search(r"^expect: (\{.*\})$", dev, flags=re.M).group(1))
-        self.assertEqual(exp, {"heavy": sha("1")})
-        # The rest of the file is intact.
-        self.assertIn("flash:\n  method: spd\n", dev)
-        self.assertEqual([flow_to_json(l[4:]) for l in top_block(dev, "build").splitlines()], TRICKY)
-
-    def test_without_bundle_keeps_other_profiles_bundles(self):
-        self.apply("heavy", "1", TRICKY)
-        self.apply("medium", "2", TRICKY)
-        self.apply("medium", "3", TRICKY, with_bundle=False)
-        bundles = dict(re.findall(r"^  (\w+): (\{.*\})$", top_block(self.read(self.dev_yaml), "bundles"),
-                                  flags=re.M))
-        self.assertEqual(set(bundles), {"heavy"})
-
-    def test_device_without_pack_sections_gets_them(self):
+    def test_device_without_packages_gets_them(self):
         other = os.path.join(self.cat, "devices", "anbernic-rg557.yaml")
         self.dev_yaml = other
         before = self.read(other)
-        self.assertIsNone(re.search(r"^(expect|build|bundles):", before, flags=re.M))
-        self.apply("medium", "2", TRICKY)
+        self.assertIsNone(re.search(r"^packages:", before, flags=re.M))
+        self.apply("heavy", {"file": "X.tar", "size": 1})
         dev = self.read(other)
         self.assertTrue(dev.startswith(before.split("\nflash:")[0]))
-        self.assertEqual(flow_to_json(top_block(dev, "bundles").strip()[len("medium: "):])["sha256"], sha("2"))
-        self.assertEqual([flow_to_json(l[4:]) for l in top_block(dev, "build").splitlines()], TRICKY)
-        self.assertRegex(dev, r"(?m)^expect:\n  medium: \"2{64}\"\n")
+        self.assertEqual(entries(dev)["heavy"]["file"], "X.tar")
+
+    def test_bad_input_is_refused(self):
+        before = self.read(self.dev_yaml)
+        self.apply("../heavy", {"file": "X.tar", "size": 1}, ok=False)
+        self.apply("heavy", {"file": "../X.tar", "size": 1}, ok=False)
+        self.apply("heavy", {"file": "X.tar", "size": 1}, tag="v1/../../x", ok=False)
+        self.assertEqual(self.read(self.dev_yaml), before)
 
 
 if __name__ == "__main__":

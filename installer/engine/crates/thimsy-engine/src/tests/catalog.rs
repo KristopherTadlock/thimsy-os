@@ -39,7 +39,7 @@ fn bundled_catalog_is_consistent() {
             d.id
         );
         // Buildable devices have a flash recipe and guides.
-        if !d.build.is_empty() {
+        if d.buildable() {
             assert!(d.flash.is_some(), "{} builds but can't flash", d.id);
             assert!(
                 !d.guides.download_mode.is_empty(),
@@ -47,7 +47,6 @@ fn bundled_catalog_is_consistent() {
                 d.id
             );
             assert!(!d.guides.backup.is_empty(), "{} lacks backup steps", d.id);
-            assert!(!d.expect.is_empty(), "{} has no reference hash", d.id);
         }
         // Devices this version can't flash somewhere must explain why on that host.
         if d.install_on(Host::Macos) == InstallSupport::None {
@@ -58,9 +57,9 @@ fn bundled_catalog_is_consistent() {
             );
         }
     }
-    // Profiles are ordered light → heavy and heavy is published.
-    assert!(c.system_for("heavy").is_some());
-    assert!(c.system_for("light").is_none());
+    // Heavy is published (the RG Cube has a package for it); light isn't.
+    assert!(c.profile_published("heavy"));
+    assert!(!c.profile_published("light"));
 }
 
 #[test]
@@ -75,48 +74,45 @@ fn rejects_malformed_catalogs() {
     assert!(
         Catalog::from_files(files(&[("devices/a.yaml", DEV), ("devices/b.yaml", DEV)])).is_err()
     );
-    // systems → unknown profile / artifact.
-    let bad_root = "version: t\nrelease: R\nsystems: { nope: x }\n";
-    assert!(Catalog::from_files(vec![
-        ("catalog.yaml".into(), bad_root.into()),
-        ("profiles/heavy.yaml".into(), PROFILE.into())
-    ])
-    .is_err());
-    let bad_root = "version: t\nrelease: R\nsystems: { heavy: missing }\n";
-    assert!(Catalog::from_files(vec![
-        ("catalog.yaml".into(), bad_root.into()),
-        ("profiles/heavy.yaml".into(), PROFILE.into())
-    ])
-    .is_err());
-    // Malformed sha256.
-    let bad_root =
-        "version: t\nrelease: R\nartifacts: [{ id: a, file: a, size: 1, sha256: xyz }]\n";
-    assert!(Catalog::from_files(vec![("catalog.yaml".into(), bad_root.into())]).is_err());
-    // Build steps naming an unknown artifact, or without source firmware.
-    let with_build = format!("{DEV}build: [{{ op: pac_delta, entry: X, artifact: nope, in_sha256: a, out_sha256: b }}]\n");
-    assert!(Catalog::from_files(files(&[("devices/d.yaml", &with_build)])).is_err());
-    let with_fix = format!("{DEV}build: [{{ op: pac_fix_crc }}]\n");
-    let err = Catalog::from_files(files(&[("devices/d.yaml", &with_fix)]))
+    let src = "source: { id: s, name: S, kind: file, parts: [], contains: f.pac, container: { format: pac, size: 1, sha256: \"0000000000000000000000000000000000000000000000000000000000000000\" } }\n";
+    let pkg = "packages: { heavy: { file: Thimsy-1.0a-d-heavy.tar, approx_size: 1 } }\n";
+    Catalog::from_files(files(&[("devices/d.yaml", &format!("{DEV}{src}{pkg}"))])).unwrap();
+    // Packages need the official firmware they're built from.
+    let err = Catalog::from_files(files(&[("devices/d.yaml", &format!("{DEV}{pkg}"))]))
         .unwrap_err()
         .to_string();
     assert!(err.contains("no source firmware"), "{err}");
-    // A buildable device without a reference hash for a profile it can build.
-    let src = "source: { id: s, name: S, kind: file, parts: [], contains: f.pac, container: { format: pac, size: 1, sha256: x } }\n";
-    let root_heavy = "version: t\nrelease: R\nsystems: { heavy: sys }\nartifacts: [{ id: sys, file: sys.img, size: 1, sha256: \"0000000000000000000000000000000000000000000000000000000000000000\" }]\n";
-    let buildable = format!("{DEV}{src}build: [{{ op: pac_fix_crc }}]\n");
-    let cat = |dev: &str| {
-        Catalog::from_files(vec![
-            ("catalog.yaml".into(), root_heavy.into()),
-            ("profiles/heavy.yaml".into(), PROFILE.into()),
-            ("devices/d.yaml".into(), dev.into()),
-        ])
-    };
-    let err = cat(&buildable).unwrap_err().to_string();
-    assert!(err.contains("no expect hash"), "{err}");
-    cat(&format!("{buildable}expect: {{ heavy: abc }}\n")).unwrap();
-    // Unknown op.
-    let with_op = format!("{DEV}build: [{{ op: rm_rf }}]\n");
-    assert!(Catalog::from_files(files(&[("devices/d.yaml", &with_op)])).is_err());
+    // A package for an unknown profile, or with a path for a name.
+    let light = "packages: { light: { file: x.tar, approx_size: 1 } }\n";
+    assert!(
+        Catalog::from_files(files(&[("devices/d.yaml", &format!("{DEV}{src}{light}"))])).is_err()
+    );
+    let path = "packages: { heavy: { file: ../x.tar, approx_size: 1 } }\n";
+    assert!(
+        Catalog::from_files(files(&[("devices/d.yaml", &format!("{DEV}{src}{path}"))])).is_err()
+    );
+    // Malformed sha256 of the official firmware.
+    let bad_src = src.replace(&"0".repeat(64), "xyz");
+    assert!(Catalog::from_files(files(&[(
+        "devices/d.yaml",
+        &format!("{DEV}{bad_src}{pkg}")
+    )]))
+    .is_err());
+    // Builds aren't pinned in the catalog any more: the old fields are
+    // refused like any unknown field.
+    for old in [
+        "build: [{ op: pac_fix_crc }]\n",
+        "expect: { heavy: abc }\n",
+        "artifacts: []\n",
+        "bundles: {}\n",
+    ] {
+        assert!(
+            Catalog::from_files(files(&[("devices/d.yaml", &format!("{DEV}{src}{old}"))])).is_err(),
+            "{old}"
+        );
+    }
+    let old_root = "version: t\nrelease: R\nsystems: { heavy: x }\n";
+    assert!(Catalog::from_files(vec![("catalog.yaml".into(), old_root.into())]).is_err());
 }
 
 #[test]

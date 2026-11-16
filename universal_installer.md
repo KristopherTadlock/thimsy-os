@@ -36,6 +36,7 @@ installer are all versioned and released together.
 | Recipes | **Declarative YAML** device recipes in the spirit of UBports' `installer-configs`, with a fixed set of typed actions. Catalog updates can't run code |
 | Unlock | Only routes the vendor or upstream documents. Thimsy never ships or automates signature bypasses, BootROM exploits or leaked keys. A device whose only route needs one of those is **guided** (the user follows upstream's own instructions) or unsupported |
 | Update trust | **minisign**-signed release manifests with an expiry, a monotonic version and two embedded public keys. Move to TUF (`tough`) if signing ever grows past one maintainer |
+| Thimsy builds | Each build ships as a **Thimsy package**, a tar whose `pack.json` describes it. The installer accepts any well-formed package for the selected device and official firmware; nothing pins a build, and packages are unsigned (section 10.1) |
 | Linux packaging | Flatpak (`--device=usb`, USB portal when available) plus an AppImage that can install udev rules |
 | Android | Runs on a **second** phone or tablet acting as USB OTG host. Distributed on GitHub, F-Droid and Obtainium, not Play |
 | First device | **RG Cube** (Thimsy already builds for it), flashed by bundled `spd_dump` on Windows and Linux |
@@ -971,6 +972,93 @@ does too, except MediaTek on macOS.
   stage timings, USB events and error codes. It holds no personal files,
   account data or serial numbers unless the user includes them.
 
+### 10.1 Thimsy packages: the manifest is in the package
+
+A Thimsy build reaches the installer as a **package**: an uncompressed tar of
+`pack.json`, the shared system image (zstd) and the device's patches against
+its official firmware (bsdiff), written by `installer/tools/make-thimsy-build.sh`
+(`dev pack`, then `dev bundle`). `pack.json` is the package's manifest:
+
+| Field | Meaning |
+|---|---|
+| `format` | Manifest format, `1`. Missing means 1 (packages made before 0.1.0 test 18, such as Thimsy 1.0a test 30's) |
+| `device` | Catalog device id (`anbernic-rg-cube`). Optional |
+| `profile` | `light`, `medium` or `heavy`. Optional |
+| `release` | The Thimsy release, e.g. `Thimsy 1.0a test 30`. Optional; shown in the log and kept in `job.json` |
+| `min_installer` | The oldest installer that can use the package (format below). Optional; `dev pack` writes `0.1.0-test18` |
+| `system`, `artifacts` | Each member's `id`, `file`, `size` and `sha256` (and, for the system image, its unpacked `size` and `sha256`) |
+| `build` | The steps, from the fixed typed set: `lp_grow`, `lp_write`, `lp_delta`, `pac_delta`, `pac_set_info`, `pac_fix_crc` |
+| `source_sha256` | The official firmware container the steps start from |
+| `reference_sha256` | The firmware the steps must produce |
+
+**`min_installer` format.** `MAJOR.MINOR.PATCH`, or `MAJOR.MINOR.PATCH-testN`
+for test N of that version (`0.1.0-test18`). Ordered by number, a test
+before its release, test N before test N+1: `0.1.0-test18` < `0.1.0-test19`
+< `0.1.0` < `0.1.1-test1`. The installer compares it with its own
+`INSTALLER_VERSION` (`installer/engine/crates/thimsy-engine/src/lib.rs`),
+which every test release raises.
+
+**What the catalog keeps.** What rarely changes: devices, the official
+firmware with its download addresses and pinned hashes, profiles, flashing
+recipes, and per device and profile where the latest package is published
+(`packages:`: file name, download address, an approximate size for the free
+space check, a note). No build steps, member hashes or expected output.
+
+**Use a file I already downloaded.** The user picks the package's `.tar`,
+under any name, or all of its `.tar.001`, `.tar.002`, ... parts. That's
+all they need to pick: the official firmware is then downloaded from its
+upstream release (or taken from the cache, or from the unpacked `.pac` or
+its 7z parts if those are picked too). Every picked file that isn't the
+official firmware is taken for the package, and a package that was picked
+never comes from anywhere else: if it isn't usable, the build stops and
+says why; it never falls back to downloading.
+
+**Acceptance.** The installer opens the package (picked, found in an import
+folder or next to the app, or downloaded), and refuses it with
+`bad_package` and the reason unless:
+
+1. it is a tar with a `pack.json` that is valid JSON;
+2. its `format` is 1 (a higher one, or a `min_installer` newer than this
+   installer, says a newer installer is needed);
+3. it matches the format-1 schema exactly: unknown fields and unknown steps
+   are refused, every sha256 is 64 lowercase hex digits, every file name is
+   plain, every step names a member the package has, and every patch step
+   carries its `in_sha256` and `out_sha256`;
+4. `device` and `profile`, when present, are the selected ones;
+5. `source_sha256` is the catalog's sha256 of the selected device's official
+   firmware;
+6. every member it lists is in the tar.
+
+Then every member's size and sha256 are checked (`hash_mismatch` when one
+differs: "damaged, download it again", or for a download "damaged, try
+again", deleting it). All of this happens before the official firmware is
+downloaded. The steps then run, each patch checking the firmware bytes it is
+applied to and the bytes it produces, and the finished image must have
+`reference_sha256` before it can be prepared or flashed (`job.json` records
+it; `flash` refuses a job without it).
+
+**Trust.** Packages are **unsigned**, by decision: anyone can make one, and
+the installer takes it on its manifest. What that protects and what it
+doesn't:
+
+- A package can only describe a build. The steps are a closed set of typed
+  operations on the user's own official firmware; nothing in a package runs.
+- A damaged or incomplete package (a cut-short download, a bad disk) is
+  caught by the member hashes before anything is built.
+- A package made for other firmware or another device is refused, and a
+  patch can't be applied to bytes it wasn't made for.
+- The result is checked against the manifest's `reference_sha256`, so the
+  image flashed is exactly the one the package's maker built and tested.
+- The same flash-time protections hold for any package: the device's
+  partition table is checked before the first write, NV and calibration are
+  never written, an update needs a matching base.
+- Not protected: a package made in bad faith is internally consistent, so
+  the installer will build and flash it. Users should take packages only
+  from the Thimsy release page (where `SHA256SUMS` lists them) or the
+  catalog's download, as they would firmware. Signing packages (minisign,
+  like the catalog) can be added later as a new manifest field without
+  changing the format.
+
 ---
 
 ## 11. First boot and later updates
@@ -1207,14 +1295,21 @@ Code lives in `installer/` (see `installer/README.md`).
   byte-identical. For now the build ships with the installer (the engine looks
   in `<app>/thimsy-build`, or downloads it from the installer release); later
   it becomes a separate GitHub release.
-- **One file per device pack:** the system image, the device's patches and
-  `pack.json` ship as one tar archive per device and profile (catalog
-  `bundles:`), read in place by byte range. Level-19 zstd keeps the RG Cube's
-  at 2.08 GB, under GitHub's 2 GiB asset limit; larger packs split into 1 GB
-  parts. Once releases are public, the installer downloads the newest public
-  release's archive itself; picking a downloaded archive is the second option.
+- **One file per package:** the system image, the device's patches and
+  `pack.json` ship as one tar archive per device and profile, read in place
+  by byte range. Level-19 zstd keeps the RG Cube's at 2.08 GB, under
+  GitHub's 2 GiB asset limit; larger packages split into 1 GB parts. Once
+  releases are public, the installer downloads the latest release's package
+  itself (catalog `packages:`); picking a downloaded package is the second
+  option.
+- **Any package, by its manifest (0.1.0 test 18):** the catalog no longer
+  pins a build. The installer accepts any package whose `pack.json` checks
+  out for the device (section 10.1), so a new Thimsy build needs neither a
+  new installer nor a catalog change. Thimsy 1.0a test 30's package, picked
+  with only the official firmware next to it and a catalog without its
+  hashes, rebuilds test 30's PAC byte for byte (sha256 `a2f9ee39…f8df9f`).
 - **Tests:**
-  - 118 engine unit and CLI tests and 217 app tests; `installer/tests/e2e.sh` runs 59 checks on real RG Cube firmware through a fake `spd_dump` (device check, partial writes, backups, cancel, update gate). `installer/docs/protocol-samples/` holds real engine output that both sides test against, including a full synthetic
+  - 137 engine unit and CLI tests and 231 app tests; `installer/tests/e2e.sh` runs 59 checks on real RG Cube firmware through a fake `spd_dump` (device check, partial writes, backups, cancel, update gate). `installer/docs/protocol-samples/` holds real engine output that both sides test against, including a full synthetic
     device build.
   - `installer/tests/e2e.sh` on real firmware with a fake `spd_dump`.
   - Flutter widget tests.

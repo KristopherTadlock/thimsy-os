@@ -1025,21 +1025,22 @@ fn write_failed(message: String) -> anyhow::Error {
         .into()
 }
 
-/// A real flash installs only the image this catalog expects for the
-/// profile, not just whatever job.json describes.
-fn check_reference(cat: &Catalog, d: &Device, rec: &JobRecord) -> Result<()> {
-    let want = d.expect.get(&rec.profile);
-    if want.is_some_and(|w| w.eq_ignore_ascii_case(&rec.sha256)) {
+/// A real flash installs only an image the build checked against its
+/// package's reference sha256, not just whatever job.json describes.
+fn check_reference(rec: &JobRecord) -> Result<()> {
+    let want = rec.reference_sha256.as_deref();
+    if rec.matches_reference == Some(true)
+        && want.is_some_and(|w| w.eq_ignore_ascii_case(&rec.sha256))
+    {
         return Ok(());
     }
     Err(EngineError::new(
         Code::HashMismatch,
         format!(
-            "this build (sha256 {}) isn't the {} image catalog {} expects (sha256 {})",
+            "this build (sha256 {}) isn't the {} image its package names (sha256 {})",
             rec.sha256,
             rec.profile,
-            cat.root.version,
-            want.map_or("none", String::as_str)
+            want.unwrap_or("none")
         ),
     )
     .hint("This version of the installer expects a different build. Build again, then install.")
@@ -1286,9 +1287,8 @@ pub struct PrepareResult {
 pub fn prepare(cat: &Catalog, job_dir: &Path, mode: Mode, rep: &Reporter) -> Result<PrepareResult> {
     rep.stage("check", "Checking the build");
     let (rec, p, plan) = load_for(cat, job_dir, mode, rep)?;
-    let d = cat.device(&rec.device)?;
     let _lock = job::lock_workspace(&job::workspace_of(job_dir))?;
-    check_reference(cat, d, &rec)?;
+    check_reference(&rec)?;
     let flash_dir = job_dir.join("flash");
     let entries = check_image(&rec, &load_prepared(&flash_dir, &rec.sha256), rep)?;
     rep.stage("prepare", "Preparing the partitions");
@@ -1330,7 +1330,7 @@ pub fn flash(cat: &Catalog, opts: &FlashOptions, rep: &Reporter) -> Result<Flash
     }
     // One run at a time per workspace, for the whole flash.
     let _lock = job::lock_workspace(&job::workspace_of(&opts.job))?;
-    check_reference(cat, d, &rec)?;
+    check_reference(&rec)?;
     let entries = check_image(&rec, &load_prepared(&flash_dir, &rec.sha256), rep)?;
 
     rep.stage("driver", "Checking the USB driver");

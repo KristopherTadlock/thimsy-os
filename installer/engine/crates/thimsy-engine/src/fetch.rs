@@ -1,8 +1,7 @@
-//! Downloads with resume and sha256 checks, local imports, and the cache.
+//! Downloads with resume and sha256 checks, local imports, the cache, and
+//! finding the Thimsy package among the user's files.
 
-use crate::archive::{MultiVolume, Span};
-use crate::bundle::Bundle;
-use crate::catalog::Artifact;
+use crate::catalog::{Artifact, Package, Source};
 use crate::error::{Code, EngineError};
 use crate::events::Reporter;
 use crate::util;
@@ -14,13 +13,12 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 /// Where verified files live: `<workspace>/cache/<file>`, with a
-/// `<file>.ok` marker recording the hash it was verified against.
+/// `<file>.ok` marker recording the hash it was verified against (or, for
+/// a downloaded package, that its download finished).
 /// `imports` are folders to look in, or files the user picked.
 pub struct Cache {
     pub dir: PathBuf,
     pub imports: Vec<PathBuf>,
-    /// Opened device packs; their members are used in place.
-    pub bundles: Vec<Bundle>,
     /// Longest wait for the server's answer or for the next piece of a
     /// download before the attempt counts as stalled (and is resumed).
     pub read_timeout: Duration,
@@ -70,83 +68,213 @@ pub fn find_unpacked(imports: &[PathBuf], name: &str, size: u64) -> Option<PathB
     })
 }
 
-/// The device pack `a` from the user's files, used where it is: one picked
-/// file of its size (any name), the file in an import folder, or its parts.
-/// Parts are matched to picked files by name, then the rest by size in the
-/// order they were picked, then by name in import folders. When picked
-/// files stand for some parts but not all, that's an error (`bad_input`
-/// naming what's missing): picked parts never mix with downloads.
-pub fn local_bundle(imports: &[PathBuf], a: &Artifact) -> Result<Option<Vec<PathBuf>>> {
-    let picked = picked_files(imports);
-    if let Some(p) = picked.iter().find(|p| file_len(p) == Some(a.size)) {
-        return Ok(Some(vec![(*p).clone()]));
-    }
-    if let Some(p) = find_in(imports, &a.file, a.size) {
-        return Ok(Some(vec![p]));
-    }
-    if a.parts.is_empty() {
-        return Ok(None);
-    }
-    let mut used = vec![false; picked.len()];
-    let mut found: Vec<Option<PathBuf>> = vec![None; a.parts.len()];
-    // By name among the picked files.
-    for (i, part) in a.parts.iter().enumerate() {
-        if let Some(k) = (0..picked.len()).find(|&k| {
-            !used[k]
-                && picked[k]
-                    .file_name()
-                    .is_some_and(|n| n == part.file.as_str())
-                && file_len(picked[k]) == Some(part.size)
-        }) {
-            used[k] = true;
-            found[i] = Some(picked[k].clone());
-        }
-    }
-    // Renamed parts: by size, in the order picked.
-    for (i, part) in a.parts.iter().enumerate() {
-        if found[i].is_some() {
-            continue;
-        }
-        if let Some(k) =
-            (0..picked.len()).find(|&k| !used[k] && file_len(picked[k]) == Some(part.size))
-        {
-            used[k] = true;
-            found[i] = Some(picked[k].clone());
-        }
-    }
-    let from_picks = used.iter().any(|&u| u);
-    // In import folders, by name.
-    let folders: Vec<PathBuf> = imports.iter().filter(|p| p.is_dir()).cloned().collect();
-    for (i, part) in a.parts.iter().enumerate() {
-        if found[i].is_none() {
-            found[i] = find_in(&folders, &part.file, part.size);
-        }
-    }
-    if found.iter().all(Option::is_some) {
-        return Ok(Some(found.into_iter().flatten().collect()));
-    }
-    if !from_picks {
-        return Ok(None);
-    }
-    let missing: Vec<String> = a
-        .parts
-        .iter()
-        .zip(&found)
-        .filter(|(_, f)| f.is_none())
-        .map(|(p, _)| format!("{} ({} bytes)", p.file, p.size))
-        .collect();
-    Err(EngineError::new(
-        Code::BadInput,
-        format!(
-            "the device pack {} comes in {} parts and the files you chose don't include all of them; missing: {}",
-            a.file,
-            a.parts.len(),
-            missing.join(", ")
-        ),
-    )
-    .hint("Choose every part of the device pack together, then try again.")
-    .into())
+/// Whether a picked file is the official firmware or one of its download
+/// parts (by name, or by size under any name), rather than a Thimsy package.
+pub fn is_source_file(src: Option<&Source>, p: &Path) -> bool {
+    let Some(src) = src else {
+        return false;
+    };
+    let name = p.file_name().map(|n| n.to_string_lossy().to_string());
+    let len = file_len(p);
+    name.as_deref() == Some(src.contains.as_str())
+        || len == Some(src.container.size)
+        || src
+            .parts
+            .iter()
+            .any(|a| name.as_deref() == Some(a.file.as_str()) || len == Some(a.size))
 }
+
+/// N of a `name.NNN` part.
+fn part_number(p: &Path) -> Option<u32> {
+    let ext = p.extension()?.to_str()?;
+    (ext.len() >= 3 && ext.bytes().all(|b| b.is_ascii_digit()))
+        .then(|| ext.parse().ok())
+        .flatten()
+}
+
+/// The Thimsy package among the picked files: every picked file that isn't
+/// the official firmware (see [`is_source_file`]). One file is the package,
+/// under any name; several are its parts, in the order of their `.NNN`
+/// numbers when they all have one (which must then run from 001 with none
+/// missing), otherwise in the order given. Empty when no picked file is a
+/// package. Whether it really is one is for [`crate::package`] to say.
+pub fn picked_package(src: Option<&Source>, imports: &[PathBuf]) -> Result<Vec<PathBuf>> {
+    let files: Vec<PathBuf> = picked_files(imports)
+        .into_iter()
+        .filter(|p| !is_source_file(src, p))
+        .cloned()
+        .collect();
+    if files.len() < 2 {
+        return Ok(files);
+    }
+    let Some(nums) = files
+        .iter()
+        .map(|p| part_number(p))
+        .collect::<Option<Vec<u32>>>()
+    else {
+        return Ok(files);
+    };
+    let mut parts: Vec<(u32, PathBuf)> = nums.into_iter().zip(files).collect();
+    parts.sort_by_key(|(n, _)| *n);
+    let stem = parts[0]
+        .1
+        .file_stem()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    let last = parts.last().map_or(0, |(n, _)| *n);
+    let missing: Vec<String> = (1..=last)
+        .filter(|n| !parts.iter().any(|(m, _)| m == n))
+        .map(|n| format!("{stem}.{n:03}"))
+        .collect();
+    let repeated = parts.windows(2).any(|w| w[0].0 == w[1].0);
+    if !missing.is_empty() || repeated {
+        let names: Vec<String> = parts
+            .iter()
+            .map(|(_, p)| {
+                p.file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string()
+            })
+            .collect();
+        let what = if repeated {
+            "two of them have the same part number".to_string()
+        } else {
+            format!("missing: {}", missing.join(", "))
+        };
+        return Err(EngineError::new(
+            Code::BadInput,
+            format!(
+                "the files you chose ({}) look like parts of a Thimsy package, but not all of them; {what}",
+                names.join(", ")
+            ),
+        )
+        .hint("Choose every part of the Thimsy package together, then try again.")
+        .into());
+    }
+    Ok(parts.into_iter().map(|(_, p)| p).collect())
+}
+
+/// Whether `name` is a package for `device` and `profile` as Thimsy names
+/// them (`Thimsy-<release>-<device>-<profile>.tar`), or the catalog's name.
+fn package_name(name: &str, device: &str, profile: &str, pkg: Option<&Package>) -> bool {
+    pkg.is_some_and(|p| p.file == name)
+        || (name.starts_with("Thimsy-") && name.ends_with(&format!("-{device}-{profile}.tar")))
+}
+
+/// A package for `device` and `profile` in one of `folders` (import folders,
+/// then the `thimsy-build` folder next to the app), by name: the `.tar`, or
+/// its `.tar.001`, `.tar.002`, ... parts. The first folder that has one
+/// wins; a folder with two different ones is an error (`bad_input`).
+pub fn package_in_folders(
+    folders: &[PathBuf],
+    device: &str,
+    profile: &str,
+    pkg: Option<&Package>,
+) -> Result<Option<Vec<PathBuf>>> {
+    for dir in folders.iter().filter(|d| d.is_dir()) {
+        let mut wholes: Vec<PathBuf> = Vec::new();
+        let mut parts: std::collections::BTreeMap<String, Vec<(u32, PathBuf)>> = Default::default();
+        for e in fs::read_dir(dir).into_iter().flatten().flatten() {
+            let path = e.path();
+            if !path.is_file() {
+                continue;
+            }
+            let name = e.file_name().to_string_lossy().to_string();
+            if package_name(&name, device, profile, pkg) {
+                wholes.push(path);
+            } else if let Some(n) = part_number(&path) {
+                let stem = path
+                    .file_stem()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+                if package_name(&stem, device, profile, pkg) {
+                    parts.entry(stem).or_default().push((n, path));
+                }
+            }
+        }
+        let mut found: Vec<Vec<PathBuf>> = wholes.iter().map(|p| vec![p.clone()]).collect();
+        for (stem, mut ps) in parts {
+            if wholes
+                .iter()
+                .any(|w| w.file_name().is_some_and(|n| n.to_string_lossy() == stem))
+            {
+                continue;
+            }
+            ps.sort_by_key(|(n, _)| *n);
+            // Parts 001.. with none missing; anything else isn't a package.
+            if ps
+                .iter()
+                .enumerate()
+                .all(|(i, (n, _))| *n as usize == i + 1)
+            {
+                found.push(ps.into_iter().map(|(_, p)| p).collect());
+            }
+        }
+        match found.len() {
+            0 => continue,
+            1 => return Ok(found.pop()),
+            _ => {
+                found.sort();
+                let names: Vec<String> = found
+                    .iter()
+                    .map(|f| {
+                        f[0].file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .to_string()
+                    })
+                    .collect();
+                return Err(EngineError::new(
+                    Code::BadInput,
+                    format!(
+                        "{} holds more than one Thimsy package for {device} ({profile}): {}",
+                        dir.display(),
+                        names.join(", ")
+                    ),
+                )
+                .hint("There is more than one Thimsy package in that folder. Choose the one to use with Use a file I already downloaded.")
+                .into());
+            }
+        }
+    }
+    Ok(None)
+}
+
+/// The package `pkg` (or each of its parts) as an earlier run downloaded
+/// it into `cache_dir`, if that download finished.
+pub fn cached_package(cache_dir: &Path, pkg: &Package) -> Option<Vec<PathBuf>> {
+    let files: Vec<&str> = if pkg.parts.is_empty() {
+        vec![pkg.file.as_str()]
+    } else {
+        pkg.parts.iter().map(|p| p.file.as_str()).collect()
+    };
+    files
+        .into_iter()
+        .map(|f| {
+            let path = cache_dir.join(f);
+            let done = fs::read_to_string(cache_dir.join(format!("{f}.ok")))
+                .is_ok_and(|m| m.trim() == DOWNLOADED);
+            (done && path.is_file()).then_some(path)
+        })
+        .collect()
+}
+
+/// What a download must be: its name, where it is, and its size and sha256
+/// when they're known in advance (a Thimsy package's aren't: its manifest
+/// is checked once it's here).
+struct Fetch {
+    file: String,
+    size: Option<u64>,
+    sha256: Option<String>,
+    urls: Vec<String>,
+    note: Option<String>,
+}
+
+/// What a finished package download's marker holds.
+const DOWNLOADED: &str = "downloaded";
 
 /// What `<file>.partial.json` records about a download in progress, so a
 /// resume only ever continues the same file from the same server.
@@ -165,7 +293,6 @@ impl Cache {
         Ok(Cache {
             dir,
             imports,
-            bundles: Vec::new(),
             read_timeout: Duration::from_secs(60),
             retry_delay: Duration::from_secs(2),
         })
@@ -177,64 +304,8 @@ impl Cache {
         find_in(&self.imports, name, size)
     }
 
-    fn bundle_member(&self, a: &Artifact) -> Option<&crate::bundle::Member> {
-        self.bundles
-            .iter()
-            .find_map(|b| b.get(&a.file))
-            .filter(|m| m.size == a.size)
-    }
-
-    /// Whether `a` comes from an opened device pack (nothing to delete).
-    pub fn in_bundle(&self, a: &Artifact) -> bool {
-        self.bundle_member(a).is_some()
-    }
-
-    fn check_spans(&self, a: &Artifact, spans: &[Span], what: &str, rep: &Reporter) -> Result<()> {
-        let mut mv = MultiVolume::open_spans(spans)?;
-        let mut h = <sha2::Sha256 as sha2::Digest>::new();
-        let mut buf = vec![0u8; util::CHUNK];
-        let mut done = 0u64;
-        loop {
-            let n = mv.read(&mut buf)?;
-            if n == 0 {
-                break;
-            }
-            sha2::Digest::update(&mut h, &buf[..n]);
-            done += n as u64;
-            rep.progress_for("Checking {file}", &a.file, done, a.size);
-        }
-        let got = hex::encode(sha2::Digest::finalize(h));
-        if done != a.size || got != a.sha256 {
-            return Err(EngineError::new(
-                Code::HashMismatch,
-                format!(
-                    "{} ({what}) has sha256 {got}, expected {}",
-                    a.file, a.sha256
-                ),
-            )
-            .hint("The file is damaged or a different version. Delete it and download again.")
-            .into());
-        }
-        Ok(())
-    }
-
-    /// A verified copy of the device pack `a`, used where it is: the user's
-    /// files (see [`local_bundle`]), or else downloaded into the cache.
-    pub fn get_in_place(&self, a: &Artifact, rep: &Reporter) -> Result<Vec<Span>> {
-        if let Some(paths) = local_bundle(&self.imports, a)? {
-            let spans = paths
-                .iter()
-                .map(|p| Span::whole(p))
-                .collect::<Result<Vec<_>>>()?;
-            rep.info(format!("Using {} from {}", a.file, spans[0].path.display()));
-            self.check_spans(a, &spans, "picked file", rep)?;
-            return Ok(spans);
-        }
-        self.get_all(a, rep)
-    }
-
-    fn marker(&self, a: &Artifact) -> PathBuf {
-        self.dir.join(format!("{}.ok", a.file))
+    fn marker_for(&self, file: &str) -> PathBuf {
+        self.dir.join(format!("{file}.ok"))
     }
 
     fn is_verified(&self, a: &Artifact, path: &Path) -> bool {
@@ -244,7 +315,7 @@ impl Cache {
         if meta.len() != a.size {
             return false;
         }
-        fs::read_to_string(self.marker(a)).is_ok_and(|m| m.trim() == a.sha256)
+        fs::read_to_string(self.marker_for(&a.file)).is_ok_and(|m| m.trim() == a.sha256)
     }
 
     fn verify(&self, a: &Artifact, path: &Path, rep: &Reporter) -> Result<()> {
@@ -259,38 +330,8 @@ impl Cache {
             .hint("The file is damaged or a different version. Delete it and download again.")
             .into());
         }
-        util::write_atomic(&self.marker(a), a.sha256.as_bytes())?;
+        util::write_atomic(&self.marker_for(&a.file), a.sha256.as_bytes())?;
         Ok(())
-    }
-
-    /// Byte ranges of a verified copy of `a`: inside an opened device pack,
-    /// one file, or its parts in order (the whole is checked across the
-    /// parts without joining them on disk).
-    pub fn get_all(&self, a: &Artifact, rep: &Reporter) -> Result<Vec<Span>> {
-        if let Some(m) = self.bundle_member(a) {
-            let spans = m.spans.clone();
-            self.check_spans(a, &spans, "in the device pack", rep)?;
-            return Ok(spans);
-        }
-        if a.parts.is_empty() {
-            return Ok(vec![Span::whole(&self.get(a, rep)?)?]);
-        }
-        let mut paths = Vec::new();
-        for p in &a.parts {
-            paths.push(self.get(p, rep)?);
-        }
-        let spans = paths
-            .iter()
-            .map(|p| Span::whole(p))
-            .collect::<Result<Vec<_>>>()?;
-        let marker = self.marker(a);
-        if fs::read_to_string(&marker).is_ok_and(|m| m.trim() == a.sha256) {
-            return Ok(spans);
-        }
-        let what = format!("joined from {} parts", a.parts.len());
-        self.check_spans(a, &spans, &what, rep)?;
-        util::write_atomic(&marker, a.sha256.as_bytes())?;
-        Ok(spans)
     }
 
     /// Returns the path of a verified copy of `a`, fetching it if needed.
@@ -301,24 +342,10 @@ impl Cache {
             return Ok(dest);
         }
         let tmp = self.dir.join(format!("{}.import", a.file));
-        // Inside an opened device pack.
-        if let Some(m) = self.bundle_member(a) {
-            {
-                let mut i = MultiVolume::open_spans(&m.spans)?;
-                let mut o = File::create(&tmp)?;
-                util::copy_exact(&mut i, &mut o, a.size, &mut |d| {
-                    rep.progress_for("Unpacking {file}", &a.file, d, a.size)
-                })?;
-            }
-            self.verify(a, &tmp, rep)?;
-            fs::rename(&tmp, &dest)?;
-            return Ok(dest);
-        }
-        // A file the user picked or a folder of downloads (by hand or from a
-        // draft release).
+        // A file the user picked or a folder of downloads.
         if let Some(cand) = self.find_import(&a.file, a.size) {
             rep.info(format!("Importing {} from {}", a.file, cand.display()));
-            copy_with_progress(&cand, &tmp, a, rep)?;
+            copy_with_progress(&cand, &tmp, &a.file, Some(a.size), rep)?;
             self.verify(a, &tmp, rep)?;
             fs::rename(&tmp, &dest)?;
             return Ok(dest);
@@ -330,6 +357,74 @@ impl Cache {
             }
             fs::remove_file(&dest)?;
         }
+        let f = Fetch {
+            file: a.file.clone(),
+            size: Some(a.size),
+            sha256: Some(a.sha256.clone()),
+            urls: a.urls.clone(),
+            note: a.note.clone(),
+        };
+        self.fetch(&f, rep, &|p| self.verify(a, p, rep))
+    }
+
+    /// Downloads the package `pkg` (or each of its parts) into the cache.
+    /// Its size and contents aren't known in advance: the caller opens it
+    /// and checks it against its own manifest.
+    pub fn download_package(&self, pkg: &Package, rep: &Reporter) -> Result<Vec<PathBuf>> {
+        let pieces: Vec<(&str, &[String])> = if pkg.parts.is_empty() {
+            vec![(pkg.file.as_str(), pkg.urls.as_slice())]
+        } else {
+            pkg.parts
+                .iter()
+                .map(|p| (p.file.as_str(), p.urls.as_slice()))
+                .collect()
+        };
+        let mut out = Vec::new();
+        for (file, urls) in pieces {
+            let marker = self.marker_for(file);
+            let dest = self.dir.join(file);
+            if fs::read_to_string(&marker).is_ok_and(|m| m.trim() == DOWNLOADED) && dest.is_file() {
+                rep.info(format!("{file} already downloaded"));
+                out.push(dest);
+                continue;
+            }
+            let _ = fs::remove_file(&marker);
+            let f = Fetch {
+                file: file.to_string(),
+                size: None,
+                sha256: None,
+                urls: urls.to_vec(),
+                note: pkg.note.clone(),
+            };
+            let path = self.fetch(&f, rep, &|_| Ok(()))?;
+            util::write_atomic(&marker, DOWNLOADED.as_bytes())?;
+            out.push(path);
+        }
+        Ok(out)
+    }
+
+    /// Removes a downloaded package (or its parts) from the cache, so the
+    /// next try downloads it again.
+    pub fn forget_package(&self, pkg: &Package) {
+        let files: Vec<&str> = std::iter::once(pkg.file.as_str())
+            .chain(pkg.parts.iter().map(|p| p.file.as_str()))
+            .collect();
+        for f in files {
+            let _ = fs::remove_file(self.dir.join(f));
+            let _ = fs::remove_file(self.marker_for(f));
+        }
+    }
+
+    /// Downloads `a` into the cache from the first of its addresses that
+    /// works, resuming interrupted attempts, and returns its path once
+    /// `check` accepts it.
+    fn fetch(
+        &self,
+        a: &Fetch,
+        rep: &Reporter,
+        check: &dyn Fn(&Path) -> Result<()>,
+    ) -> Result<PathBuf> {
+        let dest = self.dir.join(&a.file);
         if a.urls.is_empty() {
             return Err(EngineError::new(
                 Code::DownloadFailed,
@@ -352,7 +447,7 @@ impl Cache {
                 tries += 1;
                 let before = fs::metadata(&partial).map(|m| m.len()).unwrap_or(0);
                 match self.download(url, &partial, a, rep) {
-                    Ok(resumed) => match self.verify(a, &partial, rep) {
+                    Ok(resumed) => match check(&partial) {
                         Ok(()) => {
                             fs::rename(&partial, &dest)?;
                             let _ = fs::remove_file(sidecar(&partial));
@@ -409,9 +504,9 @@ impl Cache {
     /// Downloads `url` to `partial`, resuming from its current length when
     /// its `.partial.json` shows it's the same file from the same server
     /// (else starting over). Returns whether it continued earlier bytes.
-    fn download(&self, url: &str, partial: &Path, a: &Artifact, rep: &Reporter) -> Result<bool> {
+    fn download(&self, url: &str, partial: &Path, a: &Fetch, rep: &Reporter) -> Result<bool> {
         if let Some(local) = url.strip_prefix("file://") {
-            copy_with_progress(Path::new(local), partial, a, rep)?;
+            copy_with_progress(Path::new(local), partial, &a.file, a.size, rep)?;
             return Ok(false);
         }
         let info_path = sidecar(partial);
@@ -420,8 +515,9 @@ impl Cache {
             .and_then(|b| serde_json::from_slice(&b).ok())
             .unwrap_or_default();
         let mut have = fs::metadata(partial).map(|m| m.len()).unwrap_or(0);
-        let same = info.url == url && info.sha256 == a.sha256 && info.size == a.size;
-        if have > 0 && (!same || have > a.size) {
+        let sha = a.sha256.clone().unwrap_or_default();
+        let same = info.url == url && info.sha256 == sha && a.size.is_none_or(|s| info.size == s);
+        if have > 0 && (!same || (info.size > 0 && have > info.size)) {
             rep.info(format!(
                 "Starting {} again: the partial download doesn't belong to this file",
                 a.file
@@ -432,13 +528,13 @@ impl Cache {
         if have == 0 || !same {
             info = PartialInfo {
                 url: url.to_string(),
-                sha256: a.sha256.clone(),
-                size: a.size,
+                sha256: sha,
+                size: a.size.unwrap_or(0),
                 etag: None,
                 last_modified: None,
             };
         }
-        if have == a.size {
+        if info.size > 0 && have == info.size {
             return Ok(true);
         }
         let agent: ureq::Agent = ureq::Agent::config_builder()
@@ -473,16 +569,30 @@ impl Cache {
             206 => {
                 let range = header("content-range").unwrap_or_default();
                 let changed = info.etag.is_some() && etag.is_some() && info.etag != etag;
-                if content_range_start(&range) != Some((have, a.size)) || changed {
+                match content_range_start(&range) {
+                    Some((start, total))
+                        if start == have && (info.size == 0 || total == info.size) && !changed =>
+                    {
+                        info.size = total;
+                    }
                     // Not the bytes asked for, or a different file now.
-                    discard(partial);
-                    anyhow::bail!(
-                        "the server sent {range:?} for a resume at byte {have}; starting over"
-                    );
+                    _ => {
+                        discard(partial);
+                        anyhow::bail!(
+                            "the server sent {range:?} for a resume at byte {have}; starting over"
+                        );
+                    }
                 }
                 true
             }
-            200 => false,
+            200 => {
+                if a.size.is_none() {
+                    info.size = header("content-length")
+                        .and_then(|v| v.trim().parse().ok())
+                        .unwrap_or(0);
+                }
+                false
+            }
             416 => {
                 discard(partial);
                 anyhow::bail!("the server can't resume at byte {have} (HTTP 416); starting over");
@@ -500,6 +610,8 @@ impl Cache {
         } else {
             (File::create(partial)?, 0)
         };
+        // 0 when neither the catalog nor the server said how large it is.
+        let total = info.size;
         let mut body = resp.into_body().into_reader();
         let mut buf = vec![0u8; 1 << 20];
         loop {
@@ -507,18 +619,18 @@ impl Cache {
             if n == 0 {
                 break;
             }
-            if done + n as u64 > a.size {
+            if total > 0 && done + n as u64 > total {
                 drop(file);
                 discard(partial);
                 anyhow::bail!("{} is larger than expected", a.file);
             }
             file.write_all(&buf[..n])?;
             done += n as u64;
-            rep.progress_for("Downloading {file}", &a.file, done, a.size);
+            rep.progress_for("Downloading {file}", &a.file, done, total);
         }
         file.sync_all()?;
-        if done != a.size {
-            anyhow::bail!("download stopped at {done} of {} bytes", a.size);
+        if total > 0 && done != total {
+            anyhow::bail!("download stopped at {done} of {total} bytes");
         }
         Ok(resumed)
     }
@@ -545,11 +657,23 @@ fn content_range_start(v: &str) -> Option<(u64, u64)> {
     Some((start.trim().parse().ok()?, total.trim().parse().ok()?))
 }
 
-fn copy_with_progress(src: &Path, dst: &Path, a: &Artifact, rep: &Reporter) -> Result<()> {
-    let mut i = File::open(src)?;
+/// Copies `src` to `dst`: exactly `size` bytes when that's known, else the
+/// whole file.
+fn copy_with_progress(
+    src: &Path,
+    dst: &Path,
+    file: &str,
+    size: Option<u64>,
+    rep: &Reporter,
+) -> Result<()> {
+    let mut i = File::open(src).with_context(|| format!("opening {}", src.display()))?;
+    let n = match size {
+        Some(n) => n,
+        None => i.metadata()?.len(),
+    };
     let mut o = File::create(dst)?;
-    util::copy_exact(&mut i, &mut o, a.size, &mut |d| {
-        rep.progress_for("Importing {file}", &a.file, d, a.size)
+    util::copy_exact(&mut i, &mut o, n, &mut |d| {
+        rep.progress_for("Importing {file}", file, d, n)
     })?;
     o.sync_all()?;
     Ok(())
@@ -584,39 +708,65 @@ mod tests {
             size: data.len() as u64,
             sha256: util::sha256_hex(data),
             urls,
-            unpack: None,
             note: None,
-            parts: vec![],
         }
     }
 
     #[test]
-    fn split_artifacts_are_fetched_per_part_and_checked_whole() {
-        let ws = tempfile::tempdir().unwrap();
-        let imp = tempfile::tempdir().unwrap();
-        let data: Vec<u8> = (0..30_000u32).map(|i| (i % 241) as u8).collect();
-        let mut parts = Vec::new();
-        for (i, c) in data.chunks(12_000).enumerate() {
-            let name = format!("big.zst.{:03}", i + 1);
-            std::fs::write(imp.path().join(&name), c).unwrap();
-            parts.push(art(&name, c, vec![]));
-        }
-        let rep = Reporter::new(Arc::new(MemorySink::default()));
-        let cache = Cache::new(ws.path().join("cache"), vec![imp.path().to_path_buf()]).unwrap();
-        let mut whole = art("big.zst", &data, vec![]);
-        whole.parts = parts;
-        let paths = cache.get_all(&whole, &rep).unwrap();
-        assert_eq!(paths.len(), 3);
-        let mut joined = Vec::new();
-        crate::archive::MultiVolume::open_spans(&paths)
+    fn picked_package_parts_are_ordered_and_must_be_complete() {
+        let d = tempfile::tempdir().unwrap();
+        let touch = |name: &str| {
+            let p = d.path().join(name);
+            std::fs::write(&p, name.as_bytes()).unwrap();
+            p
+        };
+        let (p1, p2, p3) = (
+            touch("pack.tar.001"),
+            touch("pack.tar.002"),
+            touch("pack.tar.003"),
+        );
+        let got = picked_package(None, &[p3.clone(), p1.clone(), p2.clone()]).unwrap();
+        assert_eq!(got, [p1.clone(), p2.clone(), p3.clone()]);
+        let err = picked_package(None, &[p1.clone(), p3.clone()]).unwrap_err();
+        assert_eq!(crate::error::code_of(&err).0, Code::BadInput);
+        assert!(err.to_string().contains("pack.tar.002"), "{err}");
+        // Renamed copies: in the order chosen. One file: the package.
+        let (a, b) = (touch("download (1).bin"), touch("download (2).bin"));
+        assert_eq!(
+            picked_package(None, &[a.clone(), b.clone()]).unwrap(),
+            [a.clone(), b]
+        );
+        assert_eq!(picked_package(None, std::slice::from_ref(&a)).unwrap(), [a]);
+        // Folders aren't picked files.
+        assert!(picked_package(None, &[d.path().to_path_buf()])
             .unwrap()
-            .read_to_end(&mut joined)
-            .unwrap();
-        assert_eq!(joined, data);
-        // Whole-file hash is enforced even when every part matches its own.
-        whole.sha256 = "0".repeat(64);
-        let cache2 = Cache::new(ws.path().join("cache2"), vec![imp.path().to_path_buf()]).unwrap();
-        assert!(cache2.get_all(&whole, &rep).is_err());
+            .is_empty());
+    }
+
+    #[test]
+    fn packages_in_folders_are_found_by_name() {
+        let d = tempfile::tempdir().unwrap();
+        let dir = d.path().to_path_buf();
+        let find = || package_in_folders(std::slice::from_ref(&dir), "dev-x", "heavy", None);
+        std::fs::write(dir.join("Thimsy-1.0a-dev-x-light.tar"), b"x").unwrap();
+        std::fs::write(dir.join("notes.txt"), b"x").unwrap();
+        assert_eq!(find().unwrap(), None);
+        for n in [
+            "Thimsy-1.0b-dev-x-heavy.tar.002",
+            "Thimsy-1.0b-dev-x-heavy.tar.001",
+        ] {
+            std::fs::write(dir.join(n), b"x").unwrap();
+        }
+        assert_eq!(
+            find().unwrap().unwrap(),
+            [
+                dir.join("Thimsy-1.0b-dev-x-heavy.tar.001"),
+                dir.join("Thimsy-1.0b-dev-x-heavy.tar.002")
+            ]
+        );
+        std::fs::write(dir.join("Thimsy-1.0a-dev-x-heavy.tar"), b"x").unwrap();
+        let err = find().unwrap_err();
+        assert_eq!(crate::error::code_of(&err).0, Code::BadInput);
     }
 
     #[test]

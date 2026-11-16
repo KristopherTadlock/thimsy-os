@@ -403,7 +403,7 @@ Future<String?> _pickWithFileSelector() async {
   }
 }
 
-/// Opens the native picker for the Thimsy device pack: one `.tar` file or
+/// Opens the native picker for the Thimsy package: one `.tar` file or
 /// several of its numbered parts (`.tar.001`, `.tar.002`, …). Returns the
 /// chosen paths, empty when cancelled. Replaceable in tests.
 Future<List<String>> Function(AppLocalizations l) pickPackFiles =
@@ -445,6 +445,7 @@ String? errorTitleFor(AppLocalizations l, String code) => switch (code) {
   'unlock_guided' => l.errTitleUnlockGuided,
   'cancelled' => l.errCancelled,
   'bad_input' => l.errTitleBadInput,
+  'bad_package' => l.errTitleBadPackage,
   'internal' => l.errTitleInternal,
   'busy' => l.errTitleBusy,
   'full_install_needed' => l.errTitleFullInstallNeeded,

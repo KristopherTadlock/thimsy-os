@@ -1,18 +1,17 @@
 {"stage":"plan","title":"Checking the plan","type":"stage"}
-{"level":"info","message":"Needs about 31.01 MB free in <workspace>; 114.94 GB available","type":"log"}
+{"level":"info","message":"Needs about 31.01 MB free in <workspace>; 123.21 GB available","type":"log"}
 {"stage":"fetch","title":"Downloading","type":"stage"}
+{"done":3678208,"label":"Importing Thimsy-test-testdev-heavy.tar","stage":"fetch","total":3678208,"type":"progress"}
+{"done":3670109,"label":"Checking thimsy-system.img.zst","stage":"fetch","total":3670109,"type":"progress"}
+{"done":294,"label":"Checking vb.bsdiff","stage":"fetch","total":294,"type":"progress"}
+{"done":1453,"label":"Checking odm.bsdiff","stage":"fetch","total":1453,"type":"progress"}
+{"level":"info","message":"Using the downloaded Thimsy-test-testdev-heavy.tar: Thimsy Test (package format 1, 7 build steps)","type":"log"}
 {"done":382435,"label":"Importing fw.7z.001","stage":"fetch","total":382435,"type":"progress"}
 {"done":382435,"label":"Checking fw.7z.001","stage":"fetch","total":382435,"type":"progress"}
 {"done":382435,"label":"Importing fw.7z.002","stage":"fetch","total":382435,"type":"progress"}
 {"done":382435,"label":"Checking fw.7z.002","stage":"fetch","total":382435,"type":"progress"}
 {"done":382434,"label":"Importing fw.7z.003","stage":"fetch","total":382434,"type":"progress"}
 {"done":382434,"label":"Checking fw.7z.003","stage":"fetch","total":382434,"type":"progress"}
-{"done":3670109,"label":"Importing thimsy-system.img.zst","stage":"fetch","total":3670109,"type":"progress"}
-{"done":3670109,"label":"Checking thimsy-system.img.zst","stage":"fetch","total":3670109,"type":"progress"}
-{"done":294,"label":"Importing vb.bsdiff","stage":"fetch","total":294,"type":"progress"}
-{"done":294,"label":"Checking vb.bsdiff","stage":"fetch","total":294,"type":"progress"}
-{"done":1453,"label":"Importing odm.bsdiff","stage":"fetch","total":1453,"type":"progress"}
-{"done":1453,"label":"Checking odm.bsdiff","stage":"fetch","total":1453,"type":"progress"}
 {"stage":"extract","title":"Unpacking the firmware","type":"stage"}
 {"done":12774372,"label":"Unpacking firmware.pac","stage":"extract","total":12774372,"type":"progress"}
 {"done":12774372,"label":"Checking the unpacked firmware","stage":"extract","total":12774372,"type":"progress"}

@@ -153,14 +153,14 @@ fn dispatch(g: &Global, cmd: Command, rep: &Reporter, out: &mut dyn FnMut(Value)
                         "status": d.status, "support": d.support, "blocks": d.blocks.iter().map(|n| tr(n)).collect::<Vec<_>>(),
                         "host_message": (d.install_on(host) == InstallSupport::None).then(|| resolve::host_text(d, host)),
                         "notes": d.notes.iter().map(|n| tr(n)).collect::<Vec<_>>(),
-                        "buildable": d.source.is_some() && !d.build.is_empty(),
+                        "buildable": d.buildable(),
                     })
                 })
                 .collect();
             let profiles: Vec<_> = cat
                 .profiles
                 .iter()
-                .map(|p| json!({"id": p.id, "name": tr(&p.name), "summary": tr(&p.summary), "available": cat.system_for(&p.id).is_some()}))
+                .map(|p| json!({"id": p.id, "name": tr(&p.name), "summary": tr(&p.summary), "available": cat.profile_published(&p.id)}))
                 .collect();
             out(
                 json!({"type": "catalog", "version": cat.root.version, "release": cat.root.release,

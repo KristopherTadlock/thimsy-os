@@ -13,7 +13,7 @@ Every command accepts `--lang CODE` (Thimsy's codes: `en ar da de el es fi fr
 he it ja ko nb nl pl pt ru sv th tr zh-cn zh-tw`; Flutter forms such as
 `zh_TW` are accepted). Stage titles, progress labels, prompts, hints, guide
 steps, profile text (names, summaries, emulator and app names and systems,
-core systems), artifact notes, driver details and the "use Windows" message
+core systems), download notes, driver details and the "use Windows" message
 come back translated; anything without a translation stays English. Error
 `message`s are always English: show them as details under a title the app
 picks for the error `code`.
@@ -85,7 +85,7 @@ the real catalog.
 ### `catalog --json`
 One line:
 ```json
-{"type":"catalog","version":"0.1.0-test2","release":"Thimsy 1.0a","engine":"0.1.0","host":"linux",
+{"type":"catalog","version":"0.1.0-test18","release":"Thimsy 1.0a","engine":"0.1.0","host":"linux",
  "devices":[{
   "id":"anbernic-rg-cube","name":"Anbernic RG Cube","maker":"Anbernic",
   "soc":"Unisoc T820","display":"720×720","status":"testing",
@@ -101,8 +101,10 @@ One line:
 - `install` values: `automated`, `guided`, `untested`, `none`.
 - `host_message` (per device): set when this computer can't install the
   device ("… Run Thimsy Installer on a Windows PC to install it."), else null.
-- `buildable`: this version can build an image for the device at all
-  (profiles may still be unavailable: see `profiles[].available`).
+- `buildable`: this version can build an image for the device at all: the
+  catalog has its official firmware and lists a Thimsy package for at least
+  one profile (profiles may still be unavailable: see
+  `profiles[].available`, true when some device lists a package for it).
 
 ### `resolve --device ID --profile P [--set KEY=VALUE]... --json`
 One line:
@@ -171,13 +173,16 @@ Run before `build`; don't start the build when `ok` is false.
   working image, with 5% headroom) and `flash_need` (the finished image, the
   partitions flashing unpacks next to it, and the new cache files unless
   `--delete-downloads`).
-- `--import`: the same files and folders `build --import` will get. A picked
-  device pack (or all its parts) or unpacked official firmware is used where
-  it is and isn't counted as a download or as disk use; files found by name
-  and size in a picked folder are copied into the cache, so they count as
-  disk use but not as downloads. `imported`: download bytes the picks stand
-  in for; `cached`: download bytes already in the workspace's cache;
-  `downloads`: every download the build uses, per the catalog.
+- `--import`: the same files and folders `build --import` will get. A Thimsy
+  package (or all its parts) or unpacked official firmware, picked or found
+  in a picked folder, is used where it is and isn't counted as a download or
+  as disk use; the official firmware's download parts found by name and size
+  in a picked folder are copied into the cache, so they count as disk use but
+  not as downloads. `imported`: download bytes the picks stand in for;
+  `cached`: download bytes already in the workspace's cache; `downloads`:
+  every download the build uses. A package isn't pinned by the catalog, so
+  until it's on hand its size is the catalog's estimate (`approx_size`), and
+  its real size once it's picked, found or downloaded.
 - `free`: free bytes on the drive of the workspace (its first existing
   folder when it doesn't exist yet); 0 when it couldn't be checked.
 - `reason` when `ok` is false: `fat32` (the drive is FAT32 and the build
@@ -224,16 +229,46 @@ Final:
 ```
 - Holds an exclusive lock on `DIR/.thimsy.lock` for the whole build; while
   another build, flash or clean of the workspace holds it, fails with `busy`.
-- `--import DIR`: look in DIR for any needed file (matched by name and size,
-  then checked by sha256) before downloading. `--import FILE` (a file the
-  user picked): the device pack under any name if its size matches, the
-  unpacked official firmware under any name if its size matches, anything
-  else by name and size. If none of the picked files is used by the build,
-  it fails with `bad_input` naming what it expected instead of downloading.
-- A device pack published in parts: picked parts are matched to the parts by
-  name, then by size in the order picked (so renamed copies work). Once any
-  picked file stands for a part, the pack never comes from the network: if
-  parts are missing, the build fails with `bad_input` listing them.
+- The build needs the device's official firmware (pinned by the catalog:
+  each download part's and the unpacked container's size and sha256) and a
+  **Thimsy package**: a tar of `pack.json`, the shared system image and the
+  device's patches (see `package.rs` and `universal_installer.md`, section
+  10). The catalog pins no package: any package is accepted whose own
+  manifest checks out.
+- `--import FILE` (files the user picked): the unpacked official firmware
+  (by name, or its size under any name) and its download parts (by name or
+  size) are the firmware; **every other picked file is the package**: one
+  file under any name, or its parts, ordered by their `.001`, `.002`, ...
+  numbers when they all have one (a gap fails with `bad_input` naming the
+  missing part), otherwise in the order given. Once a picked file is taken
+  for the package, the package never comes from anywhere else: a file that
+  isn't a usable package fails the build (below) and nothing is downloaded
+  instead. Picking only the package's `.tar` is the usual case: the official
+  firmware is then downloaded from its upstream release (or taken from the
+  cache).
+- `--import DIR`: the unpacked official firmware or its download parts by
+  name and size; a package named `Thimsy-<release>-<device>-<profile>.tar`
+  (or the catalog's file name), or its `.tar.001`, ... parts. A folder with
+  two different packages for the device and profile fails with `bad_input`.
+  After the picks and folders: `<app>/thimsy-build`, then a package an
+  earlier build downloaded into the cache, then the catalog's download
+  address (`packages:`).
+- The package is opened before anything is downloaded (a downloaded one,
+  once it's here) and refused with `bad_package` unless: it's a tar with a
+  `pack.json` that is valid JSON; its `format` is 1 (missing counts as 1;
+  a higher one says a newer installer is needed); its `min_installer`, when
+  present, isn't newer than this installer; it follows the format-1 schema
+  exactly (unknown fields and unknown build steps are refused); every
+  sha256 is 64 lowercase hex digits, every file name plain, every step
+  names a member it has; `device` and `profile`, when present, are the ones
+  being built; `source_sha256` is the catalog's sha256 for the device's
+  official firmware; and every file it lists is in the tar. Then every
+  file's size and sha256 are checked (`Checking {file}`) before the
+  official firmware is fetched: a mismatch is `hash_mismatch` ("the package
+  is damaged" for a picked file; "the download is damaged" for a download,
+  which is deleted so the next try downloads it again). After the steps run,
+  the image's sha256 must be the manifest's `reference_sha256`
+  (`hash_mismatch` otherwise).
 - Downloads resume after an interruption or a stall (60 s without data)
   only when `<file>.partial.json` shows the same file from the same server
   (and the server confirms it with `If-Range`); otherwise they start over. A
@@ -242,7 +277,8 @@ Final:
 - The workspace drive is checked first (as `space` does): `not_enough_space`
   when it's too full; `bad_input` when it's FAT32 (no file over 4 GiB) or
   its free space can't be checked.
-- `job.json` records the image's sha256 and each PAC entry's.
+- `job.json` records the image's sha256 and each PAC entry's, the
+  package's `reference_sha256` and its `release` (when it names one).
 - `--set` isn't supported by `build` yet (no build step applies settings):
   it fails with `bad_input`. `resolve --set` still shows the effective
   settings.
@@ -289,8 +325,9 @@ command lines run (or that would run).
 Before anything is written:
 - The workspace lock is taken (`busy` otherwise; the workspace is the folder
   holding `jobs/`), and held until the command ends.
-- The image must be the one the current catalog expects for the profile
-  (`expect`) and the one `build` recorded (size, sha256 and every PAC
+- The image must be the one its package names (`reference_sha256` in
+  `job.json`, which jobs from engines before 0.1.0 test 18 don't have) and
+  the one `build` recorded (size, sha256 and every PAC
   entry's sha256; progress label `Checking the image`, skipped with a
   `log` when `prepare` checked it and the file is unchanged since);
   otherwise `hash_mismatch` (after an installer update: build again).
@@ -456,7 +493,7 @@ A failed `drivers` ends with the current state:
 `device_not_found`, `wrong_device`, `full_install_needed`, `download_failed`,
 `hash_mismatch`, `not_enough_space`, `busy`, `tool_missing`, `tool_failed`,
 `unsupported_host`, `profile_unavailable`, `unlock_guided`, `cancelled`,
-`bad_input`, `internal`.
+`bad_input`, `bad_package`, `internal`.
 
 - `device_not_found`: the device never answered in its flashing mode (or, on
   Linux, couldn't be opened); nothing was written.
@@ -468,7 +505,13 @@ A failed `drivers` ends with the current state:
   `.thimsy.lock`); nothing was done. Wait, or use another workspace.
 - `not_enough_space`: the workspace drive is too full.
 - `bad_input`: the command line asked for something this version can't do
-  (e.g. `build --set`), picked files the build can't use or a device pack
-  with parts missing, a `clean --path` that isn't a cleanable item, or a
+  (e.g. `build --set`), picked package parts with one missing, a folder with
+  two packages, a `clean --path` that isn't a cleanable item, or a
   workspace on a FAT32 drive or one whose free space can't be checked.
+- `bad_package`: the Thimsy package (picked, found or downloaded) can't be
+  used: it isn't one (not a tar, cut short, no `pack.json`, a malformed
+  manifest), it's for another device, profile or official firmware, or it
+  needs a newer installer (an unknown `format`, or a newer
+  `min_installer`). The message says which and why; nothing was downloaded
+  for it.
 - `cancelled`: the app went away before the first write was confirmed.

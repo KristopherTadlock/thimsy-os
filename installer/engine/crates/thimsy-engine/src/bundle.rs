@@ -1,7 +1,7 @@
-//! A device pack in one file: an uncompressed tar of the shared system image,
-//! the device's patches and `pack.json`, published as one release asset (or
-//! split into parts). The engine reads members in place, by byte range, so
-//! the 2 GB system image is never copied out of it.
+//! A Thimsy package in one file: an uncompressed tar of `pack.json`, the
+//! shared system image and the device's patches, published as one release
+//! asset (or split into parts). The engine reads members in place, by byte
+//! range, so the 2 GB system image is never copied out of it.
 //!
 //! The tar is plain POSIX ustar, so 7-Zip, Windows' `tar` and Finder open it.
 //! Written deterministically (fixed order, zero times and owners) so the same
@@ -106,7 +106,7 @@ impl Bundle {
                     }
                 })
                 .sum();
-            if octal(&header[148..156])? != stored {
+            if octal(&header[148..156]).ok() != Some(stored) {
                 bail!("not a tar archive (bad header checksum at byte {pos})");
             }
             let size = octal(&header[124..136])?;
@@ -233,10 +233,10 @@ pub fn write(out: &Path, files: &[&Path], progress: &mut dyn FnMut(u64, u64)) ->
 
 /// GitHub release assets must be smaller than 2 GiB; keep a margin.
 pub const MAX_ASSET: u64 = (2 << 30) - (1 << 20);
-/// Part size when a device pack has to be split.
+/// Part size when a package has to be split.
 pub const PART: u64 = 1_000_000_000;
 
-/// Writes the device pack `out` from `files` and returns its catalog entry
+/// Writes the package `out` from `files` and returns its entry
 /// (`id`, `file`, `size`, `sha256`, and `parts` when it was larger than
 /// `max_asset` and had to be split into `out.001`, `out.002`, ...).
 pub fn make(

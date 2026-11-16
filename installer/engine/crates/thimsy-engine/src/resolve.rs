@@ -239,7 +239,7 @@ pub struct Space {
 impl Space {
     /// (build need, flash need) in new bytes. `cached`: downloads already
     /// in the cache; `in_place`: downloads the user's picked files stand in
-    /// for without being copied (a device pack used where it is, or the
+    /// for without being copied (a package used where it is, or the
     /// official firmware's parts when its unpacked file was picked). The
     /// build writes what's still missing into the cache plus the working
     /// image (the system image is streamed into it), with 5% headroom;
@@ -256,20 +256,17 @@ impl Space {
     }
 }
 
-pub fn space(cat: &Catalog, d: &Device, profile: &str) -> Space {
+/// Disk use for `profile` on `d`, counting the package at the catalog's
+/// estimate of its size (`check_space` uses the real one once it's here).
+pub fn space(d: &Device, profile: &str) -> Space {
     let mut downloads = 0u64;
     let mut image = 0u64;
     if let Some(src) = &d.source {
         downloads += src.parts.iter().map(|a| a.size).sum::<u64>();
         image = src.container.size;
     }
-    if let Some(b) = d.bundles.get(profile) {
-        downloads += b.size;
-    } else {
-        if let Some(sys) = cat.system_for(profile) {
-            downloads += sys.size;
-        }
-        downloads += d.artifacts.iter().map(|a| a.size).sum::<u64>();
+    if let Some(pkg) = d.packages.get(profile) {
+        downloads += pkg.approx_size;
     }
     Space {
         downloads,
@@ -280,8 +277,8 @@ pub fn space(cat: &Catalog, d: &Device, profile: &str) -> Space {
 
 /// For the plan: (download bytes, peak disk bytes), the peak being exactly
 /// what `space` reports as `need` for an empty workspace keeping downloads.
-pub fn disk_estimate(cat: &Catalog, d: &Device, profile: &str) -> (u64, u64) {
-    let s = space(cat, d, profile);
+pub fn disk_estimate(d: &Device, profile: &str) -> (u64, u64) {
+    let s = space(d, profile);
     let (build, flash) = s.need(0, 0, false);
     (s.downloads, build.max(flash))
 }
@@ -356,9 +353,8 @@ pub fn resolve(
         );
     }
 
-    let system = cat.system_for(profile);
     let install = d.install_on(host);
-    let (available, unavailable_reason) = if d.source.is_none() || d.build.is_empty() {
+    let (available, unavailable_reason) = if !d.buildable() {
         (
             false,
             Some(
@@ -366,7 +362,7 @@ pub fn resolve(
                     .replace("{device}", &d.name),
             ),
         )
-    } else if system.is_none() {
+    } else if !d.packages.contains_key(profile) {
         (
             false,
             Some(
@@ -379,7 +375,7 @@ pub fn resolve(
     };
     let host_message = (install == InstallSupport::None).then(|| host_text(d, host));
 
-    let (download_bytes, disk_bytes) = disk_estimate(cat, d, profile);
+    let (download_bytes, disk_bytes) = disk_estimate(d, profile);
     let (partitions_full, partitions_update, erases_full) = match &d.flash {
         Some(f) => (
             f.writes_full.clone(),

@@ -10,11 +10,11 @@ USB. Design: [`../universal_installer.md`](../universal_installer.md).
 |---|---|
 | `engine/` | Rust workspace: `thimsy-engine` (library) and `thimsy-installer` (the CLI the app runs in the background) |
 | `app/` | Flutter app (Windows, macOS, Linux; Android shell) |
-| `catalog/` | Devices, profiles, shared system images, translations (`i18n/`). Embedded in the engine at build time |
+| `catalog/` | Devices (with their official firmware and where their Thimsy packages are published), profiles, translations (`i18n/`). Embedded in the engine at build time |
 | `docs/engine-protocol.md` | The JSON Lines protocol between app and engine |
 | `tests/` | End-to-end test on real RG Cube firmware (`e2e.sh`), the published-firmware check (`verify-drafts.sh`) and a fake `spd_dump` |
-| `tools/make-thimsy-build.sh` | Turns a firmware from `scripts/build.sh` into the Thimsy build the installer ships (system image + patches), checking the rebuild is byte-identical |
-| `tools/apply_pack.py` | Writes a device pack (`thimsy-installer dev pack`) into the catalog |
+| `tools/make-thimsy-build.sh` | Turns a firmware from `scripts/build.sh` into the Thimsy package the installer takes (system image + patches + `pack.json`), checking the rebuild is byte-identical |
+| `tools/apply_pack.py` | Points a device's default package download at a new file name or release (rarely needed) |
 | `tools/spd_dump-windows-driver.patch` | Applied to `spd_dump` for the 32-bit Windows build: it opens the device through Unisoc's own driver (`Channel9.dll` the way Unisoc's tools use it, then Windows serial I/O done the same way) or WinUSB, and logs what Windows has for Unisoc USB devices |
 
 ## Status (0.1.0 test 1)
@@ -44,37 +44,46 @@ cargo build --release
 ./target/release/thimsy-installer flash --job ~/thimsy-ws/jobs/anbernic-rg-cube-heavy --dry-run
 ```
 
-`installer/tests/e2e.sh WORKSPACE PACK_DIR` runs the real-firmware test: build,
+`installer/tests/e2e.sh WORKSPACE PACK_DIR` (the package and the official
+firmware in `PACK_DIR`) runs the real-firmware test: build,
 byte-for-byte comparison, dry runs, a full flash through the fake `spd_dump`,
 host checks and cleanup.
 
-## Making the Thimsy build
+## Making a Thimsy package
 
 `scripts/build.sh` still builds the full firmware as before. From its output:
 
 ```sh
-installer/tools/make-thimsy-build.sh [--apply] out/RG_Cube_Thimsy_OS_v1.0a.pac ~/thimsy-build-out
+installer/tools/make-thimsy-build.sh --release "Thimsy 1.0a test 31" out/RG_Cube_Thimsy_OS_v1.0a.pac ~/thimsy-build-out
 ```
 
 This downloads the official GammaOS firmware (or takes `--source PAC`), makes
-the device pack, rebuilds the PAC with the installer and stops unless the
-result is byte-identical. The device pack is **one archive**,
-`thimsy-build/Thimsy-<release>-<device>-<profile>.tar`: a plain tar of the
-system image (zstd level 19), the device's `.bsdiff` patches and `pack.json`,
-so 7-Zip or `tar` can open it. It's split into 1 GB `.tar.001`, `.002`, ...
-parts only when it's over GitHub's 2 GiB asset limit (the RG Cube's is
-2.08 GB, so it's one file). The engine reads the system image straight out of
-the archive (no unpacking to disk) and checks the archive's sha256 and each
-file's.
+the package, rebuilds the PAC with the installer from the package alone and
+stops unless the result is byte-identical. The package is **one archive**,
+`thimsy-build/Thimsy-<release>-<device>-<profile>.tar`: a plain tar of
+`pack.json`, the system image (zstd level 19) and the device's `.bsdiff`
+patches, so 7-Zip or `tar` can open it. It's split into 1 GB `.tar.001`,
+`.002`, ... parts only when it's over GitHub's 2 GiB asset limit (the RG
+Cube's is 2.08 GB, so it's one file). The engine reads the system image
+straight out of the archive (no unpacking to disk).
 
-Upload the archive to the installer release, or ship it next to the app (the
-engine looks in `<app>/thimsy-build` and `THIMSY_BUILD_DIR`). Users can also
-pick it with "Use a file I already downloaded" (`--import <file>`; any file
-name works if the size and sha256 match). `--apply` writes the result into
-`installer/catalog` so the next engine build embeds it.
+`pack.json` is the package's manifest: `format` (1), `device`, `profile`,
+`release`, `min_installer`, each file's size and sha256, the build steps, the
+sha256 of the official firmware they start from (`source_sha256`) and of the
+PAC they must produce (`reference_sha256`). The installer accepts **any**
+package whose manifest checks out for the selected device: the catalog pins
+no build, so a new Thimsy build needs no new installer (see
+`universal_installer.md`, section 10).
+
+Upload the archive to the release, or ship it next to the app (the engine
+looks in `<app>/thimsy-build` and `THIMSY_BUILD_DIR`). Users can also pick it
+with "Use a file I already downloaded" (`--import <file>`; any file name
+works). The catalog's default download (`packages:` in the device file)
+points at the latest release; `--apply` (with `--tag TAG` for a given
+release) rewrites it, which is only needed when the file name changes.
 
 `thimsy-installer dev bundle --out X.tar FILES...` and `dev bundle-list X.tar`
-make and list device-pack archives by hand.
+make and list packages by hand (`pack.json` first).
 
 The build also accepts the unpacked official firmware (for example
 `RG_Cube_GammaOS_Next_Full_v1.2.pac`) in an import folder instead of
@@ -83,18 +92,19 @@ downloading the 7z.
 `installer/tests/verify-drafts.sh WORKDIR SOURCE_PAC TAG...` repeats the
 byte-identity check for published firmware releases.
 
-## Making a device pack by hand
+## Making a package by hand
 
 ```sh
 thimsy-installer dev pack --source official.pac --reference thimsy.pac \
-  --out pack/ --device rgcube --system-name thimsy-system-1.0a-heavy
-python3 installer/tools/apply_pack.py pack/pack.json \
-  installer/catalog/devices/anbernic-rg-cube.yaml installer/catalog/catalog.yaml heavy installer-v0.1.0-test1
+  --out pack/ --device anbernic-rg-cube --profile heavy --system-name thimsy-system-1.0a-heavy
+(cd pack && thimsy-installer dev bundle --out ../Thimsy-1.0a-anbernic-rg-cube-heavy.tar \
+  pack.json thimsy-system-1.0a-heavy.img.zst rgcube-*.bsdiff)
 ```
 
-The pack is the shared system image (zstd) plus bsdiff deltas for each other
-changed partition, checked by input and output sha256, and the recipe steps
-that rebuild the reference exactly.
+The package is the shared system image (zstd) plus bsdiff deltas for each
+other changed partition, each checked by input and output sha256, and the
+typed build steps that rebuild the reference exactly. `dev pack` refuses
+official firmware other than the catalog's for the device.
 
 ## Translations
 

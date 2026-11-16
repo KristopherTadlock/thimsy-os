@@ -1,12 +1,14 @@
 //! Build jobs: resolve → fetch → extract → assemble → validate → publish,
 //! journaled so an interrupted build resumes from the last finished stage.
 
-use crate::catalog::{Artifact, Catalog, Device, Op};
+use crate::archive::Span;
+use crate::catalog::{Artifact, Catalog, Device};
 use crate::error::{Code, EngineError};
 use crate::events::Reporter;
 use crate::fetch::Cache;
 use crate::host::Host;
 use crate::lp::Super;
+use crate::package::{self, Op, Package};
 use crate::resolve;
 use crate::{archive, delta, pac, util};
 use anyhow::{bail, Context, Result};
@@ -59,73 +61,95 @@ pub struct FromImports {
     pub copied: u64,
 }
 
-/// The downloads `imports` make unnecessary, the way `build` uses them: a
-/// device pack (or all its parts) used in place; the unpacked official
-/// firmware, which makes its download parts unnecessary; any other file by
-/// name and size, copied into the cache.
-pub fn from_imports(cat: &Catalog, d: &Device, profile: &str, imports: &[PathBuf]) -> FromImports {
+/// Where a build's Thimsy package is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PackageAt {
+    /// Files the user picked: the package, or its parts in order.
+    Picked(Vec<PathBuf>),
+    /// Found by name in an import folder or the app's `thimsy-build` folder.
+    Folder(Vec<PathBuf>),
+    /// Downloaded into the cache by an earlier run.
+    Cached(Vec<PathBuf>),
+    /// To be downloaded from the catalog's address.
+    Download,
+}
+
+/// Where the package for `profile` comes from, in the order `build` looks:
+/// the picked files (see [`crate::fetch::picked_package`]; once any picked
+/// file is taken for the package, it never comes from anywhere else), then
+/// `folders` by name, then `cache_dir`, else the download.
+pub fn locate_package(
+    d: &Device,
+    profile: &str,
+    imports: &[PathBuf],
+    folders: &[PathBuf],
+    cache_dir: Option<&Path>,
+) -> Result<PackageAt> {
+    let picked = crate::fetch::picked_package(d.source.as_ref(), imports)?;
+    if !picked.is_empty() {
+        return Ok(PackageAt::Picked(picked));
+    }
+    let pkg = d.packages.get(profile);
+    if let Some(found) = crate::fetch::package_in_folders(folders, &d.id, profile, pkg)? {
+        return Ok(PackageAt::Folder(found));
+    }
+    if let (Some(dir), Some(pkg)) = (cache_dir, pkg) {
+        if let Some(found) = crate::fetch::cached_package(dir, pkg) {
+            return Ok(PackageAt::Cached(found));
+        }
+    }
+    Ok(PackageAt::Download)
+}
+
+fn total_len(paths: &[PathBuf]) -> u64 {
+    paths
+        .iter()
+        .map(|p| fs::metadata(p).map_or(0, |m| m.len()))
+        .sum()
+}
+
+/// The downloads `imports` make unnecessary, the way `build` uses them: the
+/// package (or all its parts) used in place; the unpacked official
+/// firmware, which makes its download parts unnecessary; its download parts
+/// by name and size, copied into the cache.
+pub fn from_imports(d: &Device, profile: &str, imports: &[PathBuf]) -> FromImports {
     let mut r = FromImports::default();
     if imports.is_empty() {
         return r;
     }
-    let copied = |a: &Artifact| -> u64 {
-        if a.parts.is_empty() {
-            crate::fetch::find_in(imports, &a.file, a.size).map_or(0, |_| a.size)
-        } else {
-            a.parts
-                .iter()
-                .filter(|p| crate::fetch::find_in(imports, &p.file, p.size).is_some())
-                .map(|p| p.size)
-                .sum()
-        }
-    };
     if let Some(src) = &d.source {
         if crate::fetch::find_unpacked(imports, &src.contains, src.container.size).is_some() {
             r.in_place += src.parts.iter().map(|p| p.size).sum::<u64>();
         } else {
-            r.copied += src.parts.iter().map(copied).sum::<u64>();
+            r.copied += src
+                .parts
+                .iter()
+                .filter(|p| crate::fetch::find_in(imports, &p.file, p.size).is_some())
+                .map(|p| p.size)
+                .sum::<u64>();
         }
     }
-    match d.bundles.get(profile) {
-        Some(b) => {
-            if matches!(crate::fetch::local_bundle(imports, b), Ok(Some(_))) {
-                r.in_place += b.size;
-            }
-        }
-        None => {
-            r.copied += d.artifacts.iter().map(copied).sum::<u64>();
-            r.copied += cat.system_for(profile).map_or(0, copied);
-        }
+    let folders: Vec<PathBuf> = imports.iter().filter(|p| p.is_dir()).cloned().collect();
+    if let Ok(PackageAt::Picked(f) | PackageAt::Folder(f)) =
+        locate_package(d, profile, imports, &folders, None)
+    {
+        r.in_place += total_len(&f);
     }
     r
 }
 
 /// The largest single file a build of `profile` writes (FAT32 can't hold
 /// one over 4 GiB).
-fn largest_file(cat: &Catalog, d: &Device, profile: &str) -> u64 {
-    let mut arts: Vec<&Artifact> = Vec::new();
+fn largest_file(d: &Device, profile: &str) -> u64 {
+    let mut sizes: Vec<u64> = Vec::new();
     if let Some(src) = &d.source {
-        arts.extend(src.parts.iter());
+        sizes.extend(src.parts.iter().map(|a| a.size));
+        sizes.push(src.container.size);
     }
-    match d.bundles.get(profile) {
-        Some(b) => arts.push(b),
-        None => {
-            arts.extend(d.artifacts.iter());
-            arts.extend(cat.system_for(profile));
-        }
+    if let Some(pkg) = d.packages.get(profile) {
+        sizes.push(pkg.approx_size / pkg.parts.len().max(1) as u64);
     }
-    let image = d.source.as_ref().map_or(0, |s| s.container.size);
-    arts.iter()
-        .flat_map(|a| {
-            if a.parts.is_empty() {
-                vec![a.size]
-            } else {
-                a.parts.iter().map(|p| p.size).collect()
-            }
-        })
-        .chain([image])
-        .max()
-        .unwrap_or(0)
+    sizes.into_iter().max().unwrap_or(0)
 }
 
 pub fn check_space(
@@ -137,35 +161,28 @@ pub fn check_space(
     delete_downloads: bool,
 ) -> Result<SpaceCheck> {
     let d = cat.device(device)?;
-    let sp = resolve::space(cat, d, profile);
+    let mut sp = resolve::space(d, profile);
     let cache_dir = workspace.join("cache");
-    // Exactly what `space` counts as downloads: with a device pack, the
-    // system image and patches come from it, not from separate files.
-    let mut arts: Vec<&Artifact> = Vec::new();
-    if let Some(src) = &d.source {
-        arts.extend(src.parts.iter());
+    // The package's real size once it's here; until then the catalog's
+    // estimate. (Problems with it are for `build` to report.)
+    let folders: Vec<PathBuf> = imports.iter().filter(|p| p.is_dir()).cloned().collect();
+    let at = locate_package(d, profile, imports, &folders, Some(&cache_dir)).ok();
+    if let Some(PackageAt::Picked(f) | PackageAt::Folder(f) | PackageAt::Cached(f)) = &at {
+        let approx = d.packages.get(profile).map_or(0, |p| p.approx_size);
+        sp.downloads = sp.downloads - approx.min(sp.downloads) + total_len(f);
     }
-    match d.bundles.get(profile) {
-        Some(b) => arts.push(b),
-        None => {
-            arts.extend(d.artifacts.iter());
-            arts.extend(cat.system_for(profile));
-        }
-    }
-    let cached: u64 = arts
+    let mut cached: u64 = d
+        .source
         .iter()
-        .flat_map(|a| {
-            if a.parts.is_empty() {
-                vec![*a]
-            } else {
-                a.parts.iter().collect()
-            }
-        })
+        .flat_map(|s| s.parts.iter())
         .filter(|a| fs::metadata(cache_dir.join(&a.file)).is_ok_and(|m| m.len() == a.size))
         .map(|a| a.size)
-        .sum::<u64>()
-        .min(sp.downloads);
-    let imp = from_imports(cat, d, profile, imports);
+        .sum();
+    if let Some(PackageAt::Cached(f)) = &at {
+        cached += total_len(f);
+    }
+    let cached = cached.min(sp.downloads);
+    let imp = from_imports(d, profile, imports);
     // Picked files used in place take no room; copies of them do (counted
     // like downloads, but not as cached).
     let in_place = imp.in_place.min(sp.downloads - cached);
@@ -177,7 +194,7 @@ pub fn check_space(
             Some("probe_failed"),
             Some("The free space on this drive couldn't be checked. Choose another folder for the workspace."),
         ),
-        Ok(p) if p.fat32 && largest_file(cat, d, profile) > crate::disk::FAT32_MAX_FILE => (
+        Ok(p) if p.fat32 && largest_file(d, profile) > crate::disk::FAT32_MAX_FILE => (
             p.free,
             Some("fat32"),
             Some("This drive is formatted as FAT32, which can't hold files over 4 GB. Choose a workspace on another drive (NTFS, exFAT, APFS or ext4)."),
@@ -321,6 +338,13 @@ pub struct JobRecord {
     pub bytes: u64,
     pub sha256: String,
     pub matches_reference: Option<bool>,
+    /// The sha256 the package's manifest says the build must produce
+    /// (absent in jobs from earlier engines, which can't be flashed).
+    #[serde(default)]
+    pub reference_sha256: Option<String>,
+    /// The package's Thimsy release, when its manifest names it.
+    #[serde(default)]
+    pub release: Option<String>,
     /// sha256 of every PAC entry with data, so the partitions unpacked for
     /// flashing can be checked one by one before they're written (absent
     /// in jobs from earlier engines).
@@ -395,85 +419,6 @@ pub fn build_dirs_near(exe: &Path) -> Vec<PathBuf> {
         out.push(folder.join("thimsy-build"));
     }
     out
-}
-
-/// Files the build can use from the user's picks: the official firmware
-/// (its download parts or the unpacked file), the device pack (or its
-/// parts), the system image and the patches.
-fn wanted_files<'a>(cat: &'a Catalog, d: &'a Device, profile: &str) -> Vec<(&'a str, u64)> {
-    let mut out = Vec::new();
-    let mut add = |a: &'a Artifact| {
-        out.push((a.file.as_str(), a.size));
-        out.extend(a.parts.iter().map(|p| (p.file.as_str(), p.size)));
-    };
-    if let Some(src) = &d.source {
-        src.parts.iter().for_each(&mut add);
-    }
-    if let Some(b) = d.bundles.get(profile) {
-        add(b);
-    }
-    if let Some(s) = cat.system_for(profile) {
-        add(s);
-    }
-    d.artifacts.iter().for_each(&mut add);
-    if let Some(src) = &d.source {
-        out.push((src.contains.as_str(), src.container.size));
-    }
-    out
-}
-
-/// When the user picked files (not folders) and none of them is anything
-/// this build uses, say so instead of quietly downloading everything.
-fn check_picked_files(cat: &Catalog, d: &Device, profile: &str, imports: &[PathBuf]) -> Result<()> {
-    let picked: Vec<&PathBuf> = imports.iter().filter(|p| !p.is_dir()).collect();
-    if picked.is_empty() {
-        return Ok(());
-    }
-    // Some parts of a split device pack picked but not all: say which are
-    // missing (picked parts never mix with downloads).
-    if let Some(b) = d.bundles.get(profile) {
-        crate::fetch::local_bundle(imports, b)?;
-    }
-    let wanted = wanted_files(cat, d, profile);
-    let useful = picked.iter().any(|p| {
-        let name = p.file_name().map(|n| n.to_string_lossy().to_string());
-        let size = fs::metadata(p)
-            .ok()
-            .filter(|m| m.is_file())
-            .map(|m| m.len());
-        wanted
-            .iter()
-            .any(|(f, s)| name.as_deref() == Some(*f) || size == Some(*s))
-    });
-    if useful {
-        return Ok(());
-    }
-    let names: Vec<String> = picked.iter().map(|p| p.display().to_string()).collect();
-    let mut expected = Vec::new();
-    if let Some(b) = d.bundles.get(profile) {
-        expected.push(format!("the device pack {} ({} bytes)", b.file, b.size));
-    }
-    if let Some(src) = &d.source {
-        expected.push(format!(
-            "the official firmware {} ({} bytes) or its download parts ({})",
-            src.contains,
-            src.container.size,
-            src.parts
-                .iter()
-                .map(|p| p.file.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        ));
-    }
-    Err(EngineError::new(
-        Code::BadInput,
-        format!(
-            "none of the files you chose is used by this build ({}); expected {}",
-            names.join(", "),
-            expected.join(", or ")
-        ),
-    )
-    .into())
 }
 
 /// Fetches and unpacks a device's official source firmware into `dest`
@@ -563,9 +508,42 @@ pub fn build(cat: &Catalog, opts: &BuildOptions, rep: &Reporter) -> Result<JobRe
         ));
     }
     let d = cat.device(&opts.device)?;
-    check_picked_files(cat, d, &opts.profile, &opts.imports)?;
     let src = d.source.as_ref().context("device has no source firmware")?;
-    let system = cat.system_for(&opts.profile).cloned();
+    let pkg = d
+        .packages
+        .get(&opts.profile)
+        .context("no package for this profile")?;
+    let cache_dir = opts.workspace.join("cache");
+    let mut imports = opts.imports.clone();
+    imports.extend(bundled_build_dirs());
+    let folders: Vec<PathBuf> = imports.iter().filter(|p| p.is_dir()).cloned().collect();
+    let want = package::Want {
+        device: &d.id,
+        profile: &opts.profile,
+        source_sha256: &src.container.sha256,
+        source_name: &src.contains,
+    };
+    let open = |paths: &[PathBuf], what: &str| -> Result<Package> {
+        let spans = paths
+            .iter()
+            .map(|p| Span::whole(p))
+            .collect::<Result<Vec<_>>>()?;
+        Package::open(&spans, what, &want)
+    };
+    // A package on hand is opened (not yet hashed) at once: a wrong file is
+    // reported before anything else is checked or downloaded.
+    let (mut local, from) =
+        match locate_package(d, &opts.profile, &opts.imports, &folders, Some(&cache_dir))? {
+            PackageAt::Picked(p) => (Some(p), From::Picked),
+            PackageAt::Folder(p) => (Some(p), From::Folder),
+            PackageAt::Cached(p) => (Some(p), From::Download),
+            PackageAt::Download => (None, From::Download),
+        };
+    let mut opened = None;
+    if let (Some(paths), From::Picked | From::Folder) = (&local, from) {
+        let what = describe_package(paths, from);
+        opened = Some((open(paths, &what)?, what));
+    }
     let dir = job_dir(&opts.workspace, &d.id, &opts.profile);
     let work = dir.join("work");
     let out_dir = dir.join("out");
@@ -576,11 +554,9 @@ pub fn build(cat: &Catalog, opts: &BuildOptions, rep: &Reporter) -> Result<JobRe
 
     // Disk space: what's still missing must fit, with headroom. Checked
     // before anything is downloaded or written.
-    let mut imports = opts.imports.clone();
-    imports.extend(bundled_build_dirs());
+    let cache = Cache::new(cache_dir, imports)?;
     // The unpacked official firmware in an import folder saves downloading
     // and unpacking it (checked by size now, by sha256 once copied).
-    let mut cache = Cache::new(opts.workspace.join("cache"), imports)?;
     let unpacked = crate::fetch::find_unpacked(&cache.imports, &src.contains, src.container.size);
     let sc = check_space(
         cat,
@@ -601,16 +577,39 @@ pub fn build(cat: &Catalog, opts: &BuildOptions, rep: &Reporter) -> Result<JobRe
     }
 
     rep.stage("fetch", "Downloading");
-    // The device pack as one archive: the system image and patches are read
-    // from it in place.
-    let bundle_spans = match d.bundles.get(&opts.profile) {
-        Some(b) => {
-            let spans = cache.get_in_place(b, rep)?;
-            cache.bundles.push(crate::bundle::Bundle::index(&spans)?);
-            Some((b.clone(), spans))
+    // The package first, checked against its own manifest, so a wrong or
+    // damaged one stops the build before the firmware is downloaded.
+    let downloaded = from == From::Download;
+    let checked = match opened {
+        Some((p, what)) => p.verify(&what, false, rep).map(|()| (p, what)),
+        None => {
+            let paths = match local.take() {
+                Some(p) => p,
+                None => cache.download_package(pkg, rep)?,
+            };
+            let what = describe_package(&paths, from);
+            open(&paths, &what)
+                .and_then(|p| p.verify(&what, true, rep).map(|()| (p, what)))
+                .inspect_err(|_| cache.forget_package(pkg))
         }
-        None => None,
     };
+    let (package, what) = checked?;
+    let m = &package.manifest;
+    let named = m
+        .release
+        .as_deref()
+        .map(|r| format!("{r}, "))
+        .unwrap_or_default();
+    rep.info(format!(
+        "Using {what}: {named}package format {}, {} build steps",
+        m.format,
+        m.build.len()
+    ));
+    let release = m
+        .release
+        .clone()
+        .unwrap_or_else(|| cat.root.release.clone());
+
     let mut state = load_state(&dir);
     if state.assembling || !working.exists() {
         state.extracted = false;
@@ -621,14 +620,6 @@ pub fn build(cat: &Catalog, opts: &BuildOptions, rep: &Reporter) -> Result<JobRe
         for p in &src.parts {
             parts.push(cache.get(p, rep)?);
         }
-    }
-    let system_paths = match &system {
-        Some(s) => Some(cache.get_all(s, rep)?),
-        None => None,
-    };
-    let mut arts = std::collections::HashMap::new();
-    for a in &d.artifacts {
-        arts.insert(a.id.clone(), (a.clone(), cache.get(a, rep)?));
     }
 
     if !state.extracted {
@@ -700,61 +691,26 @@ pub fn build(cat: &Catalog, opts: &BuildOptions, rep: &Reporter) -> Result<JobRe
     rep.stage("assemble", "Building Thimsy for your device");
     state.assembling = true;
     save_state(&dir, &state)?;
-    for (i, op) in d.build.iter().enumerate() {
+    for (i, op) in m.build.iter().enumerate() {
         rep.info(format!(
             "Step {}/{}: {}",
             i + 1,
-            d.build.len(),
+            m.build.len(),
             describe(op)
         ));
-        run_op(
-            op,
-            &working,
-            system.as_ref(),
-            system_paths.as_deref(),
-            &arts,
-            &opts.profile,
-            cat,
-            rep,
-        )
-        .with_context(|| format!("build step {} ({})", i + 1, describe(op)))?;
+        run_op(op, &working, &package, &opts.profile, &release, rep)
+            .with_context(|| format!("build step {} ({})", i + 1, describe(op)))?;
     }
 
-    if opts.delete_downloads {
-        if let (Some(a), Some(ps)) = (&system, &system_paths) {
-            if cache.in_bundle(a) {
-                // Read from the device pack; removed with it below.
-            } else if a.parts.is_empty() {
-                remove_download(&cache, a, &ps[0].path, rep);
-            } else {
-                for (part, p) in a.parts.iter().zip(ps) {
-                    remove_download(&cache, part, &p.path, rep);
-                }
-                let _ = fs::remove_file(cache.dir.join(format!("{}.ok", a.file)));
-            }
-        }
-        for (a, p) in arts.values() {
-            remove_download(&cache, a, p, rep);
-        }
-        // The device pack itself, if it was downloaded (never a picked file).
-        if let Some((b, spans)) = &bundle_spans {
-            let parts: Vec<&Artifact> = if b.parts.is_empty() {
-                vec![b]
-            } else {
-                b.parts.iter().collect()
-            };
-            for (a, sp) in parts.into_iter().zip(spans) {
-                if sp.path.starts_with(&cache.dir) {
-                    remove_download(&cache, a, &sp.path, rep);
-                }
-            }
-            let _ = fs::remove_file(cache.dir.join(format!("{}.ok", b.file)));
-        }
+    // A downloaded package goes once it's used (a picked one never does).
+    if opts.delete_downloads && downloaded {
+        cache.forget_package(pkg);
+        rep.info(format!("Deleted {what} to save space"));
     }
 
     rep.stage("validate", "Checking the result");
     let p = pac::Pac::open(&working)?;
-    for op in &d.build {
+    for op in &m.build {
         if let Op::LpWrite { entry, .. } | Op::LpGrow { entry, .. } = op {
             let e = p.find(entry)?;
             let mut f = File::open(&working)?;
@@ -767,19 +723,18 @@ pub fn build(cat: &Catalog, opts: &BuildOptions, rep: &Reporter) -> Result<JobRe
     let (sha, entries) = hash_image(&working, &mut |d, t| {
         rep.progress("Checksumming the image", d, t)
     })?;
-    let matches = d.expect.get(&opts.profile).map(|want| want == &sha);
-    match matches {
-        Some(true) => rep.info("The image matches the reference build exactly"),
-        Some(false) => {
-            return Err(EngineError::new(
-                Code::HashMismatch,
-                format!("the built image (sha256 {sha}) doesn't match the reference build"),
-            )
-            .hint("Delete the workspace's jobs folder and build again; report it if it persists.")
-            .into());
-        }
-        None => rep.info(format!("Image sha256 {sha}")),
+    if sha != m.reference_sha256 {
+        return Err(EngineError::new(
+            Code::HashMismatch,
+            format!(
+                "the built image (sha256 {sha}) doesn't match the reference build its package names ({})",
+                m.reference_sha256
+            ),
+        )
+        .hint("Delete the workspace's jobs folder and build again; report it if it persists.")
+        .into());
     }
+    rep.info("The image matches the reference build exactly");
 
     rep.stage("publish", "Finishing");
     // Partitions unpacked from an earlier image must never be flashed with
@@ -800,7 +755,9 @@ pub fn build(cat: &Catalog, opts: &BuildOptions, rep: &Reporter) -> Result<JobRe
         image: final_path.clone(),
         bytes,
         sha256: sha,
-        matches_reference: matches,
+        matches_reference: Some(true),
+        reference_sha256: Some(m.reference_sha256.clone()),
+        release: m.release.clone(),
         entries,
     };
     util::write_atomic(&dir.join("job.json"), &serde_json::to_vec_pretty(&rec)?)?;
@@ -808,6 +765,39 @@ pub fn build(cat: &Catalog, opts: &BuildOptions, rep: &Reporter) -> Result<JobRe
     save_state(&dir, &State::default())?;
     let _ = fs::remove_dir(&work);
     Ok(rec)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum From {
+    Picked,
+    Folder,
+    Download,
+}
+
+/// The package's files for messages: "X.tar (the file you chose)", "the
+/// downloaded X.tar", "X.tar.001 and 2 more parts (in FOLDER)".
+fn describe_package(paths: &[PathBuf], from: From) -> String {
+    let first = paths
+        .first()
+        .and_then(|p| p.file_name())
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let name = match paths.len() {
+        0 | 1 => first,
+        2 => format!("{first} and 1 more part"),
+        n => format!("{first} and {} more parts", n - 1),
+    };
+    match from {
+        From::Picked => format!("{name} (the file you chose)"),
+        From::Folder => {
+            let dir = paths
+                .first()
+                .and_then(|p| p.parent())
+                .unwrap_or(Path::new(""));
+            format!("{name} (in {})", dir.display())
+        }
+        From::Download => format!("the downloaded {name}"),
+    }
 }
 
 fn remove_download(cache: &Cache, a: &Artifact, p: &Path, rep: &Reporter) {
@@ -847,18 +837,13 @@ fn dir_size(p: &Path) -> u64 {
 /// Every file name the catalog can put in a cache.
 fn known_files(cat: &Catalog) -> std::collections::HashSet<String> {
     let mut names = std::collections::HashSet::new();
-    let mut add = |a: &Artifact| {
-        names.insert(a.file.clone());
-        for p in &a.parts {
-            names.insert(p.file.clone());
-        }
-    };
-    cat.root.artifacts.iter().for_each(&mut add);
     for d in &cat.devices {
-        d.artifacts.iter().for_each(&mut add);
-        d.bundles.values().for_each(&mut add);
         if let Some(src) = &d.source {
-            src.parts.iter().for_each(&mut add);
+            names.extend(src.parts.iter().map(|a| a.file.clone()));
+        }
+        for pkg in d.packages.values() {
+            names.insert(pkg.file.clone());
+            names.extend(pkg.parts.iter().map(|p| p.file.clone()));
         }
     }
     names
@@ -1111,20 +1096,25 @@ impl<R: Read> Read for HashingReader<R> {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+/// A member's bytes, read whole (patches are small).
+fn read_member(pkg: &Package, a: &package::Member) -> Result<Vec<u8>> {
+    let mut v = Vec::new();
+    archive::MultiVolume::open_spans(pkg.spans(a))?.read_to_end(&mut v)?;
+    Ok(v)
+}
+
 fn run_op(
     op: &Op,
     pac_path: &Path,
-    system: Option<&Artifact>,
-    system_paths: Option<&[crate::archive::Span]>,
-    arts: &std::collections::HashMap<String, (Artifact, PathBuf)>,
+    pkg: &Package,
     profile: &str,
-    cat: &Catalog,
+    release: &str,
     rep: &Reporter,
 ) -> Result<()> {
-    let art = |id: &str| -> Result<&(Artifact, PathBuf)> {
-        arts.get(id)
-            .with_context(|| format!("artifact {id} not fetched"))
+    let member = |id: &str| -> Result<&package::Member> {
+        pkg.manifest
+            .member(id)
+            .with_context(|| format!("the package has no member {id}"))
     };
     match op {
         Op::LpGrow { entry, partition } => {
@@ -1138,19 +1128,11 @@ fn run_op(
             partition,
             artifact,
         } => {
-            let (a, paths) = if artifact == "@system" {
-                (
-                    system.context("no system image for this profile")?.clone(),
-                    system_paths.context("system not fetched")?.to_vec(),
-                )
-            } else {
-                let (a, p) = art(artifact)?.clone();
-                (a, vec![crate::archive::Span::whole(&p)?])
-            };
+            let a = member(artifact)?;
             let e = pac::Pac::open(pac_path)?.find(entry)?.clone();
             let mut f = OpenOptions::new().read(true).write(true).open(pac_path)?;
             let mut sup = Super::new(&mut f, e.offset, e.size);
-            let file = crate::archive::MultiVolume::open_spans(&paths)?;
+            let file = archive::MultiVolume::open_spans(pkg.spans(a))?;
             let (size, want, mut reader): (u64, String, HashingReader<Box<dyn Read>>) =
                 match &a.unpack {
                     Some(u) if u.format == "zstd" => {
@@ -1195,8 +1177,7 @@ fn run_op(
             in_sha256,
             out_sha256,
         } => {
-            let (_, path) = art(artifact)?;
-            let patch = fs::read(path)?;
+            let patch = read_member(pkg, member(artifact)?)?;
             let e = pac::Pac::open(pac_path)?.find(entry)?.clone();
             let mut f = OpenOptions::new().read(true).write(true).open(pac_path)?;
             let mut sup = Super::new(&mut f, e.offset, e.size);
@@ -1210,8 +1191,7 @@ fn run_op(
             in_sha256,
             out_sha256,
         } => {
-            let (_, path) = art(artifact)?;
-            let patch = fs::read(path)?;
+            let patch = read_member(pkg, member(artifact)?)?;
             let p = pac::Pac::open(pac_path)?;
             // Every entry with this ID or file name (e.g. both slots).
             let e = p
@@ -1227,7 +1207,7 @@ fn run_op(
         Op::PacSetInfo { version, alias } => {
             let expand = |s: &str| {
                 s.replace("{profile}", profile)
-                    .replace("{release}", &cat.root.release)
+                    .replace("{release}", release)
             };
             pac::set_info(pac_path, &expand(version), &expand(alias))?;
         }

@@ -38,10 +38,43 @@ pub struct Fixture {
     pub odm_new: Vec<u8>,
     pub src_pac: Vec<u8>,
     pub expected_sha: String,
+    /// The package's `pack.json`, as written into `package`.
+    pub manifest: serde_json::Value,
+    /// The package (a file:// download in the catalog).
+    pub package: PathBuf,
 }
 
-/// Builds the fixture. `expect` = Some(sha) to set the recipe's reference hash.
-pub fn fixture(expect_override: Option<&str>) -> Fixture {
+/// The package file name the fixture's catalog downloads.
+pub const PACKAGE: &str = "Thimsy-test-testdev-heavy.tar";
+
+/// Writes a package at `out`: `manifest` as pack.json, then the files it
+/// lists, taken from `dir` (`extra` names more files to add).
+pub fn write_package(dir: &Path, manifest: &serde_json::Value, out: &Path, extra: &[&str]) {
+    let staging = dir.join(format!(
+        "staging-{}",
+        out.file_name().unwrap().to_string_lossy()
+    ));
+    let _ = std::fs::remove_dir_all(&staging);
+    std::fs::create_dir_all(&staging).unwrap();
+    let pj = staging.join("pack.json");
+    std::fs::write(&pj, serde_json::to_vec_pretty(manifest).unwrap()).unwrap();
+    let mut files = vec![pj];
+    let mut names: Vec<String> = Vec::new();
+    for m in std::iter::once(&manifest["system"]).chain(manifest["artifacts"].as_array().unwrap()) {
+        names.push(m["file"].as_str().unwrap().to_string());
+    }
+    names.extend(extra.iter().map(|s| s.to_string()));
+    for n in names {
+        files.push(dir.join(Path::new(&n).file_name().unwrap()));
+    }
+    let refs: Vec<&Path> = files.iter().map(|p| p.as_path()).collect();
+    crate::bundle::write(out, &refs, &mut |_, _| {}).unwrap();
+    std::fs::remove_dir_all(&staging).unwrap();
+}
+
+/// Builds the fixture. `reference`: the sha256 the package's manifest says
+/// the build produces (zeros when None).
+pub fn fixture(reference: Option<&str>) -> Fixture {
     let dir = tempfile::tempdir().unwrap();
     let d = dir.path();
     // Source PAC: FDLs, NV (backup), vendor_boot, super, persist, userdata, config.
@@ -101,23 +134,48 @@ pub fn fixture(expect_override: Option<&str>) -> Fixture {
     let odm_delta = d.join("odm.bsdiff");
     std::fs::write(&odm_delta, delta::make(&odm_old, &odm_new).unwrap()).unwrap();
 
+    let member = |id: &str, path: &Path| {
+        let data = std::fs::read(path).unwrap();
+        serde_json::json!({"id": id, "file": path.file_name().unwrap().to_string_lossy(),
+            "size": data.len(), "sha256": sha256_hex(&data)})
+    };
+    let mut sys = member("sys", &sys_path);
+    sys["unpack"] =
+        serde_json::json!({"format": "zstd", "size": system.len(), "sha256": sha256_hex(&system)});
+    let (vo, vn) = (sha256_hex(&vendor_old), sha256_hex(&vendor_new));
+    let (oo, on) = (sha256_hex(&odm_old), sha256_hex(&odm_new));
+    let manifest = serde_json::json!({
+        "format": 1,
+        "device": "testdev",
+        "profile": "heavy",
+        "release": "Thimsy Test",
+        "min_installer": crate::package::MIN_INSTALLER,
+        "system": sys,
+        "artifacts": [member("vb", &vb_delta), member("odm", &odm_delta)],
+        "build": [
+            {"op": "pac_delta", "entry": "VENDORBOOT", "artifact": "vb", "in_sha256": vo, "out_sha256": vn},
+            {"op": "pac_delta", "entry": "VENDORBOOT_B", "artifact": "vb", "in_sha256": vo, "out_sha256": vn},
+            {"op": "lp_grow", "entry": "Super", "partition": "system_a"},
+            {"op": "lp_write", "entry": "Super", "partition": "system_a", "artifact": "@system"},
+            {"op": "lp_delta", "entry": "Super", "partition": "odm_a", "artifact": "odm", "in_sha256": oo, "out_sha256": on},
+            {"op": "pac_set_info", "version": "Thimsy_{profile}", "alias": "TESTDEV"},
+            {"op": "pac_fix_crc"},
+        ],
+        "reference_sha256": reference.map_or_else(|| "0".repeat(64), str::to_string),
+        "source_sha256": src_sha,
+    });
+    let package = d.join(PACKAGE);
+    write_package(d, &manifest, &package, &[]);
+    let package_size = std::fs::metadata(&package).unwrap().len();
+
     let parts_yaml: Vec<String> = parts
         .iter()
         .enumerate()
         .map(|(i, p)| format!("    - {}", artifact_yaml(&format!("p{i}"), p)))
         .collect();
-    let sys_bytes = std::fs::read(&sys_path).unwrap();
-    let mk_catalog = |expect: &str| {
-        let root = format!(
-            "version: test\nrelease: Thimsy Test\nsystems: {{ heavy: sys }}\nartifacts:\n  - {{ id: sys, file: thimsy-system.img.zst, size: {}, sha256: \"{}\", urls: [\"{}\"], unpack: {{ format: zstd, size: {}, sha256: \"{}\" }} }}\n",
-            sys_bytes.len(),
-            sha256_hex(&sys_bytes),
-            file_url(&sys_path),
-            system.len(),
-            sha256_hex(&system)
-        );
-        let device = format!(
-            r#"id: testdev
+    let root = "version: test\nrelease: Thimsy Test\n".to_string();
+    let device = format!(
+        r#"id: testdev
 name: Test Device
 maker: Test
 soc: Unisoc T820
@@ -135,18 +193,8 @@ source:
   container: {{ format: pac, size: {}, sha256: "{}" }}
   parts:
 {}
-artifacts:
-  - {}
-  - {}
-build:
-  - {{ op: pac_delta, entry: VENDORBOOT, artifact: vb, in_sha256: "{vo}", out_sha256: "{vn}" }}
-  - {{ op: pac_delta, entry: VENDORBOOT_B, artifact: vb, in_sha256: "{vo}", out_sha256: "{vn}" }}
-  - {{ op: lp_grow, entry: Super, partition: system_a }}
-  - {{ op: lp_write, entry: Super, partition: system_a, artifact: "@system" }}
-  - {{ op: lp_delta, entry: Super, partition: odm_a, artifact: odm, in_sha256: "{oo}", out_sha256: "{on}" }}
-  - {{ op: pac_set_info, version: "Thimsy_{{profile}}", alias: "TESTDEV" }}
-  - {{ op: pac_fix_crc }}
-expect: {{ heavy: "{expect}" }}
+packages:
+  heavy: {{ file: {PACKAGE}, approx_size: {package_size}, urls: ["{}"] }}
 flash:
   method: spd
   fdl: [FDL, FDL2]
@@ -160,31 +208,21 @@ guides:
   download_mode: [{{ title: "Hold Back", body: "Turn the {{device}} off, hold Back and plug in the cable." }}]
   unlock: {{ route: guided, steps: [] }}
 "#,
-            src_pac.len(),
-            src_sha,
-            parts_yaml.join("\n"),
-            artifact_yaml("vb", &vb_delta),
-            artifact_yaml("odm", &odm_delta),
-            vo = sha256_hex(&vendor_old),
-            vn = sha256_hex(&vendor_new),
-            oo = sha256_hex(&odm_old),
-            on = sha256_hex(&odm_new),
-        );
-        let profiles = ["light", "heavy"]
-            .iter()
-            .enumerate()
-            .map(|(i, p)| (format!("profiles/{p}.yaml"), format!("id: {p}\nname: {p}\nsummary: s\norder: {i}\neditable: [\"nano.theme\"]\nsettings: {{ nano.theme: esde }}\n")));
-        let mut files = vec![
-            ("catalog.yaml".to_string(), root),
-            ("devices/testdev.yaml".to_string(), device),
-        ];
-        files.extend(profiles);
-        Catalog::from_files(files).unwrap()
-    };
-    // First pass with a placeholder expectation to learn the output hash.
-    let placeholder = "0".repeat(64);
-    let catalog = mk_catalog(expect_override.unwrap_or(&placeholder));
-    let expected_sha = expect_override.map(str::to_string).unwrap_or_default();
+        src_pac.len(),
+        src_sha,
+        parts_yaml.join("\n"),
+        file_url(&package),
+    );
+    let profiles = ["light", "heavy"]
+        .iter()
+        .enumerate()
+        .map(|(i, p)| (format!("profiles/{p}.yaml"), format!("id: {p}\nname: {p}\nsummary: s\norder: {i}\neditable: [\"nano.theme\"]\nsettings: {{ nano.theme: esde }}\n")));
+    let mut files = vec![
+        ("catalog.yaml".to_string(), root),
+        ("devices/testdev.yaml".to_string(), device),
+    ];
+    files.extend(profiles);
+    let catalog = Catalog::from_files(files).unwrap();
     Fixture {
         dir,
         catalog,
@@ -192,16 +230,18 @@ guides:
         vendor_new,
         odm_new,
         src_pac,
-        expected_sha,
+        expected_sha: reference.map(str::to_string).unwrap_or_default(),
+        manifest,
+        package,
     }
 }
 
-fn quiet() -> (Reporter, Arc<MemorySink>) {
+pub(super) fn quiet() -> (Reporter, Arc<MemorySink>) {
     let sink = Arc::new(MemorySink::default());
     (Reporter::new(sink.clone()), sink)
 }
 
-fn opts(ws: &Path, delete_downloads: bool) -> BuildOptions {
+pub(super) fn opts(ws: &Path, delete_downloads: bool) -> BuildOptions {
     BuildOptions {
         device: "testdev".into(),
         profile: "heavy".into(),
@@ -213,8 +253,8 @@ fn opts(ws: &Path, delete_downloads: bool) -> BuildOptions {
     }
 }
 
-/// Builds once with a wrong expectation to read the real hash, then returns a
-/// fixture whose recipe expects it.
+/// Builds once with a wrong reference to read the real hash, then returns a
+/// fixture whose package names it.
 pub fn good_fixture() -> Fixture {
     let probe = fixture(None);
     let ws = probe.dir.path().join("probe-ws");
@@ -371,40 +411,25 @@ fn unpacked_official_firmware_in_an_import_folder_skips_the_download() {
 }
 
 #[test]
-fn device_pack_archive_supplies_the_system_image_and_patches() {
-    let mut fx = good_fixture();
+fn the_package_is_downloaded_picked_or_found_in_a_folder() {
+    let fx = good_fixture();
     let d = fx.dir.path().to_path_buf();
-    // One archive holding the system image and both patches, then nothing
-    // else: the individual files are gone and have no download address.
-    let files = ["thimsy-system.img.zst", "vb.bsdiff", "odm.bsdiff"].map(|f| d.join(f));
-    let refs: Vec<&Path> = files.iter().map(|p| p.as_path()).collect();
-    let entry =
-        crate::bundle::make(&d.join("pack.tar"), &refs, u64::MAX, 1, &mut |_, _| {}).unwrap();
-    for f in &files {
-        std::fs::remove_file(f).unwrap();
-    }
-    for a in fx.catalog.root.artifacts.iter_mut() {
-        a.urls.clear();
-    }
-    let dev = &mut fx.catalog.devices[0];
-    for a in dev.artifacts.iter_mut() {
-        a.urls.clear();
-    }
-    let mut bundle: crate::catalog::Artifact = serde_json::from_value(entry).unwrap();
-    bundle.urls = vec![file_url(&d.join("pack.tar"))];
-    dev.bundles.insert("heavy".into(), bundle.clone());
-
     // Downloaded (file:// here), then deleted afterwards with the rest.
     let ws = d.join("ws");
     let (rep, _) = quiet();
     let rec = job::build(&fx.catalog, &opts(&ws, true), &rep).unwrap();
     assert_eq!(rec.sha256, fx.expected_sha);
-    assert!(!ws.join("cache/pack.tar").exists());
-    assert!(!ws.join("cache/thimsy-system.img.zst").exists());
+    assert_eq!(
+        rec.reference_sha256.as_deref(),
+        Some(fx.expected_sha.as_str())
+    );
+    assert_eq!(rec.release.as_deref(), Some("Thimsy Test"));
+    assert!(!ws.join("cache").join(PACKAGE).exists());
 
-    // A picked file under any name is used in place and never deleted.
+    // A picked file under any name is used in place and never deleted; the
+    // catalog's download is never touched.
     let picked = d.join("my download.tar");
-    std::fs::rename(d.join("pack.tar"), &picked).unwrap();
+    std::fs::rename(&fx.package, &picked).unwrap();
     let mut o = opts(&d.join("ws2"), true);
     o.imports = vec![picked.clone()];
     let (rep, _) = quiet();
@@ -413,29 +438,37 @@ fn device_pack_archive_supplies_the_system_image_and_patches() {
         fx.expected_sha
     );
     assert!(picked.exists());
-    assert!(!d.join("ws2/cache/my download.tar").exists());
+    assert_eq!(
+        std::fs::read_dir(d.join("ws2/cache"))
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().contains(".tar"))
+            .count(),
+        0
+    );
 
-    // Split into parts in an import folder.
+    // Split into parts in an import folder, under the name Thimsy gives
+    // packages (not the catalog's).
     let bytes = std::fs::read(&picked).unwrap();
     let parts_dir = d.join("parts");
     std::fs::create_dir_all(&parts_dir).unwrap();
-    bundle.parts = bytes
-        .chunks(bytes.len() / 3 + 1)
-        .enumerate()
-        .map(|(i, c)| {
-            let p = parts_dir.join(format!("pack.tar.{:03}", i + 1));
-            std::fs::write(&p, c).unwrap();
-            serde_yaml::from_str(&artifact_yaml(&format!("pack.tar.{:03}", i + 1), &p)).unwrap()
-        })
-        .collect();
-    bundle.urls.clear();
-    fx.catalog.devices[0].bundles.insert("heavy".into(), bundle);
+    for (i, c) in bytes.chunks(bytes.len() / 3 + 1).enumerate() {
+        std::fs::write(
+            parts_dir.join(format!("Thimsy-9.9-testdev-heavy.tar.{:03}", i + 1)),
+            c,
+        )
+        .unwrap();
+    }
     let mut o = opts(&d.join("ws3"), false);
     o.imports = vec![parts_dir.clone()];
     let (rep, _) = quiet();
     assert_eq!(
         job::build(&fx.catalog, &o, &rep).unwrap().sha256,
         fx.expected_sha
+    );
+    assert!(
+        !d.join("ws3/cache").join(PACKAGE).exists(),
+        "not downloaded"
     );
 
     // A damaged picked file is refused, not silently replaced.
@@ -447,7 +480,13 @@ fn device_pack_archive_supplies_the_system_image_and_patches() {
     o.imports = vec![picked];
     let (rep, _) = quiet();
     let err = job::build(&fx.catalog, &o, &rep).unwrap_err();
-    assert_eq!(crate::error::code_of(&err).0, Code::HashMismatch, "{err:#}");
+    let (code, hint) = crate::error::code_of(&err);
+    assert_eq!(code, Code::HashMismatch, "{err:#}");
+    assert!(hint.unwrap().contains("package file is damaged"));
+    assert!(
+        !d.join("ws4/cache/fw.7z.001").exists(),
+        "nothing downloaded"
+    );
 }
 
 #[test]
@@ -468,7 +507,7 @@ fn not_enough_space_is_reported_before_anything_is_written() {
     let fx = good_fixture();
     let ws = fx.dir.path().join("ws");
     let d = fx.catalog.device("testdev").unwrap();
-    let sp = crate::resolve::space(&fx.catalog, d, "heavy");
+    let sp = crate::resolve::space(d, "heavy");
     let sc = job::check_space(&fx.catalog, "testdev", "heavy", &ws, &[], false).unwrap();
     assert!(sc.ok);
     assert!(sc.need >= sc.downloads);
@@ -507,23 +546,6 @@ fn not_enough_space_is_reported_before_anything_is_written() {
             assert!(sc.need >= sp.image + sp.flash_extra + (sc.downloads - sc.cached));
         }
     }
-    // With a device pack, the system image and patches come from it: copies
-    // of them in the cache don't count as already downloaded.
-    let mut cat = fx.catalog.clone();
-    let mut pack = d.artifacts[0].clone();
-    pack.file = "pack.tar".into();
-    pack.size = 123_456;
-    cat.devices[0].bundles.insert("heavy".into(), pack);
-    std::fs::copy(
-        fx.dir.path().join("thimsy-system.img.zst"),
-        ws.join("cache/thimsy-system.img.zst"),
-    )
-    .unwrap();
-    let sc = job::check_space(&cat, "testdev", "heavy", &ws, &[], false).unwrap();
-    assert_eq!(
-        sc.cached,
-        std::fs::metadata(ws.join("cache/fw.7z.001")).unwrap().len()
-    );
     // The message for the app.
     let e = job::not_enough_space(&ws, 10_000_000_000, 1_000);
     assert_eq!(crate::error::code_of(&e).0, Code::NotEnoughSpace);
@@ -539,11 +561,15 @@ fn picked_files_that_the_build_cant_use_are_refused() {
     o.imports = vec![other];
     let (rep, _) = quiet();
     let err = job::build(&fx.catalog, &o, &rep).unwrap_err();
-    assert_eq!(crate::error::code_of(&err).0, Code::BadInput, "{err:#}");
+    assert_eq!(crate::error::code_of(&err).0, Code::BadPackage, "{err:#}");
     let msg = err.to_string();
     assert!(
-        msg.contains("holiday.mp4") && msg.contains("firmware.pac"),
+        msg.contains("holiday.mp4 (the file you chose) isn't a Thimsy package"),
         "{msg}"
+    );
+    assert!(
+        !fx.dir.path().join("ws/cache").join(PACKAGE).exists(),
+        "the package isn't downloaded instead"
     );
     assert!(
         !fx.dir.path().join("ws/cache/fw.7z.001").exists(),
@@ -1003,15 +1029,24 @@ fn flash_checks_the_image_the_device_and_the_backups() {
     assert!(text.matches("write_part").count() <= 1, "{text}");
     assert!(!text.contains("erase_part"), "{text}");
 
-    // A build that isn't the image the catalog now expects (the installer
-    // was updated since): refused before the device is touched.
-    let newer = fixture(Some(&"1".repeat(64)));
+    // A job that wasn't checked against its package's reference (made by
+    // an earlier engine, or edited): refused before the device is touched.
+    let job_json = job_dir.join("job.json");
+    let good = std::fs::read(&job_json).unwrap();
+    let mut old: serde_json::Value = serde_json::from_slice(&good).unwrap();
+    old.as_object_mut().unwrap().remove("reference_sha256");
+    std::fs::write(&job_json, serde_json::to_vec(&old).unwrap()).unwrap();
     fake_env(None);
     let (rep, _) = quiet();
-    let err = flash::flash(&newer.catalog, &o, &rep).unwrap_err();
+    let err = flash::flash(&fx.catalog, &o, &rep).unwrap_err();
     assert_eq!(crate::error::code_of(&err).0, Code::HashMismatch, "{err:#}");
-    assert!(err.to_string().contains("catalog test expects"), "{err}");
+    assert!(
+        err.to_string()
+            .contains("isn't the heavy image its package names"),
+        "{err}"
+    );
     assert!(!log.exists(), "spd_dump never ran");
+    std::fs::write(&job_json, &good).unwrap();
 
     // Backups an earlier engine left unmoved in the scratch folder survive
     // a scratch clean (moved to the backup folder), and a backup clean is
@@ -1227,12 +1262,14 @@ fn clean_removes_only_what_the_engine_made() {
     let (rep, _) = quiet();
     job::build(&fx.catalog, &opts(&ws, false), &rep).unwrap();
     let cache = ws.join("cache");
-    // Ours: a known download, its marker, scratch of known names.
+    let pkg = cache.join(PACKAGE);
+    assert!(pkg.exists(), "the downloaded package stays in the cache");
+    // Ours: known downloads, their markers, scratch of known names.
     for (name, data) in [
-        ("thimsy-system.img.zst.partial", &b"part"[..]),
-        ("thimsy-system.img.zst.partial.json", b"{}"),
-        ("vb.bsdiff.import", b"x"),
-        ("vb.bsdiff.ok.tmp", b"x"),
+        (format!("{PACKAGE}.partial"), &b"part"[..]),
+        (format!("{PACKAGE}.partial.json"), b"{}"),
+        ("fw.7z.002.import".to_string(), b"x"),
+        ("fw.7z.002.ok.tmp".to_string(), b"x"),
     ] {
         std::fs::write(cache.join(name), data).unwrap();
     }
@@ -1246,11 +1283,12 @@ fn clean_removes_only_what_the_engine_made() {
     std::fs::write(other_job.join("out/x.pac"), b"keep").unwrap();
     let items = job::cleanable(&fx.catalog, &ws);
     let listed = |p: &Path| items.iter().any(|i| i.path == p);
-    assert!(listed(&cache.join("vb.bsdiff")));
-    assert!(listed(&cache.join("vb.bsdiff.import")));
-    assert!(listed(&cache.join("thimsy-system.img.zst.partial.json")));
+    assert!(listed(&cache.join("fw.7z.001")));
+    assert!(listed(&pkg));
+    assert!(listed(&cache.join("fw.7z.002.import")));
+    assert!(listed(&cache.join(format!("{PACKAGE}.partial.json"))));
     assert!(
-        !listed(&cache.join("vb.bsdiff.ok")),
+        !listed(&cache.join("fw.7z.001.ok")),
         "markers go with their download"
     );
     for p in [
@@ -1263,10 +1301,10 @@ fn clean_removes_only_what_the_engine_made() {
     // Clean by path: only listed items, and only ones clean knows.
     let err = job::clean(&fx.catalog, &ws, &[], &[cache.join("my-notes.txt")]).unwrap_err();
     assert_eq!(crate::error::code_of(&err).0, Code::BadInput);
-    let freed = job::clean(&fx.catalog, &ws, &[], &[cache.join("vb.bsdiff")]).unwrap();
+    let freed = job::clean(&fx.catalog, &ws, &[], std::slice::from_ref(&pkg)).unwrap();
     assert!(freed > 0);
-    assert!(!cache.join("vb.bsdiff").exists() && !cache.join("vb.bsdiff.ok").exists());
-    assert!(cache.join("odm.bsdiff").exists(), "only the listed path");
+    assert!(!pkg.exists() && !cache.join(format!("{PACKAGE}.ok")).exists());
+    assert!(cache.join("fw.7z.001").exists(), "only the listed path");
     // Everything clean may remove, at once.
     job::clean(
         &fx.catalog,
@@ -1283,9 +1321,9 @@ fn clean_removes_only_what_the_engine_made() {
     ] {
         assert!(keep.exists(), "{} was removed", keep.display());
     }
-    assert!(!cache.join("thimsy-system.img.zst.partial").exists());
-    assert!(!cache.join("vb.bsdiff.import").exists());
-    assert!(!cache.join("odm.bsdiff").exists());
+    assert!(!cache.join(format!("{PACKAGE}.partial")).exists());
+    assert!(!cache.join("fw.7z.002.import").exists());
+    assert!(!cache.join("fw.7z.001").exists());
 }
 
 #[test]
@@ -1293,7 +1331,7 @@ fn space_counts_picked_files_and_refuses_fat32_and_unknown_drives() {
     let fx = good_fixture();
     let ws = fx.dir.path().join("ws");
     let d = fx.catalog.device("testdev").unwrap();
-    let sp = crate::resolve::space(&fx.catalog, d, "heavy");
+    let sp = crate::resolve::space(d, "heavy");
     let empty = job::check_space(&fx.catalog, "testdev", "heavy", &ws, &[], false).unwrap();
     // The unpacked official firmware picked: its download parts aren't
     // needed at all.
@@ -1331,7 +1369,10 @@ fn space_counts_picked_files_and_refuses_fat32_and_unknown_drives() {
     )
     .unwrap();
     assert_eq!(sc.imported, sc.downloads);
-    assert_eq!(sc.need, empty.need);
+    assert!(
+        sc.need < empty.need,
+        "the package in the folder is used in place"
+    );
 
     // FAT32 can't hold the image; a drive that can't be checked is never
     // assumed to have room.
@@ -1374,39 +1415,18 @@ fn space_counts_picked_files_and_refuses_fat32_and_unknown_drives() {
 }
 
 #[test]
-fn renamed_device_pack_parts_are_matched_and_missing_ones_named() {
-    let mut fx = good_fixture();
+fn picked_package_parts_are_used_in_order_and_missing_ones_named() {
+    let fx = good_fixture();
     let d = fx.dir.path().to_path_buf();
-    let files = ["thimsy-system.img.zst", "vb.bsdiff", "odm.bsdiff"].map(|f| d.join(f));
-    let refs: Vec<&Path> = files.iter().map(|p| p.as_path()).collect();
-    let entry =
-        crate::bundle::make(&d.join("pack.tar"), &refs, u64::MAX, 1, &mut |_, _| {}).unwrap();
-    for f in &files {
-        std::fs::remove_file(f).unwrap();
-    }
-    let bytes = std::fs::read(d.join("pack.tar")).unwrap();
-    let mut bundle: crate::catalog::Artifact = serde_json::from_value(entry).unwrap();
-    // Split into parts with download addresses (which must not be used).
-    let parts_dir = d.join("published");
-    std::fs::create_dir_all(&parts_dir).unwrap();
+    let bytes = std::fs::read(&fx.package).unwrap();
     let chunk = bytes.len() / 3 + 1;
-    bundle.parts = bytes
+    // The user's copies, renamed (the browser added " (1)"), chosen in order.
+    let mine: Vec<PathBuf> = bytes
         .chunks(chunk)
         .enumerate()
         .map(|(i, c)| {
-            let p = parts_dir.join(format!("pack.tar.{:03}", i + 1));
+            let p = d.join(format!("download ({}).bin", i + 1));
             std::fs::write(&p, c).unwrap();
-            serde_yaml::from_str(&artifact_yaml(&format!("pack.tar.{:03}", i + 1), &p)).unwrap()
-        })
-        .collect();
-    fx.catalog.devices[0]
-        .bundles
-        .insert("heavy".into(), bundle.clone());
-    // The user's copies, renamed (the browser added " (1)").
-    let mine: Vec<PathBuf> = (1..=3)
-        .map(|i| {
-            let p = d.join(format!("download ({i}).bin"));
-            std::fs::copy(parts_dir.join(format!("pack.tar.{i:03}")), &p).unwrap();
             p
         })
         .collect();
@@ -1417,20 +1437,40 @@ fn renamed_device_pack_parts_are_matched_and_missing_ones_named() {
         job::build(&fx.catalog, &o, &rep).unwrap().sha256,
         fx.expected_sha
     );
-    // One part named as published, the others renamed: still matched.
-    std::fs::copy(&mine[1], d.join("pack.tar.002")).unwrap();
+    // Numbered parts chosen in any order: put in order.
+    let numbered: Vec<PathBuf> = (1..=3)
+        .map(|i| {
+            let p = d.join(format!("pack.tar.{i:03}"));
+            std::fs::copy(&mine[i - 1], &p).unwrap();
+            p
+        })
+        .collect();
     let mut o = opts(&d.join("ws2"), false);
-    o.imports = vec![mine[0].clone(), d.join("pack.tar.002"), mine[2].clone()];
+    o.imports = vec![
+        numbered[2].clone(),
+        numbered[0].clone(),
+        numbered[1].clone(),
+    ];
     assert_eq!(
         job::build(&fx.catalog, &o, &rep).unwrap().sha256,
         fx.expected_sha
     );
     // A part missing: bad_input naming it, and nothing downloaded.
     let mut o = opts(&d.join("ws3"), false);
-    o.imports = vec![mine[0].clone(), mine[2].clone()];
+    o.imports = vec![numbered[0].clone(), numbered[2].clone()];
     let err = job::build(&fx.catalog, &o, &rep).unwrap_err();
     assert_eq!(crate::error::code_of(&err).0, Code::BadInput, "{err:#}");
     assert!(err.to_string().contains("pack.tar.002"), "{err}");
-    assert!(!d.join("ws3/cache/pack.tar.002").exists());
-    assert!(!d.join("ws3/cache/pack.tar.002.partial").exists());
+    // The last part missing: the package is cut short.
+    let mut o = opts(&d.join("ws3"), false);
+    o.imports = vec![numbered[0].clone(), numbered[1].clone()];
+    let err = job::build(&fx.catalog, &o, &rep).unwrap_err();
+    assert_eq!(crate::error::code_of(&err).0, Code::BadPackage, "{err:#}");
+    assert!(err.to_string().contains("cut short"), "{err}");
+    assert!(!d.join("ws3/cache/fw.7z.001").exists());
+    assert!(!d.join("ws3/cache").join(PACKAGE).exists());
+    assert!(!d
+        .join("ws3/cache")
+        .join(format!("{PACKAGE}.partial"))
+        .exists());
 }

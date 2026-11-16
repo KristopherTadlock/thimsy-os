@@ -243,3 +243,43 @@ fn build_refuses_custom_settings_until_they_can_be_applied() {
         .iter()
         .any(|s| s["key"] == "nano.theme" && s["source"] == "user"));
 }
+
+/// "Use a file I already downloaded" with a file that isn't a Thimsy
+/// package: refused at once, saying so, and nothing is downloaded instead
+/// (the bundled catalog's RG Cube downloads its package otherwise).
+#[test]
+fn a_picked_file_that_isnt_a_package_is_refused_without_downloading() {
+    let ws = tempfile::tempdir().unwrap();
+    let dl = tempfile::tempdir().unwrap();
+    let picked = dl.path().join("Thimsy-1.0a-anbernic-rg-cube-heavy.tar");
+    std::fs::write(&picked, vec![0x5au8; 4096]).unwrap();
+    let (ok, l) = run(&[
+        "--json",
+        "build",
+        "--device",
+        "anbernic-rg-cube",
+        "--profile",
+        "heavy",
+        "--workspace",
+        ws.path().to_str().unwrap(),
+        "--import",
+        picked.to_str().unwrap(),
+    ]);
+    assert!(!ok);
+    let err = l.iter().find(|e| e["type"] == "error").unwrap();
+    assert_eq!(err["code"], "bad_package");
+    let msg = err["message"].as_str().unwrap();
+    assert!(
+        msg.contains("(the file you chose) isn't a Thimsy package")
+            && msg.contains("not a tar archive"),
+        "{msg}"
+    );
+    assert!(err["hint"].as_str().unwrap().contains("Thimsy package"));
+    assert!(
+        !l.iter()
+            .any(|e| e["type"] == "stage" && e["stage"] == "fetch"),
+        "nothing was fetched"
+    );
+    let cache = ws.path().join("cache");
+    assert!(std::fs::read_dir(&cache).map_or(true, |mut d| d.next().is_none()));
+}

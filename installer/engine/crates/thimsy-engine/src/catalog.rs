@@ -1,5 +1,7 @@
-//! The device and profile catalog: what can be installed, from which inputs,
-//! with which build steps and flashing method. Data only; no code.
+//! The device and profile catalog: what can be installed, from which official
+//! firmware, where its Thimsy packages are published and how it's flashed.
+//! Data only; no code. Builds (the steps, their files and the result's hash)
+//! come from the packages themselves.
 
 use crate::host::Host;
 use anyhow::{bail, Context, Result};
@@ -9,6 +11,7 @@ use std::path::Path;
 
 include!(concat!(env!("OUT_DIR"), "/bundled_catalog.rs"));
 
+/// A file of the official firmware's download, pinned by size and sha256.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Artifact {
@@ -19,25 +22,9 @@ pub struct Artifact {
     pub sha256: String,
     #[serde(default)]
     pub urls: Vec<String>,
-    /// Set when the file is compressed and must be unpacked before use.
-    #[serde(default)]
-    pub unpack: Option<Unpack>,
     /// Shown when the file can't be downloaded automatically.
     #[serde(default)]
     pub note: Option<String>,
-    /// Published in pieces (release assets are limited to 2 GiB): the
-    /// artifact is the concatenation of these, and `size`/`sha256` describe
-    /// the whole.
-    #[serde(default)]
-    pub parts: Vec<Artifact>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Unpack {
-    pub format: String, // "zstd"
-    pub size: u64,
-    pub sha256: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -45,11 +32,37 @@ pub struct Unpack {
 pub struct CatalogRoot {
     pub version: String,
     pub release: String,
-    /// Profile id → shared (device-independent) system artifact id.
+}
+
+/// Where to download a device's Thimsy package for a profile. Nothing here
+/// pins a build: any package whose own `pack.json` checks out is accepted
+/// (see `package`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Package {
+    /// File name in the cache and in import folders.
+    pub file: String,
+    /// Where the latest package is published. Empty: the user downloads it
+    /// and chooses it (`note` says where).
     #[serde(default)]
-    pub systems: BTreeMap<String, String>,
+    pub urls: Vec<String>,
+    /// Published in pieces (release assets are limited to 2 GiB): the
+    /// package is these, end to end.
     #[serde(default)]
-    pub artifacts: Vec<Artifact>,
+    pub parts: Vec<PackagePart>,
+    /// About how large the package is, for the free-space check before it's
+    /// downloaded. Not checked.
+    pub approx_size: u64,
+    /// Shown when the package can't be downloaded automatically.
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PackagePart {
+    pub file: String,
+    pub urls: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -165,39 +178,6 @@ pub struct Container {
     pub format: String, // "pac"
     pub size: u64,
     pub sha256: String,
-}
-
-/// One build step. Typed; recipes can only combine these.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
-pub enum Op {
-    /// Grow a logical partition of the `super` entry into free space.
-    LpGrow { entry: String, partition: String },
-    /// Write the profile's system image (or another artifact) to a logical partition.
-    LpWrite {
-        entry: String,
-        partition: String,
-        artifact: String,
-    },
-    /// Patch a logical partition with a delta artifact.
-    LpDelta {
-        entry: String,
-        partition: String,
-        artifact: String,
-        in_sha256: String,
-        out_sha256: String,
-    },
-    /// Patch a PAC entry with a delta artifact.
-    PacDelta {
-        entry: String,
-        artifact: String,
-        in_sha256: String,
-        out_sha256: String,
-    },
-    /// Set the product strings flash tools show ({profile}, {release} expand).
-    PacSetInfo { version: String, alias: String },
-    /// Recompute the PAC data CRC.
-    PacFixCrc,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -316,19 +296,10 @@ pub struct Device {
     pub settings: BTreeMap<String, String>,
     #[serde(default)]
     pub source: Option<Source>,
+    /// Profile → where its Thimsy package is published. A profile listed
+    /// here can be built for the device.
     #[serde(default)]
-    pub artifacts: Vec<Artifact>,
-    /// Profile → the device pack as one archive (a tar of the system image,
-    /// the patches and pack.json; see `bundle`). When present the build takes
-    /// the system image and the artifacts from it instead of downloading
-    /// them one by one.
-    #[serde(default)]
-    pub bundles: BTreeMap<String, Artifact>,
-    #[serde(default)]
-    pub build: Vec<Op>,
-    /// Profile → expected output sha256, when known.
-    #[serde(default)]
-    pub expect: BTreeMap<String, String>,
+    pub packages: BTreeMap<String, Package>,
     #[serde(default)]
     pub flash: Option<Flash>,
     /// What an already-unlocked device must be running for an update
@@ -339,6 +310,11 @@ pub struct Device {
 }
 
 impl Device {
+    /// Whether the installer can build firmware for the device at all.
+    pub fn buildable(&self) -> bool {
+        self.source.is_some() && !self.packages.is_empty()
+    }
+
     pub fn install_on(&self, host: Host) -> InstallSupport {
         self.support
             .install
@@ -434,56 +410,22 @@ impl Catalog {
             .with_context(|| format!("unknown profile {id:?}"))
     }
 
-    /// The shared artifact list plus a device's own.
-    pub fn artifact(&self, device: &Device, id: &str) -> Result<Artifact> {
-        self.root
-            .artifacts
+    /// Whether any device can be built with `profile`.
+    pub fn profile_published(&self, profile: &str) -> bool {
+        self.devices
             .iter()
-            .chain(device.artifacts.iter())
-            .find(|a| a.id == id)
-            .cloned()
-            .with_context(|| format!("unknown artifact {id:?}"))
-    }
-
-    /// The system artifact for a profile, if published.
-    pub fn system_for(&self, profile: &str) -> Option<&Artifact> {
-        let id = self.root.systems.get(profile)?;
-        self.root.artifacts.iter().find(|a| &a.id == id)
+            .any(|d| d.packages.contains_key(profile))
     }
 
     fn validate(&self) -> Result<()> {
         let mut seen = std::collections::HashSet::new();
+        let plain = |f: &str| !f.is_empty() && !f.contains(['/', '\\']) && f != "." && f != "..";
         for d in &self.devices {
             if !seen.insert(&d.id) {
                 bail!("duplicate device {}", d.id);
             }
-            for op in &d.build {
-                let art = match op {
-                    Op::LpWrite { artifact, .. }
-                    | Op::LpDelta { artifact, .. }
-                    | Op::PacDelta { artifact, .. } => Some(artifact),
-                    _ => None,
-                };
-                if let Some(a) = art {
-                    if a != "@system" && self.artifact(d, a).is_err() {
-                        bail!("device {}: build step names unknown artifact {a}", d.id);
-                    }
-                }
-            }
-            if !d.build.is_empty() && d.source.is_none() {
-                bail!("device {} has build steps but no source firmware", d.id);
-            }
-            // Every profile a buildable device can build has a reference
-            // hash, so no build is ever published unchecked.
-            if !d.build.is_empty() {
-                for p in self.root.systems.keys().chain(d.bundles.keys()) {
-                    if !d.expect.contains_key(p) {
-                        bail!(
-                            "device {} can build the {p} profile but has no expect hash for it",
-                            d.id
-                        );
-                    }
-                }
+            if !d.packages.is_empty() && d.source.is_none() {
+                bail!("device {} has packages but no source firmware", d.id);
             }
             if let Some(f) = &d.flash {
                 if !f.update.is_empty() && f.update_check.is_empty() {
@@ -492,7 +434,7 @@ impl Catalog {
                         d.id
                     );
                 }
-                if f.method == "spd" && !d.build.is_empty() {
+                if f.method == "spd" && d.buildable() {
                     if f.writes_full.is_empty() {
                         bail!("device {}: flash recipe has no writes_full", d.id);
                     }
@@ -501,29 +443,32 @@ impl Catalog {
                     }
                 }
             }
-            for (p, b) in &d.bundles {
+            for (p, pkg) in &d.packages {
                 self.profile(p)
-                    .with_context(|| format!("device {}: bundle for unknown profile {p}", d.id))?;
-                if b.unpack.is_some() {
-                    bail!("device {}: bundle {} can't be compressed", d.id, b.file);
+                    .with_context(|| format!("device {}: package for unknown profile {p}", d.id))?;
+                if !plain(&pkg.file) || pkg.parts.iter().any(|x| !plain(&x.file)) {
+                    bail!("device {}: package file names must be plain names", d.id);
+                }
+                if !pkg.parts.is_empty() && !pkg.urls.is_empty() {
+                    bail!(
+                        "device {}: the {p} package has both urls and parts; the parts carry the urls",
+                        d.id
+                    );
                 }
             }
-        }
-        for (p, a) in &self.root.systems {
-            self.profile(p)
-                .with_context(|| format!("systems: unknown profile {p}"))?;
-            if !self.root.artifacts.iter().any(|x| &x.id == a) {
-                bail!("systems: profile {p} names unknown artifact {a}");
-            }
-        }
-        for a in self
-            .root
-            .artifacts
-            .iter()
-            .chain(self.devices.iter().flat_map(|d| d.artifacts.iter()))
-        {
-            if a.sha256.len() != 64 || !a.sha256.chars().all(|c| c.is_ascii_hexdigit()) {
-                bail!("artifact {} has a malformed sha256", a.id);
+            if let Some(src) = &d.source {
+                for a in &src.parts {
+                    if a.sha256.len() != 64 || !a.sha256.chars().all(|c| c.is_ascii_hexdigit()) {
+                        bail!("artifact {} has a malformed sha256", a.id);
+                    }
+                }
+                let c = &src.container.sha256;
+                if c.len() != 64 || !c.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
+                    bail!(
+                        "device {}: the source container's sha256 must be 64 lowercase hex digits",
+                        d.id
+                    );
+                }
             }
         }
         Ok(())

@@ -275,7 +275,7 @@ void main() {
       };
       final (state, engine) = await toBuildStep(tester, workspace: '/ws');
       await tap(tester, key('source-files'));
-      expect(pickerLabels?.packFileType, 'Thimsy device pack');
+      expect(pickerLabels?.packFileType, 'Thimsy package');
       expect(isSelected(tester, 'source-files'), isTrue);
       expect(find.text('rg-cube.tar.001'), findsOneWidget);
       expect(find.text('rg-cube.tar.002'), findsOneWidget);

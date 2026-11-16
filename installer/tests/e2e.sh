@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # End-to-end test of the engine on real RG Cube firmware (no device needed):
 # rebuilds the reference Thimsy PAC from the official GammaOS download plus the
-# device pack and checks it byte for byte, then flashes it through a fake
-# spd_dump. Usage: e2e.sh WORKSPACE PACK_DIR
+# Thimsy package and checks it byte for byte, then flashes it through a fake
+# spd_dump. Usage: e2e.sh WORKSPACE PACK_DIR, PACK_DIR holding the package
+# (Thimsy-*-anbernic-rg-cube-heavy.tar) and the official firmware (its 7z
+# parts or the unpacked .pac).
 #
 # The fake spd_dump is found through THIMSY_TOOLS_DIR, which only engines
 # built with the `test-hooks` cargo feature honour (release artifacts never

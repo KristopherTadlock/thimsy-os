@@ -16,6 +16,10 @@ pub enum Code {
     UnlockGuided,
     Cancelled,
     BadInput,
+    /// A Thimsy package that can't be used: not a package, a malformed
+    /// `pack.json`, made for another device, profile or official firmware,
+    /// or needing a newer installer.
+    BadPackage,
     /// Another engine run holds the workspace lock.
     Busy,
     /// Update mode refused: the device doesn't run the base the update
@@ -39,6 +43,7 @@ impl Code {
             Code::UnlockGuided => "unlock_guided",
             Code::Cancelled => "cancelled",
             Code::BadInput => "bad_input",
+            Code::BadPackage => "bad_package",
             Code::Busy => "busy",
             Code::FullInstallNeeded => "full_install_needed",
             Code::Internal => "internal",

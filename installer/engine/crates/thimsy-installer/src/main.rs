@@ -5,7 +5,7 @@
 //! `thimsy-installer`: the engine the Thimsy Installer app runs in the
 //! background (see installer/docs/engine-protocol.md). Also usable directly.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use thimsy_engine::{cli, job, pac, pack, Reporter};
@@ -146,7 +146,8 @@ enum Dev {
         #[arg(long, default_value = "Super")]
         entry: String,
     },
-    /// Make a device pack from official firmware and a reference build.
+    /// Make a Thimsy package's files and its pack.json from official
+    /// firmware and a reference build.
     Pack {
         #[arg(long)]
         source: PathBuf,
@@ -154,13 +155,24 @@ enum Dev {
         reference: PathBuf,
         #[arg(long)]
         out: PathBuf,
+        /// Catalog device the package is for.
         #[arg(long)]
         device: String,
         #[arg(long)]
+        profile: String,
+        #[arg(long)]
         system_name: String,
+        /// The Thimsy release (default: the catalog's, e.g. "Thimsy 1.0a").
+        #[arg(long)]
+        release: Option<String>,
+        /// Prefix of the patches' names (default: the device id without its
+        /// maker and dashes, e.g. rgcube).
+        #[arg(long)]
+        short: Option<String>,
     },
-    /// Write a device pack archive (tar) from FILES; split into 1 GB parts
-    /// if it's over GitHub's 2 GiB asset limit. Prints its catalog entry.
+    /// Write a Thimsy package (tar) from FILES, pack.json first; split into
+    /// 1 GB parts if it's over GitHub's 2 GiB asset limit. Prints its name,
+    /// size and sha256 (and its parts').
     Bundle {
         #[arg(long)]
         out: PathBuf,
@@ -171,7 +183,7 @@ enum Dev {
         part_size: Option<u64>,
         files: Vec<PathBuf>,
     },
-    /// List the files in a device pack archive (or its parts, in order).
+    /// List the files in a Thimsy package (or its parts, in order).
     BundleList { files: Vec<PathBuf> },
     /// Download and unpack a device's official source firmware.
     Source {
@@ -335,9 +347,36 @@ fn dev_command(g: &cli::Global, dev: Dev, rep: &Reporter) -> Result<()> {
             reference,
             out: o,
             device,
+            profile,
             system_name,
+            release,
+            short,
         } => {
-            let r = pack::make(&source, &reference, &o, &device, &system_name, rep)?;
+            let d = cat.device(&device)?;
+            let src = d
+                .source
+                .as_ref()
+                .context("the device has no official firmware in the catalog")?;
+            cat.profile(&profile)?;
+            let short = short.unwrap_or_else(|| {
+                let rest = device.split_once('-').map_or(device.as_str(), |(_, r)| r);
+                rest.replace('-', "")
+            });
+            let target = pack::Target {
+                device: device.clone(),
+                profile,
+                release: release.unwrap_or_else(|| cat.root.release.clone()),
+            };
+            let r = pack::make(&source, &reference, &o, &short, &system_name, &target, rep)?;
+            if r.source_sha256 != src.container.sha256 {
+                anyhow::bail!(
+                    "{} (sha256 {}) isn't the official firmware the catalog has for {device} ({}, sha256 {}): the installer would refuse this package",
+                    source.display(),
+                    r.source_sha256,
+                    src.contains,
+                    src.container.sha256
+                );
+            }
             println!("{}", serde_json::to_string_pretty(&r)?);
         }
         Dev::Bundle {
