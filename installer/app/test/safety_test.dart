@@ -471,7 +471,8 @@ void main() {
       s.selectJourney('first_time');
       s.next();
       await s.startBuild();
-      await settle();
+      // Waits for the build (a fixed wait was too short on slow CI).
+      await until(() => s.job != null);
       expect(s.job, isNotNull);
       s.setDryRun(true);
       s.install();
