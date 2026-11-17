@@ -1,7 +1,7 @@
 """A monitor plugged in is display 0, with the panel switched off (docked) or on beside it (dual screen
-mode); unplugged, the panel is display 0 again (GammaosScreenArrangement, applied by
-LogicalDisplayMapper), and the old external display modes are cleared once. Runs
-GammaosScreenArrangementCheck on the host.
+mode), or shows the panel's display 0 (mirror mode); unplugged, the panel is display 0 again
+(GammaosScreenArrangement, applied by LogicalDisplayMapper), and the old external display modes are
+cleared once. Runs GammaosScreenArrangementCheck on the host.
 """
 import os
 import shutil
