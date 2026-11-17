@@ -10,7 +10,7 @@ from tests import util
 from tests.e2e.modrun import ModCase
 from tests.fixtures import setup_sandbox, systree
 
-OFFLINE = ("05", "12", "25", "27", "37", "45", "55", "58")
+OFFLINE = ("05", "12", "25", "27", "37", "45", "47", "55", "58")
 
 
 class OfflineMods(ModCase):
@@ -251,6 +251,111 @@ class OfflineMods(ModCase):
                     self.assertIn("restorecon -R /data/data/org.scummvm.scummvm/files", result.calls)
                     self.assertNotIn("scummvm.tar.zst", result.log)   # no missing-payload or extract warning
                     self.assertNotIn("no owner captured", result.log)
+
+    HAKUX_APP = "hakuX Xbox emulator|com.rfandango.haku_x|/system/etc/hakuX-1.3.0-a7cdb5a.apk||"
+    HAKUX_URI = "content://com.android.externalstorage.documents/tree/primary%3AROMs%2Fxbox"
+    HAKUX_PREFS = ("<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n<map>\n"
+                   f"    <string name=\"gamesFolders\">{HAKUX_URI}</string>\n"
+                   f"    <string name=\"gamesFolderUri\">{HAKUX_URI}</string>\n"
+                   "    <boolean name=\"setup_complete\" value=\"true\" />\n"
+                   f"    <string name=\"thimsy_folders\">{HAKUX_URI}</string>\n</map>\n")
+
+    def hakux_nano(self):
+        """The 1.4.4 base as 47-hakux-folder.sh finds it: hakuX listed."""
+        self.build(True)
+        with open(f"{self.system}/etc/gammaos/apps.list", "a") as f:
+            f.write(self.HAKUX_APP + "\n")
+
+    def test_47_hakux_nano(self):
+        """hakuX's settings name the Xbox system's folder, and setup gives hakuX that folder first."""
+        self.hakux_nano()
+        self.assertOk(self.run_mod("47"))
+        app = "data/data/com.rfandango.haku_x"
+        out = systree.read_payload(f"{self.system}/etc/hakux.tar.zst")
+        self.assertEqual(sorted(out), [f"{app}/shared_prefs", f"{app}/shared_prefs/x1box_prefs.xml"])
+        self.assertEqual(out[f"{app}/shared_prefs/x1box_prefs.xml"].decode(), self.HAKUX_PREFS)
+        raw = subprocess.run(["zstd", "-q", "-dc", f"{self.system}/etc/hakux.tar.zst"],
+                             capture_output=True, check=True).stdout
+        with tarfile.open(fileobj=io.BytesIO(raw)) as t:
+            members = {m.name: m for m in t}
+        prefs, folder = members[f"{app}/shared_prefs/x1box_prefs.xml"], members[f"{app}/shared_prefs"]
+        self.assertEqual((prefs.mode, prefs.uid, prefs.gid), (0o660, 0, 0))
+        self.assertEqual((folder.mode, folder.uid), (0o771, 0))
+        setup = self.setup_sh()
+        hook = setup.index("hakux_uri_grant() {")
+        self.assertRegex(setup[:hook], r"# thimsy: 47-hakux-folder\.sh [0-9a-f]{16}\n# Gives hakuX a folder")
+        self.assertLess(setup.index("post_hakux() {"), setup.index('step "Starting configuration of the Thimsy system..."'))
+        self.assertIn(f"[ -e /{app}/shared_prefs/x1box_prefs.xml ] && return 0", setup)
+        self.assertIn("mkdir -p /sdcard/ROMs/xbox && hakux_uri_grant primary ROMs/xbox && \\\n"
+                      "        extract_archive /system/etc/hakux.tar.zst && own_app_data com.rfandango.haku_x", setup)
+        self.assertIn(self.HAKUX_APP + "post_hakux", util.slurp(f"{self.system}/etc/gammaos/apps.list", text=True))
+        before = util.manifest(self.system)
+        self.assertIn("left as it is", self.assertOk(self.run_mod("47")).stdout)
+        self.assertEqual(util.manifest(self.system), before)
+
+    def test_47_skips(self):
+        for nano, why in ((True, "isn't in added-apps.txt"), (False, "only on the 1.4.4 base")):
+            self.build(nano)   # the 1.4.4 base without hakuX listed, or the 1.2 base
+            before = util.manifest(self.system)
+            self.assertIn(why, self.assertOk(self.run_mod("47")).stdout)
+            self.assertEqual(util.manifest(self.system), before)
+
+    def test_47_hook_in_first_boot_setup(self):
+        """The hook in GammaOS's real setup.sh: the grant, then the settings, on a fresh install only."""
+        if not setup_sandbox.available():
+            self.skipTest(f"no {setup_sandbox.SETUP_SOURCE}")
+        self.hakux_nano()
+        self.assertOk(self.run_mod("47"))
+        setup = self.setup_sh()
+        start = setup.index("# Gives hakuX a folder")
+        hook = setup[start:setup.index("\n}\n", setup.index("post_hakux() {")) + 3]
+        text, proc = setup_sandbox.add_setup_steps(self.path("build"), util.slurp(setup_sandbox.SETUP_SOURCE, text=True),
+                                                   hook, function="add_setup_functions")
+        self.assertOk(proc)
+        pack = util.slurp(f"{self.system}/etc/hakux.tar.zst")
+        prefs = "data/data/com.rfandango.haku_x/shared_prefs/x1box_prefs.xml"
+        for name, answer, rerun in (("fresh", "ok", False), ("refused", "fail", False), ("rerun", "ok", True)):
+            with self.subTest(name):
+                box = setup_sandbox.Sandbox(self.path(name), text)
+                box.apps([self.HAKUX_APP + "post_hakux"])
+                with open(os.path.join(box.root, "system/etc/hakux.tar.zst"), "wb") as f:
+                    f.write(pack)
+                # NanoNetBridge: up, and answering uri_grant.
+                box._write("state/prop_sys_gammaos_nano_net_generation", "3\n")
+                box._write("fake/setprop", '#!/bin/bash\necho "setprop $*" >> /state/calls\n'
+                           'echo "$2" > /state/prop_$(echo "$1" | tr . _)\n'
+                           r'case "$1|$2" in sys.gammaos.nano.net_cmd\|*\|uri_grant\|com.rfandango.haku_x\|*)' '\n'
+                           f'  echo "{answer}|com.rfandango.haku_x" > /state/prop_sys_gammaos_nano_uri_grant ;;\nesac\n',
+                           0o755)
+                if rerun:
+                    box.completed()
+                    box.installed("com.rfandango.haku_x")
+                    os.makedirs(os.path.join(box.root, os.path.dirname(prefs)))
+                    with open(os.path.join(box.root, prefs), "w") as f:
+                        f.write("<map>mine</map>\n")
+                result = box.run()
+                self.assertEqual(result.returncode, 0, result.output + result.log)
+                got = util.slurp(os.path.join(box.root, prefs), text=True) if os.path.exists(
+                    os.path.join(box.root, prefs)) else None
+                grants = [c for c in result.calls if c.startswith("setprop sys.gammaos.nano.net_cmd ")]
+                if rerun:
+                    self.assertEqual(got, "<map>mine</map>\n")
+                    self.assertEqual(grants, [])
+                    continue
+                self.assertTrue(os.path.isdir(os.path.join(box.root, "sdcard/ROMs/xbox")))
+                self.assertRegex(grants[0], r"^setprop sys\.gammaos\.nano\.net_cmd [0-9]+\|uri_grant\|"
+                                            r"com\.rfandango\.haku_x\|primary\|ROMs/xbox$")
+                if answer == "ok":
+                    self.assertEqual(len(grants), 1)
+                    self.assertEqual(got, self.HAKUX_PREFS)
+                    self.assertIn("chown -R root:root /data/data/com.rfandango.haku_x", result.calls)
+                    self.assertIn("restorecon -R /data/data/com.rfandango.haku_x/shared_prefs", result.calls)
+                    self.assertNotIn("hakux.tar.zst", result.log)   # no missing-payload or extract warning
+                    self.assertNotIn("not given", result.log)
+                    self.assertNotIn("no owner captured", result.log)
+                else:
+                    self.assertIsNone(got)   # Nano gives the folder and writes them later
+                    self.assertIn("warning: hakuX was not given ROMs/xbox", result.log)
 
     def test_55_hotkeys(self):
         self.build(True)

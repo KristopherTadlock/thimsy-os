@@ -117,6 +117,17 @@ On the 1.4.4 base, Nano's emulator catalog (/system/etc/nano_xmb/daijishou)
 is Daijishou's platform data (https://github.com/TapiocaFox/Daijishou),
 Copyright (c) 2022 TapiocaFox (Yves Chen), MIT License.
 
+The build downloads PanVK from Mesa 26.3.0-devel (git 795ca7ff3e), built and
+packaged by panvk-kbase-android 26.3.1
+(https://github.com/zenithblue-oss/panvk-kbase-android/tree/panvk-kbase-v26.3.1),
+and installs it as the PanVK driver package (/system/app/PanVKDriver) and,
+unchanged, as /system/etc/Mesa-PanVK-26.3.1.zip. Mesa (https://mesa3d.org) is
+under the MIT license and the other licenses its docs/license.rst lists;
+panvk-kbase-android's own build and packaging is under the MIT license, and
+the Arm Mali kbase UAPI headers it builds in are under GPL-2.0 WITH
+Linux-syscall-note. These license texts, from tools/panvk-driver/licenses, are
+installed in /system/etc/Mesa-PanVK-licenses.
+
 The build downloads C-BIOS 0.29a (https://cbios.sourceforge.net/) and installs
 its MSX, MSX2 and MSX2+ machines for RetroArch's blueMSX core, with its license
 file ("C-BIOS license.txt") in each machine folder:

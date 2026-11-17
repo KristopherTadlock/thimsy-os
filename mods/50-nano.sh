@@ -7,8 +7,6 @@
 # ones in nano-systems.txt, with this project's default emulators. The stick
 # LEDs follow the screen's colour, the performance mode is Max Performance,
 # and Nano's Slide Behaviour settings are hidden (the RG Cube does not slide).
-# A connected monitor is the main screen (External as Primary on, Force Mirror
-# off).
 # These are build.prop defaults, so choices made later in Nano, or "Boot
 # Android" in the power menu, stick. Runs after 40-added-apps.sh.
 #
@@ -60,8 +58,8 @@ fi
 
 # Both property files get a block appended below; a second run on the same
 # image would add another.
-if sudo grep -qE '^(persist\.(bootanim\.skip_nano|gammaos\.nano\.(ndstheme|esde\.|nav_sounds|minima\.bg)|gammaos\.performance_mode|gammargb\.control|gammaos\.ext\.(primary|force_mirror))|ro\.gammaos\.nano\.no_slide)' "$SYSTEM/build.prop"; then
-  echo "build.prop already sets Nano's boot, theme, sounds, LEDs, performance mode or external display" >&2
+if sudo grep -qE '^(persist\.(bootanim\.skip_nano|gammaos\.nano\.(ndstheme|esde\.|nav_sounds|minima\.bg)|gammaos\.performance_mode|gammargb\.control)|ro\.gammaos\.nano\.no_slide)' "$SYSTEM/build.prop"; then
+  echo "build.prop already sets Nano's boot, theme, sounds, LEDs or performance mode" >&2
   exit 1
 fi
 if sudo grep -q '^persist\.gammaos\.qs\.override_default_tiles' "$SYSTEM/product/etc/build.prop"; then
@@ -258,24 +256,20 @@ persist.gammargb.control=on
 persist.gammaos.performance_mode=max
 # No global display shader until one is chosen
 persist.gammaos.shader.enable=0
-# A connected monitor is the main screen (the console's screen takes its size and
-# its backlight goes off), not a mirror of the console's screen
-persist.gammaos.ext.primary=1
-persist.gammaos.ext.force_mirror=false
 EOF
 write_through "$work/build.prop" "$SYSTEM/build.prop"
 
-# The RG Cube's Quick Settings tiles (its vendor build.prop), plus the Force
-# Mirror and Resize to External Display tiles, for Android's shade and Nano's
+# The RG Cube's Quick Settings tiles (its vendor build.prop, without the HDMI
+# ones: a monitor is always the only screen), for Android's shade and Nano's
 # Quick Settings. The product partition's build.prop is read after the
 # vendor's, so these replace its list.
 sudo cat "$SYSTEM/product/etc/build.prop" >"$work/product.prop"
 cat >>"$work/product.prop" <<EOF
 
-# Thimsy OS: the RG Cube's Quick Settings tiles, with the HDMI ones
+# Thimsy OS: the RG Cube's Quick Settings tiles
 persist.gammaos.qs.override_default_tiles=1
 persist.gammaos.qs.override_default_tiles_0=internet,bt,performance,fan,gammashader,gammargb,gammaeq,rotation
-persist.gammaos.qs.override_default_tiles_1=deepsleepmode,externaldocking,externalmirror,externalresize,immersivemode
+persist.gammaos.qs.override_default_tiles_1=deepsleepmode,immersivemode
 persist.gammaos.qs.override_default_tiles_2=abxy,dpadAnalogToggle,analogsensitivity,analogdeadzone,analogcalibration
 persist.gammaos.qs.override_default_tiles_3=analogaxis,rightanalogaxis,retroarchmenubuttonoverride,mappingeditor
 EOF

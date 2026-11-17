@@ -127,10 +127,31 @@ renderer, and a copy is in `/sdcard/GPU Drivers/`. hakuX can use it too: import
 the ZIP in hakuX's Settings > Graphics > GPU driver. Dolphin only loads custom
 drivers on Adreno GPUs, so it can't use it on the RG Cube's Mali-G57.
 
+[PanVK](https://github.com/zenithblue-oss/panvk-kbase-android/tree/panvk-kbase-v26.3.1)
+26.3.1 (Mesa 26.3.0-devel, git 795ca7ff3e), Mesa's open Vulkan 1.4 driver for
+Mali GPUs (MIT; license texts in `/system/etc/Mesa-PanVK-licenses`), is, on the
+1.4.4 base, an alternate Vulkan driver for any app, through Android's updatable
+graphics driver. Apps
+keep the Mali driver until you switch them: enable Developer options, then in
+Settings > System > Developer options > Graphics Driver Preferences pick the
+app and choose **Game Driver** (or **Enable for all apps**). Apps built into
+the system image always keep the Mali driver. A copy of its driver package is
+in `/sdcard/GPU Drivers/` for hakuX and other emulators that import one. It
+runs on the RG Cube's own kernel driver. A game can run better or worse than
+on the Mali driver; switch the app back to **Default** the same way.
+
 hakuX is built from its source at commit `a7cdb5a` (newer than its 1.3.0
 release), which adds custom Vulkan drivers on Mali GPUs. It is the release
 variant signed with this project's key and mirrored in this repo's
 `app-mirror-1` release, with the revisions of its native dependencies.
+hakuX reads only folders picked in Android's folder picker, so on the 1.4.4
+base first-boot setup gives it `ROMs/xbox` on internal storage that way, through
+system_server, with settings naming it: hakuX skips its first-start setup.
+After that Nano keeps hakuX's games folders to the Xbox system's folders in
+Game Settings (each `ROMs/<folder>` it scans, on internal storage or a
+microSD card) each time the systems are saved and when the home starts, while
+hakuX is closed. A card that is out keeps its folder; folders you add in
+hakuX stay, after Nano's.
 
 [Shattered Pixel Dungeon](https://github.com/00-Evan/shattered-pixel-dungeon/tree/v4.0.2)
 4.0.2 (GPL-3.0), the full game, unmodified, is installed too, so Android Games
@@ -194,9 +215,8 @@ fixes GammaOS Nano bugs:
 
 - settings that are switches or choices, Performance Mode among them, opened
   as a 0-255 slider that did nothing;
-- Nano's settings had no Fan Speed and, of the HDMI options, only External as
-  Primary; they get Fan Speed, Force Mirror, Resize to External Display and
-  Secondary Display Apps;
+- Nano's settings had no Fan Speed; they get Fan Speed, and Secondary Display
+  Apps for devices with a second screen;
 - in the ES-DE theme the X, Y, shoulder, trigger and stick-click buttons its
   help bar shows did nothing, or acted on the hidden XMB menu, and Y could not
   take away a favourite imported from ES-DE's game lists;
@@ -686,13 +706,14 @@ its own launcher, Trebuchet), and **Boot Nano** back. `mods/50-nano.sh` sets it 
 - the stick LEDs are on and follow the screen's colour (RGB);
 - the performance mode is Max Performance;
 - Slide Behaviour is hidden, as the RG Cube cannot slide;
-- Quick Settings in Android's shade gets the Force Mirror and Resize to
-  External Display tiles;
 - its game systems are the ones in `mods/nano-systems.txt`, with this
   build's default emulators: the `D - ` cores from `mods/retroarch-cores.txt`
-  (which Nano runs itself) and the standalone apps. ScummVM games are
-  `.scummvm` files holding the game's ID in ScummVM's game list, as ES-DE
-  uses them; Nano starts the ScummVM app on that game. PS Vita games start
+  (which Nano runs itself) and the standalone apps. ScummVM is the one
+  system Nano doesn't scan from its ROM folders: a ScummVM game is a folder
+  of data files (disc images, resources), so Nano lists the games in
+  ScummVM's own game list and starts the ScummVM app on the one chosen.
+  Games are added and removed in ScummVM (Add Game, or Mass Add on
+  `ROMs/scummvm`) and appear in Nano shortly after. PS Vita games start
   from Vita3K, because its player needs each game's title ID.
 
 The boot mode, theme, sounds, LEDs and performance mode are `build.prop`
@@ -823,6 +844,8 @@ system partition, and writes `out/RG_Cube_Thimsy_OS_v1.0.pac`
 - The Android Games helper is signed with `work/cache/nano/android-games.keystore`.
   When it is missing the build stops; `NEW_KEYSTORE=1` creates a new key,
   which devices with the old one won't take as an update.
+- The PanVK driver package is signed with `work/cache/panvk/panvk-driver.keystore`,
+  the same way (`scripts/build_panvk_driver.sh`).
 
 The tools it uses:
 
@@ -1021,34 +1044,23 @@ The patched driver:
   dropped (the list is then the monitor's own mode, 1080p60 and 640x480);
 - treats a missing buffer as RGB instead of crashing.
 
-Android mirrors the console's windows onto a connected monitor, but Nano's
-own screen is a SurfaceFlinger layer, not a window, so the mirror left it out.
-Nano puts a mirror of its layer on the monitor, scaled to fit and centred,
-so its menus show over the game. The mirror does not follow its source's
-visibility, so Nano shows and hides it with its own layer; before, the menu
-last drawn stayed over the game on the monitor.
-
-A connected monitor is the main screen by default: External as Primary is
-on and Force Mirror off (`persist.gammaos.ext.primary=1`,
-`persist.gammaos.ext.force_mirror=false` in `build.prop`, so a change in
-Nano's External Display settings sticks). The External Docking, External
-Mirror and External Resize Quick Settings tiles read these as on/off values;
-before, the mirror tile could not read `false` and turned Force Mirror on
-whenever System UI started. With External as Primary, when the
-monitor connects the console's screen takes the monitor's size and the
-Cube's backlight goes off, so games render at the monitor's resolution. The
-settings apply when the monitor next connects.
-
-When a display connects, Nano sets 1920 x 1080 at the rate nearest 60 Hz
-without asking (a display without 1080p keeps the mode it came up in). With
-`persist.gammaos.nano.ext_ask` set to 1, Nano asks instead which of these
-modes to use, with the display's preferred mode (the first timing in its
-EDID) selected and the mode in use marked. The choice is saved for that
-display in Android's display settings and used whenever it reconnects;
-Cancel keeps the current mode. Nano asks once per connection. Connected
-during a game, it opens the Quick Menu over the game (pausing it) with the
-chooser on top, and goes back to the game once a mode is chosen or the
-chooser is cancelled.
+Each screen is independent and draws at its own resolution and refresh rate;
+nothing is mirrored or scaled. Only one screen is on at a time: with a monitor
+plugged in, the monitor is Android's main display and drives everything (apps,
+games, Nano, the keyboard) and the Cube's screen is switched off; unplugged, the
+Cube's screen is the main display again and turns back on. A monitor connected
+at boot is the screen from the start. Nothing is chosen or saved, so a monitor
+unplugged without warning (or a flat battery) can't leave the Cube's screen at
+the monitor's size, as the old External as Primary mode could. A build before
+this one that left the screen resized is put right at the next boot without a
+monitor. The monitor keeps rotation 0 whatever apps ask for, and the touchscreen
+does nothing while it is the screen. For now a monitor always runs at 1080p at
+60 Hz: the composer sets it when the monitor connects (see the driver above) and
+Android holds it there, so a game's frame rate can't switch the monitor to
+another of its modes; a monitor without 1080p60 keeps the mode it came up in.
+Nothing above the display assumes 1080p: Nano and the system size everything from
+the monitor's mode, and Android's density is 213 dpi at 1080 lines, scaled by
+the mode's shorter side.
 
 The build also grows the system partition by about 431 MB, into the
 unallocated space at the end of the `super` image (`scripts/lptool.py grow`);

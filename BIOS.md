@@ -18,7 +18,7 @@ Thimsy OS looks through the whole folder, copies everything it recognises to the
 - **Any PS2 BIOS** of 4 MB with a valid ROMDIR and ROMVER is accepted (ARMSX2 checks it the same way), even if it isn't in the list below; it keeps its own name.
 - **PS Vita system software** is recognised by its update package header, any version.
 - **Files marked "name and size"** are console-unique or come in many versions, so they are matched by their exact file name (and size where shown). They must keep that name. They are only copied where no such file exists yet.
-- A DS `firmware.bin` must also carry the firmware's "MAC" mark, and an Xbox `bios.bin` must be exactly 256 KB or 1 MB.
+- A DS `firmware.bin` must also carry the firmware's "MAC" mark, and an Xbox BIOS (`Complex_4627.bin`, `bios.bin` or `flash.bin`, installed as hakuX's `bios.bin`) must be exactly 256 KB or 1 MB.
 - Files larger than 1 GB are never looked at, and links leading outside the chosen folder are not followed.
 
 ## Installer behaviour
@@ -455,8 +455,8 @@ Emulators: Flycast. Optional. A few games need it. Optional (not listed in setup
 | File | Size | SHA-1 / check | MD5 | Listed | How | Installed to |
 |---|---|---|---|---|---|---|
 | `dc_boot.bin` | 2 MB | `8951d1bb219ab2ff8583033d2119c899cc81f18c` | `e10c53c2f8b90bab96ead2d368858623` | yes | Put it anywhere in the folder you pick (any name) | Flycast `data/dc_boot.bin`; RetroArch `system/dc/dc_boot.bin` |
-| `dc_nvmem.bin` Flash memory | 128 KB | matched by name and size |  | no | Must keep this exact name | Flycast `data/dc_nvmem.bin`; RetroArch `system/dc/dc_nvmem.bin` (only if none there) |
-| `dc_flash.bin` Flash memory | 128 KB | matched by name and size |  | no | Must keep this exact name | Flycast `data/dc_nvmem.bin`; RetroArch `system/dc/dc_nvmem.bin` (only if none there) |
+| `dc_nvmem.bin` Flash memory | 128 KB | matched by name and size |  | no | Must keep this exact name | Flycast `data/dc_nvmem.bin` (only if none there); RetroArch `system/dc/dc_nvmem.bin` (only if none there) |
+| `dc_flash.bin` Flash memory | 128 KB | matched by name and size |  | no | Must keep this exact name | Flycast `data/dc_nvmem.bin` (only if none there); RetroArch `system/dc/dc_nvmem.bin` (only if none there) |
 
 ### FM Towns
 
@@ -1075,13 +1075,17 @@ Emulators: MAME4droid 2024 (not included; install it yourself). Required (not li
 
 ### Xbox
 
-Emulators: hakuX. Optional (not listed in setup). Files of your own Xbox.
+Emulators: hakuX. Optional (not listed in setup). Not needed to play: hakuX runs games without them. Only used to bring saves from your own Xbox or from xemu into hakuX.
 
 | File | Size | SHA-1 / check | MD5 | Listed | How | Installed to |
 |---|---|---|---|---|---|---|
-| `mcpx.bin` MCPX boot ROM | 512 bytes | matched by name and size |  | no | Must keep this exact name | hakuX `console/mcpx.bin` (only if none there) |
+| `mcpx_1.0.bin` MCPX 1.0 boot ROM | 512 bytes | MD5 only | `d49c52a4102f6df7bcf8d0617ac475ed` | no | Put it anywhere in the folder you pick (any name) | hakuX `console/mcpx.bin` (only if none there) |
+| `Complex_4627.bin` BIOS (256 KB flash) | 256 KB | matched by name and size |  | no | Must keep this exact name | hakuX `console/bios.bin` (only if none there) |
+| `Complex_4627.bin` BIOS (1 MB flash) | 1 MB | matched by name and size |  | no | Must keep this exact name | hakuX `console/bios.bin` (only if none there) |
 | `bios.bin` BIOS (256 KB flash) | 256 KB | matched by name and size |  | no | Must keep this exact name | hakuX `console/bios.bin` (only if none there) |
 | `bios.bin` BIOS (1 MB flash) | 1 MB | matched by name and size |  | no | Must keep this exact name | hakuX `console/bios.bin` (only if none there) |
+| `flash.bin` BIOS (256 KB flash) | 256 KB | matched by name and size |  | no | Must keep this exact name | hakuX `console/bios.bin` (only if none there) |
+| `flash.bin` BIOS (1 MB flash) | 1 MB | matched by name and size |  | no | Must keep this exact name | hakuX `console/bios.bin` (only if none there) |
 | `eeprom.bin` EEPROM | 256 bytes | matched by name and size |  | no | Must keep this exact name | hakuX `console/eeprom.bin` (only if none there) |
 
 ## Where each emulator's files go

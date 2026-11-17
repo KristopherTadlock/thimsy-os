@@ -2,8 +2,9 @@
 # Pre-installs the MaliSX2 driver in ARMSX2 and selects it with the Vulkan
 # renderer, so it's active on first launch. Runs after 40-added-apps.sh.
 #
-# Dolphin and hakuX only load custom drivers when /dev/kgsl-3d0 (an Adreno
-# GPU) exists, so they can't use MaliSX2 on this device.
+# Dolphin only loads custom drivers when /dev/kgsl-3d0 (an Adreno GPU) exists,
+# so it can't use MaliSX2 on this device; hakuX imports it from
+# /sdcard/GPU Drivers.
 #
 # Usage: 45-armsx2-malisx2.sh SYSTEM_DIR CACHE_DIR
 set -euo pipefail

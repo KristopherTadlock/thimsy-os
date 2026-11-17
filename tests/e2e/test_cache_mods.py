@@ -3,11 +3,14 @@
 Set THIMSY_TEST_CACHE to the build's cache (work/cache) and run tests/run.sh slow. Each test copies
 the cache folders its mod uses (cp --reflink=auto, cheap on btrfs) and never writes to the real one;
 curl is a shim that fails, so a file missing from the cache fails the test instead of downloading."""
+import hashlib
 import json
 import os
 import re
+import stat
 import subprocess
 import tarfile
+import zipfile
 
 from tests import util
 from tests.e2e.modrun import ModCase
@@ -202,11 +205,71 @@ class CacheMods(ModCase):
         self.assertOk(proc)
         prop = util.slurp(f"{self.system}/build.prop", text=True)
         self.assertIn("persist.gammaos.nano.esde.themeset=colorful-simplified-es-de", prop)
+        self.assertNotIn("persist.gammaos.ext.", prop)   # no external display modes any more
         self.assertTrue(os.path.isfile(f"{etc}/gammaos/nano_systems.json"))
+        # The Quick Settings tiles, without the HDMI ones.
+        product = util.slurp(f"{self.system}/product/etc/build.prop", text=True)
+        self.assertIn("persist.gammaos.qs.override_default_tiles_1=deepsleepmode,immersivemode\n", product)
+        self.assertNotIn("external", product)
         # A second run refuses before it changes anything.
         before = util.manifest(self.system)
         self.assertFails(self.run_mod("50", env={"ANDROID_JAR": os.environ["ANDROID_JAR"]}), "build.prop already sets")
         self.assertEqual(util.manifest(self.system), before)
+
+    def test_48_panvk(self):
+        for tool in ("keytool", "aapt2", "zipalign", "apksigner", "zip"):
+            if not util.which(tool):
+                self.skipTest(f"{tool} isn't on PATH (scripts/build_panvk_driver.sh)")
+        if not os.environ.get("ANDROID_JAR"):
+            self.skipTest("needs ANDROID_JAR")
+        self.seed("panvk")
+        env = {"ANDROID_JAR": os.environ["ANDROID_JAR"]}
+        self.assertOk(self.run_mod("48", env=env))
+        prop = util.slurp(f"{self.system}/build.prop", text=True)
+        self.assertEqual(re.findall(r"(?m)^ro\.gfx\.driver\.0=.*$", prop), ["ro.gfx.driver.0=org.thimsy.panvk"])
+        apk = f"{self.system}/app/PanVKDriver/PanVKDriver.apk"
+        with zipfile.ZipFile(apk) as z:
+            libs = {i.filename: i for i in z.infolist() if i.filename.startswith("lib/")}
+            self.assertEqual(sorted(libs), ["lib/arm64-v8a/libpanvk_abi.so", "lib/arm64-v8a/vulkan.ums9620.so"])
+            for info in libs.values():
+                self.assertEqual(info.compress_type, zipfile.ZIP_STORED, info.filename)
+            self.assertEqual(hashlib.sha256(z.read("lib/arm64-v8a/vulkan.ums9620.so")).hexdigest(),
+                             "62c2b3f98ca987d5ab50b6f01e2d2c1c5b3ee995fe93666aa5da9415f65c3348")
+        # The driver loads from the APK, so it starts on a page.
+        subprocess.run([util.which("zipalign"), "-c", "-p", "4", apk], check=True)
+        # The framework only loads a driver package it can read, labelled as system files.
+        app_dir = f"{self.system}/app/PanVKDriver"
+        self.assertEqual(stat.S_IMODE(os.stat(app_dir).st_mode), 0o755)
+        self.assertEqual(stat.S_IMODE(os.stat(apk).st_mode), 0o644)
+        labelled = self.shim_calls("setfattr")
+        for path in (app_dir, apk):
+            self.assertIn(f"setfattr -n security.selinux -v u:object_r:system_file:s0 {path}", labelled)
+        # Mesa's and the packaging's license texts go with it.
+        lic = f"{self.system}/etc/Mesa-PanVK-licenses"
+        self.assertEqual(sorted(os.listdir(lic)), sorted(os.listdir(f"{util.ROOT}/tools/panvk-driver/licenses")))
+        self.assertIn("Mesa-MIT", os.listdir(lic))
+        self.assertIn(f"setfattr -n security.selinux -v u:object_r:system_file:s0 {lic}", labelled)
+        self.assertIn(f"setfattr -n security.selinux -v u:object_r:system_file:s0 {lic}/Mesa-MIT", labelled)
+        # A second run changes nothing.
+        before = util.manifest(self.system)
+        self.assertOk(self.run_mod("48", env=env))
+        self.assertEqual(util.manifest(self.system), before)
+        self.assertEqual(self.shim_calls("curl"), [])
+
+    def test_48_panvk_skips_the_12_base(self):
+        """Only the 1.4.4 base gets PanVK, so a 1.2 build needs none of its tools."""
+        system = systree.build(self.path("old", "system"), False)
+        before = util.manifest(system)
+        proc = self.run_mod("48", system=system, env={"ANDROID_JAR": ""})
+        self.assertOk(proc)
+        self.assertIn("only on the 1.4.4 base", proc.stdout)
+        # Only the license texts: 40-added-apps.sh installs the driver package on this base too.
+        after = util.manifest(system)
+        added = sorted(set(after) - set(before))
+        self.assertEqual(added, ["etc/Mesa-PanVK-licenses"] + sorted(
+            f"etc/Mesa-PanVK-licenses/{n}" for n in os.listdir(f"{util.ROOT}/tools/panvk-driver/licenses")))
+        self.assertEqual({k: v for k, v in after.items() if k in before}, before)
+        self.assertEqual(self.shim_calls("curl"), [])
 
     def test_10_emulators_from_the_lock(self):
         """The RetroArch cores come from the lock's cached files, checked, with no download."""

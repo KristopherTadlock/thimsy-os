@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PanVK (Mesa) as Android's updatable Vulkan driver (ro.gfx.driver.0). An app
+     opted in under Developer options > Graphics Driver Preferences loads it in
+     place of the Mali driver; the rest keep the Mali driver. No code: the
+     framework only reads the libraries, which stay uncompressed in the APK. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="org.thimsy.panvk"
+    android:versionCode="2631"
+    android:versionName="26.3.1">
+
+    <uses-sdk android:minSdkVersion="29" android:targetSdkVersion="34" />
+
+    <application android:label="PanVK Vulkan driver" android:hasCode="false"
+        android:extractNativeLibs="false" android:allowBackup="false">
+        <!-- "L" and the Unix time of the release (2026-10-31), for GPU stats. -->
+        <meta-data android:name="com.android.graphics.driver.build_time"
+            android:value="L1793404800" />
+    </application>
+</manifest>

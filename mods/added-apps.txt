@@ -42,3 +42,9 @@ apk  ShatteredPD-v4.0.2-Android.apk  name=Shattered Pixel Dungeon  package=com.s
 # T820). MIT. 45-armsx2-malisx2.sh pre-installs it in ARMSX2; hakuX can import
 # it; Dolphin only loads custom drivers on Adreno GPUs.
 file  malisx2-0.4.0.zip  dest=GPU Drivers  url=https://github.com/bmdhacks/malisx2/releases/download/v0.4.0/malisx2-0.4.0-63e307e63a.zip  sha256=835f980506ed46fa51925fd279b256d23b0ddf481ffd1ab39be2fee275cf8bf8  source=https://github.com/bmdhacks/malisx2/tree/v0.4.0
+
+# PanVK (Mesa 26.3.0-devel, panvk-kbase-android 26.3.1), a full Vulkan 1.4
+# driver for Mali GPUs, as a driver package
+# for emulators that import one (hakuX). MIT (Mesa). 48-panvk.sh also makes it
+# the system's alternate driver for any app.
+file  Mesa-PanVK-26.3.1.zip  dest=GPU Drivers  url=https://github.com/zenithblue-oss/panvk-kbase-android/releases/download/panvk-kbase-v26.3.1/Mesa-PanVK-Android-v26.3.1-795ca7ff-adrenotools.zip  sha256=7e2e9987bbebefb06f52b2570e61e6208503d4d3a10a395b97aea9b6e1fad9e4  source=https://github.com/zenithblue-oss/panvk-kbase-android/tree/panvk-kbase-v26.3.1
