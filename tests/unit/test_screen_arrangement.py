@@ -1,6 +1,7 @@
-"""One screen at a time: a monitor plugged in is display 0 and the panel is switched off; unplugged,
-the panel is display 0 again (GammaosScreenArrangement, applied by LogicalDisplayMapper), and the old
-external display modes are cleared once. Runs GammaosScreenArrangementCheck on the host.
+"""A monitor plugged in is display 0, with the panel switched off (docked) or on beside it (dual screen
+mode); unplugged, the panel is display 0 again (GammaosScreenArrangement, applied by
+LogicalDisplayMapper), and the old external display modes are cleared once. Runs
+GammaosScreenArrangementCheck on the host.
 """
 import os
 import shutil
