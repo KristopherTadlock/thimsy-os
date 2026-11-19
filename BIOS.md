@@ -669,12 +669,12 @@ Emulators: M64Plus FZ, Mupen64Plus. Required for 64DD disks (not listed in setup
 
 ### Nintendo DS
 
-Emulators: DraStic, built-in DS player, SeedlessDS. Optional (not listed in setup). Firmware of your own DS.
+Emulators: SeedlessDS, DraStic (not included; install it yourself). Optional (not listed in setup). Firmware of your own DS.
 
 | File | Size | SHA-1 / check | MD5 | Listed | How | Installed to |
 |---|---|---|---|---|---|---|
-| `bios7.bin` ARM7 BIOS | 16 KB | `24f67bdea115a2c847c8813a262502ee1607b7df` | `df692a80a5b1bc90728bc3dfc76cd948` | no | Put it anywhere in the folder you pick (any name) | DraStic `system/nds_bios_arm7.bin`; built-in DS player `system/nds_bios_arm7.bin`; SeedlessDS `system/nds_bios_arm7.bin` |
-| `bios9.bin` ARM9 BIOS | 4 KB | `bfaac75f101c135e32e2aaf541de6b1be4c8c62d` | `a392174eb3e572fed6447e956bde4b25` | no | Put it anywhere in the folder you pick (any name) | DraStic `system/nds_bios_arm9.bin`; built-in DS player `system/nds_bios_arm9.bin`; SeedlessDS `system/nds_bios_arm9.bin` |
+| `bios7.bin` ARM7 BIOS | 16 KB | `24f67bdea115a2c847c8813a262502ee1607b7df` | `df692a80a5b1bc90728bc3dfc76cd948` | no | Put it anywhere in the folder you pick (any name) | DraStic `system/nds_bios_arm7.bin`; SeedlessDS `system/nds_bios_arm7.bin` |
+| `bios9.bin` ARM9 BIOS | 4 KB | `bfaac75f101c135e32e2aaf541de6b1be4c8c62d` | `a392174eb3e572fed6447e956bde4b25` | no | Put it anywhere in the folder you pick (any name) | DraStic `system/nds_bios_arm9.bin`; SeedlessDS `system/nds_bios_arm9.bin` |
 | `firmware.bin` DS firmware | 128 KB | matched by name and size |  | no | Must keep this exact name | DraStic `system/nds_firmware.bin` (only if none there) |
 | `firmware.bin` DS Lite firmware | 256 KB | matched by name and size |  | no | Must keep this exact name | DraStic `system/nds_firmware.bin` (only if none there); SeedlessDS `system/nds_firmware.bin` (only if none there) |
 | `firmware.bin` DS firmware (iQue) | 512 KB | matched by name and size |  | no | Must keep this exact name | DraStic `system/nds_firmware.bin` (only if none there) |
@@ -1097,7 +1097,6 @@ Emulators: hakuX. Optional (not listed in setup). Not needed to play: hakuX runs
 | Dolphin | Internal storage/Android/data/org.dolphinemu.dolphinemu/files/GC | microSD card/emulator_config/dolphin/GC (the GC folder becomes a link to it) |
 | Flycast | Flycast's home folder/data (by default Internal storage/Android/data/com.flycast.emulator/files/data) | microSD card/emulator_config/flycast/data |
 | DraStic | DraStic's system folder (by default its app folder, files/DraStic/system) | microSD card/emulator_config/drastic/system |
-| built-in DS player | /data/system/drastic-nano/DraStic/system (Thimsy's built-in DS player) | unchanged |
 | M64Plus FZ | Internal storage/Android/data/org.mupen64plusae.v3.fzurita/files (and its 64DD IPL setting) | unchanged |
 | PPSSPP | PPSSPP's memory stick/PSP/flash0/font | microSD card/emulator_config/ppsspp/PSP/flash0/font |
 | ScummVM | ScummVM's extra path (if unset: its app folder, files/extra, set as the extra path) | unchanged |

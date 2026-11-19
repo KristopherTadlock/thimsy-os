@@ -52,7 +52,7 @@ PPSSPP core's assets are removed with the core (PSP uses the standalone
 PPSSPP app). Its default config is marked as set up for the shipped APK's
 version (`scripts/ra_bundle_version.py`), so RetroArch's first start from its
 icon doesn't extract the APK's own assets over these files. Mupen64Plus FZ stays at 3.0.335 because newer builds
-are only on Google Play, and DraStic r2.6.0.4a is its latest release.
+are only on Google Play.
 
 Other apps:
 
@@ -117,6 +117,7 @@ linked below.
 | ARMSX2 | PlayStation 2 | 2.9.2 | GPL-3.0 | https://github.com/ARMSX2/ARMSX2/tree/2.9.2 |
 | Azahar | Nintendo 3DS | 2126.2 | GPL-3.0 | https://github.com/azahar-emu/azahar/tree/2126.2 |
 | WatermelonDS | Nintendo DS | 0.8.0.rc3 | GPL-3.0 | https://github.com/SapphireRhodonite/WatermelonDS/tree/0.8.0.rc3 |
+| SeedlessDS | Nintendo DS | 1.0.1 | GPL-3.0+ | https://github.com/SapphireRhodonite/SeedlessDS/tree/1.0.1 |
 | hakuX | Xbox | 1.3.0 at `a7cdb5a` (built from source) | GPL-3.0+ | https://github.com/rfandango/hakuX/tree/a7cdb5a975e31730d488c47f6f10440b16c1e6f4 |
 | Vita3K | PS Vita | 0.2.1 (build 4277, mirrored) | GPL-2.0 | https://github.com/Vita3K/Vita3K/tree/2f68c1bf0d44753eddc8263b6a4dd23fcd928f22 |
 | ScummVM | Adventure games | 2026.3.0 | GPL-3.0+ | https://github.com/scummvm/scummvm/tree/v2026.3.0 |
@@ -160,16 +161,17 @@ starts with a game. It plays with a controller and fits the square screen.
 Edit `mods/added-apps.txt` to change the apps.
 
 [SeedlessDS](https://github.com/SapphireRhodonite/SeedlessDS) 1.0.1
-(GPL-3.0-or-later; its core is in
-[SeedlessDS-Core](https://github.com/SapphireRhodonite/SeedlessDS-Core)) is a
-supported Nintendo DS emulator for low-end devices, but isn't installed by
-default. It comes from WatermelonDS's developer and runs SeedlessCoreDS, which
-is reconstructed from DraStic r2.6.0.4a. Install its APK (package
-`com.seedlessds.app`) and choose it for Nintendo DS or DSi in Nano's Game
-Systems editor; WatermelonDS stays the default. Nano starts each game in it by
-its file path, the universal hotkeys bind its quick save, quick load and fast
-forward, and Install Your Own BIOS Files gives it the DS BIOS and a 256 KB
-firmware from your own dumps.
+(GPL-3.0-or-later; its core is
+[SeedlessDS-Core](https://github.com/SapphireRhodonite/SeedlessDS-Core)) is
+installed next to WatermelonDS, which stays the default for Nintendo DS. It
+comes from WatermelonDS's developer, and its core is reconstructed from
+DraStic r2.6.0.4a; its author allows its free distribution. Choose it for
+Nintendo DS or DSi in Nano's Game Systems editor. Nano starts each game in it
+by its file path, the universal hotkeys bind its quick save, quick load and
+fast forward, and Install Your Own BIOS Files gives it the DS BIOS and a
+256 KB firmware from your own dumps. GammaOS's DraStic, a closed app, and
+drastic-nano, its built-in DS player that runs DraStic's library, are not
+included.
 
 ### ES-DE
 
@@ -344,14 +346,14 @@ It also changes Nano:
   as the Anbernic button does, wherever Nano is on screen. Over a game or app
   it does nothing, so a game's two-thumb touch controls never raise the menu
   (`persist.gammaos.nano.two_finger_quickmenu=true` turns it on over apps and
-  games other than the DS emulator). A three-finger tap opens or closes the
+  games). A three-finger tap opens or closes the
   Applications view, as Anbernic + Start does, in Nano's own menus only. Neither
   tap also taps what is under the fingers.
 - **Touch on the RG Cube:** its touchscreen is mounted a quarter turn from the
   picture (`ro.input_flinger.primary_touch_orientation=ORIENTATION_90`).
-  Android turns touches around for apps, but Nano and drastic-nano read the
+  Android turns touches around for apps, but Nano reads the
   touchscreen directly, so every touch arrived rotated: only the middle of the
-  screen worked and vertical drags read as sideways ones. They now turn the
+  screen worked and vertical drags read as sideways ones. It now turns the
   raw axes back by that mounting, as Android's input reader does, unless the
   device sets Nano's own `osk_touch_*` calibration
   (`persist.gammaos.nano.touch_orientation` overrides it).
@@ -386,8 +388,8 @@ It also changes Nano:
 - **Setup:** the first boot's Android setup no longer holds the setup wizard
   on a "Please Wait" screen before Wi-Fi: the wizard goes on, and its Wi-Fi
   scan waits for Android, scanning as soon as it can.
-- **Languages:** Nano's prompts, messages and menus, the ES-DE theme and the
-  DS emulator's menu included, are translated into the 21 languages the Nano
+- **Languages:** Nano's prompts, messages and menus, the ES-DE theme
+  included, are translated into the 21 languages the Nano
   Keyboard types: Spanish, French, German, Italian, Portuguese, Dutch,
   Russian, Polish, Turkish, Greek, Hebrew, Arabic, Thai, Japanese, Korean,
   Simplified and Traditional Chinese, Danish, Finnish, Swedish and Norwegian
@@ -454,13 +456,13 @@ It also changes Nano:
 - **Brightness:** hold the Anbernic button and press Volume Up / Down, in
   Nano's menus and in games alike. Select + Volume is now plain volume.
 - **Shader on / off:** hold the Anbernic button and press Select to turn the
-  display shader on or off, in Nano's menus, in games and in the DS emulator.
+  display shader on or off, in Nano's menus and in games.
   The selected shader is kept. This replaces Power + Select, which only turned
   it off; Power is plain Power again.
 - **Applications:** hold the Anbernic button and press Start to open the
   Applications view, and again (or Start alone) to close it. Over a game the
-  overlay rises on it, and closing it, or B, returns to the game. It does
-  nothing in the DS emulator. Start and Select can no longer be hotkey buttons.
+  overlay rises on it, and closing it, or B, returns to the game. Start and
+  Select can no longer be hotkey buttons.
 - **Minima Applications grid:** in the Minima theme, and in the ES-DE theme
   when its Settings Theme is Minima (the ES-DE menu's Applications, Kiosk
   Mode's Start and Anbernic + Start), Applications is a launcher grid: five
@@ -530,10 +532,9 @@ It also changes Nano:
   RetroArch (its `RetroArch` folder, apart from the box-art thumbnails, which
   stay on internal storage; the shaders, overlays, filters and controller
   profiles it keeps in its app folder stay there), PPSSPP, Flycast, DraStic
-  (its whole system folder), M64Plus FZ (its game data, which it copies in and
-  out around each game), the built-in DS emulator (its folder, and a cheats
-  folder chosen elsewhere), ARMSX2 (its data folder, without the BIOS, caches,
-  resources and logs), ScummVM (its saves), Vita3K (its whole memory card and
+  if you install it (its whole system folder), M64Plus FZ (its game data,
+  which it copies in and out around each game), ARMSX2 (its data folder,
+  without the BIOS, caches, resources and logs), ScummVM (its saves), Vita3K (its whole memory card and
   system, installed games included) and Azahar (its folder, without caches,
   logs and shader caches). They reach the card by plain folder
   paths, which GammaOS's MediaProvider allows every app. Azahar only takes a
@@ -546,7 +547,7 @@ It also changes Nano:
   RetroArch config keeps saves, save states and screenshots next to the ROMs
   (`savefiles_in_content_dir` and the like; anything already in RetroArch's own
   `saves` or `states` folder moves with that folder), and WatermelonDS keeps
-  its saves there too, so those stay where they are. SeedlessDS, if installed,
+  its saves there too, so those stay where they are. SeedlessDS
   does the same by default; set to keep its
   saves and states in its app folder or a folder of their own, they move to
   `emulator_config/seedlessds`, given to it like Azahar's folder. Its settings
@@ -764,16 +765,15 @@ then the hotkeys (the universal chords and the emulator's own).
   browser, or on a browser's entry in Applications, it shows the
   [browser controls](#144-base-and-the-nano-home), greyed with a line saying
   what to turn on when Controller Enable or Controller Bindings is off (the map
-  never turns gammapad on). In drastic-nano it shows the DS map, with no table
-  view, while drastic-nano's own menu is closed.
+  never turns gammapad on).
 - **The game keeps running** under the map, with its input held back as under
   the Quick Menu; the map never pauses it.
 - **Reading it:** the labels are the printed names of the pad in hand (on the
   RG Cube A right, B bottom, X top, Y left), and follow **ABXY Swap** when
   gammapad is running. The map reads each emulator's own binding files
   (RetroArch's binds, autoconfig and remaps; PPSSPP, Dolphin, Azahar, Flycast,
-  ARMSX2, Vita3K, WatermelonDS, M64Plus FZ, ScummVM, SeedlessDS, hakuX, DraStic
-  and drastic-nano), and says when it shows the emulator's defaults or when the
+  ARMSX2, Vita3K, WatermelonDS, M64Plus FZ, ScummVM, SeedlessDS, hakuX, and
+  DraStic if you install it), and says when it shows the emulator's defaults or when the
   emulator has nothing mapped yet (Dolphin and Azahar out of the box).
   Dolphin's files are read on the microSD card too, after **Move Emulator
   Files to microSD**. An emulator app it has no reader for shows the console's
@@ -785,8 +785,7 @@ then the hotkeys (the universal chords and the emulator's own).
   Start or the chord again closes it; with ABXY Swap on, the footer names the
   swapped buttons. A mouse wheel scrolls. On the touchscreen a drag scrolls
   (flinging when let go), a swipe left or right changes section, and a tap
-  outside the panel closes it (in drastic-nano on two screens, the bottom
-  screen only scrolls).
+  outside the panel closes it.
 - **Layout:** a centred panel on 16:9 and wider screens (an HDMI TV), the full
   width on the others (the 1:1 panel, 4:3).
 - **Setting:** **Button Map Button** (Gamepad Settings → Hotkeys) picks the

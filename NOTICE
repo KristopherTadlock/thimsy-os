@@ -105,14 +105,6 @@ The build downloads "Computer Startup Sound Effect" by Dragon Studio
 and installs it as the ES-DE home's startup sound (esde_boot.mp3), under the
 Pixabay Content License.
 
-GammaOS Nano also includes Slate, ES-DE's default theme, by the ES-DE
-project, based on recalbox-multi by the Recalbox community, with graphics by
-Rookervik, Bezza191 and Dan Patrick, under the Creative Commons
-Attribution-NonCommercial-ShareAlike 2.0 license (its LICENSE and CREDITS.md
-are in the zip). Its fonts are Exo 2 (https://github.com/googlefonts/Exo-2.0)
-by Natanael Gama, Copyright 2013 The Exo 2 Project Authors, SIL Open Font
-License 1.1.
-
 On the 1.4.4 base, Nano's emulator catalog (/system/etc/nano_xmb/daijishou)
 is Daijishou's platform data (https://github.com/TapiocaFox/Daijishou),
 Copyright (c) 2022 TapiocaFox (Yves Chen), MIT License.

@@ -52,8 +52,24 @@ class CacheMods(ModCase):
 
     def test_15_update_apps(self):
         self.seed("updated-apps")
+        # DraStic and drastic-nano, as an image built without the source patch has them.
+        drastic = ["etc/drastic_r2.6.0.4a.apk", "etc/drastic.tar.zst", "etc/drastic-nano/x", "bin/drastic-nano",
+                   "etc/init/drastic-nano.rc", "lib64/libdrastic_arm64.so", "lib64/libdrastic_cpu.so",
+                   "app/DrasticSf/DrasticSf.apk"]
+        for f in drastic:
+            systree.write(f"{self.system}/{f}", "x")
+        with open(f"{self.system}/etc/gammaos/apps.list", "a") as f:
+            f.write("DraStic|com.dsemu.drastic|/system/etc/drastic_r2.6.0.4a.apk||\n")
+        product = f"{self.system}/product/etc/build.prop"
+        with open(product, "a") as f:
+            f.write("persist.gammaos.nano.drastic_nano=1\npersist.gammaos.drastic_nano.pip_alpha=80\n")
         self.assertOk(self.run_mod("15"))
+        for f in drastic:
+            self.assertFalse(os.path.exists(f"{self.system}/{f}"), f)
+        self.assertFalse(os.path.exists(f"{self.system}/etc/drastic-nano"))
+        self.assertEqual(util.slurp(product, text=True), "ro.product.product.name=cube\n")
         apps = self.apps()
+        self.assertNotIn("drastic", apps)
         self.assertIn("Aurora Store|com.aurora.store|/system/etc/AuroraStore_4.8.4.apk||post_aurora", apps)
         self.assertIn("Brave|com.brave.browser|/system/etc/Brave_1.99.55_arm64.apk|minmem:1300000|", apps)
         self.assertIn("Fulguris|net.slions.fulguris.full.fdroid|/system/etc/Fulguris_2.1.2.apk|maxmem:1300000|", apps)
@@ -188,9 +204,8 @@ class CacheMods(ModCase):
         self.seed("nano")
         etc = f"{self.system}/etc"
         subprocess.run(["cp", "-r", f"{NANO_SRC}/daijishou", f"{etc}/nano_xmb/daijishou"], check=True)
-        # The real Slate: check_system_art.py looks in it for every system's logo.
-        subprocess.run(["cp", os.path.join(os.path.dirname(NANO_SRC), "nano_esde_themes/slate-es-de.zip"),
-                        f"{etc}/nano_esde_themes/slate-es-de.zip"], check=True)
+        # The source build bundles no theme, so its image has no themes folder: the mod makes it.
+        util.rmtree(f"{etc}/nano_esde_themes")
         icons = os.path.join(NANO_SRC, "icons_retroarch")
         if os.path.isdir(icons):
             subprocess.run(["cp", "-r", icons, f"{etc}/nano_xmb/icons_retroarch"], check=True)
@@ -205,6 +220,7 @@ class CacheMods(ModCase):
         self.assertOk(proc)
         prop = util.slurp(f"{self.system}/build.prop", text=True)
         self.assertIn("persist.gammaos.nano.esde.themeset=colorful-simplified-es-de", prop)
+        self.assertEqual(os.listdir(f"{etc}/nano_esde_themes"), ["colorful-simplified-es-de"])
         self.assertNotIn("persist.gammaos.ext.", prop)   # no external display modes any more
         self.assertTrue(os.path.isfile(f"{etc}/gammaos/nano_systems.json"))
         # The Quick Settings tiles, without the HDMI ones.

@@ -17,16 +17,16 @@ Hold the **Anbernic button**, or **Start + Select**, in a game and press another
 | Quit game | Anbernic, or Start + Select, held on its own for 3 s | one shot |
 
 - R is "forward" (save, fast forward) and L is "back" (load, rewind).
-- **A chord acts the moment the button that completes it goes down**, everywhere: over a game, in Nano's own menus and in drastic-nano. Anbernic + R1 saves on R1's press, and Anbernic + the Button Map Button shows the map on its press. That button never reaches the game, and its release is swallowed.
+- **A chord acts the moment the button that completes it goes down**, everywhere: over a game and in Nano's own menus. Anbernic + R1 saves on R1's press, and Anbernic + the Button Map Button shows the map on its press. That button never reaches the game, and its release is swallowed.
 - **A button that starts chords acts on its own only when it is let go**, since until then it may still become a chord: the Anbernic button (the Quick Menu), Back, and Start + Select (the Quick Menu, in Nano's menus). Holds stay holds: 3 s to quit (or go Home), the 1 s *Quit Game Button* hold, and the 10 s recovery.
 - Quit needs a 3 s hold with nothing else pressed, so it can't happen by accident. Any other key during the hold cancels it until every button is let go and the hold starts again.
 - Where the function button is Android's `HOME` key, its 3 s hold goes Home instead of quitting, with Universal Hotkeys on or off ([The function button is `HOME`](#the-function-button-is-home)). Start + Select's hold still quits.
 - The buttons can be changed under **Settings → Gamepad Settings → Hotkeys**. *Quit Game Button* adds a button chord for quit; it is off by default.
 - The Anbernic button on its own opens the Quick Menu when it is **released**, over a game and in Nano's own menus alike. Start + Select opens the Quick Menu only in Nano's own menus, never in a game.
 - Anbernic + Volume Up / Down changes the screen brightness everywhere. It is not a hotkey, and the Quick Menu does not open on that release.
-- Anbernic + Select turns the display shader on or off everywhere: Nano's menus, apps and games, and drastic-nano. The selected shader is kept (CRT Simple if none was ever chosen), so a shader that makes the screen unreadable can be turned off without seeing it. It replaces Power + Select, which is plain Power again.
-- Anbernic + Start opens the Applications view, and closes it again. Over a game the overlay rises on it, and closing it (Anbernic + Start, Start or B) returns to the game. In drastic-nano it does nothing: Nano's overlay can't show during a DS session.
-- Anbernic + the **Button Map Button** (Hotkeys settings; by default the bottom face button, printed B on the RG Cube) shows the **button map**: how the controller in hand maps onto the console being emulated, with the hotkeys ([README, Button map](README.md#button-map)). It works over a game or app and in Nano's own menus, in every theme. Over a game the overlay rises on the map alone; the game keeps running under it with its input held back, as under the Quick Menu, and B, Back, Start, the chord again or a tap outside it closes it. In Nano's menus Start + Select + that button opens it too (never over a game, where Start + Select + B is a common combination). That raise doesn't reload Nano's lists or rebuild the XMB's graphics, which took most of a second on the RG Cube (a raise on the Quick Menu or Applications still does), so the map shows while the button is still down. The XMB is prepared only if something other than the map comes to be shown. Over Android Games (the system and its games) and most apps it does nothing; over a browser, or on a browser's entry in Applications, it shows the browser controls. In drastic-nano it shows the DS map the same way, without pausing.
+- Anbernic + Select turns the display shader on or off everywhere: Nano's menus, apps and games. The selected shader is kept (CRT Simple if none was ever chosen), so a shader that makes the screen unreadable can be turned off without seeing it. It replaces Power + Select, which is plain Power again.
+- Anbernic + Start opens the Applications view, and closes it again. Over a game the overlay rises on it, and closing it (Anbernic + Start, Start or B) returns to the game.
+- Anbernic + the **Button Map Button** (Hotkeys settings; by default the bottom face button, printed B on the RG Cube) shows the **button map**: how the controller in hand maps onto the console being emulated, with the hotkeys ([README, Button map](README.md#button-map)). It works over a game or app and in Nano's own menus, in every theme. Over a game the overlay rises on the map alone; the game keeps running under it with its input held back, as under the Quick Menu, and B, Back, Start, the chord again or a tap outside it closes it. In Nano's menus Start + Select + that button opens it too (never over a game, where Start + Select + B is a common combination). That raise doesn't reload Nano's lists or rebuild the XMB's graphics, which took most of a second on the RG Cube (a raise on the Quick Menu or Applications still does), so the map shows while the button is still down. The XMB is prepared only if something other than the map comes to be shown. Over Android Games (the system and its games) and most apps it does nothing; over a browser, or on a browser's entry in Applications, it shows the browser controls.
 - None of these is a hotkey: they work with Universal Hotkeys off, the Quick Menu does not open on that release, and the game never sees that Start, Select or Button Map Button. Start and Select can't be hotkey buttons.
 - With Start + Select, the game still sees Start and Select: they can't be held back without delaying them. Start + Select is not a chord when another pad button is already held (A + B + Start + Select resets many games).
 - On the touchscreen, a two-finger tap opens or closes the Quick Menu, and a three-finger tap opens or closes the Applications view, in Nano's own menus (not over a game or app).
@@ -48,13 +48,11 @@ Each emulator has its own hotkeys, or none. A per-emulator **profile** turns the
 
  Nano (startup and every return to the front)
             +--> profile "provision" rules: bind the keys in each emulator's settings files
-
- drastic-nano (Nano's DS player): its own chord detector, calling the player directly
 ```
 
 ### Chord detector (PhoneWindowManager)
 
-It runs while a game is in front (`app_launched`, overlay down, not in a drastic-nano session, screen on):
+It runs while a game is in front (`app_launched`, overlay down, screen on):
 
 1. **Anbernic down:** swallowed and armed. Nothing opens yet.
 2. **A gamepad button or D-pad press while armed:**
@@ -106,7 +104,7 @@ Nano's own menus follow the same rule. The Quick Menu toggles on release, and a 
 
 **A tap is held for 100 ms.** The emulator acts on the key's press, which is sent the moment the chord is made. The release follows 100 ms later, not at once: an emulator that reads its keys once a frame misses a press whose down and up arrive in the same read (RetroArch 1.22.2's `android_input_poll` applies its whole input queue, setting and clearing the key, before the frame's hotkey check). 100 ms is a few frames even at 20 fps, and well short of Android's key repeat. Tapping the same key again within that time releases it first. Quit and a hotkey in another app release a tap at once; otherwise the release always comes after the 100 ms, even with the Quick Menu up (the game then gets it as a cancelled release, as Nano's overlay holds keys back). RetroArch keeps the `key` driver rather than `retroarch_cmd`: network commands need `network_cmd_enable`, which listens on UDP 55355 on every interface.
 
-There are no on-screen messages from the hotkeys. This build skips SystemUI, so system toasts can't show over a game. The emulators show their own messages: RetroArch, PPSSPP, Flycast and drastic-nano all report saves and loads.
+There are no on-screen messages from the hotkeys. This build skips SystemUI, so system toasts can't show over a game. The emulators show their own messages: RetroArch, PPSSPP and Flycast report saves and loads.
 
 ### Drivers
 
@@ -117,10 +115,9 @@ There are no on-screen messages from the hotkeys. This build skips SystemUI, so 
 | `key_hold` | Key down when toggled on, key up when toggled off |
 | `retroarch_cmd` | Sends `"command"` (e.g. `SAVE_STATE`) as a UDP datagram to `"port"` (default 55355). RetroArch needs `network_cmd_enable = "true"` |
 | `intent` | `"action"`, `"package"`, `"class"`, `"extras"`. A broadcast unless `"broadcast": false`, which starts an activity instead |
-| `exit` | The system exit used by a long press of Back. RetroArch and DraStic get Esc and save before closing; drastic-nano gets its quit channel; standalone apps are stopped (unless *Keep Running in Background* is set) and Nano returns |
+| `exit` | The system exit used by a long press of Back. RetroArch and DraStic get Esc and save before closing; standalone apps are stopped (unless *Keep Running in Background* is set) and Nano returns |
 | `force_stop` | Stops the app and returns to Nano |
 | `none` | Not available; logged |
-| `native` | Only in the drastic-nano profile, which documents what Nano's DS player does itself |
 
 Any action can add `"then": "<driver>"` with `"timeout_ms"`. If the app is still in front after the timeout, that driver runs. Graceful quits use it: the emulator's own quit key, then `exit`.
 
@@ -204,28 +201,10 @@ The user's own bindings are never replaced in `add` mode: a hotkey whose setting
 | Button Map Button | `persist.gammaos.hotkeys.buttonmap` | Bottom (B) (`FACE_SOUTH`) |
 | Emulator Support | read-only: each profile, what works and its note | — |
 
-- A button can be A, B, X, Y, L1, R1, L2, R2, L3, R3, a D-pad direction, or Off. Start and Select are reserved for Anbernic + Start and Anbernic + Select; a hotkey set to one of them earlier is turned Off. A D-pad direction works only in drastic-nano: the D-pad reaches Android as a hat axis, which `PhoneWindowManager` never sees.
+- A button can be A, B, X, Y, L1, R1, L2, R2, L3, R3, or Off. Start and Select are reserved for Anbernic + Start and Anbernic + Select, and a D-pad direction does nothing over apps (the D-pad reaches Android as a hat axis, which `PhoneWindowManager` never sees); a hotkey set to one of these earlier is turned Off.
 - Two hotkeys can't share a button: choosing a button another hotkey has swaps the two. Button Map Button joins the rule. Its options are by position, labelled with the RG Cube's print (Bottom (B), Right (A), Top (X), Left (Y)), plus L1, R1, L2, R2, L3, R3 and Off; the hotkeys' A/B/X/Y are Android keycodes, so the rows are compared as the buttons they press: with gammapad off the hotkeys' A is the bottom button. When one row takes another's button, that row gets the first one's old button in its own words, and Button Map, which can't hold a D-pad direction, takes the first face button nothing holds.
 - At start Nano moves Button Map Button off a button a universal hotkey already has (an earlier Save State on A): the hotkey keeps it, and the map takes the first free face button (bottom, right, top, left), or Off when all four are hotkeys. The log says which.
-- **Controller Bindings** in the Quick Menu (`sys.gammaos.bindings.enabled`, On at every boot) set to Off turns off Start + Select's hotkeys and its hold to quit, in apps and in drastic-nano, along with the other controller bindings (the browser controls, mouse mode and its combo). The Anbernic button's hotkeys stay.
-
-### drastic-nano (Nano's DS player)
-
-drastic-nano reads the pad itself, so PhoneWindowManager leaves the Anbernic button to it. Its input loop has the same chord rule, including Start + Select and the 3 s hold to quit, and reads the same properties:
-
-| Action | What drastic-nano does |
-|---|---|
-| Save | Quick save to slot 0 |
-| Load | Quick load from slot 0 |
-| Fast forward | Its fast-forward toggle |
-| Quit | Its exit, after the hold; it saves slot 9 for Quick Resume |
-| Rewind | Nothing; it has no rewind |
-
-The hotkey buttons mean the same buttons there as over any other emulator: a face button is the one that sends that keycode to apps (A is the bottom button on the RG Cube with gammapad off), through the same pad table as Nano's (`ps3xmb/buttonmap/pads.json`).
-
-Anbernic + the Button Map Button shows the DS button map, drawn over the game with drastic-nano's own overlay. The game keeps running with the pad held back (no menu, no pause); the D-pad, the stick and L1 / R1 move the map, and B, Start, Back or the chord again closes it. Power held still opens the menu, which closes the map.
-
-A Menu binding on the Anbernic button doesn't fire after a chord. Where the button is Android's `HOME` key, its 3 s hold exits to Nano's home with Universal Hotkeys off too, and with drastic-nano's menu open; a Menu binding on it then opens the menu on a release within 3 s, as with hotkeys on. Anbernic + Select turns the display shader on or off there too; on the DRM path drastic-nano draws the panel itself (with its own shaders), so the change shows once the game ends. Anbernic + Start does nothing there, since Nano's overlay can't show while drastic-nano owns the panel. The game sees none of these buttons.
+- **Controller Bindings** in the Quick Menu (`sys.gammaos.bindings.enabled`, On at every boot) set to Off turns off Start + Select's hotkeys and its hold to quit, in apps, along with the other controller bindings (the browser controls, mouse mode and its combo). The Anbernic button's hotkeys stay.
 
 Nano's libretro player only runs during the Quick Resume preview, so it has no hotkeys.
 
@@ -241,10 +220,9 @@ Bindings come from each emulator's source code at the shipped version.
 | ARMSX2 | F2 | F4 | F6 (toggle) | — | F8 (save and exit), then `exit` | `shared_prefs/ARMSX2.xml` `pad.*.keycode`. Not if "Emulate USB Keyboard" is on |
 | Azahar | F2 (quick slot) | F4 | F6 (turbo toggle) | — | F8 (close game), then `exit` | `shared_prefs` `InputMapping_HostAxis_<keycode>` sets. Azahar's own hotkey Enable button must be unset |
 | WatermelonDS | F2 | F4 | F6 (toggle) | F7 opens its rewind screen | F8 (exit game), then `exit` | `files/controller_config.json`. Rewind needs Rewind on in its settings |
-| SeedlessDS 1.0.1 (not installed by default) | F2 (quick slot) | F4 | F6 (toggle) | — | `exit` | `shared_prefs/keymap.xml` `s_1` (Fast Forward), `s_2` (Quick Save), `s_3` (Quick Load): its emulator shortcuts, which have no keys by default. The file exists once its first game has started. Only its first key map profile is bound. It has no rewind and no exit shortcut (Back opens its menu) |
+| SeedlessDS 1.0.1 | F2 (quick slot) | F4 | F6 (toggle) | — | `exit` | `shared_prefs/keymap.xml` `s_1` (Fast Forward), `s_2` (Quick Save), `s_3` (Quick Load): its emulator shortcuts, which have no keys by default. The file exists once its first game has started. Only its first key map profile is bound. It has no rewind and no exit shortcut (Back opens its menu) |
 | ScummVM | — | — | Ctrl+F (SCUMM games) | — | Ctrl+Q, then `exit` | Built-in ScummVM keys |
-| drastic-nano | slot 0 | slot 0 | toggle | — | saves, then exits | Built in |
-| DraStic (app) | — | — | — | — | `exit` (Esc) | Its keymap is shared with drastic-nano, so it is left alone |
+| DraStic (app, if installed) | — | — | — | — | `exit` (Esc) | Not shipped; its keymap is left alone |
 | Dolphin 2609-197 | F2 (selected slot) | F4 | F6 (toggle) | — | `exit` | `Config/Hotkeys.ini` `[Hotkeys]`, bound to `` `Android/0/Virtual:F2` `` and so on. Dolphin only maps keys a device reports in `hasKeys`, so the virtual keyboard reports F1–F12 (`EventHub.cpp`) |
 | M64Plus FZ | — | — | — | — | `exit` | Hotkeys live in private controller profiles and need long holds |
 | hakuX | — | — | — | — | `exit` | Save states only from its in-game menu; no fast forward |
@@ -257,7 +235,7 @@ Rewind works on every system whose emulator or core can rewind; performance is n
 
 ## Power button
 
-Holding the power button for 7 s shuts the console down, in a game or in Nano. `PhoneWindowManager` handles it. Shutdown closes the game first where it can: drastic-nano saves slot 9, and Quick Resume is prepared. drastic-nano's own 5 s power-off was removed so the two don't race.
+Holding the power button for 7 s shuts the console down, in a game or in Nano. `PhoneWindowManager` handles it. Shutdown closes the game first where it can, and Quick Resume is prepared.
 
 ## Devices
 
@@ -273,7 +251,6 @@ One table, `/system/etc/gammaos/device_keys.json` (from `mods/device-keys.json`,
 |---|---|---|
 | PhoneWindowManager | `ThimsyDeviceKeys.java`, read once at `systemReady` | Android keycodes: the chord detector, the Anbernic + Volume / Select / Start checks, the 10 s recovery hold |
 | Nano | `NanoDeviceKeys.cpp`, read on first use | evdev codes: its menus' Anbernic handling, Anbernic + Volume / Select / Start |
-| drastic-nano | the same `NanoDeviceKeys.cpp` | evdev codes: its chord detector, and which input devices it opens |
 
 `ThimsyHotkeyController` doesn't change. It only injects keyboard keys, and never reads the pad.
 
@@ -287,8 +264,8 @@ The two resolvers are held to the same test cases (`gammaos-nano/test/fixtures/d
   - `ro.product.vendor.manufacturer`, `ro.product.odm.manufacturer` (the MediaTek Anbernics);
   - `ro.board.platform` (`ums9620` for T820, `ums512` for T618, `ceres` for A133P, `mt6897`, `mt6893`).
 - **A key:**
-  - `linux`, the evdev code Nano and drastic-nano read;
-  - `android`, the keycode name PhoneWindowManager sees after the key layout. A key without one (the AYANEO codes 753 and 754, which no layout maps) is for Nano and drastic-nano only;
+  - `linux`, the evdev code Nano reads;
+  - `android`, the keycode name PhoneWindowManager sees after the key layout. A key without one (the AYANEO codes 753 and 754, which no layout maps) is for Nano only;
   - `gamepad_only`, so a keyboard's F10 still reaches the app;
   - `prompt`, the name printed on the button, where `label` describes the key instead (`Anbernic / Home`, `Function (side)`, `Home / Back`). Prompts use the first function key's `prompt`, else its `label`, or the first Back key's where Back doubles as the function button; with no name at all, Anbernic (Back where Back doubles).
 - **A function key without `gamepad_only`** counts over apps only from a built-in device or a gamepad, so a plugged-in keyboard's Home stays Home.
@@ -306,7 +283,6 @@ Android can't hand `HOME` to an app, so a function key whose `android` is `HOME`
 | Released on its own within 3 s | the Quick Menu | the Quick Menu (within 10 s with Universal Hotkeys off) |
 | Held on its own for 3 s, over a game | **Home**, hotkeys on or off | quit with hotkeys on; nothing with them off |
 | Held on its own for 3 s, in Nano's menus | **Home**: the top of the home screen | nothing (the release opens the Quick Menu) |
-| Held on its own for 3 s, in drastic-nano | **exits to Nano's home** (saving slot 9), hotkeys on or off, menu open or not | exits with hotkeys on and the menu closed |
 | + a button | that button's hotkey (with hotkeys on) | the same |
 | Toolbox → *Anbernic Button Opens Quick Menu* off | no effect: the row shows a fixed **On** with the reason | the button goes to apps |
 
@@ -388,13 +364,12 @@ On every device, the RG Cube included, the Back button acts on its release, neve
   - If the app stops while Back is held, Back's key-up, when it comes, is dropped.
   - Any other key pressed while it is held (Volume, a RetroArch Back + button combination) means nothing is sent. A key-up cancelled by the system (a device reset mid-press) sends nothing either.
   - Held into the 10 s recovery hold, nothing is sent; the recovery hold itself still starts on the press.
-  - The device's Back key is used even where its raw code isn't `KEY_BACK` (the AYANEO button, 754, on the Pocket Air Mini): Nano and drastic-nano read it as Back. PhoneWindowManager only sees Android keycodes, and 754 has none, so over apps it gets that button as `BACK` only through GammaPad's default remap (754 → 158).
+  - The device's Back key is used even where its raw code isn't `KEY_BACK` (the AYANEO button, 754, on the Pocket Air Mini): Nano reads it as Back. PhoneWindowManager only sees Android keycodes, and 754 has none, so over apps it gets that button as `BACK` only through GammaPad's default remap (754 → 158).
 - **Nano's menus:**
   - Back is held back like Start and Select, and acts (goes back, closes the keyboard or dialog) when let go.
   - Another key pressed meanwhile cancels it.
   - Pressed while the Anbernic button is held, neither acts: no Back, and no Quick Menu on the Anbernic button's release.
   - Holding it no longer repeats.
-- **drastic-nano:** Back already acted on release (a tap opens its menu, a long press exits). The device's Back key reads as Back there too.
 - **Quick Resume preview:** the same, already on release.
 
 The decision on release is `devkeys::backRelease` (C++) and `ThimsyDeviceKeys.backRelease` (Java), held to the same test cases. With nothing else pressed:
@@ -412,7 +387,6 @@ The decision on release is `devkeys::backRelease` (C++) and `ThimsyDeviceKeys.ba
   - Back tapped and let go within 1 s: the game gets a Back press and release, sent on the release.
   - Back held between 1 s and 3 s: the Quick Menu, as the Anbernic button's release does.
   - In Nano's menus Back goes back when let go within 1 s, and held 1 to 3 s it opens the Quick Menu. Back + Volume, Select and Start work there too.
-  - In drastic-nano, Back keeps its own tap (in-game menu) and long press (exit). Back + a button is a hotkey and opens no menu.
   - Toolbox → *Anbernic Button Opens Quick Menu* off makes Back plain Back again over apps, and in Nano's menus Back's 1 to 3 s hold no longer opens the Quick Menu (Start + Select still does).
 - **Only a Menu button** (TrimUI Brick and the MagicX handhelds):
   - Their Menu button sends `KEY_BACK` (158), so it is their Back button (`"function": []`, `"fallback": "back"`).
@@ -464,15 +438,15 @@ On the device, for each emulator:
 4. **Check the edge cases:**
    - Anbernic alone opens the Quick Menu on release;
    - Anbernic, or Start + Select, held 3 s quits; a key pressed during the hold cancels it;
-   - on a device whose function button is `HOME` (KT-R1, ZPG A1, Pocket Micro): a tap opens the Quick Menu, a 3 s hold goes Home over a game (RetroArch saves first), in Nano's menus and in drastic-nano, with Universal Hotkeys on and off, and with Toolbox's switch showing a fixed On;
+   - on a device whose function button is `HOME` (KT-R1, ZPG A1, Pocket Micro): a tap opens the Quick Menu, a 3 s hold goes Home over a game (RetroArch saves first) and in Nano's menus, with Universal Hotkeys on and off, and with Toolbox's switch showing a fixed On;
    - Toolbox's switch off turns Kiosk Mode off, and Kiosk Mode on turns the switch back on;
    - Start + Select + R1 saves, and Start + Select released opens nothing in a game;
    - Anbernic + an unmapped button does nothing;
    - the 10 s emergency hold still recovers, with Nano's overlay up too;
    - Anbernic + Back over an app opens nothing and, with Universal Hotkeys on, doesn't go back;
-   - Anbernic + Select turns the shader off and on again, in Nano, in a game and in drastic-nano, and Power on its own sleeps;
+   - Anbernic + Select turns the shader off and on again, in Nano and in a game, and Power on its own sleeps;
    - Anbernic + Start opens Applications over a game, and Start, B or Anbernic + Start returns to the game;
-   - Anbernic + the bottom button opens the button map over a game (the game keeps running, gets no input, and never sees the button), in Nano's menus and in drastic-nano; Start + Select + the bottom button opens it in Nano's menus only; B, Start, the chord again or a tap outside closes it; with Universal Hotkeys off it still works; on Android Games (the system and a game) and Settings it does nothing (`logcat | grep buttonmap:` shows what Nano resolved);
+   - Anbernic + the bottom button opens the button map over a game (the game keeps running, gets no input, and never sees the button) and in Nano's menus; Start + Select + the bottom button opens it in Nano's menus only; B, Start, the chord again or a tap outside closes it; with Universal Hotkeys off it still works; on Android Games (the system and a game) and Settings it does nothing (`logcat | grep buttonmap:` shows what Nano resolved);
    - rewind released when the Quick Menu opens.
    - chords act on the press: hold Anbernic, press R1 and keep it down; the save happens (and RetroArch shows its message) before R1 is let go. The same for Anbernic + the bottom button (the map shows while it is held) and Start + Select + R1. To time it: `adb shell getevent -lt` beside `adb logcat -v monotonic -s GammaHotkeys WindowManager GammaOSNano` (both in seconds since boot); the R1 `DOWN` and the `save_state -> ...` line should be a few ms apart, and Nano's `overlay: button map ready N ms after the raise began` within about 200 ms of the button map button's `DOWN` (`GammaOS Nano: Anbernic+South -> overlay button map`).
    - Back acts on release: in an app (Settings, a browser) a tap goes back once when let go, a long press runs the exit, and Back held while Volume is pressed never goes back. In Nano's menus Back goes back on release and never repeats while held.

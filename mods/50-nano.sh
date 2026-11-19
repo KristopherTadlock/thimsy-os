@@ -175,6 +175,14 @@ with these changes, under the same CC BY-NC-SA 2.0 license:
   `quake.xml` are changed to match those systems' new pictures.
 EOF
 
+# The Slate theme's system logos are their owners' trademarks; the source patch no longer
+# bundles it, and an image built without the patch has it removed here.
+sudo rm -f "$ETC/nano_esde_themes/slate-es-de.zip"
+# With no theme bundled, the patched image has no themes folder.
+if ! sudo test -d "$ETC/nano_esde_themes"; then
+  sudo install -d -m 755 -o root -g root "$ETC/nano_esde_themes"
+  sudo setfattr -n security.selinux -v u:object_r:system_file:s0 "$ETC/nano_esde_themes"
+fi
 dest="$ETC/nano_esde_themes/$THEME"
 sudo rm -rf "$dest"
 sudo cp -r --no-preserve=all "$src" "$dest"

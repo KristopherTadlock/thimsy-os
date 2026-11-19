@@ -18,6 +18,10 @@ apk  azahar-2126.2.apk  name=Azahar 3DS emulator  package=org.azahar_emu.azahar 
 # WatermelonDS 0.8.0.rc3 (Nintendo DS), a melonDS fork. GPL-3.0.
 apk  WatermelonDS-0.8.0.rc3.apk  name=WatermelonDS DS emulator  package=me.magnum.melondualds  url=https://github.com/SapphireRhodonite/WatermelonDS/releases/download/0.8.0.rc3/WatermelonDS-0.8.0.rc3.apk  sha256=275b16222b9ea7bb7e36f660b7d3d80b535a3707910578fba19ec35259f08456  source=https://github.com/SapphireRhodonite/WatermelonDS/tree/0.8.0.rc3
 
+# SeedlessDS 1.0.1 (Nintendo DS), built on SeedlessDS-Core, a reconstruction of DraStic r2.6.0.4a.
+# GPL-3.0-or-later; its author allows free distribution.
+apk  SeedlessDS-1.0.1-release.apk  name=SeedlessDS DS emulator  package=com.seedlessds.app  url=https://github.com/SapphireRhodonite/SeedlessDS/releases/download/1.0.1/SeedlessDS-1.0.1-release.apk  sha256=33052ab120a4ad0af28c9f72c50d0c45841353268f614652da5d1df6eb5d0dd0  source=https://github.com/SapphireRhodonite/SeedlessDS/tree/1.0.1
+
 # hakuX 1.3.0 (original Xbox) at commit a7cdb5a, which adds custom Vulkan
 # drivers on Mali GPUs; needs no BIOS or hard disk image. GPL-3.0-or-later.
 # Built from source (release variant, signed with this project's key; the

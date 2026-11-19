@@ -175,19 +175,6 @@ Changes in Thimsy OS's copy (also noted at the end of its README):
   rights are id Software's. The Quake system shows a Thimsy OS console picture instead (see
   "Console pictures"), as do the catalog systems the theme has no art for.
 
-### Slate
-
-`/system/etc/nano_esde_themes/slate-es-de.zip` (in GammaOS Nano): Slate, ES-DE's default theme,
-by the ES-DE project, based on [recalbox-multi](https://gitlab.com/recalbox/recalbox-themes) by
-the Recalbox community, with graphics from the [Carbon](https://github.com/RetroPie/es-theme-carbon)
-theme by Rookervik, console and controller vector graphics by Bezza191 and logotype graphics by
-Dan Patrick. License: Creative Commons Attribution-NonCommercial-ShareAlike 2.0 (its `LICENSE` and
-`CREDITS.md` are in the zip). Its console and brand logos are excluded from that license: "The
-used logos and trademarks are copyright of their respective owners."
-
-Slate's fonts are [Exo 2](https://github.com/googlefonts/Exo-2.0) (Regular, SemiBold and Bold
-Condensed) by Natanael Gama, Copyright 2013 The Exo 2 Project Authors, SIL Open Font License 1.1.
-
 ## Android and the GammaOS base
 
 | work | files | author | license |
@@ -201,7 +188,6 @@ Condensed) by Natanael Gama, Copyright 2013 The Exo 2 Project Authors, SIL Open 
 These ship as parts of the themes above and belong to their owners. They are used to
 name the systems they stand for:
 
-- the console and brand logos in Slate (`*/images/logo.svg`);
 - the console product photos, screens and marks in Colorful's system pictures (for example
   `ps2.webp` shows a Sony TV, a PlayStation 2 and its boot screen);
 - the PlayStation, Xbox and Nintendo face-button glyphs in ES-DE's help icons.

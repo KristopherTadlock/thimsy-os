@@ -15,7 +15,7 @@ Built image `out/target/product/tdgsi_arm64_ab` (system, product, system_ext) pl
 | App | Problem |
 |---|---|
 | **Updater** (LineageOS updater) | Checks `https://ota.gammaos.sh/api/v1/{device}/{variant}`, GammaOS's update server. Nano's own update check (`NanoOtaCheck.cpp`) uses the same URL. On Thimsy, both would offer stock GammaOS updates, and installing one would replace Thimsy. Remove Updater, and turn off or repoint Nano's online check (keep its install-from-storage path for Thimsy packages). |
-| **DraStic** + **DrasticSf** | Closed source; to be replaced by WatermelonDS as the default DS emulator. DrasticSf is the small host app for the built-in DS player and goes with it. |
+| **DraStic** + **DrasticSf** | Closed source. Removed, with drastic-nano, the built-in DS player DrasticSf hosted; WatermelonDS is the default DS emulator and SeedlessDS is installed beside it. |
 
 ## No clear use on the RG Cube
 

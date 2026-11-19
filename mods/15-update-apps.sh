@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Updates the non-emulator apps GammaOS Next installs on first boot, replaces
-# Firefox with Brave, and removes Daijisho and MiXplorer, closed apps with no
-# grant to redistribute them. Android's home is then Trebuchet, the launcher
-# both bases ship.
+# Firefox with Brave, and removes Daijisho, MiXplorer and DraStic, closed apps
+# with no grant to redistribute them, with drastic-nano, the built-in DS player
+# that runs DraStic's library. Android's home is then Trebuchet, the launcher
+# both bases ship; the DS emulators are WatermelonDS and SeedlessDS
+# (mods/added-apps.txt).
 #
 # Kept as they are:
 #   M64Plus FZ 3.0.335   newer builds are only on Google Play
-#   DraStic r2.6.0.4a    the latest release
 #   Magisk 30.6          the boot image is patched with this version; the app
 #                        can update itself and the boot image after setup
 #
@@ -38,12 +39,23 @@ FULGURIS_SHA256=72a95ef9111837e6a557cefac53744e9a8b4f8413fce199e485e249d04c886cc
 FULGURIS_FILE=Fulguris_2.1.2.apk
 FULGURIS_PKG=net.slions.fulguris.full.fdroid
 LOW_MEM_KB=1300000
-# Daijisho's app and data, and MiXplorer: 1.2's names, then 1.4.4's.
-REMOVED=(daijisho412.apk.xz daijisho.tar.xz daijisho daijisho.tar.zst MiXplorer_v6.64.3-API29_B23090720.apk)
+# Daijisho's app and data, MiXplorer, and DraStic's app and data: 1.2's names, then 1.4.4's.
+REMOVED=(daijisho412.apk.xz daijisho.tar.xz daijisho daijisho.tar.zst MiXplorer_v6.64.3-API29_B23090720.apk
+         drastic_r2.6.0.4a.apk drastic.tar.gz drastic.tar.zst drastic-nano)
+# drastic-nano and DraStic's library, in a 1.4.4 image built without the source patch.
+REMOVED_SYSTEM=(bin/drastic-nano etc/init/drastic-nano.rc lib64/libdrastic_arm64.so lib64/libdrastic_cpu.so
+                app/DrasticSf)
 
 mkdir -p "$CACHE"
 sudo cat "$SETUP" >"$CACHE/setup.sh"
-sudo rm -rf "${REMOVED[@]/#/$ETC/}"
+sudo rm -rf "${REMOVED[@]/#/$ETC/}" "${REMOVED_SYSTEM[@]/#/$SYSTEM/}"
+# And its build.prop defaults there: with the first, Nano starts DraStic through drastic-nano.
+PRODUCT_PROP="$SYSTEM/product/etc/build.prop"
+DRASTIC_PROPS='^persist\.gammaos\.(nano\.drastic_nano|drastic_nano\.)'
+if sudo test -f "$PRODUCT_PROP" && sudo grep -qE "$DRASTIC_PROPS" "$PRODUCT_PROP"; then
+  sudo cat "$PRODUCT_PROP" | grep -vE "$DRASTIC_PROPS" >"$CACHE/product.prop"
+  write_through "$CACHE/product.prop" "$PRODUCT_PROP"
+fi
 
 for entry in "${APKS[@]}"; do
   IFS='|' read -r name url sha file old <<<"$entry"
@@ -85,7 +97,7 @@ STEPS
 
 if is_nano_base "$SYSTEM"; then
   # The source patch drops them; a system image built without it still lists them.
-  for pkg in com.magneticchen.daijishou com.mixplorer; do
+  for pkg in com.magneticchen.daijishou com.mixplorer com.dsemu.drastic; do
     if sudo grep -qF "|$pkg|" "$ETC/gammaos/apps.list"; then
       apps_list "$SYSTEM" remove "$pkg"
     fi
@@ -132,11 +144,20 @@ mixplorer = """echo "Installing MiXplorer."
 pm install /system/etc/MiXplorer_v6.64.3-API29_B23090720.apk
 
 """
+drastic = """echo "Installing drastic DS emulator."
+pm install /system/etc/drastic_r2.6.0.4a.apk
+launcheruser=$( stat -c "%U" /data/data/com.dsemu.drastic)
+launchergroup=$( stat -c "%G" /data/data/com.dsemu.drastic)
+tar -xvf /system/etc/drastic.tar.gz -C /
+chown -R $launcheruser:$launchergroup /data/data/com.dsemu.drastic
+
+"""
 # Keep the "cd /": later steps use paths relative to / (system/etc/Toast.apk).
 replacements = [
     (old_daijisho, "cd /\n\n"),
     (daijisho_home, ""),
     (mixplorer, ""),
+    (drastic, ""),
     ('echo "Installing FireFox"\n', 'echo "Installing Brave."\n'),
 ]
 for old, new in replacements:

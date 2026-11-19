@@ -1,8 +1,8 @@
 {
   "id": "drastic",
   "name": "DraStic",
-  "packages": ["com.dsemu.drastic", "com.gammaos.drasticsf"],
-  "note": "The DraStic app shares its button settings with Nano's DS player, so set Quick Save, Quick Load and Fast Forward in DraStic's controls. Nano's DS player has the hotkeys built in.",
+  "packages": ["com.dsemu.drastic"],
+  "note": "DraStic is not included. If you install it, set Quick Save, Quick Load and Fast Forward in DraStic's controls.",
   "actions": {
     "save_state": {"driver": "none"},
     "load_state": {"driver": "none"},
