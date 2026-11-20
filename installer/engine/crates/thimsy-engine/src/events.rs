@@ -118,7 +118,8 @@ impl Sink for MemorySink {
 pub struct Reporter {
     sink: Arc<dyn Sink>,
     stage: Arc<Mutex<String>>,
-    last_progress: Arc<Mutex<Option<Instant>>>,
+    /// When the last progress event went out, and its label.
+    last_progress: Arc<Mutex<Option<(Instant, String)>>>,
 }
 
 impl Reporter {
@@ -146,8 +147,9 @@ impl Reporter {
             title: crate::i18n::tr(title),
         });
     }
-    /// Progress, rate-limited to ~5 events a second except the final one.
-    /// `label` is English source text, translated here.
+    /// Progress, rate-limited to ~5 events a second except the final one
+    /// and the first of each label. `label` is English source text,
+    /// translated here.
     pub fn progress(&self, label: &str, done: u64, total: u64) {
         self.progress_inner(|| crate::i18n::tr(label), done, total);
     }
@@ -169,20 +171,32 @@ impl Reporter {
 
     fn progress_inner(&self, label: impl FnOnce() -> String, done: u64, total: u64) {
         let now = Instant::now();
-        {
+        let label = {
             let mut last = self.last_progress.lock().unwrap();
             let finished = total > 0 && done >= total;
-            if let Some(t) = *last {
-                if !finished && now.duration_since(t) < Duration::from_millis(200) {
-                    return;
+            let label = match &*last {
+                Some((t, _))
+                    if finished || now.duration_since(*t) >= Duration::from_millis(200) =>
+                {
+                    label()
                 }
-            }
-            *last = Some(now);
-        }
+                Some((_, shown)) => {
+                    // Too soon, unless it's about something new.
+                    let label = label();
+                    if label == *shown {
+                        return;
+                    }
+                    label
+                }
+                None => label(),
+            };
+            *last = Some((now, label.clone()));
+            label
+        };
         let stage = self.stage.lock().unwrap().clone();
         self.emit(Event::Progress {
             stage,
-            label: label(),
+            label,
             done,
             total,
         });

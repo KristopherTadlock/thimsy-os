@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
@@ -306,13 +307,18 @@ fn file_for(name: &str) -> String {
 
 /// The `spd_dump` command line. The device's partition table, the backups
 /// and the update-mode base images are read into `run_dir` (the run's
-/// backup folder, relative to the flash folder it runs in).
-pub fn spd_invocation(d: &Device, plan: &SpdPlan, run_dir: &str) -> Invocation {
+/// backup folder, relative to the flash folder it runs in). `slow_reads`:
+/// read 4 KB at a time, whatever FDL2 offers (after the FDLs, which keep
+/// their own message sizes).
+pub fn spd_invocation(d: &Device, plan: &SpdPlan, run_dir: &str, slow_reads: bool) -> Invocation {
     let f = d.flash.as_ref().unwrap();
     let mut args = vec!["--wait".to_string(), f.wait_seconds.to_string()];
     args.extend(["keep_charge".into(), "1".into()]);
     for (id, base) in &plan.fdl {
         args.extend(["fdl".into(), file_for(id), format!("0x{base:x}")]);
+    }
+    if slow_reads {
+        args.extend(["blk_size".into(), "0x1000".into()]);
     }
     // Read before the first question, checked before it's answered.
     let list = if f.partition_list_4k {
@@ -676,6 +682,65 @@ fn windows_problem(seen: &SpdConnect) -> Option<anyhow::Error> {
     )
 }
 
+/// Before a run after one that stopped in the reads: the device is still
+/// in download mode's loader there (with the same USB ID), which won't
+/// start again. Waits, polling every `poll`, until it's gone (turned off)
+/// and back in download mode, up to `timeout` for each. Fails when USB
+/// can't be listed: a second run against the loader still running can't
+/// work.
+fn wait_for_restart(d: &Device, timeout: Duration, poll: Duration) -> Result<()> {
+    let ids: Vec<(u16, u16)> = {
+        let download: Vec<_> = d
+            .identify
+            .usb
+            .iter()
+            .filter(|u| u.mode == "download")
+            .collect();
+        let all: Vec<_> = d.identify.usb.iter().collect();
+        if download.is_empty() { all } else { download }
+            .into_iter()
+            .map(|u| (u.vid, u.pid))
+            .collect()
+    };
+    let present = || crate::detect::scan_ids().map(|seen| seen.iter().any(|id| ids.contains(id)));
+    // Gone, then back.
+    for want in [false, true] {
+        let start = Instant::now();
+        loop {
+            match present() {
+                Ok(here) if here == want => break,
+                Ok(_) => {}
+                Err(e) => {
+                    return Err(EngineError::new(
+                        Code::DeviceNotFound,
+                        format!("couldn't list USB devices to see {} restart ({e:#}); nothing was written", d.name),
+                    )
+                    .hint("The installer couldn't check for the device; restart the device in download mode and try again.")
+                    .into());
+                }
+            }
+            if start.elapsed() >= timeout {
+                return Err(if want {
+                    EngineError::new(
+                        Code::DeviceNotFound,
+                        format!("{} didn't come back in download mode; nothing was written", d.name),
+                    )
+                    .hint("Repeat the download-mode steps, then try again.")
+                } else {
+                    EngineError::new(
+                        Code::DeviceNotFound,
+                        format!("{} stayed in download mode's loader instead of restarting; nothing was written", d.name),
+                    )
+                    .hint("Hold the power button to turn the device off, then connect it in download mode.")
+                }
+                .into());
+            }
+            std::thread::sleep(poll);
+        }
+    }
+    Ok(())
+}
+
 /// spd_dump exited without the device ever answering.
 fn not_connected(d: &Device, host: Host, seen: &SpdConnect, e: anyhow::Error) -> anyhow::Error {
     let detail = format!("{e:#}");
@@ -888,6 +953,29 @@ const WRITE_LINES: &[&str] = &[
     "writing:",
 ];
 
+/// How far `spd_dump` has got, from one line of its output. `done` and
+/// `total` count the bytes of every planned read and write (reads first),
+/// so one progress bar covers the whole run.
+#[derive(Debug, PartialEq)]
+pub enum SpdProgress {
+    /// The partition just written, or being written, and whether it's
+    /// finished.
+    Write {
+        partition: String,
+        done: u64,
+        total: u64,
+        finished: bool,
+    },
+    /// The partition being read: a backup, or (update mode) a base image
+    /// to compare.
+    Read {
+        partition: String,
+        backup: bool,
+        done: u64,
+        total: u64,
+    },
+}
+
 /// Follows `spd_dump`'s output while it flashes: progress, and the signs
 /// that a write went wrong or ran without being confirmed.
 pub struct SpdWatch {
@@ -895,10 +983,27 @@ pub struct SpdWatch {
     writes: Vec<(String, u64, bool)>,
     written: u64,
     total: u64,
+    /// Planned reads (partition, bytes, a backup), and whether finished.
+    /// Progress only: the files read are checked themselves.
+    reads: Vec<(String, u64, bool, bool)>,
+    read: u64,
+    read_total: u64,
+    /// A read ended short.
+    short_read: bool,
 }
 
 impl SpdWatch {
     pub fn new(plan: &SpdPlan) -> SpdWatch {
+        let reads: Vec<(String, u64, bool, bool)> = plan
+            .backups
+            .iter()
+            .map(|b| (b.partition.clone(), b.bytes, true, false))
+            .chain(
+                plan.base
+                    .iter()
+                    .map(|b| (b.partition.clone(), b.bytes, false, false)),
+            )
+            .collect();
         SpdWatch {
             writes: plan
                 .writes
@@ -907,15 +1012,68 @@ impl SpdWatch {
                 .collect(),
             written: 0,
             total: plan.writes.iter().map(|w| w.bytes).sum(),
+            read: 0,
+            read_total: reads.iter().map(|r| r.1).sum(),
+            reads,
+            short_read: false,
         }
     }
 
+    /// Whether a planned read ended short or never finished: when the run
+    /// stops before the device was checked, a slower run may get through.
+    pub fn read_trouble(&self) -> bool {
+        self.short_read || self.reads.iter().any(|r| !r.3)
+    }
+
+    /// Progress of a read: "reading: prodnv, 0x200000 of 0x4000000" while
+    /// it runs, "dump_partition: prodnv+0x0, target: 0x4000000, read:
+    /// 0x4000000" when it ends.
+    fn read_line(&mut self, l: &str) -> Option<SpdProgress> {
+        let (name, done) = if let Some(rest) = l.strip_prefix("reading:") {
+            let mut it = rest.split(',');
+            let name = it.next().unwrap_or_default().trim();
+            let done = it
+                .next()
+                .and_then(|r| r.split(" of ").next())
+                .and_then(pac::parse_num)?;
+            (name, Some(done))
+        } else {
+            let rest = l.strip_prefix("dump_partition:")?;
+            (
+                rest.split(['+', ',']).next().unwrap_or_default().trim(),
+                None,
+            )
+        };
+        let r = self
+            .reads
+            .iter_mut()
+            .find(|r| !r.3 && r.0.eq_ignore_ascii_case(name))?;
+        let done = match done {
+            Some(d) => self.read + d.min(r.1),
+            None => {
+                // What was read, even if short (the files are checked).
+                let got = l
+                    .rsplit_once("read:")
+                    .and_then(|(_, n)| pac::parse_num(n.trim()))
+                    .unwrap_or(r.1);
+                r.3 = true;
+                self.short_read |= got < r.1;
+                self.read += got.min(r.1);
+                self.read
+            }
+        };
+        Some(SpdProgress::Read {
+            partition: r.0.clone(),
+            backup: r.2,
+            done,
+            total: self.read_total + self.total,
+        })
+    }
+
     /// Reads one output line. `checked`: whether the device's partition
-    /// table has been checked (the first answer approved). Returns the
-    /// partition just written, or being written, with the bytes written so
-    /// far and in total, and whether that partition is finished; fails when
-    /// the run must stop at once.
-    pub fn line(&mut self, line: &str, checked: bool) -> Result<Option<(String, u64, u64, bool)>> {
+    /// table has been checked (the first answer approved). Returns how far
+    /// the reads or writes have got; fails when the run must stop at once.
+    pub fn line(&mut self, line: &str, checked: bool) -> Result<Option<SpdProgress>> {
         let l = line.trim();
         if l.contains("unexpected response") {
             return Err(write_failed(format!(
@@ -930,8 +1088,11 @@ impl SpdWatch {
             .hint("Reinstall Thimsy Installer: its flashing tool isn't the version it expects.")
             .into());
         }
-        // "writing: super, 0x8000000 of 0x15e000000": how far a long write
-        // has got (progress only; a partition counts once it's finished).
+        if l.starts_with("reading:") || l.starts_with("dump_partition:") {
+            return Ok(self.read_line(l));
+        }
+        // "writing: super, 0x8000000 of 0x15e000000": how far a write has
+        // got (progress only; a partition counts once it's finished).
         if let Some(rest) = l.strip_prefix("writing:") {
             let mut it = rest.split(',');
             let name = it.next().unwrap_or_default().trim();
@@ -947,12 +1108,12 @@ impl SpdWatch {
                 return Ok(None);
             };
             return Ok(match done {
-                Some(d) if !w.2 => Some((
-                    name.to_string(),
-                    self.written + d.min(w.1),
-                    self.total,
-                    false,
-                )),
+                Some(d) if !w.2 => Some(SpdProgress::Write {
+                    partition: name.to_string(),
+                    done: self.read_total + self.written + d.min(w.1),
+                    total: self.read_total + self.total,
+                    finished: false,
+                }),
                 _ => None,
             });
         }
@@ -997,7 +1158,12 @@ impl SpdWatch {
             w.2 = true;
             self.written += target;
         }
-        Ok(Some((name.to_string(), self.written, self.total, true)))
+        Ok(Some(SpdProgress::Write {
+            partition: name.to_string(),
+            done: self.read_total + self.written,
+            total: self.read_total + self.total,
+            finished: true,
+        }))
     }
 
     /// Once `spd_dump` has finished: every planned write must have been
@@ -1312,7 +1478,7 @@ pub fn flash(cat: &Catalog, opts: &FlashOptions, rep: &Reporter) -> Result<Flash
     let flash_dir = opts.job.join("flash");
     let backup_root = opts.job.join("backup");
     let run_name = backup_run_name();
-    let inv = spd_invocation(d, &plan, &format!("../backup/{run_name}"));
+    let inv = spd_invocation(d, &plan, &format!("../backup/{run_name}"), false);
     rep.info(format!(
         "{} partitions to write ({}), {} to back up, {} to erase, {} to compare",
         plan.writes.len(),
@@ -1347,135 +1513,72 @@ pub fn flash(cat: &Catalog, opts: &FlashOptions, rep: &Reporter) -> Result<Flash
     }
     let reads: u64 = plan.backups.iter().chain(&plan.base).map(|b| b.bytes).sum();
     ready_files(&rec, &p, &plan, &flash_dir, &opts.job, &entries, reads, rep)?;
-    let run_dir = new_backup_run(&backup_root, "")?;
-    let run_arg = format!(
-        "../backup/{}",
-        run_dir.file_name().unwrap().to_string_lossy()
-    );
-    let inv = spd_invocation(d, &plan, &run_arg);
-
-    rep.stage("wait_device", "Connect the device in download mode");
     // The device's own button steps, translated with its name filled in.
     let step = crate::resolve::trs(&d.guides.download_mode, &d.name)
         .into_iter()
         .next();
-    rep.prompt(
-        "enter_download_mode",
-        step.as_ref()
-            .map_or("Connect the device in download mode", |s| s.title.as_str()),
-        step.as_ref().map_or("", |s| s.body.as_str()),
-        None,
-    );
-
-    // The prompt stays up while spd_dump waits for the device; the install
-    // stage starts when the device answers (its first BSL_REP_VER line).
-    let connected = std::cell::Cell::new(false);
-    // What spd_dump said while waiting.
-    let wait = std::cell::RefCell::new(WindowsWait::default());
-    let mut watch = SpdWatch::new(&plan);
-    // Set once the first answer is approved: the device's table, the
-    // backups and (update mode) its base were checked. Any write before
-    // that is fatal.
-    let checked = std::cell::Cell::new(false);
-    // Set when the engine stopped spd_dump with its own error, which is
-    // reported as it is.
-    let ours = std::cell::Cell::new(false);
-    let on_line = |line: &str| -> Result<()> {
-        if !connected.get() {
-            if opts.host == Host::Windows {
-                let effects = wait.borrow_mut().line(line);
-                match effects {
-                    Ok(effects) => show_wait(rep, step.as_ref(), &effects),
-                    Err(e) => {
-                        ours.set(true);
-                        return Err(e);
-                    }
-                }
-            } else {
-                wait.borrow_mut().seen.line(line);
+    let mut slow_reads = false;
+    let (run_dir, inv) = loop {
+        let run_dir = new_backup_run(&backup_root, "")?;
+        let run_arg = format!(
+            "../backup/{}",
+            run_dir.file_name().unwrap().to_string_lossy()
+        );
+        let inv = spd_invocation(d, &plan, &run_arg, slow_reads);
+        if slow_reads {
+            rep.stage("wait_device", "Connect the device in download mode again");
+        } else {
+            rep.stage("wait_device", "Connect the device in download mode");
+        }
+        rep.prompt(
+            "enter_download_mode",
+            step.as_ref()
+                .map_or("Connect the device in download mode", |s| s.title.as_str()),
+            step.as_ref().map_or("", |s| s.body.as_str()),
+            None,
+        );
+        if slow_reads {
+            let f = d.flash.as_ref().context("device has no flash recipe")?;
+            let wait = Duration::from_secs(f.wait_seconds.into());
+            if let Err(e) = wait_for_restart(d, wait, RESTART_POLL) {
+                let _ = fs::remove_dir(&run_dir);
+                return Err(e);
             }
         }
-        if !connected.get()
-            && (line.starts_with("BSL_REP_VER") || line.starts_with("load_partition"))
-        {
-            connected.set(true);
-            rep.stage("flash", "Installing Thimsy");
+        let run = SpdRun {
+            d,
+            opts,
+            plan: &plan,
+            entries: &entries,
+            run_dir: &run_dir,
+            step: step.as_ref(),
+        };
+        let (ran, slower) = run.attempt(&inv, &flash_dir, rep);
+        let problems = close_backup_run(&plan, &run_dir, d, opts.mode);
+        if slower && !slow_reads {
+            // Nothing was written: the device stays in download mode's
+            // loader until it's restarted.
+            rep.warn(format!(
+                "Reading the device stopped before anything was written ({:#}); trying again 4 KB at a time. Restart the device in download mode.",
+                ran.as_ref().unwrap_err()
+            ));
+            slow_reads = true;
+            continue;
         }
-        if let Some((name, written, total, done)) = watch.line(line, checked.get())? {
-            if done {
-                rep.progress_for("Wrote {partition}", &name, written, total);
-            } else {
-                rep.progress_for("Writing {partition}", &name, written, total);
-            }
+        ran?;
+        if !problems.is_empty() {
+            return Err(EngineError::new(
+                Code::ToolFailed,
+                format!(
+                    "the device was installed, but its backup is incomplete: {}. The backed-up partitions were not written; keep {} and report this",
+                    problems.join("; "),
+                    run_dir.display()
+                ),
+            )
+            .into());
         }
-        Ok(())
+        break (run_dir, inv);
     };
-    // Nothing is confirmed until the device's partition table matches,
-    // every backup was read in full and (update mode) the device holds the
-    // base the update relies on.
-    let approve = |n: usize| {
-        if n == 0 {
-            let (text, table) = read_device_table(&run_dir)?;
-            if let Err(e) = write_device_info(&run_dir, d, opts.mode, &text) {
-                rep.warn(format!(
-                    "couldn't record which device the backup is from: {e:#}"
-                ));
-            }
-            check_device(&plan.checks, &table)?;
-            rep.info("The device's partition table matches this firmware");
-            check_backups(&plan, &run_dir)?;
-            if !plan.base.is_empty() {
-                check_base(&plan, &run_dir, &entries)?;
-                rep.info("The device runs the base this update needs");
-            }
-            checked.set(true);
-        }
-        Ok(())
-    };
-    let ran = tools::run_answering(&inv, &flash_dir, rep, on_line, approve);
-    let connected = connected.get();
-    let ran = ran.and_then(|()| watch.finish()).map_err(|e| {
-        let code = crate::error::code_of(&e).0;
-        if ours.get() {
-            return e;
-        }
-        if code == Code::ToolFailed && !connected {
-            // The device never answered: nothing happened on it.
-            return not_connected(d, opts.host, &wait.borrow().seen, e);
-        }
-        if code != Code::ToolFailed || !checked.get() {
-            // Refused or stopped before the first write was confirmed.
-            return e;
-        }
-        e.context("flashing stopped; the device is still recoverable from download mode")
-    });
-
-    // The images read for the base check aren't backups.
-    for b in &plan.base {
-        let _ = fs::remove_file(run_dir.join(base_file(&b.partition)));
-    }
-    // The NV/calibration backups stay where spd_dump read them, in the
-    // job's backup folder, whether or not the rest worked.
-    let problems = finish_backups(&plan, &run_dir);
-    if run_dir.join(DEVICE_PARTITIONS).exists() && !run_dir.join(DEVICE_INFO).exists() {
-        if let Ok(text) = fs::read_to_string(run_dir.join(DEVICE_PARTITIONS)) {
-            let _ = write_device_info(&run_dir, d, opts.mode, &text);
-        }
-    }
-    // A run that never got to read anything leaves no empty folder.
-    let _ = fs::remove_dir(&run_dir);
-    ran?;
-    if !problems.is_empty() {
-        return Err(EngineError::new(
-            Code::ToolFailed,
-            format!(
-                "the device was installed, but its backup is incomplete: {}. The backed-up partitions were not written; keep {} and report this",
-                problems.join("; "),
-                run_dir.display()
-            ),
-        )
-        .into());
-    }
     rep.stage("reboot", "Restarting the device");
     rep.info("The device restarts into Thimsy. The first boot takes a few minutes.");
     let _ = fs::remove_dir_all(&flash_dir);
@@ -1483,6 +1586,162 @@ pub fn flash(cat: &Catalog, opts: &FlashOptions, rep: &Reporter) -> Result<Flash
         backup: run_dir.exists().then_some(run_dir),
         commands: vec![inv.display()],
     })
+}
+
+/// How often [wait_for_restart] looks for the device.
+const RESTART_POLL: Duration = Duration::from_millis(500);
+
+/// After a run, whether or not it worked: the base images (not backups)
+/// are removed, and the backups stay where `spd_dump` read them, in the
+/// job's backup folder. Returns what's missing or wrong in them.
+fn close_backup_run(plan: &SpdPlan, run_dir: &Path, d: &Device, mode: Mode) -> Vec<String> {
+    for b in &plan.base {
+        let _ = fs::remove_file(run_dir.join(base_file(&b.partition)));
+    }
+    let problems = finish_backups(plan, run_dir);
+    if run_dir.join(DEVICE_PARTITIONS).exists() && !run_dir.join(DEVICE_INFO).exists() {
+        if let Ok(text) = fs::read_to_string(run_dir.join(DEVICE_PARTITIONS)) {
+            let _ = write_device_info(run_dir, d, mode, &text);
+        }
+    }
+    // A run that never got to read anything leaves no empty folder.
+    let _ = fs::remove_dir(run_dir);
+    problems
+}
+
+/// One `spd_dump` run of a flash.
+struct SpdRun<'a> {
+    d: &'a Device,
+    opts: &'a FlashOptions,
+    plan: &'a SpdPlan,
+    entries: &'a [job::EntryHash],
+    run_dir: &'a Path,
+    /// The device's download-mode step, shown while waiting.
+    step: Option<&'a crate::catalog::Step>,
+}
+
+impl SpdRun<'_> {
+    /// Runs `inv`. Returns its outcome, and whether it stopped while
+    /// reading, before anything was confirmed (so nothing was written),
+    /// in a way a run reading 4 KB at a time may get past.
+    fn attempt(&self, inv: &Invocation, flash_dir: &Path, rep: &Reporter) -> (Result<()>, bool) {
+        let (d, opts, plan, run_dir) = (self.d, self.opts, self.plan, self.run_dir);
+        // The prompt stays up while spd_dump waits for the device; the
+        // install stage starts when the device answers (its first
+        // BSL_REP_VER line).
+        let connected = std::cell::Cell::new(false);
+        // What spd_dump said while waiting.
+        let wait = std::cell::RefCell::new(WindowsWait::default());
+        let watch = std::cell::RefCell::new(SpdWatch::new(plan));
+        // Set once the first answer is approved: the device's table, the
+        // backups and (update mode) its base were checked. Any write
+        // before that is fatal.
+        let checked = std::cell::Cell::new(false);
+        // Set when the engine stopped spd_dump with its own error, which
+        // is reported as it is.
+        let ours = std::cell::Cell::new(false);
+        let on_line = |line: &str| -> Result<()> {
+            if !connected.get() {
+                if opts.host == Host::Windows {
+                    let effects = wait.borrow_mut().line(line);
+                    match effects {
+                        Ok(effects) => show_wait(rep, self.step, &effects),
+                        Err(e) => {
+                            ours.set(true);
+                            return Err(e);
+                        }
+                    }
+                } else {
+                    wait.borrow_mut().seen.line(line);
+                }
+            }
+            if !connected.get()
+                && (line.starts_with("BSL_REP_VER") || line.starts_with("load_partition"))
+            {
+                connected.set(true);
+                rep.stage("flash", "Installing Thimsy");
+            }
+            match watch.borrow_mut().line(line, checked.get())? {
+                Some(SpdProgress::Write {
+                    partition,
+                    done,
+                    total,
+                    finished: true,
+                }) => rep.progress_for("Wrote {partition}", &partition, done, total),
+                Some(SpdProgress::Write {
+                    partition,
+                    done,
+                    total,
+                    finished: false,
+                }) => rep.progress_for("Writing {partition}", &partition, done, total),
+                Some(SpdProgress::Read {
+                    partition,
+                    backup: true,
+                    done,
+                    total,
+                }) => rep.progress_for("Backing up {partition}", &partition, done, total),
+                Some(SpdProgress::Read {
+                    partition,
+                    backup: false,
+                    done,
+                    total,
+                }) => rep.progress_for("Reading {partition}", &partition, done, total),
+                None => {}
+            }
+            Ok(())
+        };
+        // Nothing is confirmed until the device's partition table matches,
+        // every backup was read in full and (update mode) the device holds
+        // the base the update relies on.
+        let approve = |n: usize| {
+            if n == 0 {
+                let (text, table) = read_device_table(run_dir)?;
+                if let Err(e) = write_device_info(run_dir, d, opts.mode, &text) {
+                    rep.warn(format!(
+                        "couldn't record which device the backup is from: {e:#}"
+                    ));
+                }
+                check_device(&plan.checks, &table)?;
+                rep.info("The device's partition table matches this firmware");
+                check_backups(plan, run_dir)?;
+                if !plan.base.is_empty() {
+                    check_base(plan, run_dir, self.entries)?;
+                    rep.info("The device runs the base this update needs");
+                }
+                checked.set(true);
+            }
+            Ok(())
+        };
+        let ran = tools::run_answering(inv, flash_dir, rep, on_line, approve);
+        let connected = connected.get();
+        let watch = watch.into_inner();
+        let ran = ran.and_then(|()| watch.finish());
+        let code = ran.as_ref().err().map(|e| crate::error::code_of(e).0);
+        // Past the device's partition table (read first), stopped in or
+        // just after the reads, before anything was confirmed.
+        let slower = code == Some(Code::ToolFailed)
+            && !ours.get()
+            && connected
+            && !checked.get()
+            && run_dir.join(DEVICE_PARTITIONS).exists()
+            && watch.read_trouble();
+        let ran = ran.map_err(|e| {
+            let code = crate::error::code_of(&e).0;
+            if ours.get() {
+                return e;
+            }
+            if code == Code::ToolFailed && !connected {
+                // The device never answered: nothing happened on it.
+                return not_connected(d, opts.host, &wait.borrow().seen, e);
+            }
+            if code != Code::ToolFailed || !checked.get() {
+                // Refused or stopped before the first write was confirmed.
+                return e;
+            }
+            e.context("flashing stopped; the device is still recoverable from download mode")
+        });
+        (ran, slower)
+    }
 }
 
 /// Automated bootloader unlock (fastboot devices only).
@@ -1564,7 +1823,7 @@ mod tests {
             checks: vec![],
             base: vec![],
         };
-        let inv = spd_invocation(d, &plan, "backup");
+        let inv = spd_invocation(d, &plan, "backup", false);
         let s = inv.display();
         assert!(
             s.starts_with(
@@ -1668,6 +1927,205 @@ mod tests {
         }
     }
 
+    fn wrote(partition: &str, done: u64, total: u64, finished: bool) -> SpdProgress {
+        SpdProgress::Write {
+            partition: partition.to_string(),
+            done,
+            total,
+            finished,
+        }
+    }
+
+    fn read(partition: &str, backup: bool, done: u64, total: u64) -> SpdProgress {
+        SpdProgress::Read {
+            partition: partition.to_string(),
+            backup,
+            done,
+            total,
+        }
+    }
+
+    fn planned(p: &str, bytes: u64) -> Write {
+        Write {
+            entry: p.to_uppercase(),
+            index: 0,
+            partition: p.to_string(),
+            bytes,
+        }
+    }
+
+    #[test]
+    fn the_device_must_restart_before_a_second_run() {
+        use crate::detect::test::{DEVICES, SCANS};
+        let cat = crate::catalog::Catalog::bundled().unwrap();
+        let d = cat.device("anbernic-rg-cube").unwrap();
+        let cube = (0x1782u16, 0x4d00u16, None::<String>);
+        let other = (0x1234u16, 0x0001u16, None::<String>);
+        let wait = |scans: Vec<Vec<crate::detect::UsbDevice>>,
+                    then: Vec<crate::detect::UsbDevice>| {
+            SCANS.with(|s| *s.borrow_mut() = scans.into());
+            DEVICES.with(|d| *d.borrow_mut() = Some(then));
+            let r = wait_for_restart(d, Duration::from_millis(50), Duration::from_millis(1));
+            DEVICES.with(|d| *d.borrow_mut() = None);
+            SCANS.with(|s| s.borrow_mut().clear());
+            r
+        };
+        // Still there (in the loader), then gone, then back.
+        wait(
+            vec![
+                vec![cube.clone()],
+                vec![cube.clone(), other.clone()],
+                vec![other.clone()],
+                vec![],
+            ],
+            vec![cube.clone()],
+        )
+        .unwrap();
+        // Never turned off: says how.
+        let err = wait(vec![], vec![cube.clone()]).unwrap_err();
+        assert_eq!(crate::error::code_of(&err).0, Code::DeviceNotFound);
+        assert!(
+            err.to_string().contains("stayed in download mode's loader"),
+            "{err}"
+        );
+        assert!(crate::error::code_of(&err)
+            .1
+            .unwrap()
+            .contains("Hold the power button"));
+        // Turned off, never back in download mode.
+        let err = wait(vec![vec![cube.clone()]], vec![]).unwrap_err();
+        assert!(err.to_string().contains("didn't come back"), "{err}");
+        // USB can't be listed: no second run against the loader still running.
+        crate::detect::test::FAIL.with(|f| f.set(true));
+        let err = wait(vec![], vec![cube.clone()]).unwrap_err();
+        crate::detect::test::FAIL.with(|f| f.set(false));
+        assert_eq!(crate::error::code_of(&err).0, Code::DeviceNotFound);
+        assert!(
+            err.to_string().contains("couldn't list USB devices"),
+            "{err}"
+        );
+        assert!(crate::error::code_of(&err)
+            .1
+            .unwrap()
+            .contains("restart the device in download mode"));
+    }
+
+    #[test]
+    fn spd_output_shows_reads_before_the_check() {
+        let mut plan = plan_writing(&[("super", 0x10)]);
+        plan.backups = vec![planned("prodnv", 0x4000000), planned("miscdata", 0x100000)];
+        plan.base = vec![planned("boot_a", 0x4000000)];
+        let reads = 0x8100000;
+        // One bar: the reads, then the writes.
+        let total = reads + 0x10;
+        let mut w = SpdWatch::new(&plan);
+        // Reads come before the device's table is checked, and aren't writes.
+        let got = w
+            .line("reading: prodnv, 0x200000 of 0x4000000", false)
+            .unwrap();
+        assert_eq!(got, Some(read("prodnv", true, 0x200000, total)));
+        let got = w
+            .line(
+                "dump_partition: prodnv+0x0, target: 0x4000000, read: 0x4000000",
+                false,
+            )
+            .unwrap();
+        assert_eq!(got, Some(read("prodnv", true, 0x4000000, total)));
+        // A finished read isn't counted again, and an unplanned one shows nothing.
+        assert!(w
+            .line("reading: prodnv, 0x200000 of 0x4000000", false)
+            .unwrap()
+            .is_none());
+        assert!(w
+            .line("reading: userdata, 0x10 of 0x20", false)
+            .unwrap()
+            .is_none());
+        w.line(
+            "dump_partition: miscdata+0x0, target: 0x100000, read: 0x100000",
+            false,
+        )
+        .unwrap();
+        let got = w
+            .line("reading: boot_a, 0x9000000 of 0x4000000", false)
+            .unwrap();
+        assert_eq!(got, Some(read("boot_a", false, reads, total)));
+        let got = w
+            .line(
+                "dump_partition: boot_a+0x0, target: 0x4000000, read: 0x4000000",
+                false,
+            )
+            .unwrap();
+        assert_eq!(got, Some(read("boot_a", false, reads, total)));
+        // Reads don't stand in for writes, which carry on from them.
+        assert!(w.finish().is_err());
+        let got = w
+            .line("load_partition: super, target: 0x10, written: 0x10", true)
+            .unwrap();
+        assert_eq!(got, Some(wrote("super", total, total, true)));
+        // The 4 KB fallback's lines aren't fatal; an unexpected response is.
+        for l in [
+            "FDL2 didn't read 0xf000 bytes at a time (0x00fe); reading 4 KB at a time",
+            "FDL2 read 0x8000 of 0xf000 bytes; reading 4 KB at a time",
+            "reading 0xf000 bytes at a time",
+        ] {
+            assert!(w.line(l, false).unwrap().is_none(), "{l}");
+        }
+        assert!(w.line("unexpected response (0x00fe)", false).is_err());
+    }
+
+    #[test]
+    fn spd_output_reads_one_partition_twice_in_plan_order() {
+        // A partition both backed up and read as an update's base: the
+        // backup comes first, as in spd_dump's command line.
+        let mut plan = plan_writing(&[]);
+        plan.backups = vec![planned("prodnv", 0x1000)];
+        plan.base = vec![planned("prodnv", 0x1000)];
+        let mut w = SpdWatch::new(&plan);
+        let line = "dump_partition: prodnv+0x0, target: 0x1000, read: 0x1000";
+        assert_eq!(
+            w.line("reading: prodnv, 0x800 of 0x1000", false).unwrap(),
+            Some(read("prodnv", true, 0x800, 0x2000))
+        );
+        assert_eq!(
+            w.line(line, false).unwrap(),
+            Some(read("prodnv", true, 0x1000, 0x2000))
+        );
+        assert_eq!(
+            w.line("reading: prodnv, 0x800 of 0x1000", false).unwrap(),
+            Some(read("prodnv", false, 0x1800, 0x2000))
+        );
+        assert_eq!(
+            w.line(line, false).unwrap(),
+            Some(read("prodnv", false, 0x2000, 0x2000))
+        );
+        assert!(w.line(line, false).unwrap().is_none());
+    }
+
+    #[test]
+    fn spd_output_counts_what_a_short_read_got() {
+        let mut plan = plan_writing(&[("super", 0x10)]);
+        plan.backups = vec![planned("prodnv", 0x4000000), planned("miscdata", 0x100000)];
+        let total = 0x4100010;
+        let mut w = SpdWatch::new(&plan);
+        // Not fatal here: the backup's size is checked before any write.
+        let got = w
+            .line(
+                "dump_partition: prodnv+0x0, target: 0x4000000, read: 0x2000000",
+                false,
+            )
+            .unwrap();
+        assert_eq!(got, Some(read("prodnv", true, 0x2000000, total)));
+        let got = w
+            .line("reading: miscdata, 0x80000 of 0x100000", false)
+            .unwrap();
+        assert_eq!(got, Some(read("miscdata", true, 0x2080000, total)));
+        // Writes still start after all the planned reads.
+        let got = w
+            .line("load_partition: super, target: 0x10, written: 0x10", true)
+            .unwrap();
+        assert_eq!(got, Some(wrote("super", total, total, true)));
+    }
+
     #[test]
     fn spd_output_counts_only_complete_writes() {
         let plan = plan_writing(&[("uboot_a", 0x1000), ("super", 0x15e000000)]);
@@ -1679,18 +2137,12 @@ mod tests {
                 true,
             )
             .unwrap();
-        assert_eq!(
-            got,
-            Some(("uboot_a".to_string(), 0x1000, 0x15e001000, true))
-        );
+        assert_eq!(got, Some(wrote("uboot_a", 0x1000, 0x15e001000, true)));
         // Progress within a long write shows, but doesn't count it written.
         let got = w
             .line("writing: super, 0x8000000 of 0x15e000000", true)
             .unwrap();
-        assert_eq!(
-            got,
-            Some(("super".to_string(), 0x8001000, 0x15e001000, false))
-        );
+        assert_eq!(got, Some(wrote("super", 0x8001000, 0x15e001000, false)));
         assert!(w
             .line("writing: misc, 0x10 of 0x20", true)
             .unwrap()

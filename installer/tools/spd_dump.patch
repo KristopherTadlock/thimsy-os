@@ -1,8 +1,16 @@
 diff --git a/spd_dump.c b/spd_dump.c
-index f8ba370..0792890 100644
+index f8ba370..f139022 100644
 --- a/spd_dump.c
 +++ b/spd_dump.c
-@@ -37,6 +37,28 @@
+@@ -22,6 +22,7 @@
+ #include <stdint.h>
+ #include <string.h>
+ #include <ctype.h> // tolower
++#include <time.h>
+ 
+ #ifndef LIBUSB_DETACH
+ /* detach the device from crappy kernel drivers */
+@@ -37,6 +38,28 @@
  #endif
  #include <unistd.h>
  
@@ -31,7 +39,7 @@ index f8ba370..0792890 100644
  #include "spd_cmd.h"
  
  static void print_mem(FILE *f, uint8_t *buf, size_t len) {
-@@ -93,6 +115,15 @@ typedef struct {
+@@ -93,6 +116,15 @@ typedef struct {
  #else
  	int serial;
  #endif
@@ -47,7 +55,7 @@ index f8ba370..0792890 100644
  	int flags, recv_len, recv_pos;
  	int raw_len, enc_len, verbose, timeout;
  } spdio_t;
-@@ -190,6 +221,441 @@ static void init_serial(int serial) {
+@@ -190,6 +222,441 @@ static void init_serial(int serial) {
  }
  #endif
  
@@ -489,7 +497,7 @@ index f8ba370..0792890 100644
  #if USE_LIBUSB
  static spdio_t* spdio_init(libusb_device_handle *dev_handle, int flags) {
  #else
-@@ -198,8 +664,9 @@ static spdio_t* spdio_init(int serial, int flags) {
+@@ -198,8 +665,9 @@ static spdio_t* spdio_init(int serial, int flags) {
  	uint8_t *p; spdio_t *io;
  
  #if USE_LIBUSB
@@ -501,7 +509,7 @@ index f8ba370..0792890 100644
  #else
  	init_serial(serial);
  	// fcntl(serial, F_SETFL, FNDELAY);
-@@ -227,11 +694,23 @@ static spdio_t* spdio_init(int serial, int flags) {
+@@ -227,11 +695,23 @@ static spdio_t* spdio_init(int serial, int flags) {
  	io->enc_buf = p;
  	io->verbose = 0;
  	io->timeout = 1000;
@@ -525,7 +533,7 @@ index f8ba370..0792890 100644
  #if USE_LIBUSB
  	libusb_close(io->dev_handle);
  #else
-@@ -397,6 +876,13 @@ static int send_msg(spdio_t *io) {
+@@ -397,6 +877,13 @@ static int send_msg(spdio_t *io) {
  		} else DBG_LOG("send: unknown message\n");
  	}
  
@@ -539,7 +547,7 @@ index f8ba370..0792890 100644
  #if USE_LIBUSB
  	{
  		int err = libusb_bulk_transfer(io->dev_handle,
-@@ -405,7 +891,7 @@ static int send_msg(spdio_t *io) {
+@@ -405,7 +892,7 @@ static int send_msg(spdio_t *io) {
  			ERR_EXIT("usb_send failed : %s\n", libusb_error_name(err));
  	}
  	// UMS9117 waits too long after a 512 byte block.
@@ -548,7 +556,7 @@ index f8ba370..0792890 100644
  		int dummy;
  		// signal end of transfer
  		libusb_bulk_transfer(io->dev_handle,
-@@ -432,13 +918,22 @@ static int recv_msg1(spdio_t *io) {
+@@ -432,13 +919,22 @@ static int recv_msg1(spdio_t *io) {
  	pos = io->recv_pos;
  	for (;;) {
  		if (pos >= len) {
@@ -571,7 +579,7 @@ index f8ba370..0792890 100644
  #else
  			if (io->timeout >= 0) {
  				struct pollfd fds = { 0 };
-@@ -618,7 +1113,7 @@ static void send_file(spdio_t *io, const char *fn,
+@@ -618,7 +1114,7 @@ static void send_file(spdio_t *io, const char *fn,
  	uint8_t *mem; size_t size = 0;
  	mem = loadfile(fn, &size, 0);
  	if (!mem) ERR_EXIT("loadfile(\"%s\") failed\n", fn);
@@ -580,7 +588,106 @@ index f8ba370..0792890 100644
  	if (size < src_offs)
  		ERR_EXIT("data outside the file\n");
  	size -= src_offs;
-@@ -1000,11 +1495,109 @@ static void erase_partition(spdio_t *io, const char *name) {
+@@ -805,11 +1301,52 @@ static void select_partition(spdio_t *io, const char *name,
+ 			sizeof(pkt.name) + (mode64 ? 16 : 4));
+ }
+ 
++/* Milliseconds on a clock that only goes forward (on Windows, wrapping
++   every 49 days: at worst one extra progress line). */
++static uint64_t now_ms(void) {
++#if SPD_WIN
++	return GetTickCount();
++#else
++	struct timespec ts;
++	clock_gettime(CLOCK_MONOTONIC, &ts);
++	return (uint64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
++#endif
++}
++
++/* How far a read or write has got, at most about once a second (the
++   caller shows it): "reading: boot_a, 0x200000 of 0x4000000". */
++static void show_progress(const char *what, const char *name,
++		uint64_t done, uint64_t len, uint64_t *shown) {
++	uint64_t t = now_ms();
++	if (done >= len || t - *shown < 1000) return;
++	*shown = t;
++	DBG_LOG("%s: %s, 0x%llx of 0x%llx\n", what, name,
++			(long long)done, (long long)len);
++}
++
++/* Bytes at a time for reads when no blk_size was given: 0xf000 (15 x
++   4 KB, so every offset stays 4 KB aligned) once FDL2 offers raw data
++   writes or says its storage is UFS (other spd_dump builds for these
++   chips read about as much at once), else 4 KB. Writes that aren't raw
++   data stay at 4 KB. */
++static unsigned fdl2_step;
++
++static unsigned read_step(void) {
++	return fdl2_step ? fdl2_step : 4096;
++}
++
++/* An answer saying FDL2 refused the command (not an ACK, a version or
++   data). */
++static int refused(int type) {
++	return (type >= BSL_REP_INVALID_CMD && type <= 0x8d) ||
++			type == BSL_REP_UNSUPPORTED_COMMAND;
++}
++
+ static uint64_t dump_partition(spdio_t *io,
+ 		const char *name, uint64_t start, uint64_t len,
+ 		const char *fn, unsigned step) {
+-	uint32_t n, nread, t32; uint64_t offset, n64;
+-	int ret, mode64 = (start + len) >> 32;
++	uint32_t n, nread, t32; uint64_t offset, n64, shown = now_ms();
++	int ret, got, less, mode64 = (start + len) >> 32;
+ 	FILE *fo;
+ 
+ 	select_partition(io, name, start + len, mode64, BSL_CMD_READ_START);
+@@ -829,18 +1366,42 @@ static uint64_t dump_partition(spdio_t *io,
+ 
+ 		encode_msg(io, BSL_CMD_READ_MIDST, data, mode64 ? 12 : 8);
+ 		send_msg(io);
+-		ret = recv_msg(io);
++		got = recv_msg(io);
+ 		if ((ret = recv_type(io)) != BSL_REP_READ_FLASH) {
++			/* FDL2 that refuses to read that much at once: 4 KB from now
++			   on. Not after a timeout (its answer may still come) or
++			   any other answer. */
++			if (got && refused(ret) && offset == start && n > 4096) {
++				DBG_LOG("FDL2 didn't read 0x%x bytes at a time (0x%04x); reading 4 KB at a time\n",
++						n, ret);
++				step = 4096;
++				fdl2_step = 0;
++				continue;
++			}
+ 			DBG_LOG("unexpected response (0x%04x)\n", ret);
+ 			break;
+ 		}
+ 		nread = READ16_BE(io->raw_buf + 2);
+ 		if (n < nread)
+ 			ERR_EXIT("unexpected length\n");
++		/* FDL2 that answers a first large read with less: the rest of
++		   this partition that much at a time, in whole 4 KB (at least
++		   4 KB), keeping only whole 4 KB of this answer so every offset
++		   asked for stays aligned (the rest is asked for again). */
++		less = nread != n && offset == start && n > 4096;
++		if (less) {
++			step = nread & ~0xfffu;
++			if (!step) step = 4096;
++			DBG_LOG("FDL2 read 0x%x of 0x%x bytes; reading 0x%x at a time\n",
++					nread, n, step);
++			nread &= ~0xfffu;
++		}
+ 		if (fwrite(io->raw_buf + 4, 1, nread, fo) != nread) 
+ 			ERR_EXIT("fwrite(dump) failed\n");
+ 		offset += nread;
++		if (less) continue;
+ 		if (n != nread) break;
++		show_progress("reading", name, offset - start, len, &shown);
+ 	}
+ 	DBG_LOG("dump_partition: %s+0x%llx, target: 0x%llx, read: 0x%llx\n",
+ 			name, (long long)start, (long long)len,
+@@ -1000,11 +1561,110 @@ static void erase_partition(spdio_t *io, const char *name) {
  	send_and_check(io);
  }
  
@@ -596,7 +703,7 @@ index f8ba370..0792890 100644
 +static void fdl2_setup(spdio_t *io) {
 +	const uint8_t *p = io->raw_buf + 4, *end;
 +	unsigned len = READ16_BE(io->raw_buf + 2);
-+	uint32_t no_hdlc = 0, raw = 0, flush_kb = 0;
++	uint32_t no_hdlc = 0, raw = 0, flush_kb = 0, storage = 0;
 +	if (len < 4 || memcmp(p, "newt", 4)) return;
 +	end = p + len;
 +	p += 4;
@@ -610,14 +717,22 @@ index f8ba370..0792890 100644
 +		if (tag == 0) no_hdlc = v;
 +		else if (tag == 2) raw = v & 0xff;
 +		else if (tag == 3) flush_kb = v;
++		else if (tag == 6) storage = v;
 +		p += n;
 +	}
-+	DBG_LOG("FDL2 offers: no transcoding %u, raw data %u, %u KB at a time\n",
-+			(unsigned)no_hdlc, (unsigned)raw, (unsigned)flush_kb);
++	DBG_LOG("FDL2 offers: no transcoding %u, raw data %u, %u KB at a time, storage 0x%x\n",
++			(unsigned)no_hdlc, (unsigned)raw, (unsigned)flush_kb, (unsigned)storage);
++	if (raw >= 1 || storage == 0x103) {
++		fdl2_step = 0xf000;
++		DBG_LOG("reading 0x%x bytes at a time\n", fdl2_step);
++	}
 +	if (no_hdlc) {
 +		encode_msg(io, BSL_CMD_DISABLE_TRANSCODE, NULL, 0);
 +		send_msg(io);
-+		if (recv_msg(io) && recv_type(io) == BSL_REP_ACK) {
++		/* A late answer would be taken for the next one's. */
++		if (!recv_msg_timeout(io, 15000))
++			ERR_EXIT("FDL2 didn't answer turning transcoding off\n");
++		if (recv_type(io) == BSL_REP_ACK) {
 +			io->flags &= ~FLAGS_TRANSCODE;
 +			DBG_LOG("transcoding off\n");
 +		} else DBG_LOG("FDL2 didn't turn transcoding off; carrying on with it\n");
@@ -627,7 +742,9 @@ index f8ba370..0792890 100644
 +	if (raw >= 2 && flush_kb >= 4 && flush_kb <= 0x4000) {
 +		encode_msg(io, BSL_CMD_WRITE_RAW_DATA_ENABLE, NULL, 0);
 +		send_msg(io);
-+		if (recv_msg(io) && recv_type(io) == BSL_REP_ACK) {
++		if (!recv_msg_timeout(io, 15000))
++			ERR_EXIT("FDL2 didn't answer turning raw data writes on\n");
++		if (recv_type(io) == BSL_REP_ACK) {
 +			raw_step = flush_kb << 10;
 +			DBG_LOG("raw data writes on (%u KB at a time)\n", (unsigned)flush_kb);
 +		} else DBG_LOG("FDL2 didn't turn raw data writes on; writing the usual way\n");
@@ -672,26 +789,17 @@ index f8ba370..0792890 100644
 +		ERR_EXIT("usb_send failed (%d / %u)\n", ret, n);
 +}
 +
-+/* How far a long write has got, every 128 MB (the caller shows it). */
-+static void write_progress(const char *name, uint64_t done, uint64_t len,
-+		uint64_t *shown) {
-+	if (len < (256u << 20) || done - *shown < (128u << 20)) return;
-+	*shown = done;
-+	DBG_LOG("writing: %s, 0x%llx of 0x%llx\n", name,
-+			(long long)done, (long long)len);
-+}
-+
  static void load_partition(spdio_t *io, const char *name,
  		const char *fn, unsigned step) {
 -	uint64_t offset, len, n64;
-+	uint64_t offset, len, n64, shown = 0;
++	uint64_t offset, len, n64, shown = now_ms();
  	unsigned mode64, n; int ret;
  	FILE *fi;
 +	uint8_t *rawbuf = NULL;
  
  	fi = fopen(fn, "rb");
  	if (!fi) ERR_EXIT("fopen(load) failed\n");
-@@ -1019,19 +1612,39 @@ static void load_partition(spdio_t *io, const char *name,
+@@ -1019,19 +1679,44 @@ static void load_partition(spdio_t *io, const char *name,
  	select_partition(io, name, len, mode64, BSL_CMD_START_DATA);
  	send_and_check(io);
  
@@ -704,13 +812,18 @@ index f8ba370..0792890 100644
 +		encode_msg(io, BSL_CMD_DLOAD_RAW_START2, NULL, 0);
  		send_msg(io);
 -		recv_msg_timeout(io, 15000);
-+		if (recv_msg(io) && recv_type(io) == BSL_REP_ACK) {
++		/* Nothing of the partition is sent until FDL2 says how: data
++		   sent the other way would be written as it is. */
++		if (!recv_msg_timeout(io, 15000))
++			ERR_EXIT("FDL2 didn't answer the raw data write start\n");
++		ret = recv_type(io);
++		if (ret == BSL_REP_ACK) {
 +			rawbuf = (uint8_t*)malloc(raw_step);
 +			if (!rawbuf) ERR_EXIT("malloc failed\n");
-+		} else {
-+			DBG_LOG("FDL2 didn't start a raw data write; writing the usual way\n");
++		} else if (refused(ret)) {
++			DBG_LOG("FDL2 didn't start a raw data write (0x%04x); writing 4 KB at a time\n", ret);
 +			raw_step = 0;
-+		}
++		} else ERR_EXIT("unexpected answer to the raw data write start (0x%04x)\n", ret);
 +	}
 +	for (offset = 0; (n64 = len - offset); offset += n) {
 +		if (rawbuf) {
@@ -731,13 +844,13 @@ index f8ba370..0792890 100644
  			DBG_LOG("unexpected response (0x%04x)\n", ret);
  			break;
  		}
-+		write_progress(name, offset + n, len, &shown);
++		show_progress("writing", name, offset + n, len, &shown);
  	}
 +	free(rawbuf);
  	DBG_LOG("load_partition: %s, target: 0x%llx, written: 0x%llx\n",
  			name, (long long)len, (long long)offset);
  	fclose(fi);
-@@ -1182,13 +1795,153 @@ found:
+@@ -1182,13 +1867,153 @@ found:
  
  #define REOPEN_FREQ 2
  
@@ -892,7 +1005,7 @@ index f8ba370..0792890 100644
  	int wait = 300 * REOPEN_FREQ;
  	const char *tty = "/dev/ttyUSB0";
  	int verbose = 0, fdl_loaded = 0;
-@@ -1197,6 +1950,11 @@ int main(int argc, char **argv) {
+@@ -1197,6 +2022,11 @@ int main(int argc, char **argv) {
  	int keep_charge = 0, end_data = 1, blk_size = 0;
  	int secure_boot = 0;
  
@@ -904,7 +1017,7 @@ index f8ba370..0792890 100644
  #if USE_LIBUSB
  	(void)tty;
  	ret = libusb_init(NULL);
-@@ -1223,7 +1981,75 @@ int main(int argc, char **argv) {
+@@ -1223,7 +2053,75 @@ int main(int argc, char **argv) {
  	}
  
  	for (i = 0; ; i++) {
@@ -981,7 +1094,7 @@ index f8ba370..0792890 100644
  		device = libusb_open_device_with_vid_pid(NULL, 0x1782, 0x4d00);
  		if (device) break;
  		if (i >= wait)
-@@ -1239,7 +2065,7 @@ int main(int argc, char **argv) {
+@@ -1239,7 +2137,7 @@ int main(int argc, char **argv) {
  	}
  
  #if USE_LIBUSB
@@ -990,7 +1103,7 @@ index f8ba370..0792890 100644
  #else
  	io = spdio_init(serial, 0);
  #endif
-@@ -1258,18 +2084,25 @@ int main(int argc, char **argv) {
+@@ -1258,18 +2156,25 @@ int main(int argc, char **argv) {
  				// Required for smartphones.
  				// Is there a way to do the same with usb-serial?
  #if USE_LIBUSB
@@ -1016,7 +1129,7 @@ index f8ba370..0792890 100644
  				if (recv_type(io) != BSL_REP_VER)
  					ERR_EXIT("ver expected\n");
  
-@@ -1292,17 +2125,35 @@ int main(int argc, char **argv) {
+@@ -1292,17 +2197,35 @@ int main(int argc, char **argv) {
  					encode_msg(io, BSL_CMD_EXEC_DATA, NULL, 0);
  					send_and_check(io);
  				}
@@ -1053,23 +1166,32 @@ index f8ba370..0792890 100644
  				}
  				if (recv_type(io) != BSL_REP_VER)
  					ERR_EXIT("ver expected\n");
-@@ -1330,8 +2181,14 @@ int main(int argc, char **argv) {
+@@ -1330,8 +2253,23 @@ int main(int argc, char **argv) {
  				send_and_check(io);
  
  				if (keep_charge) {
 +					/* Not every FDL1 knows it (Unisoc's tools don't send
-+					   it): carry on without. */
++					   it): a refusal carries on without. */
  					encode_msg(io, BSL_CMD_KEEP_CHARGE, NULL, 0);
 -					send_and_check(io);
 +					send_msg(io);
 +					ret = recv_msg(io);
-+					if (!ret) DBG_LOG("FDL1 didn't answer keep_charge; carrying on\n");
-+					else if ((ret = recv_type(io)) != BSL_REP_ACK)
++					/* No answer in time carries on too, once a late one
++					   (if any) was read, so it isn't taken for the next
++					   command's. */
++					if (!ret) {
++						int drain = 3000;
++						DBG_LOG("FDL1 didn't answer keep_charge; carrying on\n");
++						while (recv_msg_timeout(io, drain)) {
++							DBG_LOG("FDL1's late answer to keep_charge: 0x%04x\n", recv_type(io));
++							drain = 500;
++						}
++					} else if ((ret = recv_type(io)) != BSL_REP_ACK)
 +						DBG_LOG("FDL1 doesn't take keep_charge (0x%04x); carrying on\n", ret);
  				}
  
  			} else {
-@@ -1347,9 +2204,10 @@ int main(int argc, char **argv) {
+@@ -1347,9 +2285,10 @@ int main(int argc, char **argv) {
  				if (!ret) ERR_EXIT("timeout reached\n");
  				ret = recv_type(io);
  				// Is it always bullshit?
@@ -1082,3 +1204,12 @@ index f8ba370..0792890 100644
  					ERR_EXIT("unexpected response (0x%04x)\n", ret);
  			}
  
+@@ -1448,7 +2387,7 @@ int main(int argc, char **argv) {
+ 			if (offset + size < offset)
+ 				ERR_EXIT("64-bit limit reached\n");
+ 			dump_partition(io, name, offset, size, fn,
+-					blk_size ? blk_size : 4096);
++					blk_size ? (unsigned)blk_size : read_step());
+ 			argc -= 5; argv += 5;
+ 
+ 		} else if (!strcmp(argv[1], "partition_list")) {

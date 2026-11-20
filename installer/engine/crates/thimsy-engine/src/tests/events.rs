@@ -22,6 +22,26 @@ fn progress_is_rate_limited_but_final_progress_always_arrives() {
 }
 
 #[test]
+fn each_new_label_shows_at_once() {
+    let sink = Arc::new(MemorySink::default());
+    let rep = Reporter::new(sink.clone());
+    rep.stage("flash", "Installing Thimsy");
+    rep.progress_for("Backing up {partition}", "prodnv", 1, 100);
+    rep.progress_for("Backing up {partition}", "prodnv", 2, 100);
+    rep.progress_for("Reading {partition}", "boot_a", 3, 100);
+    rep.progress_for("Reading {partition}", "boot_a", 4, 100);
+    let ev = sink.0.lock().unwrap();
+    let labels: Vec<&str> = ev
+        .iter()
+        .filter_map(|e| match e {
+            Event::Progress { label, .. } => Some(label.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(labels, ["Backing up prodnv", "Reading boot_a"]);
+}
+
+#[test]
 fn events_serialize_to_the_protocol_shape() {
     let e = Event::Error {
         code: "hash_mismatch".into(),

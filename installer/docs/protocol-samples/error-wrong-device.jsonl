@@ -17,6 +17,7 @@
 {"level":"info","message":"[0] prodnv, 1","type":"log"}
 {"level":"info","message":"[1] super, 10","type":"log"}
 {"level":"info","message":"[2] userdata, 0xffffffff","type":"log"}
+{"level":"info","message":"reading: prodnv, 0x80000 of 0x100000","type":"log"}
 {"level":"info","message":"dump_partition: prodnv+0x0, target: 0x100000, read: 0x100000","type":"log"}
 {"level":"info","message":"Answer \"yes\" to confirm the \"write partition\" command: ","type":"log"}
 {"level":"info","message":"operation is not confirmed","type":"log"}

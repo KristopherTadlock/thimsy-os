@@ -21,21 +21,26 @@
 {"level":"info","message":"[5] persist, 1","type":"log"}
 {"level":"info","message":"[6] metadata, 1","type":"log"}
 {"level":"info","message":"[7] userdata, 0xffffffff","type":"log"}
+{"level":"info","message":"reading: prodnv, 0x80000 of 0x100000","type":"log"}
 {"level":"info","message":"dump_partition: prodnv+0x0, target: 0x100000, read: 0x100000","type":"log"}
 {"level":"info","message":"Answer \"yes\" to confirm the \"write partition\" command: ","type":"log"}
 {"level":"info","message":"The device's partition table matches this firmware","type":"log"}
 {"level":"info","message":"file size : 0x10000","type":"log"}
-{"level":"info","message":"Answer \"yes\" to confirm the \"write partition\" command: ","type":"log"}
+{"level":"info","message":"writing: vendor_boot_a, 0x8000 of 0x10000","type":"log"}
 {"level":"info","message":"load_partition: vendor_boot_a, target: 0x10000, written: 0x10000","type":"log"}
+{"level":"info","message":"Answer \"yes\" to confirm the \"write partition\" command: ","type":"log"}
 {"level":"info","message":"file size : 0x10000","type":"log"}
+{"level":"info","message":"writing: vendor_boot_b, 0x8000 of 0x10000","type":"log"}
 {"level":"info","message":"load_partition: vendor_boot_b, target: 0x10000, written: 0x10000","type":"log"}
 {"level":"info","message":"Answer \"yes\" to confirm the \"write partition\" command: ","type":"log"}
 {"level":"info","message":"file size : 0x2000","type":"log"}
+{"level":"info","message":"writing: boot_a, 0x1000 of 0x2000","type":"log"}
 {"level":"info","message":"load_partition: boot_a, target: 0x2000, written: 0x2000","type":"log"}
 {"level":"info","message":"Answer \"yes\" to confirm the \"write partition\" command: ","type":"log"}
 {"level":"info","message":"file size : 0xc00000","type":"log"}
+{"level":"info","message":"writing: super, 0x600000 of 0xc00000","type":"log"}
 {"level":"info","message":"load_partition: super, target: 0xc00000, written: 0xc00000","type":"log"}
-{"done":12722176,"label":"Wrote super","stage":"flash","total":12722176,"type":"progress"}
+{"done":13770752,"label":"Wrote super","stage":"flash","total":13770752,"type":"progress"}
 {"level":"info","message":"Answer \"yes\" to confirm the \"erase partition\" command: ","type":"log"}
 {"level":"info","message":"Answer \"yes\" to confirm the \"erase partition\" command: ","type":"log"}
 {"stage":"reboot","title":"Restarting the device","type":"stage"}

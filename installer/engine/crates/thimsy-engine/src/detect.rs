@@ -76,7 +76,7 @@ pub type UsbDevice = (u16, u16, Option<String>);
 /// Every USB device connected.
 fn list() -> Result<Vec<UsbDevice>> {
     if let Some(fake) = test_devices() {
-        return Ok(fake);
+        return fake;
     }
     Ok(nusb::list_devices()
         .wait()?
@@ -108,7 +108,7 @@ pub fn scan(cat: &Catalog) -> Result<Vec<Seen>> {
 }
 
 #[cfg(not(test))]
-fn test_devices() -> Option<Vec<UsbDevice>> {
+fn test_devices() -> Option<Result<Vec<UsbDevice>>> {
     None
 }
 
@@ -116,16 +116,26 @@ fn test_devices() -> Option<Vec<UsbDevice>> {
 // item.
 
 #[cfg(test)]
-fn test_devices() -> Option<Vec<UsbDevice>> {
-    test::DEVICES.with(|d| d.borrow().clone())
+fn test_devices() -> Option<Result<Vec<UsbDevice>>> {
+    if test::FAIL.with(|f| f.get()) {
+        return Some(Err(anyhow::anyhow!("USB devices can't be listed (test)")));
+    }
+    if let Some(next) = test::SCANS.with(|s| s.borrow_mut().pop_front()) {
+        return Some(Ok(next));
+    }
+    test::DEVICES.with(|d| d.borrow().clone()).map(Ok)
 }
 
-/// Test hook: the USB devices [`scan`] sees, per thread.
+/// Test hooks, per thread: the USB devices [`scan`] sees, after the
+/// queued ones (one per scan), or (FAIL) that they can't be listed.
 #[cfg(test)]
 pub(crate) mod test {
-    use std::cell::RefCell;
+    use std::cell::{Cell, RefCell};
+    use std::collections::VecDeque;
     thread_local! {
+        pub static FAIL: Cell<bool> = const { Cell::new(false) };
         pub static DEVICES: RefCell<Option<Vec<super::UsbDevice>>> = const { RefCell::new(None) };
+        pub static SCANS: RefCell<VecDeque<Vec<super::UsbDevice>>> = const { RefCell::new(VecDeque::new()) };
     }
 }
 

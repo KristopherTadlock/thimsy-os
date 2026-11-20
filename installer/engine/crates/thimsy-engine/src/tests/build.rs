@@ -906,6 +906,33 @@ fn flash_checks_the_image_the_device_and_the_backups() {
     };
     assert!(sink.0.lock().unwrap().iter().any(|e| matches!(e,
         Event::Log { message, .. } if message.contains("partition table matches"))));
+    // The backup's progress has its own label, on the same bar as the writes.
+    let progress = |sink: &crate::events::MemorySink, label: &str| -> Vec<(u64, u64)> {
+        sink.0
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|e| match e {
+                Event::Progress {
+                    label: l,
+                    done,
+                    total,
+                    ..
+                } if l == label => Some((*done, *total)),
+                _ => None,
+            })
+            .collect()
+    };
+    let backing_up = progress(&sink, "Backing up prodnv");
+    let wrote = progress(&sink, "Wrote super");
+    assert!(
+        !backing_up.is_empty() && !wrote.is_empty(),
+        "{backing_up:?} {wrote:?}"
+    );
+    assert!(backing_up
+        .iter()
+        .all(|(d, t)| d < t && Some(t) == wrote.last().map(|w| &w.1)));
+    assert!(!text.contains("blk_size"), "full speed reads: {text}");
 
     // Another device (or stock layout): super is a different size. Nothing
     // is confirmed, so nothing is written or erased.
@@ -960,11 +987,26 @@ fn flash_checks_the_image_the_device_and_the_backups() {
         "{text}"
     );
 
-    // A backup read short: nothing is confirmed, and the file is kept,
-    // marked incomplete.
+    // A backup read short: nothing is confirmed, and it's tried once more
+    // reading 4 KB at a time (the device restarted in download mode). It
+    // stays short: each run's file is kept, marked incomplete.
+    // The device is still in download mode's loader after the first run:
+    // the second waits until it's gone and back.
+    let cube = (0x1782u16, 0x4d00u16, None::<String>);
+    let restarts = || {
+        crate::detect::test::SCANS.with(|s| {
+            *s.borrow_mut() = [vec![cube.clone()], vec![cube.clone()], vec![]].into();
+        });
+        crate::detect::test::DEVICES.with(|d| *d.borrow_mut() = Some(vec![cube.clone()]));
+    };
+    let restarted = || {
+        assert!(crate::detect::test::SCANS.with(|s| s.borrow().is_empty()));
+        crate::detect::test::DEVICES.with(|d| *d.borrow_mut() = None);
+    };
+    restarts();
     fake_env(Some(("FAKE_SPD_SHORT_READ", "prodnv".to_string())));
     let before = runs(&backup_dir);
-    let (rep, _) = quiet();
+    let (rep, sink) = quiet();
     let err = flash::flash(&fx.catalog, &o, &rep).unwrap_err();
     assert_eq!(crate::error::code_of(&err).0, Code::ToolFailed, "{err:#}");
     assert!(
@@ -976,24 +1018,76 @@ fn flash_checks_the_image_the_device_and_the_backups() {
         !text.contains("write_part") && !text.contains("erase_part"),
         "{text}"
     );
+    assert_eq!(text.matches("blk_size 0x1000").count(), 1, "{text}");
+    let prompts = sink
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|e| matches!(e, Event::Prompt { id, .. } if id == "enter_download_mode"))
+        .count();
+    assert_eq!(prompts, 2);
+    restarted();
     let new: Vec<PathBuf> = runs(&backup_dir)
         .into_iter()
         .filter(|r| !before.contains(r))
         .collect();
-    assert_eq!(new.len(), 1, "{new:?}");
-    assert_eq!(
-        std::fs::metadata(new[0].join("prodnv.img.incomplete"))
-            .unwrap()
-            .len(),
-        MIB / 2
-    );
-    assert!(!new[0].join("prodnv.img").exists());
+    assert_eq!(new.len(), 2, "{new:?}");
+    for run in &new {
+        assert_eq!(
+            std::fs::metadata(run.join("prodnv.img.incomplete"))
+                .unwrap()
+                .len(),
+            MIB / 2
+        );
+        assert!(!run.join("prodnv.img").exists());
+    }
     for run in &before {
         assert_eq!(
             std::fs::metadata(run.join("prodnv.img")).unwrap().len(),
             MIB
         );
     }
+
+    // FDL2 refuses the larger reads it offered: the run stops at the first
+    // backup (nothing written), and the second run, 4 KB at a time, installs.
+    restarts();
+    fake_env(Some(("FAKE_SPD_BIG_READ_FAIL", "prodnv".to_string())));
+    let before = runs(&backup_dir);
+    let (rep, sink) = quiet();
+    let r = flash::flash(&fx.catalog, &o, &rep).unwrap();
+    restarted();
+    let text = std::fs::read_to_string(&log).unwrap();
+    let (first, second) = text.split_once("blk_size 0x1000").expect(&text);
+    assert!(first.contains("read_part prodnv") && first.contains("refused"));
+    assert!(
+        !first.contains("write_part") && !first.contains("erase_part"),
+        "{first}"
+    );
+    assert!(
+        second.contains(&format!("sha256 super {super_sha}")),
+        "{second}"
+    );
+    let ev = sink.0.lock().unwrap();
+    assert!(ev.iter().any(|e| matches!(e,
+        Event::Stage { stage, title } if stage == "wait_device" && title.ends_with("again"))));
+    assert!(ev.iter().any(|e| matches!(e,
+        Event::Log { level, message } if level == "warn" && message.contains("4 KB at a time"))));
+    drop(ev);
+    let new: Vec<PathBuf> = runs(&backup_dir)
+        .into_iter()
+        .filter(|r| !before.contains(r))
+        .collect();
+    assert_eq!(new.len(), 2, "{new:?}");
+    // The installed run's backup is complete; the stopped one's is kept,
+    // marked incomplete.
+    let done = r.backup.unwrap();
+    assert_eq!(
+        std::fs::metadata(done.join("prodnv.img")).unwrap().len(),
+        MIB
+    );
+    let stopped = new.iter().find(|r| **r != done).unwrap();
+    assert!(stopped.join("prodnv.img.incomplete").exists());
 
     // The device stops answering halfway through a write: spd_dump says so
     // and carries on (exit 0), but the flash stops there and fails.
@@ -1157,6 +1251,14 @@ fn flash_checks_the_base_the_connection_and_each_partition() {
     assert!(text.contains("write_part super") && !text.contains("write_part boot_a"));
     assert!(sink.0.lock().unwrap().iter().any(|e| matches!(e,
         Event::Log { message, .. } if message.contains("runs the base this update needs"))));
+    // The backup and the base check each show under their own label.
+    for label in ["Backing up prodnv", "Reading boot_a"] {
+        assert!(
+            sink.0.lock().unwrap().iter().any(|e| matches!(e,
+                Event::Progress { label: l, stage, .. } if l == label && stage == "flash")),
+            "{label}"
+        );
+    }
     // What was read for the check isn't kept with the backups; the run says
     // which device and table it came from.
     let run = r.backup.unwrap();

@@ -85,7 +85,7 @@ the real catalog.
 ### `catalog --json`
 One line:
 ```json
-{"type":"catalog","version":"0.1.0-test18","release":"Thimsy 1.0a","engine":"0.1.0","host":"linux",
+{"type":"catalog","version":"0.1.0-test19","release":"Thimsy 1.0a","engine":"0.1.0","host":"linux",
  "devices":[{
   "id":"anbernic-rg-cube","name":"Anbernic RG Cube","maker":"Anbernic",
   "soc":"Unisoc T820","display":"720×720","status":"testing",
@@ -388,11 +388,13 @@ Errors while flashing:
   that didn't work, plain Windows serial I/O done the same way (with a
   thread that keeps reading the port). The bootloader won't take a
   command while an answer of its own is still waiting to be read. It asks
-  for the bootloader's version up to five times each way. It logs `FDL1
-  started` once the bootloader runs FDL1, then sends FDL1 a single 0x7E
-  (as Unisoc's tools do; the RG Cube's FDL1 stops taking data after a
-  longer first message, so every platform sends one byte) and logs `no answer from FDL1 yet (try n, … ms
-  after it started)` for each try that gets no answer. If FDL1 doesn't
+  for the bootloader's version up to five times each way. Through
+  Unisoc's driver it logs `FDL1 started` once the bootloader runs FDL1,
+  and `no answer from FDL1 yet (try n, … ms after it started)` for each
+  try that gets no answer. Its first message to FDL1 is a single 0x7E, as
+  Unisoc's tools send it, on every platform and connection (libusb on
+  Linux and macOS, WinUSB or Unisoc's driver on Windows): the RG Cube's
+  FDL1 stops taking data after a longer first message. If FDL1 doesn't
   take the message (it may restart the USB connection as it starts), it
   logs `FDL1 didn't take the message on COMn (how: wrote …, error …, in
   … ms, … ms after FDL1 started); waiting for the device to come back`,
@@ -428,12 +430,48 @@ Errors while flashing:
   carrying "newt" and what it supports) offers them, `spd_dump` turns
   transcoding off and raw data writes on, as Unisoc's tools do (`FDL2
   offers: …`, `transcoding off`, `raw data writes on (2048 KB at a
-  time)` on the RG Cube): each partition then goes as one raw start and
-  plain chunks of that size, each answered with an ACK, instead of 4 KB
-  messages. Otherwise, or if FDL2 refuses, it writes the usual way. For
-  partitions of 256 MB or more it logs `writing: NAME, 0xDONE of
-  0xTOTAL` every 128 MB, which the engine shows as progress (`Writing
-  {partition}`) without counting the partition written.
+  time)` on the RG Cube), waiting up to 15 s for each answer (none stops
+  the run: a late one would be taken for the next command's). Each
+  partition then goes as one raw start and plain chunks of that size,
+  each answered with an ACK, instead of 4 KB messages. The raw start's
+  answer is awaited up to 15 s before any of the partition is sent: no
+  answer stops the run, a refusal (an error code) writes that partition
+  and the rest in 4 KB messages (`FDL2 didn't start a raw data write
+  (…); writing 4 KB at a time`), anything else stops the run. Without
+  raw data writes it writes in 4 KB messages.
+- Reading: when FDL2 offers raw data writes, or says its storage is UFS
+  (`storage 0x103`), reads go 0xf000 bytes (15 × 4 KB, so every offset
+  stays 4 KB aligned) at a time instead of 4 KB, about as much as other
+  `spd_dump` builds for these chips read at once (`reading 0xf000 bytes
+  at a time`). If FDL2 refuses the first such read with an error code,
+  `spd_dump` asks for that chunk again and reads the rest of the run 4 KB
+  at a time (`FDL2 didn't read 0xf000 bytes at a time (…); reading 4 KB
+  at a time`). If it answers with less, it keeps the whole 4 KB of
+  what it got (so every offset it asks for stays 4 KB aligned) and reads
+  the rest of that partition that much at a time, at least 4 KB (`FDL2
+  read 0x… of 0xf000 bytes; reading 0x… at a time`). Any other answer,
+  or none, stops the run (`unexpected response`), before anything is
+  written. Then, once per flash, the engine runs it again reading 4 KB
+  at a time (`blk_size 0x1000` after the FDLs) when it stopped past the
+  device's partition table and before the first confirmation with a
+  read unfinished or short: a `warn` log says why, the stage goes back to
+  `wait_device` ("Connect the device in download mode again") with the
+  `enter_download_mode` prompt, and the second run gets a new backup
+  folder (the first one's is kept, short files marked `.incomplete`). The
+  device is still in the loader the first run started, with the same USB
+  ID, so the engine first waits (up to the recipe's `wait_seconds` each)
+  until that ID is gone and back: `device_not_found` if it never leaves
+  (hint: hold the power button to turn the device off, then connect it in
+  download mode) or never comes back, and also if USB devices can't be
+  listed (hint: restart the device in download mode and try again).
+- Progress: about once a second during any read or write, `spd_dump`
+  logs `reading: NAME, 0xDONE of 0xTOTAL` or `writing: NAME, 0xDONE of
+  0xTOTAL`. The engine shows reads as `Backing up {partition}` (backups)
+  or `Reading {partition}` (update mode's base images), and writes as
+  `Writing {partition}` (`Wrote {partition}` once one is reported
+  complete, which is when a partition counts as written). All share one
+  bar, over the bytes of every planned read and write. Reads come before
+  the checks above; writes don't.
 - `tool_failed` (the tool is killed at once) when `spd_dump` reports a
   partial write (`load_partition: …, target: T, written: W` with W ≠ T),
   logs `unexpected response`, or writes anything before the checks above

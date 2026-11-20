@@ -19,6 +19,9 @@ FAKE_SPD_SHORT_WRITE=PART: the device stops answering halfway through
   "written" < "target", then carries on and exits 0.
 FAKE_SPD_SHORT_READ=PART: reading PART stops halfway (a short packet ends
   dump_partition() without an error line); the backup file is half size.
+FAKE_SPD_BIG_READ_FAIL=PART: FDL2 refuses the large reads FDL2's offer
+  turns on: reading PART fails ("unexpected response", which stops the run)
+  unless the command line has "blk_size 0x1000" (4 KB reads) before it.
 FAKE_SPD_NO_PROMPT=1: an old or forked spd_dump that never asks before
   writing or erasing.
 FAKE_SPD_UPDATE_MISMATCH=PART: the device runs another base: reading PART
@@ -53,6 +56,7 @@ def log_line(text):
     # The real tool logs to stderr (DBG_LOG); only confirmations go to stdout.
     sys.stderr.write(text + "\n"); sys.stderr.flush()
 connected = False
+slow_reads = False
 log = open(os.environ.get("FAKE_SPD_LOG", os.devnull), "a", buffering=1)
 def confirm(what):
     if os.environ.get("FAKE_SPD_NO_PROMPT"):
@@ -128,6 +132,7 @@ i = 0
 while i < len(args):
     a = args[i]
     if a in ("--wait", "--verbose", "keep_charge", "timeout", "blk_size"):
+        if a == "blk_size": slow_reads = int(args[i+1], 0) <= 0x1000
         log.write(f"{a} {args[i+1]}\n"); i += 2
     elif a == "fdl":
         f, addr = args[i+1], args[i+2]
@@ -151,7 +156,16 @@ while i < len(args):
         if not os.path.isdir(os.path.dirname(out) or "."): sys.exit("fopen(dump) failed")
         got = int(size, 0)
         if os.environ.get("FAKE_SPD_SHORT_READ") == name: got //= 2
+        if os.environ.get("FAKE_SPD_BIG_READ_FAIL") == name and not slow_reads:
+            read_device(name, got // 2, out)
+            log.write(f"read_part {name} {size} {out} refused\n")
+            log_line("unexpected response (0x0084)")
+            log_line(f"dump_partition: {name}+0x0, target: {size}, read: 0x{got // 2:x}")
+            sys.exit(1)
         read_device(name, got, out)
+        # Reads report how far they've got, like the real tool.
+        if got >= 2:
+            log_line(f"reading: {name}, 0x{got // 2:x} of {size}")
         log_line(f"dump_partition: {name}+0x0, target: {size}, read: 0x{got:x}")
         log.write(f"read_part {name} {size} {out}\n"); i += 5
     elif a == "write_part":
@@ -165,9 +179,9 @@ while i < len(args):
             log_line(f"load_partition: {name}, target: 0x{size:x}, written: 0x{size // 2:x}")
             i += 3
             continue
-        # Long writes report how far they've got, like the real tool.
-        if size >= 256 << 20:
-            log_line(f"writing: {name}, 0x{128 << 20:x} of 0x{size:x}")
+        # Writes report how far they've got, like the real tool.
+        if size >= 2:
+            log_line(f"writing: {name}, 0x{size // 2:x} of 0x{size:x}")
         log_line(f"load_partition: {name}, target: 0x{size:x}, written: 0x{size:x}")
         log.write(f"write_part {name} {f} {size}\n")
         # Writing takes the real tool a while; without questions in between

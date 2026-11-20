@@ -124,6 +124,12 @@ jobs:
       matrix:
         os: [ubuntu-22.04, macos-latest]
     steps:
+      # For installer/tools/spd_dump.patch.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: thimsy
+          sparse-checkout: installer/tools
+          persist-credentials: false
       - name: Dependencies
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libusb-1.0-0-dev
@@ -149,6 +155,9 @@ jobs:
       - name: Build spd_dump
         run: |
           git clone "$SPD_DUMP_REPO" spd && cd spd && git checkout "$SPD_DUMP_COMMIT"
+          # Every build gets it: FDL2's faster modes, progress, the one-byte
+          # first message to FDL1 (its Windows-only parts are behind SPD_WIN).
+          git apply ../thimsy/installer/tools/spd_dump.patch
           mkdir -p ../out
           if [ "$RUNNER_OS" = macOS ]; then
             # One universal binary, linked against the universal libusb (whose
@@ -172,6 +181,8 @@ jobs:
             [ "$rc" -eq 1 ] && printf '%s' "$msg" | grep -qE 'unknown option|libusb_init failed' || { echo "::error::$* didn't start"; exit 1; }
           }
           check out/spd_dump
+          # Built with installer/tools/spd_dump.patch.
+          grep -aq 'reading 0x%x bytes at a time' out/spd_dump || { echo "::error::spd_dump was built without its patch"; exit 1; }
           if [ "$RUNNER_OS" = macOS ]; then
             otool -L out/spd_dump
             otool -L out/spd_dump | grep -q '@loader_path/libusb-1.0.0.dylib' || { echo "::error::spd_dump doesn't load the bundled libusb"; exit 1; }
@@ -196,7 +207,7 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
-      # For installer/tools/spd_dump-windows-driver.patch.
+      # For installer/tools/spd_dump.patch.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           path: thimsy
@@ -234,11 +245,11 @@ jobs:
           (cd libusb32 && ./configure --host=i686-w64-mingw32 --prefix="$USB" --enable-static --disable-shared \
              && make -j3 && make install)
           git -c core.autocrlf=false clone "$SPD_DUMP_REPO" spd && cd spd && git checkout "$SPD_DUMP_COMMIT"
-          # Windows only: opens the device through WinUSB or Unisoc's own
-          # driver (Channel9.dll, then Windows serial I/O), and logs what
-          # Windows has for Unisoc USB devices.
+          # On Windows it also opens the device through WinUSB or Unisoc's
+          # own driver (Channel9.dll, then Windows serial I/O), and logs
+          # what Windows has for Unisoc USB devices.
           # (The checkout may have turned its line ends into CRLF.)
-          tr -d '\r' < ../thimsy/installer/tools/spd_dump-windows-driver.patch | git apply
+          tr -d '\r' < ../thimsy/installer/tools/spd_dump.patch | git apply
           make CFLAGS="-O2 -Wall -Wextra -std=c99 -pedantic -DUSE_LIBUSB=1 -I$USB/include" \
             LIBS="-static-libgcc -L$USB/lib -Wl,-Bstatic -lusb-1.0 -Wl,-Bdynamic -lsetupapi -lcfgmgr32"
           mkdir -p ../out && cp spd_dump.exe ../out/ && cp LICENSE ../out/spd_dump-LICENSE
