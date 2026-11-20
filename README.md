@@ -513,18 +513,39 @@ It also changes Nano:
   Ctrl+B rather than Chromium's Ctrl+D, so Y sends that there.
 - **Move ES-DE to microSD** (Game Settings): moves the ES-DE folder and
   everything Nano keeps about your games to `ES-DE` on the card, in ES-DE's own
-  files: favourites, hidden games, titles, metadata and play counts in
-  `gamelists/<system>/gamelist.xml`, collections in
-  `collections/custom-<name>.cfg`, covers and fan art in
-  `downloaded_media/<system>/covers|fanart`. From then on the card is the only
-  copy, and its `ES-DE` folder is a library mainline ES-DE can use: put the card
-  in a device running ES-DE (or bring one from there) and both see the same
-  games, favourites, collections and media. A Nano scrape keeps covers, fan art
-  and metadata already in the folder (ES-DE's, for example) unless Overwrite is
-  on, and Clear Boxart deletes only pictures Nano downloaded. Systems the
-  card's ES-DE ROM folder has games for and Nano does not list yet (Xbox, for
-  one) are added; running the move again on a card that already holds ES-DE
-  picks them up too.
+  files: favourites, hidden games, titles, metadata, play counts and play times
+  in `gamelists/<system>/gamelist.xml`, with each game's emulator
+  (`<altemulator>`) and each system's (`<alternativeEmulator>`), named as
+  ES-DE names them; collections in `collections/custom-<name>.cfg` (those
+  `es_settings.xml` lists as enabled, as in ES-DE); the ROM folder and the
+  scraper settings ES-DE also has (scraper, region, overwrite, media types) in
+  `settings/es_settings.xml`; covers and fan art in
+  `downloaded_media/<system>/covers|fanart`. A system in a folder ES-DE has no
+  system for (a catalog platform such as `coleco`) gets an entry in
+  `custom_systems/es_systems.xml` with the ES-DE system's commands. What only
+  Nano has goes in `nano/`: its systems list (`systems.json`, without scraper
+  accounts), title overrides, the scrape index, and game emulators ES-DE has
+  no command for. From then on the card is the only copy, and its `ES-DE`
+  folder is a library mainline ES-DE can use: put the card in a device running
+  ES-DE (or bring one from there) and both see the same games, favourites,
+  collections, emulators and media. Recently Played is the games with the
+  latest play times, so a game started from ES-DE shows there too. A Nano
+  scrape keeps covers, fan art and metadata already in the folder (ES-DE's,
+  for example) unless Overwrite is on, and Clear Boxart deletes only pictures
+  Nano downloaded. Systems the card's ES-DE ROM folder has games for and Nano
+  does not list yet (Xbox, for one) are added; running the move again on a
+  card that already holds ES-DE picks them up too. A file the card already has
+  (a gamelist, a collection, `es_settings.xml`) is merged with Nano's, entry by
+  entry: the card's entries stay as they are and only what it lacks is added.
+- **The ES-DE folder on the card is read again when it changes.** Every two
+  seconds Nano looks at its gamelists, collections, `es_settings.xml`, `nano/`
+  and the system folders: a change made in ES-DE, on a computer or by another
+  device shows in the lists (titles, favourites, hidden games, emulators,
+  collections, Recently Played, the systems), and a game added to or deleted
+  from a system folder is found by a rescan. Swap the card for another with its
+  own `ES-DE` folder (at the same place on the card) and Nano uses that one:
+  its games, collections, systems and settings replace the other card's. A
+  reinstall with the card in looks as it did before.
 - **Move Emulator Files to microSD** (Game Settings): moves the settings of
   every emulator GammaOS ships, and the saves and states kept with them, to
   `emulator_config/<emulator>` on the card and points each emulator there
@@ -588,17 +609,20 @@ It also changes Nano:
   and Dolphin's `Hotkeys.ini` on the card itself rather than through the link to it.
   RetroArch's go into both its configs, the card's and the default one.
 - Both moves ask first, show their progress and never overwrite what is already
-  on the card. Internal copies of files the card already had go to
+  on the card (an ES-DE gamelist, collection or settings file there only gets
+  the entries it lacks). Internal copies of files the card already had go to
   `Internal storage/Nano Backup`, and you choose: keep them there as a backup,
   delete them, or overwrite the card's copies with them.
 - **Setup with a microSD card:** after the emulators are installed, setup
   offers **Keep ES-DE on the microSD card** and **Keep emulator files on the
-  microSD card** (both Off unless turned on). An option that is on runs its
+  microSD card** (both Off unless turned on; ES-DE is On when the card already
+  has an `ES-DE` folder, and setup says so). An option that is on runs its
   move straight away, without questions, with its progress on screen: files the
-  card already has are kept, and the internal copies are deleted. Only what has
-  files moves; an emulator that has none yet stays as it is. With nothing in
-  the internal ES-DE folder and an `ES-DE` folder already on the card, Thimsy
-  uses that one. Without a card, setup skips these steps and the BIOS step.
+  card already has are kept (a gamelist or collection gets the entries it
+  lacks), and the internal copies are deleted. Only what has files moves; an
+  emulator that has none yet stays as it is. With nothing in the internal
+  ES-DE folder and an `ES-DE` folder already on the card, Thimsy uses that
+  one. Without a card, setup skips these steps and the BIOS step.
 - **BIOS dialog** (the last setup step with a card in, and **Install Your Own
   BIOS Files** in Game Settings at any time): Thimsy includes no BIOS files,
   and the dialog says so first; it copies files you have dumped from your own
@@ -1060,6 +1084,20 @@ another of its modes; a monitor without 1080p60 keeps the mode it came up in.
 Nothing above the display assumes 1080p: Nano and the system size everything from
 the monitor's mode, and Android's density is 213 dpi at 1080 lines, scaled by
 the mode's shorter side.
+
+Over USB-C, whichever side supplies power is the USB host, and only the host
+can start DisplayPort. A monitor's port is dual role like the Cube's: the first
+plug after a boot the Cube supplied power and the picture came up, but plugged
+in again the monitor supplied power, never negotiated (USB PD), and stayed dark
+until a reboot. When the Cube takes power from something that did not
+negotiate, Nano now makes the port source-only for a moment
+(`/sys/class/typec/port1/port_type`; `NanoTypec.cpp`). A monitor then takes
+power, shows its DisplayPort alternate mode and keeps the Cube as the source;
+anything else that took power is given the source role back, and a charger or
+computer port that cannot take power gets the port back in dual role after 5
+seconds. Once per plug-in, never with a computer connected over USB or below
+10% battery. An init service (`nano-typec-guard.sh`) puts the port back in dual
+role if Nano stops during a try, so the Cube always charges.
 
 The build also grows the system partition by about 431 MB, into the
 unallocated space at the end of the `super` image (`scripts/lptool.py grow`);
