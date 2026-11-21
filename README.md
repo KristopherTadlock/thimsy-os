@@ -101,9 +101,12 @@ top one (printed X) is Y. The vendor's layout reported them by their print,
 so games put PlayStation Cross on the right button instead of the bottom one.
 RetroArch's profile for the controller and PPSSPP's controls, which were set
 for the print, are swapped to match, so they keep Cross on the bottom button.
-Nano reads the buttons directly, so in its menus A still confirms; ABXY Swap
-stays off. Controller Enable (gammapad) reads only the vendor's layout, so with
-it on, apps see the buttons by their print again.
+Nano reads the buttons directly, so in its menus A still confirms.
+Controller Enable (gammapad) reads only the vendor's layout, so its ABXY Swap
+is on by default: with Controller Enable on, apps still get the buttons by
+position. Nano swaps them back as it reads them, so A still confirms in its
+menus (as does the DS player for DraStic, if DraStic is installed). An Xbox
+controller merged into gammapad is swapped too; turn ABXY Swap off for it.
 
 ### Added emulators
 
@@ -842,8 +845,8 @@ then the hotkeys (the universal chords and the emulator's own).
 - **The game keeps running** under the map, with its input held back as under
   the Quick Menu; the map never pauses it.
 - **Reading it:** the labels are the printed names of the pad in hand (on the
-  RG Cube A right, B bottom, X top, Y left), and follow **ABXY Swap** when
-  gammapad is running. The map reads each emulator's own binding files
+  RG Cube A right, B bottom, X top, Y left), whatever **ABXY Swap** says.
+  The map reads each emulator's own binding files
   (RetroArch's binds, autoconfig and remaps; PPSSPP, Dolphin, Azahar, Flycast,
   ARMSX2, Vita3K, WatermelonDS, M64Plus FZ, ScummVM, SeedlessDS, hakuX, and
   DraStic if you install it), and says when it shows the emulator's defaults or when the
@@ -855,8 +858,7 @@ then the hotkeys (the universal chords and the emulator's own).
 - **Moving around:** the D-pad or left stick moves a row (left / right change
   section), L1 / R1 turn a page, the footer's Table button (Y) switches
   between the drawing and the table, and its Close button (B), Back,
-  Start or the chord again closes it; with ABXY Swap on, the footer names the
-  swapped buttons. A mouse wheel scrolls. On the touchscreen a drag scrolls
+  Start or the chord again closes it. A mouse wheel scrolls. On the touchscreen a drag scrolls
   (flinging when let go), a swipe left or right changes section, and a tap
   outside the panel closes it.
 - **Layout:** a centred panel on 16:9 and wider screens (an HDMI TV), the full
@@ -1117,7 +1119,8 @@ The patched driver:
 - treats a missing buffer as RGB instead of crashing.
 
 Each screen is independent and draws at its own resolution and refresh rate;
-nothing is mirrored or scaled. Only one screen is on at a time: with a monitor
+nothing is mirrored or scaled. In Docked mode, the default (Settings > Display
+Settings > External Display), only one screen is on at a time: with a monitor
 plugged in, the monitor is Android's main display and drives everything (apps,
 games, Nano, the keyboard) and the Cube's screen is switched off; unplugged, the
 Cube's screen is the main display again and turns back on. A monitor connected
@@ -1133,6 +1136,27 @@ another of its modes; a monitor without 1080p60 keeps the mode it came up in.
 Nothing above the display assumes 1080p: Nano and the system size everything from
 the monitor's mode, and Android's density is 213 dpi at 1080 lines, scaled by
 the mode's shorter side.
+
+In Dual Screen mode both screens stay on. Games run on the monitor, and
+Nano's menus show on the Cube's screen.
+- **Where apps open:** on the monitor, or on the Cube's screen while a game
+  runs on the monitor. An app's options in Applications offer **Open on
+  Monitor** and **Open on Built-in Screen**, and Nano remembers the choice for
+  that app (Search opens it there too). The Quick Menu moves a running app to
+  the other screen when nothing is open there, without restarting it (from
+  the home Nano starts at boot, an app moving to the monitor starts again).
+- **Who gets the controller:** the Cube's screen has its own focus, so its app
+  works by touch, and its keyboard shows there, while the controller stays with
+  the monitor. **Controller Screen** (External Display) chooses where the
+  controller goes: Monitor (the default), Built-in Screen (to an app opened or
+  touched there) or Last Touched (to the Cube's app when it is touched). Anbernic + the **Switch Screen Button** (Hotkeys, the
+  top button by default) moves it at any time. The screen that takes it glows
+  at its edges for a moment.
+- **Keys:** the Anbernic button always opens the menu over the game, and Back
+  goes to the screen with the controller.
+- **Unplugging:** the monitor's game or app comes back to the Cube's screen
+  with the controller. An app on the Cube's screen closes, so it doesn't land
+  over the game.
 
 Over USB-C, whichever side supplies power is the USB host, and only the host
 can start DisplayPort. A monitor's port is dual role like the Cube's: the first
