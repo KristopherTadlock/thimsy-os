@@ -549,7 +549,8 @@ It also changes Nano:
 - **Move Emulator Files to microSD** (Game Settings): moves the settings of
   every emulator GammaOS ships, and the saves and states kept with them, to
   `emulator_config/<emulator>` on the card and points each emulator there
-  (all but WatermelonDS, whose settings stay where they are):
+  (all but WatermelonDS, which has no folder setting; its settings are kept on
+  the card as below):
   RetroArch (its `RetroArch` folder, apart from the box-art thumbnails, which
   stay on internal storage; the shaders, overlays, filters and controller
   profiles it keeps in its app folder stay there), PPSSPP, Flycast, DraStic
@@ -561,7 +562,7 @@ It also changes Nano:
   paths, which GammaOS's MediaProvider allows every app. Azahar only takes a
   folder picked in Android's folder picker, so Nano gives it the card's folder
   that way, through system_server. Dolphin (`Config`, `GameSettings`,
-  `StateSaves`, `GC`, `Wii`) and hakuX (its `native` folder: hard disk, save
+  `StateSaves`, `GC`, `Wii`, `Load`, `ResourcePacks`, `ScreenShots`, `GBA`) and hakuX (its `native` folder: hard disk, save
   states, caches) have no setting for these folders, so each moved folder is
   replaced by a link to the card; apps reach `Android/data` and their own
   folder directly here, not through FUSE, so they follow it. GammaOS's
@@ -571,9 +572,56 @@ It also changes Nano:
   its saves there too, so those stay where they are. SeedlessDS
   does the same by default; set to keep its
   saves and states in its app folder or a folder of their own, they move to
-  `emulator_config/seedlessds`, given to it like Azahar's folder. Its settings
-  stay in its app folder, which it has no setting for. An emulator that keeps
-  its files on the card needs the card in to start.
+  `emulator_config/seedlessds`, given to it like Azahar's folder. An emulator
+  that keeps its files on the card needs the card in to start.
+- **Keep Emulator Files on microSD** (Game Settings; turned on by a move or by
+  setup) keeps the settings no folder setting reaches on the card too, in
+  `emulator_config/<emulator>/app`: each emulator's Android preferences (most
+  keep their button maps there), M64Plus FZ's profiles, ScummVM's
+  `scummvm.ini`, Vita3K's `config.yml`, WatermelonDS's and hakuX's controller
+  files, SeedlessDS's `user` folder, and the RetroArch controller profiles you
+  made (not the hundreds it unpacks itself). Nano keeps both copies in step
+  when a card is adopted, every 10 seconds at the home screen, and for an
+  emulator just before it starts, never writing into one that is running.
+  What changed on one side goes to the other, deletions included; changed on
+  both, the card's copy wins, so editing a file on the card changes the
+  emulator. A reinstalled emulator or Thimsy gets the card's settings back,
+  and an emptied folder on either side is filled again from the other rather
+  than emptied on both.
+- A card new to this device that comes in at the home screen is adopted: its
+  settings are synced, then every emulator is pointed at its folder on the
+  card (the card's, when it has one; its files moved there otherwise), as in
+  setup, with the move's progress on screen; games wait until it is done. The
+  card adopted before is only kept in step. After each game, an emulator that
+  ran for the first time and made its files on internal storage has them
+  moved to the card and is pointed there too, without a notice; a file that
+  clashes with the card's keeps its backup, and what fails is not tried again
+  until the next boot, nor is a card whose adoption failed. A new, empty card
+  gets this device's files. A card with emulator files that this device never
+  synced, while it keeps its own with another card or its emulators already
+  have settings, asks first: use the card's, keep this device's and copy them
+  to the card (a move as from the menu), or not now. A game started while a
+  sync runs has its emulator's settings synced first.
+  Settings that name the folders of a card that is out (a copy of the card
+  with another volume id, or the card this one replaced) are pointed at this
+  card, as are the links Dolphin and hakuX use and the settings files on the
+  card. Only the microSD slot's card is adopted, never a USB drive.
+- Folders the restored settings name as picked in Android's folder picker are
+  given back to hakuX, Azahar, SeedlessDS, WatermelonDS and ScummVM through
+  system_server, which gives these apps any folder but a volume's root, other
+  apps' `Android` folders, `DCIM`, `Pictures`, `Movies`, `Recordings`,
+  `Documents` and `Nano Backup`.
+- Apps with storage access no longer reach other apps' `Android/data`, `obb`
+  and `media` folders or `Nano Backup`, and in `DCIM`, `Pictures`, `Movies`,
+  `Recordings` and `Documents` they reach only the files they saved there, or
+  ones picked for them in Android's picker. This holds on internal storage and
+  the microSD card, through file paths, MediaStore, DownloadManager and the
+  Files app's document provider. System apps (Files, so sideloading and copying
+  OBB files by hand still work) and apps you give All files access yourself are
+  exempt; the emulators Thimsy gives that access to are not. After updating,
+  apps lose photo-picker picks and folders picked inside those folders or at a
+  volume's root once, and must be given them again; app stores need All files
+  access to install OBB files.
 - After the move, every game Nano starts in RetroArch, from the home screen or
   from the menu over a game, uses the card's
   `emulator_config/retroarch/retroarch.cfg`; with the card out, RetroArch falls
@@ -619,8 +667,9 @@ It also changes Nano:
   has an `ES-DE` folder, and setup says so). An option that is on runs its
   move straight away, without questions, with its progress on screen: files the
   card already has are kept (a gamelist or collection gets the entries it
-  lacks), and the internal copies are deleted. Only what has files moves; an
-  emulator that has none yet stays as it is. With nothing in the internal
+  lacks), and the internal copies are deleted. Every emulator is pointed at
+  the card, with its settings from the card first when it has them (a
+  reinstall gets them back); ES-DE moves only when it has files. With nothing in the internal
   ES-DE folder and an `ES-DE` folder already on the card, Thimsy uses that
   one. Without a card, setup skips these steps and the BIOS step.
 - **BIOS dialog** (the last setup step with a card in, and **Install Your Own
