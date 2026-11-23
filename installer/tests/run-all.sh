@@ -36,6 +36,7 @@ if [ $# -ge 2 ]; then
   step "e2e" 'tail -1' "$HERE/e2e.sh" "$1" "$2"
 fi
 step "apply_pack tests" 'tail -1' python3 -I "$HERE/../tools/test_apply_pack.py"
+step "docker setup lint" 'tail -1' python3 -I "$HERE/../tools/test_docker_setup.py"
 cd "$HERE/../app"
 step "flutter pub get" 'echo ok' flutter pub get --enforce-lockfile
 step "flutter analyze" 'tail -1' flutter analyze --no-pub

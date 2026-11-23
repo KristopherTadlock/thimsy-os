@@ -47,10 +47,12 @@ cargo build --release
 In Docker (the root README's "Building with Docker"), run these from
 `docker compose run --rm build bash`; the image has Rust, Flutter and the
 libraries `spd_dump` and the Linux app need. The container sees only the
-checkout and its `work/` volume, so use `--workspace work/thimsy-ws` (kept
-between runs) and put the firmware to import in `out/` (`--import out`).
-Flashing over USB and the app's window don't work from Docker Desktop on
-Windows or macOS.
+checkout and its `work/` volume, so use
+`--workspace /workspaces/thimsy-os/work/thimsy-ws` (kept between runs) and put
+the firmware to import in `out/` (`--import /workspaces/thimsy-os/out`).
+Flashing over USB and the app's window don't work from the container on any
+OS: it has no display, and its `/dev` is a copy from when it started, without
+the device that appears in download mode. Build and run those natively.
 
 `installer/tests/e2e.sh WORKSPACE PACK_DIR` (the package and the official
 firmware in `PACK_DIR`) runs the real-firmware test: build,

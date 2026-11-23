@@ -719,8 +719,8 @@ docker compose run --rm build bash                         # a shell in the buil
   boot logo's files from an AOSP tree, which the image doesn't have.
 - A Windows checkout made before the scripts' line endings were fixed keeps
   its CRLF scripts, which fail in Linux (`$'\r': command not found`). With
-  your changes committed or stashed, `git rm -r -q --cached . && git reset --hard`
-  checks them out again with LF.
+  your changes committed or stashed, `git rm -r -q --cached .` and then
+  `git reset --hard` check them out again with LF.
 - In VS Code, **Dev Containers: Reopen in Container** opens the checkout in
   the same environment (`.devcontainer/`), sharing the same `work/` volume.
 
