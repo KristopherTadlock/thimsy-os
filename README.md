@@ -991,8 +991,9 @@ docker compose run --rm build bash                 # a shell in the build enviro
   `docker volume rm thimsy-os-nano-work` frees that space; the next build
   downloads everything again.
 - Docker builds Thimsy 1.0, on the 1.2 base: the Nano home, the Android Games
-  helper and the PanVK driver package come only with `SYSTEM_IMG` (1.4.4), so
-  it signs nothing and needs no keystore.
+  helper and PanVK as the system's alternate driver come only with
+  `SYSTEM_IMG` (1.4.4), so it signs no apps and needs no keystore. PanVK's
+  driver package is still copied to `/sdcard/GPU Drivers/`.
 - The container runs privileged and as root, since the build loop-mounts the
   system image. When a command ends, the files it created in the checkout are
   given back to the checkout's owner. On Linux the empty `work/` folder Docker
