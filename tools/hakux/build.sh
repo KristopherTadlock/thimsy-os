@@ -24,7 +24,9 @@ HAKUX_REPO=https://github.com/rfandango/hakuX.git
 HAKUX_COMMIT=a7cdb5a975e31730d488c47f6f10440b16c1e6f4
 # Bump when the patch set changes, so each build has its own file name.
 THIMSY_BUILD=1
-# path in NC_DEPS, repository, commit (the tag or revision hakuX names).
+# path in NC_DEPS, repository, commit (the tag or revision hakuX names), as
+# scripts/hakux_source.sh has them for the mirrored APK: nv2a_vsh_cpu is
+# xemu's 1115255, as hakuX's 561fe80 is in no published repository.
 DEPS=(
   "volk https://github.com/zeux/volk.git 0b17a763ba5643e32da1b2152f8140461b3b7345 1.4.304"
   "glslang https://github.com/KhronosGroup/glslang.git b5782e52ee2f7b3e40bb9c80d15b47016e008bc9 16.1.0"
@@ -32,7 +34,7 @@ DEPS=(
   "vma https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git 1d8f600fd424278486eade7ed3e877c99f0846b1 v3.3.0"
   "SDL3 https://github.com/libsdl-org/SDL.git 829a65d769d935c4852f8159e964312c0957260a release-3.4.18"
   "adrenotools https://github.com/bylaws/libadrenotools.git 8fae8ce254dfc1344527e05301e43f37dea2df80 8fae8ce"
-  "root/subprojects/nv2a_vsh_cpu https://github.com/abaire/nv2a_vsh_cpu.git 561fe80da57a881f89000256b459440c0178a7ce 561fe80"
+  "root/subprojects/nv2a_vsh_cpu https://github.com/xemu-project/nv2a_vsh_cpu.git 1115255708c10c4841b65dcd2223262e7a316598 1115255"
   "libslirp https://gitlab.freedesktop.org/slirp/libslirp.git 26be815b86e8d49add8c9a8b320239b9594ff03d 4.7.0+26be815b"
 )
 # The FEX submodules hakuX's README says to fetch.

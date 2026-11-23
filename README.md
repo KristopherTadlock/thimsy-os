@@ -1009,8 +1009,9 @@ docker compose run --rm build bash                 # a shell in the build enviro
 
 ### hakuX from source
 
-hakuX, in `mods/added-apps.txt`, is built from source and mirrored in this
-repository's releases. `tools/hakux` builds it in Docker:
+`scripts/build_hakux.sh` rebuilds the hakuX APK in `mods/added-apps.txt` byte
+for byte (see above). `tools/hakux` builds the same source in Docker with the
+fixes in `tools/hakux/patches`, for the next mirrored build:
 
 ```sh
 docker compose run --rm hakux
