@@ -690,7 +690,9 @@ scripts' LF line endings, even on Windows), then in the checkout:
 docker compose run --rm build
 ```
 
-The first run builds the image, which takes a few minutes. Docker needs about
+The first run builds the image, which takes a few minutes; after pulling a
+change to `.devcontainer/`, rebuild it with `docker compose build` (or add
+`--build` to `run`). Docker needs about
 40 GB free on its own disk (Docker Desktop: Settings, Resources). Settings go
 with `-e`, before `build`, and any other command after it:
 
@@ -718,7 +720,8 @@ docker compose run --rm build bash                         # a shell in the buil
 - `SYSTEM_IMG` builds don't work in Docker: they need `nano-bootlogo` and the
   boot logo's files from an AOSP tree, which the image doesn't have.
 - A Windows checkout made before the scripts' line endings were fixed keeps
-  its CRLF scripts, which fail in Linux (`$'\r': command not found`). With
+  its CRLF scripts, which fail in Linux (`/usr/bin/env: 'bash\r': No such
+  file or directory`, or `$'\r': command not found`). With
   your changes committed or stashed, `git rm -r -q --cached .` and then
   `git reset --hard` check them out again with LF.
 - In VS Code, **Dev Containers: Reopen in Container** opens the checkout in

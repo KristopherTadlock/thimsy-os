@@ -42,8 +42,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       zstd \
     && rm -rf /var/lib/apt/lists/*
 
-# Android Games helper and PanVK driver package (scripts/build_android_games.sh,
-# scripts/build_panvk_driver.sh): JDK 17, and Google's build tools 34.0.0
+# Android Games helper (scripts/build_android_games.sh): JDK 17, and Google's
+# build tools 34.0.0
 # (aapt, aapt2, d8, zipalign, apksigner) and API 34 android.jar, which
 # Ubuntu's installer packages download from Google.
 RUN apt-get update && apt-get install -y --no-install-recommends \

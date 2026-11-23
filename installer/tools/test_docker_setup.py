@@ -6,7 +6,12 @@ python3 -I installer/tools/test_docker_setup.py (installer/tests/run-all.sh runs
 import json
 import os
 import re
+import shutil
+import signal
 import subprocess
+import sys
+import tempfile
+import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -44,11 +49,39 @@ class DockerSetup(unittest.TestCase):
         self.assertIn(f"`{name}`", read("README.md"))
 
     def test_entrypoint(self):
-        self.assertIn('entrypoint: ["bash", ".devcontainer/as-owner.sh"]', read("compose.yaml"))
+        compose = read("compose.yaml")
+        self.assertIn('entrypoint: ["bash", ".devcontainer/as-owner.sh"]', compose)
+        self.assertIn("\n    privileged: true\n", compose)
+        # docker stop gives the build time to unmount and detach its images.
+        self.assertRegex(compose, r"\n    stop_grace_period: \d+m\n")
         subprocess.run(["bash", "-n", os.path.join(DEV, "as-owner.sh")], check=True)
         text = read(".devcontainer", "as-owner.sh")
-        self.assertIn("trap 'kill -TERM \"$child\" 2>/dev/null' TERM", text)
+        self.assertIn("trap 'trap \"\" TERM; kill -TERM 0 2>/dev/null' TERM", text)
         self.assertIn('env --default-signal=INT,QUIT "$@" <&0 &', text)
+
+    def test_image_has_the_tools_build_sh_checks(self):
+        """Every tool scripts/build.sh stops without (but nano-bootlogo, for SYSTEM_IMG builds only) comes
+        with the image: from an apt package line of its own, or a link the image makes in /usr/local/bin."""
+        packages = {"fsck.erofs": "erofs-utils", "mkfs.erofs": "erofs-utils", "lz4": "lz4", "debugfs": "e2fsprogs",
+                    "secilc": "secilc", "7z": "7zip", "7zz": "7zip", "aapt": "google-android-build-tools-34.0.0-installer"}
+        links = {"avbtool", "unpack_bootimg"}
+        image = read(".devcontainer", "Dockerfile")
+        build = read("scripts", "build.sh")
+        tools = set()
+        for group in re.findall(r"^for tool in ([^;]+); do\n  command -v", build, re.M):
+            tools.update(group.split())
+        tools.update(re.findall(r"command -v ([a-z0-9._-]+)(?: >/dev/null)? \|\|", build))
+        tools.discard("nano-bootlogo")
+        self.assertTrue({"fsck.erofs", "secilc", "7z", "aapt"} <= tools, tools)
+        for tool in sorted(tools):
+            if tool in links:
+                self.assertRegex(image, rf"ln -s \S+ /usr/local/bin/{re.escape(tool)}\b", tool)
+            else:
+                self.assertIn(tool, packages, f"build.sh needs {tool}: say which package provides it")
+                self.assertRegex(image, rf"(?m)^\s+{re.escape(packages[tool])} \\$", tool)
+        self.assertRegex(image, r"(?m)^ENV PATH=\$ANDROID_HOME/build-tools/34\.0\.0:\$PATH$")
+        self.assertRegex(image, r"(?m)^ENV MKBOOTIMG=/\S+mkbootimg\.py$")
+        self.assertRegex(image, r"(?m)^ENV AVB_KEY=/\S+\.pem$")
 
     def test_malisx2_driver_id(self):
         """ARMSX2's CustomDriver.makeId: "armsx2libmali-" + tag + "-" + asset less ".zip",
@@ -63,6 +96,59 @@ class DockerSetup(unittest.TestCase):
         self.assertTrue(m, url)
         tag, asset = m.groups()
         self.assertEqual(driver_id, re.sub(r"[^A-Za-z0-9._-]", "_", f"armsx2libmali-{tag}-{asset}").lower())
+
+
+def default_signal_env():
+    """Whether env has --default-signal (GNU coreutils 8.31 or later), which as-owner.sh uses."""
+    try:
+        return subprocess.run(["env", "--default-signal=INT", "true"], capture_output=True).returncode == 0
+    except OSError:
+        return False
+
+
+@unittest.skipUnless(sys.platform.startswith("linux") and default_signal_env(), "needs Linux and GNU env")
+class AsOwner(unittest.TestCase):
+    """as-owner.sh, compose's entrypoint, hands exit status, stdin and signals through (SIGTERM to its
+    whole process group, as docker stop's). Its hand-back of files needs root: nano-144's
+    tests/e2e/test_as_owner.py covers it."""
+
+    def setUp(self):
+        self.co = tempfile.mkdtemp(prefix="as-owner-")
+        self.addCleanup(shutil.rmtree, self.co, True)
+
+    def owner(self, *cmd, **kw):
+        return subprocess.run(["bash", os.path.join(DEV, "as-owner.sh"), *cmd], cwd=self.co,
+                              capture_output=True, text=True, timeout=60, **kw)
+
+    def test_exit_status_and_stdin(self):
+        self.assertEqual(self.owner("bash", "-c", "exit 7").returncode, 7)
+        self.assertEqual(self.owner("cat", input="hi\n").stdout, "hi\n")
+
+    def test_passes_signals_on(self):
+        mod = "trap 'echo mod >> mod_got; exit 3' TERM; sleep 30 & wait"
+        child = f"trap 'echo got; exit {{code}}' {{sig}}; bash -c \"{mod}\" >/dev/null & " \
+                "echo ready; sleep 30 >/dev/null & wait"
+        for sig, code in ((signal.SIGTERM, 5), (signal.SIGINT, 6)):
+            proc = subprocess.Popen(["bash", os.path.join(DEV, "as-owner.sh"), "bash", "-c",
+                                     child.format(code=code, sig=sig.name[3:])],
+                                    cwd=self.co, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, text=True,
+                                    start_new_session=True)
+            try:
+                self.assertEqual(proc.stdout.readline(), "ready\n")
+                time.sleep(0.3)
+                proc.send_signal(sig)
+                out, _ = proc.communicate(timeout=20)
+                time.sleep(0.3)
+            finally:
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            self.assertEqual((proc.returncode, out), (code, "got\n"), sig.name)
+            got = os.path.join(self.co, "mod_got")
+            self.assertEqual(os.path.exists(got), sig == signal.SIGTERM, sig.name)
+            if os.path.exists(got):
+                os.remove(got)
 
 
 if __name__ == "__main__":

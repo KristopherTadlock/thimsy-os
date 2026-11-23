@@ -14,6 +14,8 @@ services:
     image: thimsy-os-installer-build
     # The build loop-mounts the system image.
     privileged: true
+    # On docker stop, time to unmount and detach its images before SIGKILL.
+    stop_grace_period: 3m
     working_dir: /workspaces/thimsy-os
     # Gives the files the command creates in the checkout to its owner.
     entrypoint: ["bash", ".devcontainer/as-owner.sh"]
