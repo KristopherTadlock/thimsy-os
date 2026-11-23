@@ -115,7 +115,7 @@ class OfflineMods(ModCase):
         with tarfile.open(pack) as t:
             members = {m.name: m for m in t}
             prefs = t.extractfile("data/data/com.armsx2/shared_prefs/ARMSX2.xml").read().decode()
-        driver = "data/data/com.armsx2/files/drivers/armsx2libmali-v0.4.0-malisx2-0.4.0-63e307e63a"
+        driver = "data/data/com.armsx2/files/drivers/armsx2libmali-v0.6.1-malisx2-0.6.1-9fbc7da290"
         self.assertIn(f"{driver}/libvulkan_malisx2.so", members)
         self.assertIn(f"{driver}/meta.json", members)
         self.assertNotIn(f"{driver}/README.md", members)
@@ -140,7 +140,7 @@ class OfflineMods(ModCase):
 
     def test_45_skips_without_armsx2(self):
         self.build(True)
-        os.remove(f"{self.system}/etc/malisx2-0.4.0.zip")
+        os.remove(f"{self.system}/etc/malisx2-0.6.1.zip")
         before = util.manifest(self.system)
         self.assertIn("skipping", self.assertOk(self.run_mod("45")).stdout)
         self.assertEqual(util.manifest(self.system), before)

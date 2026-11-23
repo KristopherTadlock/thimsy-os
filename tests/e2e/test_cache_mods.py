@@ -93,7 +93,7 @@ class CacheMods(ModCase):
         setup = self.setup_sh()
         # L8: a file is copied to /sdcard on a fresh setup only.
         self.assertRegex(setup, r'if \[ "\$\{FRESH_SETUP:-1\}" = 1 \]; then\n    mkdir -p "/sdcard/GPU Drivers"\n'
-                                r'    cp /system/etc/malisx2-0\.4\.0\.zip "/sdcard/GPU Drivers/"\n')
+                                r'    cp /system/etc/malisx2-0\.6\.1\.zip "/sdcard/GPU Drivers/"\n')
         self.assertLess(setup.index('mkdir -p "/sdcard/GPU Drivers"'), setup.index("mkdir -p /data/setupcompleted"))
         self.assertOk(self.run_mod("45"))
         self.assertIn("|com.armsx2|/system/etc/ARMSX2-2.9.2.apk||post_armsx2", self.apps())

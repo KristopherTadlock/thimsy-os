@@ -12,9 +12,9 @@ set -euo pipefail
 SYSTEM="$1"
 ETC="$SYSTEM/etc"
 SETUP="$SYSTEM/bin/setup.sh"
-DRIVER_ZIP="malisx2-0.4.0.zip"
+DRIVER_ZIP="malisx2-0.6.1.zip"
 # The folder name ARMSX2 gives this release when it downloads it itself.
-DRIVER_ID="armsx2libmali-v0.4.0-malisx2-0.4.0-63e307e63a"
+DRIVER_ID="armsx2libmali-v0.6.1-malisx2-0.6.1-9fbc7da290"
 PACK="armsx2-malisx2.tar.gz"
 work="$(realpath -m "$2")/armsx2-malisx2"
 source "$(dirname "$0")/../scripts/modlib.sh"

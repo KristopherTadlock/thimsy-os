@@ -104,7 +104,7 @@ def read_payload(path):
 
 def malisx2_zip(path):
     with zipfile.ZipFile(path, "w") as z:
-        z.writestr("meta.json", '{"name": "MaliSX2", "version": "0.4.0"}')
+        z.writestr("meta.json", '{"name": "MaliSX2", "version": "0.6.1"}')
         z.writestr("libvulkan_malisx2.so", b"\x7fELF fake driver")
         z.writestr("README.md", "not extracted")
 
@@ -128,7 +128,7 @@ ro.product.system.model=RG Cube
     os.symlink("bootanimation.zip", f"{media}/bootanimation-dark.zip")
     write(f"{system}/etc/RetroArch_aarch64.apk", "ra")
     write(f"{system}/etc/ARMSX2-2.9.2.apk", "armsx2")
-    malisx2_zip(f"{system}/etc/malisx2-0.4.0.zip")
+    malisx2_zip(f"{system}/etc/malisx2-0.6.1.zip")
     ppsspp = {"sdcard/PSP": None, "sdcard/PSP/SYSTEM": None,
               "sdcard/PSP/SYSTEM/controls.ini": CONTROLS_INI.encode(),
               "sdcard/PSP/SYSTEM/ppsspp.ini": b"[General]\n",

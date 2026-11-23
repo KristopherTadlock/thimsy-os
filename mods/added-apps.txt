@@ -43,10 +43,10 @@ apk  scummvm-2026.3.0.apk  name=ScummVM  package=org.scummvm.scummvm  url=https:
 # support; preseeds Android Games. GPL-3.0.
 apk  ShatteredPD-v4.0.2-Android.apk  name=Shattered Pixel Dungeon  package=com.shatteredpixel.shatteredpixeldungeon  game=1  url=https://github.com/00-Evan/shattered-pixel-dungeon/releases/download/v4.0.2/ShatteredPD-v4.0.2-Android.apk  sha256=ceef4cdd4beddcb3d85379ac004cb4ab5d918b89dc7366b4ce9c4a3585a5e78e  source=https://github.com/00-Evan/shattered-pixel-dungeon/tree/v4.0.2
 
-# MaliSX2 0.4.0, a Vulkan driver for Mali GPUs (tested on the Mali-G57 of the
+# MaliSX2 0.6.1, a Vulkan driver for Mali GPUs (it supports the Mali-G57 of the
 # T820). MIT. 45-armsx2-malisx2.sh pre-installs it in ARMSX2; hakuX can import
 # it; Dolphin only loads custom drivers on Adreno GPUs.
-file  malisx2-0.4.0.zip  dest=GPU Drivers  url=https://github.com/bmdhacks/malisx2/releases/download/v0.4.0/malisx2-0.4.0-63e307e63a.zip  sha256=835f980506ed46fa51925fd279b256d23b0ddf481ffd1ab39be2fee275cf8bf8  source=https://github.com/bmdhacks/malisx2/tree/v0.4.0
+file  malisx2-0.6.1.zip  dest=GPU Drivers  url=https://github.com/bmdhacks/malisx2/releases/download/v0.6.1/malisx2-0.6.1-9fbc7da290.zip  sha256=1fbdb5dee1217d0f97190a60844f83c4504567c8c6bc6399b5a8843840e99206  source=https://github.com/bmdhacks/malisx2/tree/v0.6.1
 
 # PanVK (Mesa 26.3.0-devel, panvk-kbase-android 26.3.1), a full Vulkan 1.4
 # driver for Mali GPUs, as a driver package

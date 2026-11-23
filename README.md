@@ -129,7 +129,7 @@ linked below.
 | Vita3K | PS Vita | 0.2.1 (build 4277, mirrored) | GPL-2.0 | https://github.com/Vita3K/Vita3K/tree/2f68c1bf0d44753eddc8263b6a4dd23fcd928f22 |
 | ScummVM | Adventure games | 2026.3.0 | GPL-3.0+ | https://github.com/scummvm/scummvm/tree/v2026.3.0 |
 
-The [MaliSX2](https://github.com/bmdhacks/malisx2/tree/v0.4.0) 0.4.0 Vulkan
+The [MaliSX2](https://github.com/bmdhacks/malisx2/tree/v0.6.1) 0.6.1 Vulkan
 driver (MIT) comes pre-installed and selected in ARMSX2, with the Vulkan
 renderer, and a copy is in `/sdcard/GPU Drivers/`. hakuX can use it too: import
 the ZIP in hakuX's Settings > Graphics > GPU driver. Dolphin only loads custom

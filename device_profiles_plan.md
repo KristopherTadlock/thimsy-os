@@ -221,7 +221,7 @@ core for a platform):
 
 | Pack | When | Consumers |
 |---|---|---|
-| MaliSX2 0.4.0 | `mali-valhall` | ARMSX2, hakuX (today's behaviour) |
+| MaliSX2 0.6.1 | `mali-valhall` | ARMSX2, hakuX (today's behaviour) |
 | Mesa PanVK | `mali-bifrost`, `mali-valhall` | Android's updatable driver slot, `/sdcard/GPU Drivers` (today's behaviour) |
 | Turnip | `adreno-6xx`, `adreno-7xx` | Dolphin, ARMSX2, Eden, Winlator, hakuX |
 
