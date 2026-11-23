@@ -22,6 +22,17 @@ services:
       # the checkout. out/ stays in the checkout, so the .pac shows up there.
       - work:/workspaces/thimsy-os/work
     command: ["scripts/build.sh"]
+  # hakuX from source (tools/hakux/build.sh): docker compose run --rm hakux
+  hakux:
+    build: tools/hakux
+    image: thimsy-os-nano-hakux
+    working_dir: /workspaces/thimsy-os
+    entrypoint: ["bash", ".devcontainer/as-owner.sh"]
+    volumes:
+      - .:/workspaces/thimsy-os
+      # Its sources and Gradle's cache go in work/hakux.
+      - work:/workspaces/thimsy-os/work
+    command: ["tools/hakux/build.sh"]
 volumes:
   work:
     name: thimsy-os-nano-work

@@ -1,0 +1,40 @@
+From 7464936119370dfa79f8b220d2b937ece811e7d1 Mon Sep 17 00:00:00 2001
+From: faux123 <598478+faux123@users.noreply.github.com>
+Date: Wed, 11 Nov 2026 23:18:55 -0800
+Subject: [PATCH] mm: fix SvC Chaos gray screen hang
+
+contig table was capped at 4096 blocks, SvC Chaos allocs more than that at boot
+with plenty of RAM still free.. the failed alloc also leaked its pages so retries
+ate all of RAM
+
+size the table to 1 block per page of 128 MiB and check room before taking pages
+
+tested on Odin 3, 64 MiB, boots to title screen
+---
+ native/kernel/mm.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/native/kernel/mm.c b/native/kernel/mm.c
+index 06879c350fa..d73d902b608 100644
+--- a/native/kernel/mm.c
++++ b/native/kernel/mm.c
+@@ -29,7 +29,8 @@
+ #define USER_HI   0x7FFE0000u
+ #define VA_GRAIN  0x10000u
+ #define MAX_REGIONS 4096
+-#define MAX_CONTIG  4096
++/* 1 block per page of 128 MiB, xbox has no count limit.. SvC Chaos needs >4096 at boot */
++#define MAX_CONTIG  ((128u << 20) / NC_PAGE)
+ 
+ typedef struct Region {
+     uint32_t base, size, protect;
+@@ -542,7 +543,8 @@ static uint32_t contig_alloc(NcKernel *k, uint32_t size, uint32_t lo, uint32_t h
+      * pages than asked for. */
+     uint32_t pa = UINT32_MAX, moved = 0;
+     static unsigned s_failed;           /* failures since the last success (reports below) */
+-    if (nc_vm_free_bytes(k->vm) >= size) {
++    /* check table room BEFORE taking pages, else they leak */
++    if (g_ncontig < MAX_CONTIG && nc_vm_free_bytes(k->vm) >= size) {
+         pa = nc_vm_alloc_phys_top(k->vm, size, lo, hi, align, &moved);
+     }
+     if (pa == UINT32_MAX && g_ncontig < MAX_CONTIG && nc_vm_free_bytes(k->vm) >= size) {

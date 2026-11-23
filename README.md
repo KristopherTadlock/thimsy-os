@@ -1007,6 +1007,34 @@ docker compose run --rm build bash                 # a shell in the build enviro
 - In VS Code, **Dev Containers: Reopen in Container** opens the checkout in
   the same environment (`.devcontainer/`), sharing the same `work/` volume.
 
+### hakuX from source
+
+hakuX, in `mods/added-apps.txt`, is built from source and mirrored in this
+repository's releases. `tools/hakux` builds it in Docker:
+
+```sh
+docker compose run --rm hakux
+```
+
+It checks out [hakuX](https://github.com/rfandango/hakuX) at the commit
+`tools/hakux/build.sh` names, applies the patches in `tools/hakux/patches`
+(`series` gives each one's source), fetches the native dependencies at the
+revisions hakuX's `android/README.md` names, runs hakuX's host tests, and
+writes to `out/hakux/`:
+
+- `hakuX-<version>-<commit>-thimsy<N>-unsigned.apk`, the release build;
+- `...-testkey.apk`, the same signed with a throwaway key, to try on a device
+  (never ship it);
+- `hakuX-build-manifest.json`: every source revision, patch, tool and output
+  sha256.
+
+Building it accepts Google's Android SDK License Agreement: the image runs
+`sdkmanager --licenses`. `-e KEY_PROPERTIES=<key.properties in the checkout>`
+signs the release with that key instead. To ship a build, sign it with the key
+the current one was signed with (installed copies update only then), upload it
+and its manifest to a mirror release, and update hakuX's line in
+`mods/added-apps.txt` (file name, url, sha256) and the emulator table above.
+
 ### Tests
 
 ```sh

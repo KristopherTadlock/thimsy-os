@@ -1,0 +1,8 @@
+# Applied in this order to rfandango/hakuX a7cdb5a975e31730d488c47f6f10440b16c1e6f4
+# by tools/hakux/build.sh. Each is one upstream commit, unchanged.
+#
+# file                              source
+0001-halo-low-memory.patch          https://github.com/rfandango/hakuX/pull/40 (senroche/hakuX 17618e788577be1924aaf2a28b1f154e25946f83): Halo's campaign loading no longer runs out of low RAM
+0002-retired-targets-alive.patch    https://github.com/Wannamingo/BoxForever/commit/ffc9e29811836b09ec6612af816c262e61cb8ee9: retired render targets stay alive until the GPU work that reads them is done
+0003-xdvdfs-deep-tables.patch       https://github.com/rfandango/hakuX/pull/47 (pwnedbygary/hakuX 14c11e565a8aab37944bed090d8df638e6893ad4): disc files found however deep a directory's table goes (trimmed ISOs)
+0004-mm-contig-leak.patch           https://github.com/faux123/hakuX/commit/7464936119370dfa79f8b220d2b937ece811e7d1: contiguous allocations no longer leak pages (SvC Chaos gray screen)
