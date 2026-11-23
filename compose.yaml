@@ -1,0 +1,25 @@
+# Builds Thimsy OS in Docker, on any OS (README "Building with Docker"):
+#
+#   docker compose run --rm build                      # scripts/build.sh
+#   docker compose run --rm build tests/run.sh all     # any other command
+#
+# The image is .devcontainer/Dockerfile, the same one VS Code's Dev Containers
+# use, and work/ is the same Docker volume, so downloads are shared.
+name: thimsy-os-nano
+services:
+  build:
+    build: .devcontainer
+    image: thimsy-os-nano-build
+    # The build loop-mounts the system image.
+    privileged: true
+    working_dir: /workspaces/thimsy-os
+    volumes:
+      - .:/workspaces/thimsy-os
+      # work/ holds tens of GB of downloads and disk images: on a Docker volume
+      # they stay on a Linux filesystem (fast, and loop mounts work) and out of
+      # the checkout. out/ stays in the checkout, so the .pac shows up there.
+      - work:/workspaces/thimsy-os/work
+    command: ["scripts/build.sh"]
+volumes:
+  work:
+    name: thimsy-os-nano-work

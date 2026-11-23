@@ -895,7 +895,8 @@ On Linux with `curl`, 7-Zip (`7zz` or `7z`), `xz`, `zstd`, `unzip`, `e2fsck` and
 image), `debugfs`, erofs-utils' `fsck.erofs` and `mkfs.erofs` (1.7 or later),
 AOSP's `unpack_bootimg`, `lz4`, `avbtool` and `secilc` on `PATH`, `MKBOOTIMG`
 naming AOSP's `mkbootimg` (or `mkbootimg.py`), `AVB_KEY` naming AOSP's
-`external/avb/test/data/testkey_rsa4096.pem`, and about 40 GB free:
+`external/avb/test/data/testkey_rsa4096.pem`, and about 40 GB free (or, on
+any OS, with Docker: Building with Docker, below):
 
 ```sh
 scripts/build.sh
@@ -960,6 +961,41 @@ The tools it uses:
   for the battery only once, or when it lacks the files
   Nano's button map reads (`/system/etc/nano_xmb/buttonmap` and the controller
   drawings).
+
+### Building with Docker
+
+On Windows, macOS or Linux, Docker supplies every tool above. Clone the
+repository (git keeps the scripts' LF line endings, even on Windows), then in
+the checkout:
+
+```sh
+docker compose run --rm -e NEW_KEYSTORE=1 build   # first build: creates the signing keys
+docker compose run --rm build                      # later builds
+```
+
+The first run builds the image, which takes a few minutes. Docker needs about
+40 GB free on its own disk (Docker Desktop: Settings, Resources). Settings go
+with `-e`, before `build`, and any other command after it:
+
+```sh
+docker compose run --rm -e REFRESH_CORES=1 build
+docker compose run --rm build tests/run.sh all
+docker compose run --rm build bash                 # a shell in the build environment
+```
+
+- `NEW_KEYSTORE=1` is only for the first build: the keys it creates are kept
+  in the `work/` volume, and later builds sign with them.
+- The `.pac` is written to `out/` in the checkout. Downloads and disk images
+  stay in the Docker volume `thimsy-os-nano-work`, and
+  `docker volume rm thimsy-os-nano-work` frees that space; the next build
+  downloads everything again. It also holds the signing keys, so copy
+  `work/cache/nano` and `work/cache/panvk` out first (for example to `out/`).
+- The container runs privileged, since the build loop-mounts the system
+  image, and as root, so on Linux the files it writes in `out/` belong to root.
+- `SYSTEM_IMG` and `ESDE_APK` must name files inside the checkout (for example
+  `-e ESDE_APK=out/ES-DE.apk`): it is the only host folder the container sees.
+- In VS Code, **Dev Containers: Reopen in Container** opens the checkout in
+  the same environment (`.devcontainer/`), sharing the same `work/` volume.
 
 ### Tests
 
