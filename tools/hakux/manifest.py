@@ -74,13 +74,15 @@ def main():
             "compileSdk": int(re.search(r"compileSdk = (\d+)", gradle).group(1)),
             "buildTools": re.search(r'buildToolsVersion = "(.*?)"', gradle).group(1),
             "ndk": re.search(r'ndkVersion = "(.*?)"', gradle).group(1),
+            "ndk_used": os.path.basename(os.environ.get("ANDROID_NDK", "")) or None,
             "gradle": re.search(r"gradle-([\d.]+)-", wrapper).group(1),
             "cmake": tool_version(["cmake", "--version"]),
             "java": tool_version(["java", "-version"]),
             "build_image": "tools/hakux/Dockerfile (ubuntu:24.04, linux/amd64)",
         },
         "outputs": {name: sha256(os.path.join(outdir, name))
-                    for name in sorted(os.listdir(outdir)) if name.endswith((".apk", ".tar.xz"))},
+                    for name in sorted(os.listdir(outdir))
+                    if name.startswith(os.environ.get("HAKUX_NAME", "")) and name.endswith((".apk", ".tar.xz"))},
     }
     with open(out, "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)

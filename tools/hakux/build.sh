@@ -18,8 +18,9 @@
 #       revision, patch, tool and output hash
 #
 # SOURCE_DIR=<an unpacked -source.tar.xz, in the checkout> builds that source
-# as it is (a copy, at the paths a normal build uses), with no download: the
-# tarball's own way to be rebuilt, to the same APK.
+# as it is (a copy, at the paths a normal build uses), fetching no source (Gradle
+# still downloads its own dependencies the first time): the tarball's own way
+# to be rebuilt, to the same APK, from the Thimsy commit that made it.
 #
 # KEY_PROPERTIES=<file in the checkout> (hakuX's key.properties format:
 # storeFile, storePassword, keyAlias, keyPassword; a relative storeFile is
@@ -61,6 +62,11 @@ NC_DEPS="$WORK/deps"
 if [[ -n "${SOURCE_DIR:-}" ]]; then
   SOURCE_DIR="$(realpath "$SOURCE_DIR")"
   [[ -d "$SOURCE_DIR/hakuX" && -d "$SOURCE_DIR/deps" ]] || { echo "SOURCE_DIR: no hakuX/ and deps/ in $SOURCE_DIR" >&2; exit 1; }
+  # The name, patch list, pins and image are this checkout's: they must be the
+  # ones the tarball was made with.
+  diff -rq --exclude=__pycache__ "$SOURCE_DIR/tools/hakux" "$HERE" > /dev/null || {
+    echo "SOURCE_DIR: its tools/hakux differs from this checkout's; check out the Thimsy commit that made it" >&2
+    exit 1; }
   # Built where a normal build builds: the native libraries keep their source
   # paths, so this gives the same APK.
   rm -rf "$SRC" "$NC_DEPS"
@@ -204,5 +210,5 @@ fi
 
 echo "== manifest"
 rm -f "$OUT"/hakuX-*build-manifest.json
-python3 "$HERE/manifest.py" "$OUT/$name-build-manifest.json" "$SRC" "$NC_DEPS" "$HERE" "$OUT" "$HAKUX_REPO" "$HAKUX_COMMIT" "$THIMSY_BUILD" "${DEPS[@]}"
+HAKUX_NAME="$name" python3 "$HERE/manifest.py" "$OUT/$name-build-manifest.json" "$SRC" "$NC_DEPS" "$HERE" "$OUT" "$HAKUX_REPO" "$HAKUX_COMMIT" "$THIMSY_BUILD" "${DEPS[@]}"
 ls -la "$OUT"

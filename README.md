@@ -966,19 +966,19 @@ The tools it uses:
 
 On Windows, macOS or Linux, Docker supplies every tool above. It must be
 Docker Desktop, or Docker Engine running as root: rootless Docker and Podman
-can't loop-mount the system image. Clone the repository (git keeps the
-scripts' LF line endings, even on Windows), then in the checkout:
+can't loop-mount the system image. Clone this branch (on Windows, git keeps
+its scripts' LF line endings: `git clone -b nano-144
+https://github.com/KristopherTadlock/thimsy-os.git`), then in the checkout:
 
 ```sh
-docker compose run --rm -e NEW_KEYSTORE=1 build   # first build: creates the signing keys
-docker compose run --rm build                      # later builds
+docker compose run --rm build
 ```
 
 The first run builds the image, which takes a few minutes; after pulling a
-change to `.devcontainer/`, rebuild it with `docker compose build` (or add
-`--build` to `run`). Docker needs about
-40 GB free on its own disk (Docker Desktop: Settings, Resources). Settings go
-with `-e`, before `build`, and any other command after it:
+change to `.devcontainer/` or `tools/hakux/`, rebuild it with `docker compose
+build` (or add `--build` to `run`). Docker needs about 40 GB free on its own
+disk (Docker Desktop: Settings, Resources). Settings go with `-e`, before
+`build`, and any other command after it:
 
 ```sh
 docker compose run --rm -e REFRESH_CORES=1 build
@@ -986,17 +986,13 @@ docker compose run --rm build tests/run.sh all
 docker compose run --rm build bash                 # a shell in the build environment
 ```
 
-- `NEW_KEYSTORE=1` is only for a first build with no keys at all: the keys it
-  creates are kept in the `work/` volume, and later builds sign with them. To
-  use existing keys (devices update the helper apps only when they're signed
-  with the same ones), put their `nano` and `panvk` folders in `out/keys/` and
-  copy them in before the first build:
-  `docker compose run --rm build cp -r out/keys/. work/cache/`.
 - The `.pac` is written to `out/` in the checkout. Downloads and disk images
   stay in the Docker volume `thimsy-os-nano-work`, and
   `docker volume rm thimsy-os-nano-work` frees that space; the next build
-  downloads everything again. It also holds the signing keys, so copy
-  `work/cache/nano` and `work/cache/panvk` out first (for example to `out/`).
+  downloads everything again.
+- Docker builds Thimsy 1.0, on the 1.2 base: the Nano home, the Android Games
+  helper and the PanVK driver package come only with `SYSTEM_IMG` (1.4.4), so
+  it signs nothing and needs no keystore.
 - The container runs privileged and as root, since the build loop-mounts the
   system image. When a command ends, the files it created in the checkout are
   given back to the checkout's owner. On Linux the empty `work/` folder Docker
@@ -1006,11 +1002,12 @@ docker compose run --rm build bash                 # a shell in the build enviro
   `-e ESDE_APK=out/ES-DE.apk`): it is the only host folder the container sees.
 - `SYSTEM_IMG` builds don't work in Docker: they need `nano-bootlogo` and the
   boot logo's files from an AOSP tree, which the image doesn't have.
-- A Windows checkout made before the scripts' line endings were fixed keeps
-  its CRLF scripts, which fail in Linux (`/usr/bin/env: 'bash\r': No such
-  file or directory`, or `$'\r': command not found`). With
-  your changes committed or stashed, `git rm -r -q --cached .` and then
-  `git reset --hard` check them out again with LF.
+- A Windows checkout made before the scripts' line endings were fixed (or one
+  that switched here from a branch without `.gitattributes`) keeps its CRLF
+  scripts, which fail in Linux (`/usr/bin/env: 'bash\r': No such file or
+  directory`, or `$'\r': command not found`). With your changes committed or
+  stashed, `git rm -r -q --cached .` and then `git reset --hard` check them
+  out again with LF.
 - In VS Code, **Dev Containers: Reopen in Container** opens the checkout in
   the same environment (`.devcontainer/`), sharing the same `work/` volume.
 
@@ -1037,8 +1034,9 @@ repository), runs hakuX's host tests, and writes to `out/hakux/`:
   which deletes hakuX's data (settings and saves);
 - `...-source.tar.xz`: the source it was built from (hakuX with the patches
   applied, its FEX submodule, the native dependencies and `tools/hakux` as git
-  has it), which the GPL requires alongside the APK. Unpacked in the checkout,
-  it builds again without downloading anything:
+  has it), which the GPL requires alongside the APK. Unpacked in a checkout of
+  the Thimsy commit that made it, it builds again, fetching no source (Gradle
+  still downloads its dependencies the first time):
   `docker compose run --rm -e SOURCE_DIR=<its folder> hakux`;
 - `...-build-manifest.json`: every source revision, patch, tool and output
   sha256.
@@ -1053,8 +1051,8 @@ and the build refuses a key there), for example in `keys/`; `.gitignore` keeps
 1. Sign it with the key the current one was signed with: installed copies
    update only then.
 2. Upload the APK, its `-source.tar.xz`, its `-build-manifest.json` and
-   hakuX's license (`COPYING`, as `hakuX-LICENSE.txt` in `app-mirror-1`) to a
-   mirror release. The names carry the build, so they don't replace the
+   hakuX's license (its `LICENSE` and `COPYING` one after the other, as
+   `hakuX-LICENSE.txt` in `app-mirror-1`) to a mirror release. The names carry the build, so they don't replace the
    current build's files.
 3. In `mods/added-apps.txt`, update hakuX's line (file name, `url`, `sha256`;
    `source=` stays hakuX's tree at its commit, and the tarball sits beside the

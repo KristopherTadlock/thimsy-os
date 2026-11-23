@@ -196,8 +196,9 @@ class HakuxScripts(util.TestCase):
         # The copied key.properties (with the key's passwords) goes even when the build fails.
         self.assertRegex(text, r"\ntrap 'rm -f \"\$SRC/android/key\.properties\"' EXIT\n")
         for name in ("manifest", "keyprops"):
-            subprocess.run([sys.executable, "-I", "-m", "py_compile", os.path.join(HAKUX, name + ".py")], check=True,
-                           env={**os.environ, "PYTHONPYCACHEPREFIX": self.path("pycache")})
+            # In memory: no __pycache__ beside them, which the source tarball would not want.
+            path = os.path.join(HAKUX, name + ".py")
+            compile(util.slurp(path, text=True), path, "exec")
 
     def test_keys_stay_out_of_git(self):
         ignored = util.slurp(os.path.join(util.ROOT, ".gitignore"), text=True).splitlines()
