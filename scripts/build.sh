@@ -112,7 +112,12 @@ e2fsck -fy -E unshare_blocks "$system" >/dev/null || (($? == 1))
 
 mnt="$WORK/mnt/system"
 mkdir -p "$mnt"
-sudo mount -o loop "$system" "$mnt"
+# In a container /dev is a copy made when it started, so a loop device the
+# kernel adds later (all the others taken, by snaps for example) has no node
+# there; make it.
+loopdev="$(sudo losetup -f)"
+[[ -e "$loopdev" ]] || sudo mknod "$loopdev" b 7 "${loopdev#/dev/loop}"
+sudo mount -o loop="$loopdev" "$system" "$mnt"
 trap 'sudo umount "$mnt" 2>/dev/null || true' EXIT
 stamp="$WORK/mnt/mods.stamp"
 touch "$stamp"

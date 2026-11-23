@@ -15,6 +15,8 @@ services:
     # The build loop-mounts the system image.
     privileged: true
     working_dir: /workspaces/thimsy-os
+    # Gives the files the command creates in the checkout to its owner.
+    entrypoint: ["bash", ".devcontainer/as-owner.sh"]
     volumes:
       - .:/workspaces/thimsy-os
       # work/ holds tens of GB of downloads and disk images: on a Docker volume

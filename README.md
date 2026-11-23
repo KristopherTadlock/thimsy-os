@@ -681,9 +681,10 @@ The tools it uses:
 
 ### Building with Docker
 
-On Windows, macOS or Linux, Docker supplies every tool above. Clone the
-repository (git keeps the scripts' LF line endings, even on Windows), then in
-the checkout:
+On Windows, macOS or Linux, Docker supplies every tool above. It must be
+Docker Desktop, or Docker Engine running as root: rootless Docker and Podman
+can't loop-mount the system image. Clone the repository (git keeps the
+scripts' LF line endings, even on Windows), then in the checkout:
 
 ```sh
 docker compose run --rm build
@@ -707,10 +708,19 @@ docker compose run --rm build bash                         # a shell in the buil
   downloads everything again. It also holds the Android Games helper's
   signing key (`work/cache/nano`), so copy that out first (for example to
   `out/`).
-- The container runs privileged, since the build loop-mounts the system
-  image, and as root, so on Linux the files it writes in `out/` belong to root.
-- `SYSTEM_IMG` and `ESDE_APK` must name files inside the checkout (for example
+- The container runs privileged and as root, since the build loop-mounts the
+  system image. When a command ends, the files it created in the checkout are
+  given back to the checkout's owner. On Linux the empty `work/` folder Docker
+  makes for the volume stays root's: `sudo rmdir work` before building without
+  Docker. Files made from VS Code's Dev Container are root's too.
+- `ESDE_APK` must name a file inside the checkout (for example
   `-e ESDE_APK=out/ES-DE.apk`): it is the only host folder the container sees.
+- `SYSTEM_IMG` builds don't work in Docker: they need `nano-bootlogo` and the
+  boot logo's files from an AOSP tree, which the image doesn't have.
+- A Windows checkout made before the scripts' line endings were fixed keeps
+  its CRLF scripts, which fail in Linux (`$'\r': command not found`). With
+  your changes committed or stashed, `git rm -r -q --cached . && git reset --hard`
+  checks them out again with LF.
 - In VS Code, **Dev Containers: Reopen in Container** opens the checkout in
   the same environment (`.devcontainer/`), sharing the same `work/` volume.
 

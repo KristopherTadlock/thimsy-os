@@ -7,10 +7,16 @@
 FROM --platform=linux/amd64 ubuntu:24.04
 
 ARG DEBIAN_FRONTEND=noninteractive
+# A failed download in a `curl | ...` step must fail the build, not cache an
+# image without the tool.
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+# The checkout is bind-mounted; keep Python's caches out of it.
+ENV PYTHONDONTWRITEBYTECODE=1
 
 # Firmware build tools. mkbootimg also provides unpack_bootimg; e2fsprogs
 # provides e2fsck, resize2fs and debugfs; attr provides setfattr; util-linux
-# (in the base image) provides flock, losetup and unshare.
+# (in the base image) provides flock, losetup and unshare; procps provides
+# pgrep and pkill (installer/tests/e2e.sh).
 RUN apt-get update && apt-get install -y --no-install-recommends \
       7zip \
       attr \
@@ -27,6 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       mkbootimg \
       openssl \
       patch \
+      procps \
       python3 \
       python3-pil \
       secilc \
@@ -81,6 +88,7 @@ ENV CARGO_HOME=/opt/cargo
 RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal \
       --default-toolchain stable --component clippy,rustfmt
 ENV PATH=$CARGO_HOME/bin:$PATH
+RUN cargo --version && cargo clippy --version && cargo fmt --version
 
 # The Flutter version installer.yml pins.
 ARG FLUTTER_VERSION=3.50.0
