@@ -44,6 +44,10 @@ cargo build --release
 ./target/release/thimsy-installer flash --job ~/thimsy-ws/jobs/anbernic-rg-cube-heavy --dry-run
 ```
 
+In Docker (the root README's "Building with Docker"), run these from
+`docker compose run --rm build bash`; the image has Rust, Flutter and the
+libraries `spd_dump` and the Linux app need.
+
 `installer/tests/e2e.sh WORKSPACE PACK_DIR` (the package and the official
 firmware in `PACK_DIR`) runs the real-firmware test: build,
 byte-for-byte comparison, dry runs, a full flash through the fake `spd_dump`,

@@ -1,0 +1,9 @@
+# The scripts run in Linux (see .devcontainer and compose.yaml), so keep LF
+# line endings even in Windows checkouts.
+* text=auto eol=lf
+*.png binary
+*.webp binary
+*.ico binary
+*.zip binary
+# Third-party license texts stay byte for byte as published.
+mods/rom-licenses/** -text

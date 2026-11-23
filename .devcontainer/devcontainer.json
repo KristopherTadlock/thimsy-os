@@ -1,0 +1,25 @@
+{
+  "name": "Thimsy OS (universal-installer)",
+  "build": { "dockerfile": "Dockerfile" },
+  "workspaceFolder": "/workspaces/thimsy-os",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/thimsy-os,type=bind",
+  // Loop-mounting system_a.img needs a privileged container.
+  "runArgs": ["--privileged"],
+  // work/ holds tens of GB of downloads and disk images. A Docker volume keeps
+  // them on a Linux filesystem (fast, and loop mounts work) and out of the
+  // Windows checkout; each branch has its own. out/ stays on the bind mount so
+  // the .pac shows up on Windows.
+  "mounts": ["source=thimsy-os-installer-work,target=/workspaces/thimsy-os/work,type=volume"],
+  "remoteUser": "root",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "timonwong.shellcheck",
+        "rust-lang.rust-analyzer",
+        "Dart-Code.flutter",
+        "eamodio.gitlens"
+      ]
+    }
+  }
+}

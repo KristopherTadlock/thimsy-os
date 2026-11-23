@@ -1,0 +1,32 @@
+# Builds Thimsy OS and its installer in Docker, on any OS (README "Building
+# with Docker"):
+#
+#   docker compose run --rm build                              # scripts/build.sh
+#   docker compose run --rm build installer/tests/run-all.sh   # the installer's tests
+#   docker compose run --rm build bash                         # a shell
+#
+# The image is .devcontainer/Dockerfile, the same one VS Code's Dev Containers
+# use, and work/ is the same Docker volume, so downloads are shared.
+name: thimsy-os-installer
+services:
+  build:
+    build: .devcontainer
+    image: thimsy-os-installer-build
+    # The build loop-mounts the system image.
+    privileged: true
+    working_dir: /workspaces/thimsy-os
+    volumes:
+      - .:/workspaces/thimsy-os
+      # work/ holds tens of GB of downloads and disk images: on a Docker volume
+      # they stay on a Linux filesystem (fast, and loop mounts work) and out of
+      # the checkout. out/ stays in the checkout, so the .pac shows up there.
+      - work:/workspaces/thimsy-os/work
+      # Rust crates and Dart packages, kept between runs.
+      - cargo:/opt/cargo/registry
+      - pub:/root/.pub-cache
+    command: ["scripts/build.sh"]
+volumes:
+  work:
+    name: thimsy-os-installer-work
+  cargo:
+  pub:
