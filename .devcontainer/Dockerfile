@@ -12,10 +12,9 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # The checkout is bind-mounted; keep Python's caches out of it.
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# Firmware build tools. mkbootimg also provides unpack_bootimg; e2fsprogs
-# provides e2fsck, resize2fs and debugfs; attr provides setfattr; util-linux
-# (in the base image) provides flock, losetup and unshare; procps provides
-# pgrep and pkill.
+# Firmware build tools. e2fsprogs provides e2fsck, resize2fs and debugfs;
+# attr provides setfattr; util-linux (in the base image) provides flock,
+# losetup and unshare; procps provides pgrep and pkill.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       7zip \
       attr \
@@ -29,7 +28,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       file \
       git \
       lz4 \
-      mkbootimg \
       openssl \
       patch \
       procps \
@@ -67,7 +65,18 @@ RUN mkdir -p /opt/aosp-avb \
     && ln -s /opt/aosp-avb/avbtool.py /usr/local/bin/avbtool \
     && avbtool version \
     && grep -q 'BEGIN.*PRIVATE KEY' /opt/aosp-avb/testkey_rsa4096.pem
-ENV MKBOOTIMG=mkbootimg
+# AOSP's mkbootimg and unpack_bootimg, from the same tag. Ubuntu's mkbootimg
+# package leaves out the gki module its mkbootimg imports, so it can't run.
+RUN mkdir -p /opt/aosp-mkbootimg/gki \
+    && base=https://android.googlesource.com/platform/system/tools/mkbootimg/+/refs/tags/$AVB_TAG \
+    && for f in mkbootimg.py unpack_bootimg.py gki/generate_gki_certificate.py; do \
+         curl -fsSL "$base/$f?format=TEXT" | base64 -d > "/opt/aosp-mkbootimg/$f" || exit 1; \
+       done \
+    && chmod +x /opt/aosp-mkbootimg/mkbootimg.py /opt/aosp-mkbootimg/unpack_bootimg.py \
+    && ln -s /opt/aosp-mkbootimg/mkbootimg.py /usr/local/bin/mkbootimg \
+    && ln -s /opt/aosp-mkbootimg/unpack_bootimg.py /usr/local/bin/unpack_bootimg \
+    && mkbootimg --help > /dev/null && unpack_bootimg --help > /dev/null
+ENV MKBOOTIMG=/opt/aosp-mkbootimg/mkbootimg.py
 ENV AVB_KEY=/opt/aosp-avb/testkey_rsa4096.pem
 
 # The checkout is bind-mounted from the host, where its files can have another
