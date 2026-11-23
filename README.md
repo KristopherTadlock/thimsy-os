@@ -974,7 +974,9 @@ docker compose run --rm -e NEW_KEYSTORE=1 build   # first build: creates the sig
 docker compose run --rm build                      # later builds
 ```
 
-The first run builds the image, which takes a few minutes. Docker needs about
+The first run builds the image, which takes a few minutes; after pulling a
+change to `.devcontainer/`, rebuild it with `docker compose build` (or add
+`--build` to `run`). Docker needs about
 40 GB free on its own disk (Docker Desktop: Settings, Resources). Settings go
 with `-e`, before `build`, and any other command after it:
 
@@ -984,8 +986,12 @@ docker compose run --rm build tests/run.sh all
 docker compose run --rm build bash                 # a shell in the build environment
 ```
 
-- `NEW_KEYSTORE=1` is only for the first build: the keys it creates are kept
-  in the `work/` volume, and later builds sign with them.
+- `NEW_KEYSTORE=1` is only for a first build with no keys at all: the keys it
+  creates are kept in the `work/` volume, and later builds sign with them. To
+  use existing keys (devices update the helper apps only when they're signed
+  with the same ones), put their `nano` and `panvk` folders in `out/keys/` and
+  copy them in before the first build:
+  `docker compose run --rm build cp -r out/keys/. work/cache/`.
 - The `.pac` is written to `out/` in the checkout. Downloads and disk images
   stay in the Docker volume `thimsy-os-nano-work`, and
   `docker volume rm thimsy-os-nano-work` frees that space; the next build
@@ -1001,7 +1007,8 @@ docker compose run --rm build bash                 # a shell in the build enviro
 - `SYSTEM_IMG` builds don't work in Docker: they need `nano-bootlogo` and the
   boot logo's files from an AOSP tree, which the image doesn't have.
 - A Windows checkout made before the scripts' line endings were fixed keeps
-  its CRLF scripts, which fail in Linux (`$'\r': command not found`). With
+  its CRLF scripts, which fail in Linux (`/usr/bin/env: 'bash\r': No such
+  file or directory`, or `$'\r': command not found`). With
   your changes committed or stashed, `git rm -r -q --cached .` and then
   `git reset --hard` check them out again with LF.
 - In VS Code, **Dev Containers: Reopen in Container** opens the checkout in
@@ -1029,24 +1036,34 @@ repository), runs hakuX's host tests, and writes to `out/hakux/`:
   installs only on a device without Thimsy's hakuX: uninstall that first,
   which deletes hakuX's data (settings and saves);
 - `...-source.tar.xz`: the source it was built from (hakuX with the patches
-  applied, its FEX submodule, the native dependencies and `tools/hakux`), which
-  the GPL requires alongside the APK;
-- `hakuX-build-manifest.json`: every source revision, patch, tool and output
+  applied, its FEX submodule, the native dependencies and `tools/hakux` as git
+  has it), which the GPL requires alongside the APK. Unpacked in the checkout,
+  it builds again without downloading anything:
+  `docker compose run --rm -e SOURCE_DIR=<its folder> hakux`;
+- `...-build-manifest.json`: every source revision, patch, tool and output
   sha256.
 
 Building it accepts Google's Android SDK License Agreement: the image runs
 `sdkmanager --licenses`. `-e KEY_PROPERTIES=<key.properties in the checkout>`
-signs the release with that key instead (`.gitignore` keeps `key.properties`
-and keystores out of git). To ship a build:
+signs the release with that key instead. Keep the key and its
+`key.properties` outside `tools/hakux` (the source tarball packs that folder,
+and the build refuses a key there), for example in `keys/`; `.gitignore` keeps
+`key.properties` and keystores out of git. To ship a build:
 
 1. Sign it with the key the current one was signed with: installed copies
    update only then.
-2. Upload the APK, its `-source.tar.xz` and the manifest to a mirror release.
-3. In `mods/added-apps.txt`, update hakuX's line (file name, `url`, `sha256`,
-   and `source=` to the source tarball) and the comment above it.
-4. Update the emulator table and the hakuX paragraph above, which describe the
-   build in `scripts/build_hakux.sh`, and bump `THIMSY_BUILD` in
-   `tools/hakux/build.sh` before the next patch set.
+2. Upload the APK, its `-source.tar.xz`, its `-build-manifest.json` and
+   hakuX's license (`COPYING`, as `hakuX-LICENSE.txt` in `app-mirror-1`) to a
+   mirror release. The names carry the build, so they don't replace the
+   current build's files.
+3. In `mods/added-apps.txt`, update hakuX's line (file name, `url`, `sha256`;
+   `source=` stays hakuX's tree at its commit, and the tarball sits beside the
+   APK as now) and the comment above it.
+4. Update the emulator table and the hakuX paragraph above, and
+   `scripts/hakux_source.sh`, `scripts/build_hakux.sh` and
+   `scripts/hakux-build-manifest.json` (with the tests that check them against
+   `tools/hakux`), which describe the build they replace. Bump `THIMSY_BUILD`
+   in `tools/hakux/build.sh` before the next patch set.
 
 ### Tests
 

@@ -195,7 +195,12 @@ mkdir -p "$mnt"
 # kernel adds later (all the others taken, by snaps for example) has no node
 # there; make it.
 loopdev="$(sudo losetup -f)"
-[[ -e "$loopdev" ]] || sudo mknod "$loopdev" b 7 "${loopdev#/dev/loop}"
+# Its numbers come from sysfs: with the loop driver's max_part set, the minor
+# isn't the device's number.
+if [[ ! -e "$loopdev" ]]; then
+  IFS=: read -r major minor < "/sys/block/${loopdev#/dev/}/dev"
+  sudo mknod "$loopdev" b "$major" "$minor"
+fi
 sudo mount -o loop="$loopdev" "$system" "$mnt"
 mounted=1
 stamp="$WORK/mnt/mods.stamp"

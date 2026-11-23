@@ -7,7 +7,8 @@
 *.pac
 __pycache__/
 
-# Signing keys and their passwords (tools/hakux KEY_PROPERTIES).
+# Signing keys and their passwords (tools/hakux KEY_PROPERTIES), e.g. in keys/.
+/keys/
 key.properties
 *.jks
 *.keystore

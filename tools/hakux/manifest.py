@@ -44,6 +44,17 @@ def main():
             patches.append({"file": name, "sha256": sha256(os.path.join(here, "patches", name)),
                             "source": source.strip()})
     fex = os.path.join(src, "external/fex")
+    if os.environ.get("SOURCE_DIR"):
+        # An unpacked source tarball: no .git (inside the checkout, git would answer
+        # for Thimsy's repository); build.sh read the commit from its FEX_COMMIT.
+        fex_info = {"commit": os.environ["FEX_COMMIT"], "submodules": None}
+    else:
+        fex_info = {
+            "commit": git("-C", fex, "rev-parse", "HEAD"),
+            "submodules": {line.split()[1]: line.split()[0].lstrip("+-U")
+                           for line in git("-C", fex, "submodule", "status").splitlines()
+                           if not line.startswith("-")},
+        }
     manifest = {
         "hakux": {
             "repository": repo,
@@ -53,12 +64,7 @@ def main():
             "thimsy_build": int(build),
         },
         "patches": patches,
-        "fex": {
-            "commit": git("-C", fex, "rev-parse", "HEAD"),
-            "submodules": {line.split()[1]: line.split()[0].lstrip("+-U")
-                           for line in git("-C", fex, "submodule", "status").splitlines()
-                           if not line.startswith("-")},
-        },
+        "fex": fex_info,
         "native_deps": [
             {"path": p, "repository": u, "commit": c, "revision": n,
              "patched": "tools/native/adrenotools-kgsl-context-priority.patch" if p == "adrenotools" else None}

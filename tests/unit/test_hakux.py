@@ -101,6 +101,13 @@ class HakuxPins(util.TestCase):
         self.assertIn(f"openjdk-{manifest['toolchain']['jdk']}-jdk-headless", dockerfile)
 
 
+    def test_fex_submodules(self):
+        """The FEX submodules fetched are those hakux_source.sh fetches for the mirrored build."""
+        ours = re.search(r"^FEX_SUBMODULES=\(([^)]*)\)$", build_sh(), re.M).group(1).split()
+        text = util.slurp(f"{util.SCRIPTS}/hakux_source.sh", text=True).replace("\\\n", " ")
+        theirs = re.search(r'external/fex" submodule update -q --init --depth 1 ([^\n]+)', text).group(1).split()
+        self.assertEqual(sorted(ours), sorted(theirs))
+
 class HakuxPatches(util.TestCase):
     def test_series_lists_every_patch_once(self):
         names = [name for name, _ in series()]
@@ -196,3 +203,48 @@ class HakuxScripts(util.TestCase):
         ignored = util.slurp(os.path.join(util.ROOT, ".gitignore"), text=True).splitlines()
         for pattern in ("key.properties", "*.jks", "*.keystore"):
             self.assertIn(pattern, ignored)
+
+
+@unittest.skipUnless(shutil.which("git") and shutil.which("xz") and shutil.which("tar"), "needs git, tar and xz")
+class HakuxSourceTarball(util.TestCase):
+    """build.sh's source tarball step, run on a fixture: what git tracks in tools/hakux and the patched
+    sources go in; a key, key.properties, .git and bytecode don't."""
+
+    def tarball_step(self):
+        text = build_sh()
+        start = text.index('if [[ -z "${SOURCE_DIR:-}" ]]; then\n  rm -f "$OUT"/hakuX-*-source.tar.xz')
+        return text[start:text.index("\nfi\n", start) + 4]
+
+    def test_packs_only_what_git_tracks(self):
+        root, work, out = self.path("co"), self.path("co/work/hakux"), self.path("co/out/hakux")
+        env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+               "GIT_COMMITTER_EMAIL": "t@t"}
+        self.write("co/tools/hakux/build.sh", "#!/bin/sh\n")
+        self.write("co/tools/hakux/patches/series", "0001-x.patch  https://example.org\n")
+        self.assertOk(util.run(["git", "init", "-q"], cwd=root, env=env))
+        self.assertOk(util.run(["git", "add", "tools"], cwd=root, env=env))
+        self.assertOk(util.run(["git", "commit", "-q", "-m", "t"], cwd=root, env=env))
+        # Left in the folder, not in git: none of it may be published.
+        self.write("co/tools/hakux/key.properties", "storePassword=secret\n")
+        self.write("co/tools/hakux/release.jks", b"key")
+        self.write("co/tools/hakux/__pycache__/m.cpython-312.pyc", b"pyc")
+        self.write("co/work/hakux/hakuX/README.md", "hakuX\n")
+        self.write("co/work/hakux/hakuX/.git/HEAD", "ref\n")
+        self.write("co/work/hakux/hakuX/external/fex/.git", "gitdir: x\n")
+        self.write("co/work/hakux/deps/volk/volk.c", "int x;\n")
+        os.makedirs(out)
+        step = "set -euo pipefail\n" + self.tarball_step()
+        proc = util.run(["bash", "-c", step], cwd=root, env={"ROOT": root, "WORK": work, "OUT": out, "name": "hx",
+                                                              "FEX_COMMIT": "f" * 40, "SOURCE_DIR": ""})
+        self.assertOk(proc)
+        listing = util.run(["tar", "-tJf", f"{out}/hx-source.tar.xz"]).stdout.split()
+        files = sorted(n for n in listing if not n.endswith("/"))
+        self.assertEqual(files, ["hx-source/FEX_COMMIT", "hx-source/deps/volk/volk.c", "hx-source/hakuX/README.md",
+                                 "hx-source/tools/hakux/build.sh", "hx-source/tools/hakux/patches/series"])
+        commit = util.run(["tar", "-xJOf", f"{out}/hx-source.tar.xz", "hx-source/FEX_COMMIT"]).stdout
+        self.assertEqual(commit, "FEX_COMMIT=" + "f" * 40 + "\n")
+        self.assertFalse(os.path.exists(f"{work}/source-tools"))
+
+    def test_refuses_a_key_in_tools_hakux(self):
+        text = build_sh()
+        self.assertIn('"$HERE"/*) echo "KEY_PROPERTIES: keep the key outside tools/hakux', text)

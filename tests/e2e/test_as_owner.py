@@ -1,29 +1,74 @@
 """.devcontainer/as-owner.sh, compose.yaml's entrypoint: it runs the command, hands its exit
-status, stdin and signals through, and gives what it created in the checkout to the checkout's
-owner. Runs as root, as in the container (docker compose run --rm build tests/run.sh)."""
+status, stdin and signals through (SIGTERM to the whole process group, as docker stop's), and gives
+what it created in the checkout to the checkout's owner. The ownership tests run as root, as in the
+container (docker compose run --rm build tests/run.sh); the rest as any user on Linux."""
 import os
 import signal
 import subprocess
+import sys
 import time
 import unittest
 
 from tests import util
 
 OWNER = os.path.join(util.ROOT, ".devcontainer", "as-owner.sh")
+ROOT_ONLY = unittest.skipUnless(hasattr(os, "geteuid") and os.geteuid() == 0, "needs root (as in the container)")
 
 
-@unittest.skipUnless(hasattr(os, "geteuid") and os.geteuid() == 0, "needs root (as in the container)")
+def default_signal_env():
+    """Whether env has --default-signal (GNU coreutils 8.31 or later), which as-owner.sh uses."""
+    try:
+        return subprocess.run(["env", "--default-signal=INT", "true"], capture_output=True).returncode == 0
+    except OSError:
+        return False
+
+
+@unittest.skipUnless(sys.platform.startswith("linux") and default_signal_env(), "needs Linux and GNU env")
 class AsOwner(util.TestCase):
     def setUp(self):
         super().setUp()
         self.co = self.path("checkout")
         os.makedirs(f"{self.co}/work")
-        os.chown(self.co, 1234, 1234)
 
     def owner(self, *cmd, **kw):
         return subprocess.run(["bash", OWNER, *cmd], cwd=self.co, capture_output=True, text=True, timeout=60, **kw)
 
+    def test_exit_status(self):
+        self.assertEqual(self.owner("bash", "-c", "exit 7").returncode, 7)
+
+    def test_stdin_reaches_the_command(self):
+        self.assertEqual(self.owner("cat", input="hi\n").stdout, "hi\n")
+
+    def test_passes_signals_on(self):
+        # The command runs a "mod" of its own, as build.sh does: SIGTERM reaches both, SIGINT the command.
+        mod = "trap 'echo mod >> mod_got; exit 3' TERM; sleep 30 & wait"
+        child = f"trap 'echo got; exit {{code}}' {{sig}}; bash -c \"{mod}\" >/dev/null & " \
+                "echo ready; sleep 30 >/dev/null & wait"
+        for sig, code in ((signal.SIGTERM, 5), (signal.SIGINT, 6)):
+            # Its own session, as PID 1 in the container: kill 0 reaches its process group only.
+            proc = subprocess.Popen(["bash", OWNER, "bash", "-c", child.format(code=code, sig=sig.name[3:])],
+                                    cwd=self.co, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, text=True,
+                                    start_new_session=True)
+            try:
+                self.assertEqual(proc.stdout.readline(), "ready\n")
+                time.sleep(0.3)
+                proc.send_signal(sig)
+                out, _ = proc.communicate(timeout=20)
+                time.sleep(0.3)
+            finally:
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            self.assertEqual((proc.returncode, out), (code, "got\n"), sig.name)
+            got = f"{self.co}/mod_got"
+            self.assertEqual(os.path.exists(got), sig == signal.SIGTERM, sig.name)
+            if os.path.exists(got):
+                os.remove(got)
+
+    @ROOT_ONLY
     def test_hands_back_what_it_made(self):
+        os.chown(self.co, 1234, 1234)
         proc = self.owner("bash", "-c", "mkdir -p out/d; touch out/a out/d/b work/c; ln -s a out/l; exit 7")
         self.assertEqual(proc.returncode, 7, proc.stderr)
         for rel in ("out", "out/a", "out/d", "out/d/b"):
@@ -32,24 +77,8 @@ class AsOwner(util.TestCase):
         # work/ is the Docker volume: left to root.
         self.assertEqual(os.stat(f"{self.co}/work/c").st_uid, 0)
 
-    def test_stdin_reaches_the_command(self):
-        self.assertEqual(self.owner("cat", input="hi\n").stdout, "hi\n")
-
+    @ROOT_ONLY
     def test_root_owned_checkout_is_left_alone(self):
         os.chown(self.co, 0, 0)
         self.assertEqual(self.owner("touch", "x").returncode, 0)
         self.assertEqual(os.stat(f"{self.co}/x").st_uid, 0)
-
-    def test_passes_signals_on(self):
-        for sig, code in ((signal.SIGTERM, 5), (signal.SIGINT, 6)):
-            script = f"trap 'echo got; touch out_sig; exit {code}' {sig.name[3:]}; echo ready; sleep 30 & wait"
-            # Started from Python, SIGINT isn't ignored, as for PID 1 in the container.
-            proc = subprocess.Popen(["bash", OWNER, "bash", "-c", script], cwd=self.co, stdin=subprocess.DEVNULL,
-                                    stdout=subprocess.PIPE, text=True)
-            self.assertEqual(proc.stdout.readline(), "ready\n")
-            time.sleep(0.2)
-            proc.send_signal(sig)
-            out, _ = proc.communicate(timeout=30)
-            self.assertEqual((proc.returncode, out), (code, "got\n"), sig.name)
-            self.assertEqual(os.stat(f"{self.co}/out_sig").st_uid, 1234)
-            os.remove(f"{self.co}/out_sig")
