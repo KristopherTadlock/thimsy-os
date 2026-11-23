@@ -151,7 +151,11 @@ on the Mali driver; switch the app back to **Default** the same way.
 hakuX is built from its source at commit `a7cdb5a` (newer than its 1.3.0
 release), which adds custom Vulkan drivers on Mali GPUs. It is the release
 variant signed with this project's key and mirrored in this repo's
-`app-mirror-1` release, with the revisions of its native dependencies.
+`app-mirror-1` release, with its corresponding source (hakuX, its FEX
+submodule and its native dependencies at the revisions the build used) and
+`hakuX-build-manifest.json`. `scripts/hakux_source.sh` assembles that source
+and `scripts/build_hakux.sh` builds the APK from it, byte for byte with the
+same key.
 hakuX reads only folders picked in Android's folder picker, so on the 1.4.4
 base first-boot setup gives it `ROMs/xbox` on internal storage that way, through
 system_server, with settings naming it: hakuX skips its first-start setup.
