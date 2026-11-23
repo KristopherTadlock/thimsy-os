@@ -224,9 +224,9 @@ applies, and the resolver picks exactly one per slot.
 # installer/catalog/components/gpu-driver.yaml
 slot: emulator_gpu_driver
 variants:
-  - id: malisx2-0.4.0
+  - id: malisx2-0.6.1
     when: { gpu.family: mali-valhall }
-    artifact: { url: ".../malisx2-0.4.0.zip", sha256: "…" }
+    artifact: { url: ".../malisx2-0.6.1.zip", sha256: "…" }
     consumers: [com.armsx2, com.rfandango.haku_x]
   - id: turnip-25.x
     when: { gpu.family: adreno-6xx-7xx }
