@@ -102,11 +102,15 @@ so games put PlayStation Cross on the right button instead of the bottom one.
 RetroArch's profile for the controller and PPSSPP's controls, which were set
 for the print, are swapped to match, so they keep Cross on the bottom button.
 Nano reads the buttons directly, so in its menus A still confirms.
-Controller Enable (gammapad) reads only the vendor's layout, so its ABXY Swap
-is on by default: with Controller Enable on, apps still get the buttons by
-position. Nano swaps them back as it reads them, so A still confirms in its
-menus (as does the DS player for DraStic, if DraStic is installed). An Xbox
-controller merged into gammapad is swapped too; turn ABXY Swap off for it.
+Controller Enable (gammapad) reads only the vendor's layout, so it swaps the
+built-in controller's face buttons itself: apps still get them by position. A
+controller that already reports by position, such as an Xbox controller,
+passes through as it is, so every controller gives games the same layout.
+**ABXY Swap** (off by default) then swaps A with B and X with Y on every
+controller. Nano swaps the buttons back as it reads them, so each
+controller's printed A confirms in its menus (as in the DS player for
+DraStic, if DraStic is installed). gammapad tells Nano which layout each face
+button came from with an `EV_MSC`/`MSC_SERIAL` event before it.
 
 ### Added emulators
 

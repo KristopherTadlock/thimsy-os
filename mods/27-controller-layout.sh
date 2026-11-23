@@ -6,8 +6,8 @@
 # is then the bottom button. Android looks in /product before /vendor, so this
 # layout replaces the vendor's, which reports the buttons by their print. Nano
 # reads the buttons directly, so its menus keep A to confirm. Controller Enable
-# (gammapad) reads only the vendor's layout, so with it on its ABXY Swap, on by
-# default here, gives apps the positions again (Nano swaps them back).
+# (gammapad) reads only the vendor's layout and gives apps the positions itself
+# (Nano swaps them back).
 #
 # Usage: 27-controller-layout.sh SYSTEM_DIR CACHE_DIR
 set -euo pipefail
@@ -69,17 +69,4 @@ elif (($? != 3)); then
   exit 1
 fi
 
-# ABXY Swap on (a second run finds it set).
-for prop in "$SYSTEM/build.prop" "$SYSTEM/product/etc/build.prop"; do
-  if sudo grep -q '^persist\.gammaos\.gamepad\.abxy_swap=' "$prop" \
-      && ! sudo grep -qx 'persist\.gammaos\.gamepad\.abxy_swap=1' "$prop"; then
-    echo "$prop already sets ABXY Swap" >&2
-    exit 1
-  fi
-done
-if ! sudo grep -qx 'persist\.gammaos\.gamepad\.abxy_swap=1' "$SYSTEM/build.prop"; then
-  sudo cat "$SYSTEM/build.prop" >"$work/build.prop"
-  printf '\n# Thimsy OS: with Controller Enable on, apps get the face buttons by position\npersist.gammaos.gamepad.abxy_swap=1\n' >>"$work/build.prop"
-  write_through "$work/build.prop" "$SYSTEM/build.prop"
-fi
 echo "the built-in controller reports its face buttons by position; PPSSPP's controls follow"
