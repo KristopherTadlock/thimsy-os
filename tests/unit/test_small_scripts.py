@@ -122,7 +122,8 @@ class AndroidGamesKeystore(util.TestCase):
     def test_no_silent_new_key(self):
         """L11: a wiped cache must not sign the app with a new key unasked."""
         script = f"{util.SCRIPTS}/build_android_games.sh"
-        env = {"ANDROID_JAR": self.write("android.jar", b"")}
+        # Cleared, since a first build runs these tests with NEW_KEYSTORE=1 set.
+        env = {"ANDROID_JAR": self.write("android.jar", b""), "NEW_KEYSTORE": ""}
         proc = util.run(["bash", script, self.path("out.apk"), self.path("cache/ks")], env=env)
         self.assertFails(proc, "no keystore", "NEW_KEYSTORE=1")
         self.assertFalse(os.path.exists(self.path("cache/ks")))
