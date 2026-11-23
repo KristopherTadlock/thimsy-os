@@ -95,7 +95,7 @@ name="hakuX-$version-${HAKUX_COMMIT:0:7}-thimsy$THIMSY_BUILD"
 
 # The corresponding source, before anything is built in the checkout.
 rm -f "$OUT"/hakuX-*-source.tar.xz
-tar -C "$WORK" --exclude=.git --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
+tar -C "$WORK" --exclude=.git --exclude=__pycache__ --exclude="*.pyc" --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
     --transform "s,^hakuX,$name-source/hakuX," --transform "s,^deps,$name-source/deps," \
     --transform "s,^hakux,$name-source/tools/hakux," \
     -cf - hakuX deps -C "$ROOT/tools" hakux | xz -T0 -9 > "$OUT/$name-source.tar.xz"

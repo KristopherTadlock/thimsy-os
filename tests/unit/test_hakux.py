@@ -20,9 +20,14 @@ PATCHES = os.path.join(HAKUX, "patches")
 
 
 def load(name):
+    """tools/hakux/NAME.py as a module, leaving no __pycache__ beside it (the source tarball packs tools/hakux)."""
     spec = importlib.util.spec_from_file_location("hakux_" + name, os.path.join(HAKUX, name + ".py"))
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    dont_write, sys.dont_write_bytecode = sys.dont_write_bytecode, True
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = dont_write
     return module
 
 
