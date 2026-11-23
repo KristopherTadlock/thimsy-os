@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Builds hakuX (the Xbox emulator in mods/added-apps.txt) from source:
 # rfandango/hakuX at HAKUX_COMMIT with the patches in tools/hakux/patches
-# (series), and the native dependencies hakuX's android/README.md names, at
-# the revisions it names. Runs in tools/hakux/Dockerfile's image:
+# (series), and the native dependencies at the revisions the mirrored build
+# used (scripts/hakux_source.sh): those hakuX's android/README.md names, but
+# nv2a_vsh_cpu at xemu's 1115255. Runs in tools/hakux/Dockerfile's image:
 #
 #   docker compose run --rm hakux
 #
@@ -10,12 +11,16 @@
 #   hakuX-<version>-<commit>-thimsy<N>-unsigned.apk   the release build, unsigned
 #   hakuX-<version>-<commit>-thimsy<N>-testkey.apk    the same, signed with a
 #       throwaway key (work/hakux/testkey.jks) to try on a device; never ship it
+#   hakuX-<version>-<commit>-thimsy<N>-source.tar.xz  the source it was built
+#       from: hakuX with the patches applied, its FEX submodule, the native
+#       dependencies and tools/hakux (GPL: ship it with the APK)
 #   hakuX-build-manifest.json   every source revision, patch, tool and output hash
 #
 # KEY_PROPERTIES=<file in the checkout> (hakuX's key.properties format:
 # storeFile, storePassword, keyAlias, keyPassword; a relative storeFile is
 # next to that file) signs the release with that key instead, as
-# hakuX-<version>-<commit>-thimsy<N>.apk.
+# hakuX-<version>-<commit>-thimsy<N>.apk. .gitignore keeps key.properties and
+# keystores out of git; the copy the build makes is deleted when it ends.
 # Sources and Gradle's cache stay in work/hakux, so a second build downloads
 # nothing; SKIP_TESTS=1 skips hakuX's host tests.
 set -euo pipefail
@@ -49,6 +54,8 @@ NC_DEPS="$WORK/deps"
 : "${ANDROID_NDK:?run it in the image of tools/hakux/Dockerfile: docker compose run --rm hakux}"
 export GRADLE_USER_HOME="$WORK/gradle"
 mkdir -p "$WORK" "$NC_DEPS" "$OUT"
+# The signing key's passwords never stay in the hakuX checkout.
+trap 'rm -f "$SRC/android/key.properties"' EXIT
 
 # checkout DIR URL COMMIT: DIR at exactly COMMIT, clean.
 checkout() {
@@ -86,6 +93,13 @@ done < "$HERE/patches/series"
 version="$(sed -n 's/^ *versionName = "\(.*\)"/\1/p' "$SRC/android/app/build.gradle.kts")"
 name="hakuX-$version-${HAKUX_COMMIT:0:7}-thimsy$THIMSY_BUILD"
 
+# The corresponding source, before anything is built in the checkout.
+rm -f "$OUT"/hakuX-*-source.tar.xz
+tar -C "$WORK" --exclude=.git --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
+    --transform "s,^hakuX,$name-source/hakuX," --transform "s,^deps,$name-source/deps," \
+    --transform "s,^hakux,$name-source/tools/hakux," \
+    -cf - hakuX deps -C "$ROOT/tools" hakux | xz -T0 -9 > "$OUT/$name-source.tar.xz"
+
 if [[ "${SKIP_TESTS:-}" != 1 ]]; then
   echo "== host tests"
   # At this commit the tests build with -Werror, which newer warnings in GCC 13
@@ -114,20 +128,7 @@ bash "$SRC/tools/native/app-libs.sh" "$SRC/build/native/core" > /dev/null
 echo "== app"
 rm -f "$SRC/android/key.properties"
 if [[ -n "${KEY_PROPERTIES:-}" ]]; then
-  # A relative storeFile is next to KEY_PROPERTIES; Gradle would look for it in
-  # the hakuX checkout's android/app.
-  props="$(realpath "$KEY_PROPERTIES")"
-  python3 - "$props" "$SRC/android/key.properties" <<'PY'
-import os, sys
-src, dst = sys.argv[1:]
-out = []
-for line in open(src, encoding="utf-8"):
-    key, sep, value = line.partition("=")
-    if sep and key.strip() == "storeFile" and not os.path.isabs(value.strip()):
-        line = "storeFile=" + os.path.join(os.path.dirname(src), value.strip()) + "\n"
-    out.append(line)
-open(dst, "w", encoding="utf-8").writelines(out)
-PY
+  python3 "$HERE/keyprops.py" "$(realpath "$KEY_PROPERTIES")" "$SRC/android/key.properties"
 fi
 (cd "$SRC/android" && ./gradlew --no-daemon -q assembleRelease)
 rm -f "$SRC/android/key.properties"

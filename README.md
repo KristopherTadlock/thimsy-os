@@ -1002,8 +1002,8 @@ docker compose run --rm build bash                 # a shell in the build enviro
   boot logo's files from an AOSP tree, which the image doesn't have.
 - A Windows checkout made before the scripts' line endings were fixed keeps
   its CRLF scripts, which fail in Linux (`$'\r': command not found`). With
-  your changes committed or stashed, `git rm -r -q --cached . && git reset --hard`
-  checks them out again with LF.
+  your changes committed or stashed, `git rm -r -q --cached .` and then
+  `git reset --hard` check them out again with LF.
 - In VS Code, **Dev Containers: Reopen in Container** opens the checkout in
   the same environment (`.devcontainer/`), sharing the same `work/` volume.
 
@@ -1020,21 +1020,33 @@ docker compose run --rm hakux
 It checks out [hakuX](https://github.com/rfandango/hakuX) at the commit
 `tools/hakux/build.sh` names, applies the patches in `tools/hakux/patches`
 (`series` gives each one's source), fetches the native dependencies at the
-revisions hakuX's `android/README.md` names, runs hakuX's host tests, and
-writes to `out/hakux/`:
+revisions the mirrored build used (those hakuX's `android/README.md` names,
+but `nv2a_vsh_cpu` at xemu's `1115255`: hakuX's `561fe80` is in no published
+repository), runs hakuX's host tests, and writes to `out/hakux/`:
 
 - `hakuX-<version>-<commit>-thimsy<N>-unsigned.apk`, the release build;
-- `...-testkey.apk`, the same signed with a throwaway key, to try on a device
-  (never ship it);
+- `...-testkey.apk`, the same signed with a throwaway key, never to ship. It
+  installs only on a device without Thimsy's hakuX: uninstall that first,
+  which deletes hakuX's data (settings and saves);
+- `...-source.tar.xz`: the source it was built from (hakuX with the patches
+  applied, its FEX submodule, the native dependencies and `tools/hakux`), which
+  the GPL requires alongside the APK;
 - `hakuX-build-manifest.json`: every source revision, patch, tool and output
   sha256.
 
 Building it accepts Google's Android SDK License Agreement: the image runs
 `sdkmanager --licenses`. `-e KEY_PROPERTIES=<key.properties in the checkout>`
-signs the release with that key instead. To ship a build, sign it with the key
-the current one was signed with (installed copies update only then), upload it
-and its manifest to a mirror release, and update hakuX's line in
-`mods/added-apps.txt` (file name, url, sha256) and the emulator table above.
+signs the release with that key instead (`.gitignore` keeps `key.properties`
+and keystores out of git). To ship a build:
+
+1. Sign it with the key the current one was signed with: installed copies
+   update only then.
+2. Upload the APK, its `-source.tar.xz` and the manifest to a mirror release.
+3. In `mods/added-apps.txt`, update hakuX's line (file name, `url`, `sha256`,
+   and `source=` to the source tarball) and the comment above it.
+4. Update the emulator table and the hakuX paragraph above, which describe the
+   build in `scripts/build_hakux.sh`, and bump `THIMSY_BUILD` in
+   `tools/hakux/build.sh` before the next patch set.
 
 ### Tests
 

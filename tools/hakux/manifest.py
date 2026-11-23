@@ -74,7 +74,7 @@ def main():
             "build_image": "tools/hakux/Dockerfile (ubuntu:24.04, linux/amd64)",
         },
         "outputs": {name: sha256(os.path.join(outdir, name))
-                    for name in sorted(os.listdir(outdir)) if name.endswith(".apk")},
+                    for name in sorted(os.listdir(outdir)) if name.endswith((".apk", ".tar.xz"))},
     }
     with open(out, "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)

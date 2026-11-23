@@ -96,6 +96,20 @@ class Lists(util.TestCase):
                    if re.match(r"^apk .*  game=1( |$)", m)]
         self.assertEqual(len(pattern), len(games))
 
+    def test_malisx2_driver_id(self):
+        """45-armsx2-malisx2.sh pre-installs MaliSX2 under the folder name ARMSX2 gives the release it
+        downloads (CustomDriver.makeId: "armsx2libmali-" + tag + "-" + asset name less ".zip",
+        lower case, anything but [A-Za-z0-9._-] as "_"), so ARMSX2 sees it as that release."""
+        mod = util.slurp(f"{M}/45-armsx2-malisx2.sh", text=True)
+        zip_name = re.search(r'^DRIVER_ZIP="([^"]+)"$', mod, re.M).group(1)
+        driver_id = re.search(r'^DRIVER_ID="([^"]+)"$', mod, re.M).group(1)
+        (entry,) = [f for _, kind, file, f in added_apps() if file == zip_name]
+        m = re.fullmatch(r"https://github\.com/bmdhacks/malisx2/releases/download/([^/]+)/([^/]+)\.zip", entry["url"])
+        self.assertTrue(m, entry["url"])
+        tag, asset = m.groups()
+        self.assertEqual(driver_id, re.sub(r"[^A-Za-z0-9._-]", "_", f"armsx2libmali-{tag}-{asset}").lower())
+        self.assertEqual(entry["source"], f"https://github.com/bmdhacks/malisx2/tree/{tag}")
+
     def test_retroarch_cores(self):
         path = f"{M}/retroarch-cores.txt"
         py_esde, py_nano = esde.read_cores(path), ns.read_cores(path)

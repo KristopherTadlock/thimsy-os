@@ -26,6 +26,9 @@ services:
   hakux:
     build: tools/hakux
     image: thimsy-os-nano-hakux
+    # On SELinux hosts a confined container can't read the checkout; the
+    # build service, privileged, isn't confined either.
+    security_opt: ["label=disable"]
     working_dir: /workspaces/thimsy-os
     entrypoint: ["bash", ".devcontainer/as-owner.sh"]
     volumes:
