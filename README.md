@@ -683,8 +683,9 @@ The tools it uses:
 
 On Windows, macOS or Linux, Docker supplies every tool above. It must be
 Docker Desktop, or Docker Engine running as root: rootless Docker and Podman
-can't loop-mount the system image. Clone the repository (git keeps the
-scripts' LF line endings, even on Windows), then in the checkout:
+can't loop-mount the system image. Clone this branch (on Windows, git keeps
+its scripts' LF line endings: `git clone -b universal-installer
+https://github.com/KristopherTadlock/thimsy-os.git`), then in the checkout:
 
 ```sh
 docker compose run --rm build
@@ -692,9 +693,9 @@ docker compose run --rm build
 
 The first run builds the image, which takes a few minutes; after pulling a
 change to `.devcontainer/`, rebuild it with `docker compose build` (or add
-`--build` to `run`). Docker needs about
-40 GB free on its own disk (Docker Desktop: Settings, Resources). Settings go
-with `-e`, before `build`, and any other command after it:
+`--build` to `run`). Docker needs about 40 GB free on its own disk (Docker
+Desktop: Settings, Resources). Settings go with `-e`, before `build`, and any
+other command after it:
 
 ```sh
 docker compose run --rm -e ESDE_APK=out/ES-DE.apk build
@@ -707,9 +708,9 @@ docker compose run --rm build bash                         # a shell in the buil
 - The `.pac` is written to `out/` in the checkout. Downloads and disk images
   stay in the Docker volume `thimsy-os-installer-work`, and
   `docker volume rm thimsy-os-installer-work` frees that space; the next build
-  downloads everything again. It also holds the Android Games helper's
-  signing key (`work/cache/nano`), so copy that out first (for example to
-  `out/`).
+  downloads everything again.
+- Docker builds Thimsy 1.0, on the 1.2 base: the Android Games helper comes
+  only with `SYSTEM_IMG` (1.4.4), so it signs nothing and needs no keystore.
 - The container runs privileged and as root, since the build loop-mounts the
   system image. When a command ends, the files it created in the checkout are
   given back to the checkout's owner. On Linux the empty `work/` folder Docker
@@ -719,11 +720,12 @@ docker compose run --rm build bash                         # a shell in the buil
   `-e ESDE_APK=out/ES-DE.apk`): it is the only host folder the container sees.
 - `SYSTEM_IMG` builds don't work in Docker: they need `nano-bootlogo` and the
   boot logo's files from an AOSP tree, which the image doesn't have.
-- A Windows checkout made before the scripts' line endings were fixed keeps
-  its CRLF scripts, which fail in Linux (`/usr/bin/env: 'bash\r': No such
-  file or directory`, or `$'\r': command not found`). With
-  your changes committed or stashed, `git rm -r -q --cached .` and then
-  `git reset --hard` check them out again with LF.
+- A Windows checkout made before the scripts' line endings were fixed (or one
+  that switched here from a branch without `.gitattributes`) keeps its CRLF
+  scripts, which fail in Linux (`/usr/bin/env: 'bash\r': No such file or
+  directory`, or `$'\r': command not found`). With your changes committed or
+  stashed, `git rm -r -q --cached .` and then `git reset --hard` check them
+  out again with LF.
 - In VS Code, **Dev Containers: Reopen in Container** opens the checkout in
   the same environment (`.devcontainer/`), sharing the same `work/` volume.
 

@@ -54,7 +54,9 @@ class DockerSetup(unittest.TestCase):
         self.assertIn("\n    privileged: true\n", compose)
         # docker stop gives the build time to unmount and detach its images.
         self.assertRegex(compose, r"\n    stop_grace_period: \d+m\n")
-        subprocess.run(["bash", "-n", os.path.join(DEV, "as-owner.sh")], check=True)
+        # bash -n where bash is Linux's (on Windows, System32's bash may be WSL's).
+        if os.name == "posix" and shutil.which("bash"):
+            subprocess.run(["bash", "-n", os.path.join(DEV, "as-owner.sh")], check=True)
         text = read(".devcontainer", "as-owner.sh")
         self.assertIn("trap 'trap \"\" TERM; kill -TERM 0 2>/dev/null' TERM", text)
         self.assertIn('env --default-signal=INT,QUIT "$@" <&0 &', text)
@@ -109,7 +111,7 @@ def default_signal_env():
 @unittest.skipUnless(sys.platform.startswith("linux") and default_signal_env(), "needs Linux and GNU env")
 class AsOwner(unittest.TestCase):
     """as-owner.sh, compose's entrypoint, hands exit status, stdin and signals through (SIGTERM to its
-    whole process group, as docker stop's). Its hand-back of files needs root: nano-144's
+    whole process group, and SIGINT without a terminal). Its hand-back of files needs root: nano-144's
     tests/e2e/test_as_owner.py covers it."""
 
     def setUp(self):
@@ -125,13 +127,14 @@ class AsOwner(unittest.TestCase):
         self.assertEqual(self.owner("cat", input="hi\n").stdout, "hi\n")
 
     def test_passes_signals_on(self):
-        mod = "trap 'echo mod >> mod_got; exit 3' TERM; sleep 30 & wait"
-        child = f"trap 'echo got; exit {{code}}' {{sig}}; bash -c \"{mod}\" >/dev/null & " \
-                "echo ready; sleep 30 >/dev/null & wait"
-        for sig, code in ((signal.SIGTERM, 5), (signal.SIGINT, 6)):
-            proc = subprocess.Popen(["bash", os.path.join(DEV, "as-owner.sh"), "bash", "-c",
-                                     child.format(code=code, sig=sig.name[3:])],
-                                    cwd=self.co, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, text=True,
+        # Like build.sh: the command waits on a foreground program (sleep, as gradle or ninja) and has a
+        # mod of its own running; both stop on docker stop's SIGTERM and on SIGINT without a terminal.
+        mod = "trap 'echo mod >> mod_got; exit 3' TERM INT; sleep 30 & wait"
+        child = f'env --default-signal=INT bash -c "{mod}" >/dev/null & echo ready; sleep 30; echo after'
+        for sig, code in ((signal.SIGTERM, 143), (signal.SIGINT, 130)):
+            # Its own session, as PID 1 in the container: kill 0 reaches its process group only.
+            proc = subprocess.Popen(["bash", os.path.join(DEV, "as-owner.sh"), "bash", "-c", child], cwd=self.co,
+                                    stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, text=True,
                                     start_new_session=True)
             try:
                 self.assertEqual(proc.stdout.readline(), "ready\n")
@@ -144,12 +147,11 @@ class AsOwner(unittest.TestCase):
                     os.killpg(proc.pid, signal.SIGKILL)
                 except ProcessLookupError:
                     pass
-            self.assertEqual((proc.returncode, out), (code, "got\n"), sig.name)
+            # The command stopped (it never said "after"), with the signal's status.
+            self.assertEqual((proc.returncode, out), (code, ""), sig.name)
             got = os.path.join(self.co, "mod_got")
-            self.assertEqual(os.path.exists(got), sig == signal.SIGTERM, sig.name)
-            if os.path.exists(got):
-                os.remove(got)
-
+            self.assertEqual(open(got, encoding="utf-8").read() if os.path.exists(got) else None, "mod\n", sig.name)
+            os.remove(got)
 
 if __name__ == "__main__":
     unittest.main()
