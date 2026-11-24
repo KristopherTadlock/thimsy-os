@@ -985,7 +985,7 @@ its official firmware (bsdiff), written by `installer/tools/make-thimsy-build.sh
 | `device` | Catalog device id (`anbernic-rg-cube`). Optional |
 | `profile` | `light`, `medium` or `heavy`. Optional |
 | `release` | The Thimsy release, e.g. `Thimsy 1.0a test 30`. Optional; shown in the log and kept in `job.json` |
-| `min_installer` | The oldest installer that can use the package (format below). Optional; `dev pack` writes `0.1.0-test18` |
+| `min_installer` | The oldest installer that can use the package (format below). Optional; `dev pack` writes `0.1.0-test20` |
 | `system`, `artifacts` | Each member's `id`, `file`, `size` and `sha256` (and, for the system image, its unpacked `size` and `sha256`) |
 | `build` | The steps, from the fixed typed set: `lp_grow`, `lp_write`, `lp_delta`, `pac_delta`, `pac_set_info`, `pac_fix_crc` |
 | `source_sha256` | The official firmware container the steps start from |
@@ -1159,7 +1159,8 @@ The base firmware is the official GammaOS release for the device, downloaded
 from its upstream GitHub release (decided: Thimsy never hosts a whole
 firmware). Compared with GammaOS 1.2, a Thimsy RG Cube PAC changes only the
 partitions below (from `scripts/build.sh`). Kernel, bootloader, `vendor_a`,
-`dtbo`, `init_boot` and every `vbmeta` stay stock.
+`init_boot` and every `vbmeta` stay stock, and so does `dtbo` in a build made
+with `DOCK_FIX=0`.
 
 | Changed | What and why | Needed to boot Thimsy? | Changes with each Thimsy release? |
 |---|---|---|---|
@@ -1168,6 +1169,7 @@ partitions below (from `scripts/build.sh`). Kernel, bootloader, `vendor_a`,
 | `vendor_dlkm_a` | DisplayPort driver fix (a 4K monitor panicked the kernel), Goodix touch probed first (−1.3 s), radios last, LED driver deferred | No | No |
 | `VENDORBOOT`, `VENDORBOOT_B` | The same driver fix for recovery; LED driver out of the first stage (−1 s) | No | No |
 | `odm_a` | Precompiled SELinux policy matching the system, so init does not compile one every boot (−1 s) | No | **Yes**: its hashes must match the system |
+| `DTBO`, `DTBO_B` | USB-C dock fix in the board overlay (entry 2; `scripts/patch_dtbo.py`, `DOCK_FIX=1`, the default; stock with `DOCK_FIX=0`). Update writes both slots whether or not the build changed them, instead of reading them back | No | Only when the dock fix changes |
 | `BootLogo`, `Fastboot_Logo` | Thimsy boot picture | No | Only if the logo changes |
 | PAC version and alias | Labels in the flash tool | No | Yes |
 

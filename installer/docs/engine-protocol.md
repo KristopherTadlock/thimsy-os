@@ -85,7 +85,7 @@ the real catalog.
 ### `catalog --json`
 One line:
 ```json
-{"type":"catalog","version":"0.1.0-test19","release":"Thimsy 1.0a","engine":"0.1.0","host":"linux",
+{"type":"catalog","version":"0.1.0-test20","release":"Thimsy 1.0a","engine":"0.1.0","host":"linux",
  "devices":[{
   "id":"anbernic-rg-cube","name":"Anbernic RG Cube","maker":"Anbernic",
   "soc":"Unisoc T820","display":"720×720","status":"testing",
@@ -119,9 +119,9 @@ One line:
  "settings":[{"key":"nano.theme","value":"esde","source":"profile","reason":null}],
  "download_bytes":4630452770,"disk_bytes":20460997435,
  "partitions_full":["misc","trustos_a","…","splloader_bak"],
- "partitions_update":["logo","fbootlogo","vendor_boot_a","vendor_boot_b","super"],
+ "partitions_update":["logo","fbootlogo","vendor_boot_a","vendor_boot_b","dtbo_a","dtbo_b","super"],
  "erases_full":["userdata","metadata"],
- "partitions":["logo","fbootlogo","vendor_boot_a","vendor_boot_b","super"],
+ "partitions":["logo","fbootlogo","vendor_boot_a","vendor_boot_b","dtbo_a","dtbo_b","super"],
  "wipes_data":true,
  "journeys":{
    "first_time":{"title":"First time installing custom firmware","body":"…","unlock":true,"modes":["full"],"update_note":null},
@@ -353,13 +353,15 @@ Before anything is written:
 - Every backup must have been read at the partition's full size; otherwise
   nothing is confirmed and the command fails with `tool_failed`.
 - `update` only: the images the update relies on but doesn't write (the
-  recipe's `update_check`: for the RG Cube boot, init_boot, dtb, dtbo and
-  every vbmeta, both slots) are read back from the device at their PAC
-  entry's size and compared with the PAC. Any difference: nothing is
-  confirmed, nothing is written, and the command fails with
-  `full_install_needed` naming the partitions (the device doesn't run a
-  matching Thimsy or GammaOS base; offer a full install). The images read
-  for this aren't kept.
+  recipe's `update_check`: for the RG Cube boot, init_boot, dtb and every
+  vbmeta, both slots) are read back from the device at their PAC entry's
+  size and compared with the PAC. Any difference: nothing is confirmed,
+  nothing is written, and the command fails with `full_install_needed`
+  naming the partitions (the device doesn't run a matching Thimsy or
+  GammaOS base; offer a full install). The images read for this aren't
+  kept. What the update writes is never read back this way (the catalog
+  refuses an entry in both lists): the RG Cube's update writes its dtbo in
+  both slots, so a dtbo changed on the device is replaced, not refused.
 - `spd_dump` gets each "yes" only when it asks, so if the engine is stopped
   (the app's Cancel kills it) no further write can be confirmed. Only the
   bundled `spd_dump` is used (from the installer's tools folder, never PATH;

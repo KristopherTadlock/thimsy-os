@@ -111,6 +111,22 @@ fn rejects_malformed_catalogs() {
             "{old}"
         );
     }
+    // An update writes an entry or checks it on the device, never both.
+    let flash = "flash: { method: spd, update: [Super, DTBO], update_check: [BOOT, DTBO] }\n";
+    let err = Catalog::from_files(files(&[("devices/d.yaml", &format!("{DEV}{flash}"))]))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains("DTBO is in both update (written) and update_check"),
+        "{err}"
+    );
+    let flash = "flash: { method: spd, update: [Super, DTBO], update_check: [BOOT, dtbo] }\n";
+    assert!(
+        Catalog::from_files(files(&[("devices/d.yaml", &format!("{DEV}{flash}"))])).is_err(),
+        "names compared ignoring case"
+    );
+    let flash = "flash: { method: spd, update: [Super, DTBO], update_check: [BOOT] }\n";
+    Catalog::from_files(files(&[("devices/d.yaml", &format!("{DEV}{flash}"))])).unwrap();
     let old_root = "version: t\nrelease: R\nsystems: { heavy: x }\n";
     assert!(Catalog::from_files(vec![("catalog.yaml".into(), old_root.into())]).is_err());
 }

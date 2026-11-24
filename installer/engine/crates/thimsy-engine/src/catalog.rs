@@ -193,7 +193,8 @@ pub struct Flash {
     pub update: Vec<String>,
     /// PAC entries update mode doesn't write but relies on: the device must
     /// already hold exactly these images (a matching base), checked before
-    /// the first write. Required when `update` is set.
+    /// the first write. Required when `update` is set; never names an entry
+    /// `update` writes.
     #[serde(default)]
     pub update_check: Vec<String>,
     /// Device partitions a full install writes and an update writes, as the
@@ -431,6 +432,19 @@ impl Catalog {
                 if !f.update.is_empty() && f.update_check.is_empty() {
                     bail!(
                         "device {}: update mode needs update_check (the entries an update relies on)",
+                        d.id
+                    );
+                }
+                // An update can't both write an entry and need the device to
+                // hold it already. Flashing refuses such a plan too, but only
+                // once a build exists; this refuses the catalog itself.
+                if let Some(both) = f
+                    .update
+                    .iter()
+                    .find(|u| f.update_check.iter().any(|c| c.eq_ignore_ascii_case(u)))
+                {
+                    bail!(
+                        "device {}: {both} is in both update (written) and update_check (read back and compared)",
                         d.id
                     );
                 }

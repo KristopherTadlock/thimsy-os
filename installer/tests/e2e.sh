@@ -56,12 +56,13 @@ sys.exit(0 if writes == plan['partitions_full'] and erases == plan['erases_full'
   && pass "the plan lists exactly what a full install writes and erases" || fail "partitions_full/erases_full differ from the dry run"
 "$ENGINE" --json flash --job "$JOB" --dry-run --mode update > "$WS/dry-update.jsonl"
 n=$(grep -o 'write_part [a-z_]*' "$WS/dry-update.jsonl" | sort -u | wc -l)
-[ "$n" = 5 ] && pass "update writes 5 partitions" || fail "update wrote $n partitions"
+[ "$n" = 7 ] && pass "update writes 7 partitions" || fail "update wrote $n partitions"
 grep -q 'erase_part' "$WS/dry-update.jsonl" && fail "update must not erase" || pass "update keeps data"
-for p in boot_a boot_b init_boot_a dtbo_b vbmeta_a vbmeta_system_b; do
+for p in boot_a boot_b init_boot_a dtb_b vbmeta_a vbmeta_system_b; do
   grep -q "read_part $p 0 0x[0-9a-f]* ../backup/run-[0-9-]*/check-$p.img" "$WS/dry-update.jsonl" || fail "update doesn't read back $p"
 done
-pass "update reads back the base it relies on (boot, init_boot, dtb, dtbo, vbmeta*)"
+pass "update reads back the base it relies on (boot, init_boot, dtb, vbmeta*)"
+grep -q 'read_part dtbo_' "$WS/dry-update.jsonl" && fail "update must write dtbo, not read it back" || pass "update writes dtbo without reading it back"
 
 # 4. Flash through the fake spd_dump. Leftovers of an older image in the
 # scratch folder (same size, stale stamp) must be thrown away, not flashed.
@@ -224,8 +225,8 @@ rm -f "$FAKE_SPD_LOG"
 THIMSY_TOOLS_DIR="$HERE/fake-tools" "$ENGINE" --json flash --job "$JOB" --mode update > "$WS/update.jsonl"
 tail -1 "$WS/update.jsonl" | grep -q '"ok":true' && grep -q "runs the base this update needs" "$WS/update.jsonl" \
   && pass "update on a matching base" || fail "update on a matching base"
-[ "$(grep '^write_part' "$FAKE_SPD_LOG" | cut -d' ' -f2 | sort | tr '\n' ' ')" = "fbootlogo logo super vendor_boot_a vendor_boot_b " ] \
-  && ! grep -q '^erase_part' "$FAKE_SPD_LOG" && pass "update wrote only its 5 partitions" || fail "update writes"
+[ "$(grep '^write_part' "$FAKE_SPD_LOG" | cut -d' ' -f2 | sort | tr '\n' ' ')" = "dtbo_a dtbo_b fbootlogo logo super vendor_boot_a vendor_boot_b " ] \
+  && ! grep -q '^erase_part' "$FAKE_SPD_LOG" && pass "update wrote only its 7 partitions" || fail "update writes"
 RUNU=$(tail -1 "$WS/update.jsonl" | python3 -I -c "import json, sys; print(json.load(sys.stdin)['backup'])")
 [ -f "$RUNU/device.json" ] && [ ! -e "$RUNU/check-boot_a.img" ] && python3 -I -c "
 import hashlib, json, sys
@@ -237,11 +238,11 @@ sys.exit(0 if d['device'] == 'anbernic-rg-cube' and d['partition_table_sha256'] 
 # 5g. Update mode on a device running another base: refused before the
 # first write, nothing written or erased.
 rm -f "$FAKE_SPD_LOG"
-FAKE_SPD_UPDATE_MISMATCH=dtbo_b THIMSY_TOOLS_DIR="$HERE/fake-tools" "$ENGINE" --json flash --job "$JOB" --mode update > "$WS/update-mismatch.jsonl" \
+FAKE_SPD_UPDATE_MISMATCH=dtb_b THIMSY_TOOLS_DIR="$HERE/fake-tools" "$ENGINE" --json flash --job "$JOB" --mode update > "$WS/update-mismatch.jsonl" \
   && fail "an update on another base must be refused" || true
-grep -q '"code":"full_install_needed"' "$WS/update-mismatch.jsonl" && grep -q 'dtbo_b' "$WS/update-mismatch.jsonl" \
+grep -q '"code":"full_install_needed"' "$WS/update-mismatch.jsonl" && grep -q 'dtb_b' "$WS/update-mismatch.jsonl" \
   && pass "another base: full_install_needed naming the partition" || fail "full_install_needed"
-grep -q '^read_part dtbo_b' "$FAKE_SPD_LOG" && ! grep -q '^write_part\|^erase_part' "$FAKE_SPD_LOG" \
+grep -q '^read_part dtb_b' "$FAKE_SPD_LOG" && ! grep -q '^write_part\|^erase_part' "$FAKE_SPD_LOG" \
   && pass "nothing written or erased on another base" || fail "written on another base"
 
 # 5h. The device never shows up in download mode: device_not_found, and

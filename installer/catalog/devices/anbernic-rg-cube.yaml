@@ -42,11 +42,15 @@ flash:
   method: spd
   fdl: [FDL, FDL2]
   # Update mode (already unlocked, keeps data): only what Thimsy changes.
-  update: [Super, VENDORBOOT, VENDORBOOT_B, BootLogo, Fastboot_Logo]
+  # DTBO and DTBO_B are written whether or not the build changed them (the
+  # USB-C dock fix patches them), so a dtbo changed on the device is
+  # overwritten instead of asking for a full install.
+  update: [Super, VENDORBOOT, VENDORBOOT_B, DTBO, DTBO_B, BootLogo, Fastboot_Logo]
   # What an update relies on but doesn't write: the device must already hold
   # exactly these GammaOS Next 1.2 images (both slots). Read back and
   # compared before the first write; any difference means a full install.
-  update_check: [BOOT, BOOT_B, INITBOOT, INITBOOT_B, DTB, DTB_B, DTBO, DTBO_B,
+  # An entry is written (update) or checked, never both.
+  update_check: [BOOT, BOOT_B, INITBOOT, INITBOOT_B, DTB, DTB_B,
                  VBMETA, VBMETA_B, VBMETA_SYSTEM, VBMETA_SYSTEM_B, VBMETA_VENDOR, VBMETA_VENDOR_B,
                  VBMETA_SYSTEM_EXT, VBMETA_SYSTEM_EXT_B, VBMETA_PRODUCT, VBMETA_PRODUCT_B,
                  VBMETA_ODM, VBMETA_ODM_B]
@@ -61,7 +65,7 @@ flash:
                 vbmeta_system_ext_a, vbmeta_system_ext_b, vbmeta_product_a, vbmeta_product_b,
                 vbmeta_odm_a, vbmeta_odm_b, avbmeta_rs_a, avbmeta_rs_b, common_rs1_a, common_rs1_b,
                 common_rs2_a, common_rs2_b, ise_a, ise_b, splloader, splloader_bak]
-  writes_update: [logo, fbootlogo, vendor_boot_a, vendor_boot_b, super]
+  writes_update: [logo, fbootlogo, vendor_boot_a, vendor_boot_b, dtbo_a, dtbo_b, super]
   # Fresh install: erased like the vendor tool does; Android formats them on first boot.
   erase_full: [userdata, metadata]
   # Device-unique or diagnostic data: never written, even on a fresh install.

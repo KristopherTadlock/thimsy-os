@@ -27,9 +27,12 @@ pub const MANIFEST: &str = "pack.json";
 /// is format 1 (packages made before the field existed).
 pub const FORMAT: u64 = 1;
 
-/// What `dev pack` writes as `min_installer`: the first installer that
-/// accepts packages by their manifest (see [`parse_version`]).
-pub const MIN_INSTALLER: &str = "0.1.0-test18";
+/// What `dev pack` writes as `min_installer` (see [`parse_version`]): the
+/// first installer whose RG Cube update writes DTBO and DTBO_B instead of
+/// reading them back. An older one compares the device's dtbo with the one
+/// the package builds; when the package patches it, they differ and it asks
+/// for a full install.
+pub const MIN_INSTALLER: &str = "0.1.0-test20";
 
 /// A manifest is a few KB; anything much larger isn't one.
 const MAX_MANIFEST: u64 = 1 << 20;

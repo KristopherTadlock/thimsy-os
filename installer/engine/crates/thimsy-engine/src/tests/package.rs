@@ -1,10 +1,13 @@
 //! Thimsy packages are accepted by their own manifest: old and new formats
 //! build, and anything malformed, damaged or made for another device,
 //! profile or firmware is refused with its code before anything is
-//! downloaded.
+//! downloaded. `dev pack` patches every PAC entry that changed.
 
 use super::build::{fixture, good_fixture, opts, quiet, write_package, Fixture, PACKAGE};
 use crate::events::Event;
+use crate::package::{Op, MIN_INSTALLER};
+use crate::testutil::{build_pac, build_super, config_xml, pattern, E};
+use crate::util::sha256_hex;
 use crate::{job, Code};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
@@ -450,4 +453,123 @@ fn a_damaged_download_is_refused_and_downloaded_again_next_time() {
         "{err}"
     );
     assert!(!ws2.join("cache").join(PACKAGE).exists());
+}
+
+/// `dev pack` with a reference whose DTBO and DTBO_B were patched (the RG
+/// Cube's USB-C dock fix, `DOCK_FIX=1` in the Thimsy build): each slot gets
+/// its own `pac_delta` step, and the two slots, being identical, share one
+/// patch. Unchanged entries (DTB, DTB_B) get no step.
+#[test]
+fn dev_pack_patches_a_changed_dtbo_in_both_slots_with_one_delta() {
+    const MIB: usize = 1 << 20;
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    let pac = |name: &str, version: &str, system: &[u8], vendor_boot: &[u8], dtbo: &[u8]| {
+        let mut sup = build_super(4 * MIB, 3 << 20, &[("system_a", 1, 1), ("vendor_a", 2, 1)]);
+        sup[MIB..2 * MIB].copy_from_slice(system);
+        sup[2 * MIB..3 * MIB].copy_from_slice(&pattern(MIB, 7));
+        let entries = vec![
+            E("FDL", "fdl1.bin", pattern(2048, 1)),
+            E("FDL2", "fdl2.bin", pattern(4096, 2)),
+            E("VENDORBOOT", "vendor_boot.img", vendor_boot.to_vec()),
+            E("VENDORBOOT_B", "vendor_boot_b.img", vendor_boot.to_vec()),
+            E("DTB", "dtb.img", pattern(16384, 3)),
+            E("DTB_B", "dtb_b.img", pattern(16384, 3)),
+            E("DTBO", "dtbo.img", dtbo.to_vec()),
+            E("DTBO_B", "dtbo_b.img", dtbo.to_vec()),
+            E("Super", "super.img", sup),
+            E(
+                "",
+                "cfg.xml",
+                config_xml(&[
+                    ("FDL", "FDL", None, 0x5500, false),
+                    ("FDL2", "NAND_FDL", None, 0x9efffe00, false),
+                    ("VENDORBOOT", "CODE2", Some("vendor_boot_a"), 0, false),
+                    ("VENDORBOOT_B", "CODE2", Some("vendor_boot_b"), 0, false),
+                    ("DTB", "CODE2", Some("dtb_a"), 0, false),
+                    ("DTB_B", "CODE2", Some("dtb_b"), 0, false),
+                    ("DTBO", "CODE2", Some("dtbo_a"), 0, false),
+                    ("DTBO_B", "CODE2", Some("dtbo_b"), 0, false),
+                    ("Super", "YAFFS_IMG2", Some("super"), 0, false),
+                ]),
+            ),
+        ];
+        let path = d.join(format!("{name}.pac"));
+        std::fs::write(&path, build_pac(&entries, version, "TESTDEV")).unwrap();
+        path
+    };
+    let vb_old = pattern(65536, 30);
+    let mut vb_new = vb_old.clone();
+    vb_new[100..200].fill(0xEE);
+    let dtbo_old = pattern(32768, 40);
+    let mut dtbo_new = dtbo_old.clone();
+    dtbo_new[5000..5016].fill(0x11);
+    let source = pac("stock", "Stock_1.0", &pattern(MIB, 5), &vb_old, &dtbo_old);
+    let reference = pac(
+        "thimsy",
+        "Thimsy_heavy",
+        &pattern(MIB, 6),
+        &vb_new,
+        &dtbo_new,
+    );
+
+    let out = d.join("package");
+    let target = crate::pack::Target {
+        device: "testdev".into(),
+        profile: "heavy".into(),
+        release: "Thimsy Test".into(),
+    };
+    let (rep, _) = quiet();
+    let m = crate::pack::make(
+        &source,
+        &reference,
+        &out,
+        "testdev",
+        "thimsy-system",
+        &target,
+        &rep,
+    )
+    .unwrap();
+
+    let deltas: Vec<(&str, &str, &str, &str)> = m
+        .build
+        .iter()
+        .filter_map(|op| match op {
+            Op::PacDelta {
+                entry,
+                artifact,
+                in_sha256,
+                out_sha256,
+            } => Some((
+                entry.as_str(),
+                artifact.as_str(),
+                in_sha256.as_str(),
+                out_sha256.as_str(),
+            )),
+            _ => None,
+        })
+        .collect();
+    let (vo, vn) = (sha256_hex(&vb_old), sha256_hex(&vb_new));
+    let (dold, dnew) = (sha256_hex(&dtbo_old), sha256_hex(&dtbo_new));
+    assert_eq!(
+        deltas,
+        [
+            ("VENDORBOOT", "testdev-vendorboot-delta", &*vo, &*vn),
+            ("VENDORBOOT_B", "testdev-vendorboot-delta", &*vo, &*vn),
+            ("DTBO", "testdev-dtbo-delta", &*dold, &*dnew),
+            ("DTBO_B", "testdev-dtbo-delta", &*dold, &*dnew),
+        ]
+    );
+    assert_eq!(
+        m.artifacts
+            .iter()
+            .map(|a| a.id.as_str())
+            .collect::<Vec<_>>(),
+        ["testdev-vendorboot-delta", "testdev-dtbo-delta"]
+    );
+    assert_eq!(m.min_installer.as_deref(), Some(MIN_INSTALLER));
+    // The one DTBO patch rebuilds the patched dtbo from the stock one.
+    let patch = std::fs::read(out.join("testdev-dtbo-delta.bsdiff")).unwrap();
+    let rebuilt = crate::delta::apply(&dtbo_old, &patch, Some(&dold), Some(&dnew), "DTBO").unwrap();
+    assert_eq!(rebuilt, dtbo_new);
 }
