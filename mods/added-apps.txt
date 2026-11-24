@@ -24,13 +24,14 @@ apk  SeedlessDS-1.0.1-release.apk  name=SeedlessDS DS emulator  package=com.seed
 
 # hakuX 1.3.0 (original Xbox) at commit a7cdb5a, which adds custom Vulkan
 # drivers on Mali GPUs; needs no BIOS or hard disk image. GPL-3.0-or-later.
-# Built from source (release variant, signed with this project's key; the
-# native dependencies' revisions are in scripts/hakux-build-manifest.json; the
-# mirror has its source, and scripts/build_hakux.sh rebuilds it)
-# and mirrored in this repo's releases, as hakuX has no release of it yet.
-# tools/hakux builds it in Docker with the fixes in tools/hakux/patches
-# (README "hakuX from source").
-apk  hakuX-1.3.0-a7cdb5a.apk  name=hakuX Xbox emulator  package=com.rfandango.haku_x  url=https://github.com/KristopherTadlock/thimsy-os/releases/download/app-mirror-1/hakuX-1.3.0-a7cdb5a.apk  sha256=58d359d340ef98ea1d150ea15f8d9d4e303d9d731b8bbeaa90cea72c6d789651  source=https://github.com/rfandango/hakuX/tree/a7cdb5a975e31730d488c47f6f10440b16c1e6f4
+# Thimsy build 1: a7cdb5a with the four fixes in tools/hakux/patches (Halo's
+# campaign in low memory, retired render targets, trimmed ISOs, a contiguous-
+# allocation leak), built from source by tools/hakux (release variant, signed
+# with this project's key in keys/) and mirrored in this repo's releases with
+# its -source.tar.xz and -build-manifest.json, as hakuX has no release of it.
+# The key is new (the earlier one is lost), so an earlier Thimsy hakuX is not
+# updated in place (README: the hakuX paragraph, and "hakuX from source").
+apk  hakuX-1.3.0-a7cdb5a-thimsy1.apk  name=hakuX Xbox emulator  package=com.rfandango.haku_x  url=https://github.com/KristopherTadlock/thimsy-os/releases/download/app-mirror-1/hakuX-1.3.0-a7cdb5a-thimsy1.apk  sha256=f192597ff5e139894ba40e631a66f0006b3927a003a23ba4e1bc08729822d58f  source=https://github.com/rfandango/hakuX/tree/a7cdb5a975e31730d488c47f6f10440b16c1e6f4
 
 # Vita3K 0.2.1, build 4277 (PS Vita). GPL-2.0.
 # Vita3K only publishes a rolling "continuous" Android build, so this exact

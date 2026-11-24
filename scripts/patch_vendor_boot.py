@@ -4,7 +4,8 @@ module list.
 
   patch_vendor_boot.py IN OUT
 
-Applies sprd_drm.py's patch to the copy recovery loads from the vendor ramdisk. The first stage no
+Applies sprd_drm.py's patch to the copy recovery loads from the vendor ramdisk, never with all_modes
+(whatever THIMSY_DP_ALL_MODES says): recovery has no use for more modes. The first stage no
 longer loads the LED driver (cust-leds.ko): its probe takes a second, during which nothing else in
 the boot could run. It loads later, beside the other modules (patch_vendor_dlkm.py); recovery still
 loads it from here (modules.load.recovery).
@@ -23,6 +24,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import avb_footer  # noqa: E402
 from sprd_drm import patch_module  # noqa: E402
 
 MODULE = "lib/modules/sprd-drm.ko"
@@ -85,36 +87,11 @@ def drop_deferred(data):
     return ("\n".join(m for m in mods if m != DEFERRED) + "\n").encode()
 
 
-FOOTER_FIELDS = {
-    "Algorithm:": "algorithm",
-    "Rollback Index:": "rollback_index",
-    "Rollback Index Location:": "rollback_index_location",
-    "Flags:": "flags",
-}
-
-
 def footer_info(image):
-    """(salt, [(key, value)] properties, {add_hash_footer option: value}) of IMAGE's AVB footer."""
-    out = run("avbtool", "info_image", "--image", image, capture_output=True, text=True).stdout
-    salt = None
-    props, opts = [], {}
-    for line in out.splitlines():
-        line = line.strip()
-        if line.startswith("Salt:"):
-            salt = line.split()[1]
-        elif line.startswith("Prop:"):
-            key, _, value = line[len("Prop:"):].strip().partition(" -> ")
-            props.append((key, value.strip("'")))
-        else:
-            for label, opt in FOOTER_FIELDS.items():
-                if line.startswith(label) and opt not in opts:
-                    opts[opt] = line[len(label):].strip()
-    if not salt:
-        sys.exit("vendor_boot: no hash footer salt")
-    missing = sorted(set(FOOTER_FIELDS.values()) - set(opts))
-    if missing:
-        sys.exit("vendor_boot: avbtool info_image shows no %s" % ", ".join(missing))
-    return salt, props, opts
+    """(salt, [(key, value)] properties, {add_hash_footer option: value}) of IMAGE's AVB footer
+    (avb_footer.py reads it)."""
+    footer = avb_footer.footer_info(image, "vendor_boot")
+    return footer.salt, footer.props, footer.opts
 
 
 def main():
@@ -141,7 +118,7 @@ def main():
 
         cpio = run("lz4", "-dc", ramdisk, capture_output=True).stdout
         off, size = find_cpio_entry(cpio, MODULE)
-        cpio = cpio[:off] + patch_module(cpio[off:off + size]) + cpio[off + size:]
+        cpio = cpio[:off] + patch_module(cpio[off:off + size], all_modes=False) + cpio[off + size:]
         off, size = find_cpio_entry(cpio, FIRST_STAGE)
         cpio = replace_cpio_entry(cpio, FIRST_STAGE, drop_deferred(cpio[off:off + size]))
         cpio_path = os.path.join(tmp, "ramdisk.cpio")

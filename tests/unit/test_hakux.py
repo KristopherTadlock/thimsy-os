@@ -1,8 +1,8 @@
-"""tools/hakux (hakuX from source in Docker) against the mirrored build's own record.
+"""tools/hakux (hakuX from source in Docker) against the build mods/added-apps.txt installs.
 
-The same hakuX source is pinned in tools/hakux/build.sh, scripts/hakux_source.sh,
-scripts/hakux-build-manifest.json and mods/added-apps.txt; these keep them the same,
-check the patch series, and run tools/hakux's helpers on fixtures."""
+tools/hakux/build.sh pins the hakuX commit and names the build (THIMSY_BUILD); hakuX's line
+in mods/added-apps.txt must be that build. These check the two agree, check the patch series,
+and run tools/hakux's helpers on fixtures."""
 import hashlib
 import importlib.util
 import json
@@ -47,16 +47,20 @@ def build_pins():
     return commit, deps
 
 
-def source_pins():
-    """The same from scripts/hakux_source.sh's fetch lines."""
-    deps, commit = {}, None
-    for url, rev, dest in re.findall(r"^fetch (\S+) ([0-9a-f]{40}) \"([^\"]+)\"$",
-                                     util.slurp(f"{util.SCRIPTS}/hakux_source.sh", text=True), re.M):
-        if dest == "$DIR/hakuX":
-            commit = rev
-        else:
-            deps[dest.replace("$D/", "")] = (url, rev)
-    return commit, deps
+def thimsy_build():
+    """THIMSY_BUILD from tools/hakux/build.sh."""
+    return int(re.search(r"^THIMSY_BUILD=(\d+)$", build_sh(), re.M).group(1))
+
+
+def added_entry():
+    """(file, fields) of hakuX's line in mods/added-apps.txt, split the way 40-added-apps.sh does."""
+    found = []
+    for line in util.slurp(f"{util.MODS}/added-apps.txt", text=True).splitlines():
+        if line.startswith("apk ") and "package=com.rfandango.haku_x" in line:
+            _kind, file, *pairs = re.split(r" {2,}", line)
+            found.append((file, dict(p.split("=", 1) for p in pairs)))
+    assert len(found) == 1, found
+    return found[0]
 
 
 def series():
@@ -72,41 +76,38 @@ def series():
 class HakuxPins(util.TestCase):
     def test_hakux_commit(self):
         commit, _ = build_pins()
-        self.assertEqual(source_pins()[0], commit)
-        manifest = json.loads(util.slurp(f"{util.SCRIPTS}/hakux-build-manifest.json", text=True))
-        self.assertEqual(manifest["source"]["hakuX"]["revision"], commit)
-        added = util.slurp(f"{util.MODS}/added-apps.txt", text=True)
-        self.assertIn(f"source=https://github.com/rfandango/hakuX/tree/{commit}", added)
+        _file, fields = added_entry()
+        self.assertEqual(fields["source"], f"https://github.com/rfandango/hakuX/tree/{commit}")
         self.assertIn(f"to rfandango/hakuX {commit}", util.slurp(os.path.join(PATCHES, "series"), text=True))
 
+    def test_added_apps_entry_is_this_build(self):
+        """The file build.sh names (hakuX-<version>-<commit>-thimsy<N>.apk, signed), from a mirror release."""
+        commit, _ = build_pins()
+        file, fields = added_entry()
+        self.assertRegex(file, rf"^hakuX-\d+(\.\d+)*-{commit[:7]}-thimsy{thimsy_build()}\.apk$")
+        self.assertRegex(fields["url"], r"^https://github\.com/KristopherTadlock/thimsy-os/releases/download/[^/]+/")
+        self.assertTrue(fields["url"].endswith("/" + file), fields["url"])
+        self.assertRegex(fields["sha256"], r"^[0-9a-f]{64}$")
+        self.assertEqual(fields["name"], "hakuX Xbox emulator")
+        # 47-hakux-folder.sh's tests find hakuX in the app list by its file in /system/etc.
+        e2e = util.slurp(os.path.join(util.TESTS, "e2e", "test_offline_mods.py"), text=True)
+        self.assertIn(f"|com.rfandango.haku_x|/system/etc/{file}|", e2e)
+
     def test_native_deps(self):
-        """Every native dependency at the revision the mirrored APK was built with."""
+        """Every native dependency at a full commit of an https repository, each in its own folder."""
         _, deps = build_pins()
-        _, source = source_pins()
-        self.assertEqual(sorted(deps), sorted(source))
-        manifest = json.loads(util.slurp(f"{util.SCRIPTS}/hakux-build-manifest.json", text=True))["source"]
+        self.assertTrue(deps)
         for path, (url, rev) in deps.items():
-            self.assertEqual(rev, source[path][1], path)
-            self.assertEqual(url.removesuffix(".git"), source[path][0].removesuffix(".git"), path)
-            self.assertEqual(manifest[f"deps/{path}"]["revision"], rev, path)
+            self.assertRegex(url, r"^https://\S+\.git$", path)
+            self.assertRegex(rev, r"^[0-9a-f]{40}$", path)
+        self.assertEqual(len({url for url, _ in deps.values()}), len(deps))
 
     def test_toolchain(self):
-        ndk = re.search(r"^ARG NDK_VERSION=(\S+)$", util.slurp(os.path.join(HAKUX, "Dockerfile"), text=True), re.M).group(1)
-        manifest = json.loads(util.slurp(f"{util.SCRIPTS}/hakux-build-manifest.json", text=True))
-        self.assertEqual(manifest["toolchain"]["ndk"], ndk)
-        self.assertIn(f"ndk/{ndk}", util.slurp(f"{util.SCRIPTS}/build_hakux.sh", text=True))
+        """The build-tools build.sh signs the test-key copy with are the ones the image installs."""
         dockerfile = util.slurp(os.path.join(HAKUX, "Dockerfile"), text=True)
-        self.assertIn(f'"build-tools;{manifest["toolchain"]["buildTools"]}"', dockerfile)
-        self.assertIn(f'"platforms;android-{manifest["toolchain"]["compileSdk"]}"', dockerfile)
-        self.assertIn(f"openjdk-{manifest['toolchain']['jdk']}-jdk-headless", dockerfile)
+        tools = re.search(r'^  bt="\$ANDROID_HOME/build-tools/([^"]+)"$', build_sh(), re.M).group(1)
+        self.assertIn(f'"build-tools;{tools}"', dockerfile)
 
-
-    def test_fex_submodules(self):
-        """The FEX submodules fetched are those hakux_source.sh fetches for the mirrored build."""
-        ours = re.search(r"^FEX_SUBMODULES=\(([^)]*)\)$", build_sh(), re.M).group(1).split()
-        text = util.slurp(f"{util.SCRIPTS}/hakux_source.sh", text=True).replace("\\\n", " ")
-        theirs = re.search(r'external/fex" submodule update -q --init --depth 1 ([^\n]+)', text).group(1).split()
-        self.assertEqual(sorted(ours), sorted(theirs))
 
 class HakuxPatches(util.TestCase):
     def test_series_lists_every_patch_once(self):

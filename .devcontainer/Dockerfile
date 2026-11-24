@@ -14,7 +14,8 @@ ENV PYTHONDONTWRITEBYTECODE=1
 
 # Firmware build tools. e2fsprogs provides e2fsck, resize2fs and debugfs;
 # attr provides setfattr; util-linux (in the base image) provides flock,
-# losetup and unshare; procps provides pgrep and pkill.
+# losetup and unshare; procps provides pgrep and pkill; device-tree-compiler
+# provides fdtoverlay, for patch_dtbo.py's merge check (DOCK_FIX=1, tests).
 RUN apt-get update && apt-get install -y --no-install-recommends \
       7zip \
       attr \
@@ -23,6 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates \
       cpio \
       curl \
+      device-tree-compiler \
       e2fsprogs \
       erofs-utils \
       file \

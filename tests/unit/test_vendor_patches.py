@@ -45,46 +45,163 @@ Descriptors:
 
 def fake_module():
     """A module image with the original words at every patch site, and its sha256."""
-    end = max(addr + 4 * len(old) for addr, old, _ in sprd_drm.PATCHES)
+    sites = sprd_drm.PATCHES + sprd_drm.HPD_PATCHES
+    end = max(addr + 4 * len(old) for addr, old, _ in sites)
     ko = bytearray(b"\x5a" * (sprd_drm.TEXT_OFFSET + end + 64))
-    for addr, old, _ in sprd_drm.PATCHES:
+    for addr, old, _ in sites:
         struct.pack_into("<%dI" % len(old), ko, sprd_drm.TEXT_OFFSET + addr, *old)
     return bytes(ko), hashlib.sha256(ko).hexdigest()
 
 
+def patched(all_modes, env=None):
+    """fake_module() and patch_module(it, all_modes), with THIMSY_DP_ALL_MODES only as ENV sets it."""
+    ko, sha = fake_module()
+    with mock.patch.object(sprd_drm, "MODULE_SHA256", sha), mock.patch.dict(os.environ):
+        os.environ.pop("THIMSY_DP_ALL_MODES", None)
+        os.environ.update(env or {})
+        return ko, sprd_drm.patch_module(ko, all_modes)
+
+
+def word(ko, addr):
+    return struct.unpack_from("<I", ko, sprd_drm.TEXT_OFFSET + addr)[0]
+
+
+def branch_target(addr, w):
+    """The target of the B, B.cond, CBZ, CBNZ, TBZ or TBNZ word W at ADDR, else None."""
+    def signed(v, bits):
+        return v - (1 << bits) if v & (1 << (bits - 1)) else v
+    if w & 0xfc000000 == 0x14000000:
+        return addr + 4 * signed(w & 0x3ffffff, 26)
+    if w & 0xff000010 == 0x54000000 or w & 0x7e000000 == 0x34000000:
+        return addr + 4 * signed((w >> 5) & 0x7ffff, 19)
+    if w & 0x7e000000 == 0x36000000:
+        return addr + 4 * signed((w >> 5) & 0x3fff, 14)
+    return None
+
+
+TBZ_NOT_PREFERRED = 0x36180608   # tbz w8, #3, 0x8e54, at 0x8d94
+
+
 class SprdDrm(util.TestCase):
     def test_patch_table(self):
-        sites = sorted((addr, addr + 4 * len(old)) for addr, old, _ in sprd_drm.PATCHES)
-        for (_, end), (start, _) in zip(sites, sites[1:]):
-            self.assertLessEqual(end, start, "patch sites overlap")
-        for addr, old, new in sprd_drm.PATCHES:
-            self.assertEqual(len(old), len(new), hex(addr))
-            self.assertEqual(addr % 4, 0)
+        for all_modes in (False, True):
+            table = sprd_drm.patches(all_modes)
+            self.assertEqual(len(table), len(sprd_drm.PATCHES) + len(sprd_drm.HPD_PATCHES))
+            sites = [(addr, addr + 4 * len(old)) for addr, old, _ in table]
+            self.assertEqual(sites, sorted(sites))
+            for (_, end), (start, _) in zip(sites, sites[1:]):
+                self.assertLessEqual(end, start, "patch sites overlap")
+            for addr, old, new in table:
+                self.assertEqual(len(old), len(new), hex(addr))
+                self.assertEqual(addr % 4, 0)
+                self.assertNotEqual(old, new, hex(addr))
+        # patches(True) leaves the table itself as it is.
+        self.assertEqual(dict((a, n) for a, _, n in sprd_drm.PATCHES)[0x8d8c][2], TBZ_NOT_PREFERRED)
+
+    def test_branch_targets(self):
+        """Every branch in mode_valid's new code and in the HPD patch goes where it should."""
+        want = {
+            0x89b8: 0x8b1c,                     # hpd 0 or 3 while off: ignored
+            0x8ce4: 0x8dd8,                     # clock too high: MODE_CLOCK_HIGH
+            0x8ce8: 0x8db8,                     # the link check
+            0x8d8c: 0x8e48,                     # CEA 640x480: user-defined
+            0x8d94: 0x8e54,                     # stub, not preferred: return (without all_modes)
+            0x8da0: 0x8e50,                     # stub: store the type
+            0x8dbc: 0x8e24, 0x8dcc: 0x8e24,     # no dptx, never trained: the width check
+            0x8dd4: 0x8df0, 0x8e08: 0x8e14, 0x8e30: 0x8e3c,
+            0x8e20: 0x8dd8, 0x8e2c: 0x8dd8,     # link too slow, too wide: MODE_CLOCK_HIGH
+            0x8e40: 0x8cec,                     # back to the CEA code checks
+        }
+        got = {}
+        for addr, _, new in sprd_drm.patches(False):
+            if addr in (0x89b4, 0x8cdc, 0x8d8c, 0x8db8, 0x8df0, 0x8e14, 0x8e3c):
+                for i, w in enumerate(new):
+                    target = branch_target(addr + 4 * i, w)
+                    if target is not None:
+                        got[addr + 4 * i] = target
+        self.assertEqual(got, want)
 
     def test_applies_every_patch(self):
-        ko, sha = fake_module()
-        with mock.patch.object(sprd_drm, "MODULE_SHA256", sha):
-            out = sprd_drm.patch_module(ko)
-        self.assertEqual(len(out), len(ko))
-        for addr, _, new in sprd_drm.PATCHES:
-            off = sprd_drm.TEXT_OFFSET + addr
-            self.assertEqual(list(struct.unpack_from("<%dI" % len(new), out, off)), new)
-        changed = {i for i in range(len(ko)) if ko[i] != out[i]}
-        allowed = {sprd_drm.TEXT_OFFSET + addr + i for addr, old, _ in sprd_drm.PATCHES
-                   for i in range(4 * len(old))}
-        self.assertLessEqual(changed, allowed)
+        for all_modes in (False, True):
+            ko, out = patched(all_modes)
+            self.assertEqual(len(out), len(ko))
+            for addr, _, new in sprd_drm.patches(all_modes):
+                off = sprd_drm.TEXT_OFFSET + addr
+                self.assertEqual(list(struct.unpack_from("<%dI" % len(new), out, off)), new)
+            changed = {i for i in range(len(ko)) if ko[i] != out[i]}
+            allowed = {sprd_drm.TEXT_OFFSET + addr + i for addr, old, _ in sprd_drm.patches(all_modes)
+                       for i in range(4 * len(old))}
+            self.assertLessEqual(changed, allowed)
+
+    def test_new_words(self):
+        for all_modes in (False, True):
+            _, out = patched(all_modes)
+            # eor w8, w8, w8, lsr #1; tbz w8, #0, 0x8b1c
+            self.assertEqual([word(out, 0x89b4), word(out, 0x89b8)], [0x4a480508, 0x36000b28])
+            self.assertEqual(word(out, 0x8ce8), 0x14000034)          # b 0x8db8
+            self.assertEqual(word(out, 0x8db8), 0xf943ca8b)          # ldr x11, [x20, #0x790]
+            self.assertEqual(word(out, 0x8e18), 0x0b0a054f)          # add w15, w10, w10, lsl #1
+            self.assertEqual(word(out, 0x8e28), 0x713c01ff)          # cmp w15, #0xf00
+            self.assertEqual(word(out, 0x8e40), 0x17ffffab)          # b 0x8cec
+            self.assertEqual(word(out, 0x8d94), sprd_drm.NOP if all_modes else TBZ_NOT_PREFERRED)
+        self.assertEqual(sprd_drm.NOP, 0xd503201f)
+
+    def test_variants_differ_only_at_the_all_modes_word(self):
+        _, plain = patched(False)
+        _, every = patched(True)
+        off = sprd_drm.TEXT_OFFSET + 0x8d94
+        differ = {i for i in range(len(plain)) if plain[i] != every[i]}
+        self.assertTrue(differ)
+        self.assertLessEqual(differ, set(range(off, off + 4)))
+
+    def test_all_modes_from_the_environment(self):
+        for value, nop in ((None, False), ("1", True), ("0", False), ("true", False), ("", False)):
+            env = {} if value is None else {"THIMSY_DP_ALL_MODES": value}
+            _, out = patched(None, env)
+            self.assertEqual(word(out, 0x8d94), sprd_drm.NOP if nop else TBZ_NOT_PREFERRED, value)
+            # An explicit all_modes wins over the environment.
+            _, out = patched(False, env)
+            self.assertEqual(word(out, 0x8d94), TBZ_NOT_PREFERRED, value)
 
     def test_wrong_module(self):
         with self.assertRaises(SystemExit) as e:
             sprd_drm.patch_module(b"not the module")
         self.assertIn("not the 1.2 module", str(e.exception))
-        ko, _ = fake_module()
-        ko = bytearray(ko)
-        ko[sprd_drm.TEXT_OFFSET + sprd_drm.PATCHES[2][0]] ^= 1
-        with mock.patch.object(sprd_drm, "MODULE_SHA256", hashlib.sha256(ko).hexdigest()):
+        # One changed bit in an original word: the 1.2 patches', the link check's, the HPD patch's,
+        # and the word all_modes replaces.
+        for addr, byte in ((sprd_drm.PATCHES[2][0], 0), (0x89b4, 4), (0x8db8, 4 * 7), (0x8e3c, 4),
+                           (0x8d8c, 4 * 2)):
+            for all_modes in (False, True):
+                ko, _ = fake_module()
+                ko = bytearray(ko)
+                ko[sprd_drm.TEXT_OFFSET + addr + byte] ^= 1
+                with mock.patch.object(sprd_drm, "MODULE_SHA256", hashlib.sha256(ko).hexdigest()):
+                    with self.assertRaises(SystemExit) as e:
+                        sprd_drm.patch_module(bytes(ko), all_modes)
+                self.assertIn("unexpected code at 0x%x" % addr, str(e.exception))
+
+    def test_all_modes_needs_its_word(self):
+        """A table whose 0x8d8c patch lacks the tbz refuses all_modes rather than replace another word."""
+        table = [(addr, old, list(new)) for addr, old, new in sprd_drm.PATCHES]
+        dict((addr, new) for addr, _, new in table)[0x8d8c][2] = 0x12345678
+        with mock.patch.object(sprd_drm, "PATCHES", table):
+            self.assertEqual(len(sprd_drm.patches(False)), len(table) + len(sprd_drm.HPD_PATCHES))
             with self.assertRaises(SystemExit) as e:
-                sprd_drm.patch_module(bytes(ko))
-        self.assertIn("unexpected code at 0x%x" % sprd_drm.PATCHES[2][0], str(e.exception))
+                sprd_drm.patches(True)
+        self.assertIn("no all_modes word in the 0x8d8c patch", str(e.exception))
+
+    def test_real_module(self):
+        """Both variants of the real module, when the build's copy of it is at hand."""
+        path = os.path.join(util.ROOT, "out", ".dock", "work", "dpmodes-kernel", "sprd-drm.orig.ko")
+        if not os.path.isfile(path):
+            self.skipTest("no %s" % path)
+        ko = util.slurp(path)
+        self.assertEqual(hashlib.sha256(ko).hexdigest(), sprd_drm.MODULE_SHA256)
+        plain, every = sprd_drm.patch_module(ko, False), sprd_drm.patch_module(ko, True)
+        self.assertEqual(hashlib.sha256(plain).hexdigest(),
+                         "4c2b7eb7cf021941a9cc23d67abd6e86dc63c52a1ba82deb08ee4154b1bff14c")
+        self.assertEqual(hashlib.sha256(every).hexdigest(),
+                         "489154a1964a890dc682ed8bd5c87cf618e55d005188d1b32390277e2df3a92c")
 
 
 MODULES = ["sprd-drm.ko", "wcn_bsp.ko", "mali_kbase.ko", "sprd_wlan_combo.ko", "focaltech_ts.ko",
@@ -206,12 +323,19 @@ cp "$rd" "$out"
 """})
         key = self.write("key.pem", "fake")
         dst = self.path("out.img")
+        # The build may export THIMSY_DP_ALL_MODES=1 for vendor_dlkm; recovery never gets all_modes.
         env = dict(self.env, PATH=shims + os.pathsep + self.env["PATH"], MKBOOTIMG=os.path.join(shims, "mkbootimg"),
-                   AVB_KEY=key)
+                   AVB_KEY=key, THIMSY_DP_ALL_MODES="1")
+        calls = []
+
+        def patch_module(ko, all_modes=None):
+            calls.append(all_modes)
+            return ko.lower()
         with mock.patch.dict(os.environ, env), mock.patch.object(sys, "argv", ["patch_vendor_boot.py", src, dst]), \
-                mock.patch.object(vboot, "patch_module", lambda ko: ko.lower()), \
+                mock.patch.object(vboot, "patch_module", patch_module), \
                 contextlib.redirect_stdout(io.StringIO()):
             vboot.main()
+        self.assertEqual(calls, [False])
         self.assertEqual(cpio.members(util.slurp(dst)), [
             VendorBootCpio.FILES[0], ("lib/modules/sprd-drm.ko", b"ko" * 33),
             ("lib/modules/modules.load", b"a.ko\nb.ko\n"), VendorBootCpio.FILES[3]])

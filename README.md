@@ -125,7 +125,7 @@ linked below.
 | Azahar | Nintendo 3DS | 2126.2 | GPL-3.0 | https://github.com/azahar-emu/azahar/tree/2126.2 |
 | WatermelonDS | Nintendo DS | 0.8.0.rc3 | GPL-3.0 | https://github.com/SapphireRhodonite/WatermelonDS/tree/0.8.0.rc3 |
 | SeedlessDS | Nintendo DS | 1.0.1 | GPL-3.0+ | https://github.com/SapphireRhodonite/SeedlessDS/tree/1.0.1 |
-| hakuX | Xbox | 1.3.0 at `a7cdb5a` (built from source) | GPL-3.0+ | https://github.com/rfandango/hakuX/tree/a7cdb5a975e31730d488c47f6f10440b16c1e6f4 |
+| hakuX | Xbox | 1.3.0 at `a7cdb5a` with four fixes (built from source) | GPL-3.0+ | https://github.com/rfandango/hakuX/tree/a7cdb5a975e31730d488c47f6f10440b16c1e6f4 |
 | Vita3K | PS Vita | 0.2.1 (build 4277, mirrored) | GPL-2.0 | https://github.com/Vita3K/Vita3K/tree/2f68c1bf0d44753eddc8263b6a4dd23fcd928f22 |
 | ScummVM | Adventure games | 2026.3.0 | GPL-3.0+ | https://github.com/scummvm/scummvm/tree/v2026.3.0 |
 
@@ -149,13 +149,39 @@ runs on the RG Cube's own kernel driver. A game can run better or worse than
 on the Mali driver; switch the app back to **Default** the same way.
 
 hakuX is built from its source at commit `a7cdb5a` (newer than its 1.3.0
-release), which adds custom Vulkan drivers on Mali GPUs. It is the release
-variant signed with this project's key and mirrored in this repo's
-`app-mirror-1` release, with its corresponding source (hakuX, its FEX
-submodule and its native dependencies at the revisions the build used) and
-`hakuX-build-manifest.json`. `scripts/hakux_source.sh` assembles that source
-and `scripts/build_hakux.sh` builds the APK from it, byte for byte with the
-same key.
+release), which adds custom Vulkan drivers on Mali GPUs, with four fixes
+(`tools/hakux/patches`), each an upstream commit:
+
+- Halo's campaign loads without running out of low memory
+  ([rfandango/hakuX#40](https://github.com/rfandango/hakuX/pull/40));
+- retired render targets stay alive until the GPU work that reads them is
+  done ([BoxForever `ffc9e29`](https://github.com/Wannamingo/BoxForever/commit/ffc9e29811836b09ec6612af816c262e61cb8ee9));
+- trimmed ISOs: disc files are found however deep a directory's table goes
+  ([rfandango/hakuX#47](https://github.com/rfandango/hakuX/pull/47));
+- contiguous allocations no longer leak pages (SvC Chaos's gray screen)
+  ([faux123/hakuX `7464936`](https://github.com/faux123/hakuX/commit/7464936119370dfa79f8b220d2b937ece811e7d1)).
+
+It is the release variant, built by `tools/hakux` (see "hakuX from source"),
+signed with this project's key and mirrored in this repo's `app-mirror-1`
+release as `hakuX-1.3.0-a7cdb5a-thimsy1.apk`, with its corresponding source
+(`-source.tar.xz`: hakuX with the fixes applied, its FEX submodule, its native
+dependencies at the revisions the build used, and `tools/hakux`) and
+`-build-manifest.json`.
+
+This build is signed with a new key (the one earlier builds were signed with
+is lost), and Android updates an app only with an APK signed with the same
+key. So a hakuX from an earlier Thimsy build (upstream's 1.3.0 in Thimsy 1.0,
+or a test build) is not updated in place by an Update install: hakuX keeps
+the old build until it is uninstalled, which deletes its data (back up your
+saves with hakuX's own backup first), or until a Full install.
+
+On the 1.2 base (test 40 and every build without `SYSTEM_IMG`), added apps
+are installed only by the first-boot setup, which an Update never runs again:
+an Update never reinstalls hakuX, whatever its key, and after uninstalling it
+the Cube has no hakuX. So after an Update, back up hakuX's saves, uninstall
+it, then run `adb shell pm install /system/etc/hakuX-1.3.0-a7cdb5a-thimsy1.apk`;
+or do a Full install.
+
 hakuX reads only folders picked in Android's folder picker, so on the 1.4.4
 base first-boot setup gives it `ROMs/xbox` on internal storage that way, through
 system_server, with settings naming it: hakuX skips its first-start setup.
@@ -255,8 +281,11 @@ It also changes Nano:
 
 - **Quick Menu:** Power, Global Shaders, Notifications, Wi-Fi, Bluetooth,
   Display (Screen Brightness and the External Display submenu, the same as in
-  Display Settings), Device (Performance Mode, Fan Speed, RGB, EQ, Quick Resume
-  and Deep Sleep Mode), Controller (Controller Bindings, ABXY Swap, DPAD/Analog
+  Display Settings), Device (Performance Mode, Fan Speed, RGB, EQ, Quick Resume,
+  Deep Sleep Mode and, last, what the device runs: the release, such as
+  "Thimsy 1.0a test 40", the LineageOS version, such as "LineageOS 21.0", and
+  the commit of this repository the build was made from, such as "Commit
+  373a8f8"), Controller (Controller Bindings, ABXY Swap, DPAD/Analog
   Swap, Global Sensitivity and stick inversion) and Kiosk Mode. Kiosk Mode is
   the last row while it is off, and the first, as **Kiosk Mode (ON)**, while it
   is on. Over a running app, Close Current App comes just after Power (after
@@ -906,6 +935,25 @@ This downloads the official release, applies each script in `mods/` to its
 system partition, and writes `out/RG_Cube_Thimsy_OS_v1.0.pac`
 (`..._v1.0a.pac` with `SYSTEM_IMG`, and `..._v1.0_ES-DE.pac` with `ESDE_APK`).
 
+- `THIMSY_RELEASE` names the build within its version, for example
+  `THIMSY_RELEASE="test 40"` (with Docker, `-e THIMSY_RELEASE="test 40"`). It
+  is stored as `ro.thimsy.release`, and with `SYSTEM_IMG` (1.4.4) Nano shows
+  it after the version ("Thimsy 1.0a test 40") at the end of Quick Menu >
+  Device and in System Information; on the 1.2 base it is only in `build.prop`
+  (`getprop ro.thimsy.release`). Up to 40 letters, digits, dots, hyphens and
+  underscores, in words split by single spaces; without it the build shows
+  only the version.
+- The commit the build is made from is stored as `ro.thimsy.commit` (with
+  `-dirty` when tracked files have uncommitted changes), shown in Quick Menu >
+  Device with `SYSTEM_IMG` and only in `build.prop` on the 1.2 base.
+  `THIMSY_COMMIT` sets it instead; a checkout without git leaves it out.
+- The build puts the dock fix (External monitors, below) in the dtbo of both
+  slots (`DTBO` and `DTBO_B`); `DOCK_FIX=1` is the default, and `DOCK_FIX=0`
+  keeps the stock dtbo. The patched image must be, byte for byte, the one
+  approved for the RG Cube (`tested_sha256` in `scripts/patch_dtbo.py`), or
+  the build stops. For test 40 that image was approved without being run on
+  a Cube first. The step also needs `fdtoverlay` on `PATH` (the Docker image
+  has it).
 - `sudo` asks for its password once, at the start, and the build keeps it
   valid until it ends (it refreshes it every minute in the background). A
   build left unattended past a password prompt it can't answer, for example
@@ -947,7 +995,24 @@ The tools it uses:
   the original lacks. `scripts/patch_vendor_boot.py` applies it to the copy
   recovery loads, in `vendor_boot`, then repacks that image and signs it again
   with the AOSP test key it was signed with. The same two scripts change the
-  order the kernel modules load in (Boot time, below).
+  order the kernel modules load in (Boot time, below). With `SYSTEM_IMG`,
+  `build.sh` sets `THIMSY_DP_ALL_MODES=1`, and the `vendor_dlkm` copy also
+  offers every mode the monitor and the link can carry (External monitors,
+  below); recovery's copy never does.
+- `scripts/patch_dtbo.py` makes the dock fix in the RG Cube's board overlay,
+  entry 2 of the `dtbo` image (`patch`), and checks a patched image (`check`):
+  every change is there and nothing asks for more than 5 V or offers more
+  than 5 V 1 A. Given `vendor_boot` too, and with `fdtoverlay` on `PATH`, it
+  applies the overlay to the base device tree as the bootloader does and
+  checks the result; `DOCK_FIX=1` builds do that with the build's own
+  `vendor_boot`, and the Docker image has `fdtoverlay`. The patch itself
+  works on the image, in Python: no `dtc`. It finds the nodes by what they
+  are, checks each value before changing it, and refuses an image it doesn't
+  know, or one changed only in part.
+  `scripts/avb_footer.py` reads an image's AVB footer and signs a patched
+  image the same way (salt, properties, algorithm, rollback index);
+  `patch_dtbo.py` first re-signs the unpatched image and requires the
+  original back, byte for byte.
 - `scripts/odm_sepolicy.py` compiles the SELinux policy for the new system,
   exactly as init would, and stores it on the odm partition with the system's
   policy hashes. Anbernic's odm carries the policy for the 1.2 system, so
@@ -993,7 +1058,11 @@ docker compose run --rm build bash                 # a shell in the build enviro
 - Docker builds Thimsy 1.0, on the 1.2 base: the Nano home, the Android Games
   helper and PanVK as the system's alternate driver come only with
   `SYSTEM_IMG` (1.4.4), so it signs no apps and needs no keystore. PanVK's
-  driver package is still copied to `/sdcard/GPU Drivers/`.
+  driver package is still copied to `/sdcard/GPU Drivers/`. A monitor's
+  Output Resolution (External monitors, below) and Nano's build rows (the
+  `THIMSY_RELEASE` name and the commit) also come only with 1.4.4; a Docker
+  build still stores both in `build.prop`. The dock fix in dtbo (`DOCK_FIX`)
+  is on the vendor side, so Docker builds carry it too.
 - The container runs privileged and as root, since the build loop-mounts the
   system image. When a command ends, the files it created in the checkout are
   given back to the checkout's owner. On Linux the empty `work/` folder Docker
@@ -1014,9 +1083,8 @@ docker compose run --rm build bash                 # a shell in the build enviro
 
 ### hakuX from source
 
-`scripts/build_hakux.sh` rebuilds the hakuX APK in `mods/added-apps.txt` byte
-for byte (see above). `tools/hakux` builds the same source in Docker with the
-fixes in `tools/hakux/patches`, for the next mirrored build:
+`tools/hakux` builds the hakuX APK in `mods/added-apps.txt` in Docker, with
+the fixes in `tools/hakux/patches`:
 
 ```sh
 docker compose run --rm hakux
@@ -1025,9 +1093,9 @@ docker compose run --rm hakux
 It checks out [hakuX](https://github.com/rfandango/hakuX) at the commit
 `tools/hakux/build.sh` names, applies the patches in `tools/hakux/patches`
 (`series` gives each one's source), fetches the native dependencies at the
-revisions the mirrored build used (those hakuX's `android/README.md` names,
-but `nv2a_vsh_cpu` at xemu's `1115255`: hakuX's `561fe80` is in no published
-repository), runs hakuX's host tests, and writes to `out/hakux/`:
+revisions hakuX's `android/README.md` names (but `nv2a_vsh_cpu` at xemu's
+`1115255`: hakuX's `561fe80` is in no published repository), runs hakuX's
+host tests, and writes to `out/hakux/`:
 
 - `hakuX-<version>-<commit>-thimsy<N>-unsigned.apk`, the release build;
 - `...-testkey.apk`, the same signed with a throwaway key, never to ship. It
@@ -1038,31 +1106,38 @@ repository), runs hakuX's host tests, and writes to `out/hakux/`:
   has it), which the GPL requires alongside the APK. Unpacked in a checkout of
   the Thimsy commit that made it, it builds again, fetching no source (Gradle
   still downloads its dependencies the first time):
-  `docker compose run --rm -e SOURCE_DIR=<its folder> hakux`;
+  `docker compose run --rm -e SOURCE_DIR=<its folder> hakux`. The mirrored
+  build's tarball is rebuilt this way, and its `-build-manifest.json` has the
+  hashes to compare with;
 - `...-build-manifest.json`: every source revision, patch, tool and output
   sha256.
 
 Building it accepts Google's Android SDK License Agreement: the image runs
 `sdkmanager --licenses`. `-e KEY_PROPERTIES=<key.properties in the checkout>`
-signs the release with that key instead. Keep the key and its
-`key.properties` outside `tools/hakux` (the source tarball packs that folder,
-and the build refuses a key there), for example in `keys/`; `.gitignore` keeps
-`key.properties` and keystores out of git. To ship a build:
+signs the release with that key instead, as
+`hakuX-<version>-<commit>-thimsy<N>.apk` (with no unsigned or test-key copy).
+Keep the key and its `key.properties` outside `tools/hakux` (the source
+tarball packs that folder, and the build refuses a key there); `.gitignore`
+keeps `keys/`, `key.properties` and keystores out of git. To ship a build:
 
-1. Sign it with the key the current one was signed with: installed copies
-   update only then.
+1. Sign it with the project's key in `keys/` (`keys/hakux-release.jks`, its
+   certificate's SHA-256 `589739e3c8c0e58cd57d8a27ce18abe781d32cdfc2d3ca05ff289210fe9752a1`):
+   `docker compose run --rm -e KEY_PROPERTIES=keys/key.properties hakux`.
+   Installed copies update only from an APK signed with the key they were
+   signed with. Back up the keystore and `keys/key.properties` outside the
+   checkout: losing them means the next build can't update installed copies,
+   as happened to the key before this one.
 2. Upload the APK, its `-source.tar.xz`, its `-build-manifest.json` and
    hakuX's license (its `LICENSE` and `COPYING` one after the other, as
    `hakuX-LICENSE.txt` in `app-mirror-1`) to a mirror release. The names carry the build, so they don't replace the
    current build's files.
 3. In `mods/added-apps.txt`, update hakuX's line (file name, `url`, `sha256`;
    `source=` stays hakuX's tree at its commit, and the tarball sits beside the
-   APK as now) and the comment above it.
-4. Update the emulator table and the hakuX paragraph above, and
-   `scripts/hakux_source.sh`, `scripts/build_hakux.sh` and
-   `scripts/hakux-build-manifest.json` (with the tests that check them against
-   `tools/hakux`), which describe the build they replace. Bump `THIMSY_BUILD`
-   in `tools/hakux/build.sh` before the next patch set.
+   APK as now) and the comment above it. `tests/unit/test_hakux.py` checks the
+   line against `tools/hakux/build.sh` (commit and `THIMSY_BUILD`).
+4. Update the emulator table and the hakuX paragraph above, and the APK name
+   in `tests/e2e/test_offline_mods.py`. Bump `THIMSY_BUILD` in
+   `tools/hakux/build.sh` before the next patch set.
 
 ### Tests
 
@@ -1083,7 +1158,11 @@ it back, and runs first-boot `setup.sh` (from `~/gammaos-src/gammaos`, or
 `AOSP=<tree>`) in a chroot with fake Android commands. `tests/fixtures` builds
 the images they use. The ext4 tests need `mke2fs`, `debugfs`, `dumpe2fs` and
 `e2fsck` (on `PATH` or in the AOSP host build); the mod and `setup.sh` tests
-need user namespaces. Tests skip when what they need is missing.
+need user namespaces. Nano's host unit tests for the USB-C port and the
+monitor's modes are built from the patch with `g++`
+(`tests/unit/test_nano_units.py`, with a small stand-in for GoogleTest), and
+the display arrangement's Java check from the patch with `javac`. Tests skip
+when what they need is missing.
 
 ### Boot time
 
@@ -1218,15 +1297,29 @@ kernel panicked. 4K at 60 Hz also needs more than the two DisplayPort lanes the
 Cube trains over USB-C. The driver also discarded the monitor's preferred mode
 (it only ever preferred TV 1080p60), so a 1440p monitor that also accepts 4K got 4K.
 
-The patched driver:
+The patched driver (`scripts/sprd_drm.py`):
 
 - offers only modes up to the bandwidth of 4K at 30 Hz (a 297 MHz pixel
   clock): 4K at 30 Hz, 1440p at 60 Hz, 1080p at 120 Hz and everything below;
+- offers only modes the DisplayPort link it trained can carry. Two lanes at
+  HBR2, what the Cube's hubs and dongles have trained so far, carry all of
+  the above; a hub or adapter that trains only HBR carries up to about
+  180 MHz (1080p at 60 Hz, not 1440p). Before, such a mode was set anyway
+  and gave no picture;
+- offers nothing wider than 3840: TVs list the cinema size 4096x2160, which
+  is squashed on a 16:9 screen;
 - keeps TV 1080p60 the only preferred mode, as the vendor driver does, so the
   composer sets 1080p at 60 Hz as soon as a monitor connects. The vendor
-  composer lists only the modes the driver marks preferred or user-defined,
-  so the monitor's own preferred mode becomes user-defined instead of being
-  dropped (the list is then the monitor's own mode, 1080p60 and 640x480);
+  composer lists only the modes the driver marks preferred or user-defined.
+  On the 1.4.4 base every mode that passes is user-defined, so Android sees
+  them all and Thimsy picks one (Output Resolution, below). On the 1.2 base
+  only the monitor's own preferred mode becomes user-defined instead of being
+  dropped (the list is then the monitor's own mode, 1080p60 and 640x480): the
+  stock framework would switch between more modes on its own, and every
+  switch blanks the monitor;
+- powers DisplayPort up when a dock's first hot-plug signal also carries an
+  interrupt (IRQ_HPD). It took only a plain hot-plug signal before, so a
+  dongle or dock that sent the two together never showed a picture;
 - treats a missing buffer as RGB instead of crashing.
 
 Each screen is independent and draws at its own resolution and refresh rate;
@@ -1240,13 +1333,61 @@ unplugged without warning (or a flat battery) can't leave the Cube's screen at
 the monitor's size, as the old External as Primary mode could. A build before
 this one that left the screen resized is put right at the next boot without a
 monitor. The monitor keeps rotation 0 whatever apps ask for, and the touchscreen
-does nothing while it is the screen. For now a monitor always runs at 1080p at
-60 Hz: the composer sets it when the monitor connects (see the driver above) and
-Android holds it there, so a game's frame rate can't switch the monitor to
-another of its modes; a monitor without 1080p60 keeps the mode it came up in.
-Nothing above the display assumes 1080p: Nano and the system size everything from
-the monitor's mode, and Android's density is 213 dpi at 1080 lines, scaled by
-the mode's shorter side.
+does nothing while it is the screen. Nothing above the display assumes 1080p:
+Nano and the system size everything from the monitor's mode, and Android's
+density is 213 dpi at 1080 lines, scaled by the mode's shorter side.
+
+**Output Resolution** and **Refresh Rate** (External Display, and the Quick
+Menu's Display copy) show while a monitor is connected. Auto, the default,
+runs it at 1920 x 1080 at 60 Hz when it has that, otherwise at its largest
+mode at 50 to 61 Hz, otherwise at the mode it came up in. Output Resolution
+lists Auto and each size the monitor offers, largest first; Refresh Rate
+lists Auto and the rates at the current size. A new choice shows at once and
+**Keep This Resolution?** counts down from about 15 s (what is left of the
+system's 15 s once the monitor has switched, less a second, so it closes just
+before the system reverts), with the cursor on Revert; for its first moment
+it takes no answer, so the press that chose the mode
+can't keep it. B, closing it and the countdown all go back to the mode
+before. The system reverts by itself too (after 15 s, or at once when the
+monitor isn't at the new mode within 3 s), so a monitor that shows nothing
+comes back without the Cube's screen, even if Nano stops. Android holds the
+mode, so neither an app nor a game's frame rate can switch the monitor to
+another one.
+- **Kept modes** are remembered per monitor model (the maker, product, year
+  and name it reports; two monitors of the same model share one), and come
+  back at the next connect unless the link no longer carries them (another
+  hub, say), when that connection uses Auto. A monitor that reports none of
+  that keeps its mode until it is unplugged. If the system restarts before a
+  kept mode set at connect has been on for 20 s, the next connect uses Auto
+  and forgets that mode, so a mode that crashes the Cube doesn't come back at
+  every docked boot. Unplugging the monitor in that time keeps the mode.
+- **Forget Monitor Resolutions** puts every monitor back at Auto. For a
+  monitor that shows no picture at its kept mode: unplug it, choose this on
+  the Cube's screen, and plug it in again.
+- **Over a running game** the rows are dimmed and say "Close the game to
+  change the resolution": a new size can restart an emulator, and any change
+  blanks the monitor for a second or more.
+- **In Dual Screen** the monitor paces both screens, so modes below 50 Hz are
+  not offered there, and a kept one is not used (Auto instead; it still
+  applies in Docked and Mirror).
+- **Not offered:** 3840x2160, since at that size the composer drops every
+  layer that is not 3840 wide (the menus over a game, the keyboard, the Keep
+  dialog itself) until Thimsy composes them into one; nothing wider than 3840
+  or smaller than 640x480.
+- Modes other than 1080p at 60 Hz have not been tried on an RG Cube yet.
+  1440p at 60 Hz (and a monitor's own, reduced-blanking 1080p at 120 Hz) set
+  the display clock to rates it hasn't been seen to run at; a mode that shows
+  nothing reverts as above. Higher modes take more power and heat, and a rate
+  above 60 Hz may make some emulators run fast or judder.
+- `cmd display gammaos-monitor-mode list|try W H HZ|keep|revert|auto|forget`
+  (as root or from `adb shell`) does the same from a shell; `list` shows the
+  mode held and why, and the modes offered.
+
+On the 1.2 base (a build without `SYSTEM_IMG`) a monitor comes up at 1080p
+at 60 Hz as before, and there is no Output Resolution: Android's own
+framework has only the up to three modes the composer lists. Of all this,
+only the driver's changes above apply there (the link check, the width limit
+and the hot-plug fix).
 
 In Dual Screen mode both screens stay on. Games run on the monitor, and
 Nano's menus show on the Cube's screen.
@@ -1274,14 +1415,81 @@ can start DisplayPort. A monitor's port is dual role like the Cube's: the first
 plug after a boot the Cube supplied power and the picture came up, but plugged
 in again the monitor supplied power, never negotiated (USB PD), and stayed dark
 until a reboot. When the Cube takes power from something that did not
-negotiate, Nano now makes the port source-only for a moment
-(`/sys/class/typec/port1/port_type`; `NanoTypec.cpp`). A monitor then takes
-power, shows its DisplayPort alternate mode and keeps the Cube as the source;
-anything else that took power is given the source role back, and a charger or
-computer port that cannot take power gets the port back in dual role after 5
-seconds. Once per plug-in, never with a computer connected over USB or below
-10% battery. An init service (`nano-typec-guard.sh`) puts the port back in dual
-role if Nano stops during a try, so the Cube always charges.
+negotiate, Nano now makes the port source-only for a moment (`port_type` of
+the port under `/sys/class/typec` that negotiates USB PD, found by what it
+can do, since its number changes with the dock fix below; `NanoTypec.cpp`).
+A monitor then takes power, shows its DisplayPort alternate mode and keeps
+the Cube as the source; anything else that took power is given the source
+role back, and a charger or computer port that cannot take power gets the
+port back in dual role after 5 seconds. Once per plug-in, never with a
+computer connected over USB or below 10% battery. A dock is left alone: one
+that powers the Cube and negotiated, or made the Cube the USB host, has
+already set the roles its hub and DisplayPort need, and one that comes back
+as a powered host during a try gets the port back in dual role at once. An
+init service (`nano-typec-guard.sh`) puts the port back in dual role if Nano
+stops during a try, so the Cube always charges. Nano never touches the USB
+controller's own mode in debugfs: reading it while the controller sleeps
+crashes the kernel.
+
+**USB-C docks.** A dock or hub with a charger, HDMI and USB ports gave the
+Cube only one of the three at a time, depending on the order things were
+plugged in. With its charger plugged in first, the dock powers the Cube and
+asks it to be the USB host by swapping data roles; the stock board settings
+refused the swap (they don't give the port both data roles), and with the
+swap allowed, the USB controller never followed it, so the hub's USB stayed
+dead and DisplayPort failed to start. Unisoc's drivers have a mode for
+exactly this ("PD hub", `use_pdhub_c2c`), which the RG Cube's board settings
+leave off.
+The dock fix (`DOCK_FIX=1`, Building above) changes the board overlay in
+dtbo:
+
+- the port takes either USB role, so the Cube accepts the dock's request to
+  be the host while it takes power;
+- the PD-hub mode is on in the Type-C, USB2 and USB3 drivers, so the USB
+  controller follows the role, and in that mode the USB-C power driver is
+  given the Cube's 5 V boost, so it powers what the Cube supplies (the USB
+  driver did that before, and skips it in this mode);
+- the Cube offers 5 V 900 mA as a source, not 400 mA, enough for a
+  bus-powered hub to light its HDMI (the boost is rated 1 A), and asks for
+  5 V 3 A as a sink, never more than 5 V (the charger stops at 6.4 V).
+
+With it, a dock with its charger plugged in **before** the Cube should give
+power in, picture and USB at once (USB3 and USB2 hubs and what is behind
+them); HDMI dongles, hubs without a charger and USB adapters keep working
+with the Cube as the source. A charger added after the Cube doesn't make it
+charge: the dock keeps taking power from the Cube, so plug the dock's
+charger in first. Charging is as fast as from the same charger without the
+fix (about 5 W through a hub whose 5 V offer is 1 A), never above 5 V.
+
+Test 40 ships the fix (`DOCK_FIX=1`, Building above) **without it having run
+on an RG Cube**. The hardware can do this: with the role settings edited by
+hand and the USB controller switched by hand, a Cube showed 1080p and used
+the hub's USB3 while charging. But the patched dtbo itself has only been
+checked offline, against the Cube's base device tree. Back up your data and
+be ready for a Full install: if the Cube does not boot, or its USB-C port no
+longer charges, a Full install of an earlier Thimsy build or of stock
+GammaOS Next puts the stock dtbo back (download mode always works, as it is
+in ROM), and it erases user data. The ThimsyInstaller's Update writes the
+build's dtbo to both slots, so the other slot is no escape, and an Update
+with a build made with `DOCK_FIX=0` takes the fix off again.
+
+Please report, with test 40:
+
+- whether the Cube boots, and whether it charges from a plain USB-C charger;
+- a dock with its charger plugged in first, then the Cube: does it charge,
+  does HDMI show a picture, do the dock's USB ports (USB3 and USB2) work;
+- an HDMI dongle or a hub without a charger: picture and USB, as before;
+- a self-powered USB-C monitor (one with its own power, no USB PD): does it
+  light up and stay lit (with the fix, its 5 V comes from a different driver,
+  which has never been seen to work). Test 40 is built on the 1.2 base, which
+  has no Nano, so nothing makes the Cube the source when such a monitor is
+  plugged in again (the 1.4.4 base's Nano does that): report the first
+  plug-in after a boot, and a later plug-in separately, as one that stays
+  dark there is the base's old behaviour, not the fix;
+- for anything that fails, the output of these, run over adb right after:
+  `dmesg | grep -iE 'tcpm|typec|pd'`, `ls /sys/class/typec` and
+  `cat /sys/class/typec/*/data_role /sys/class/typec/*/power_role` (on a
+  1.4.4 build, also `getprop sys.gammaos.nano.typec_port`).
 
 The build also grows the system partition by about 431 MB, into the
 unallocated space at the end of the `super` image (`scripts/lptool.py grow`);

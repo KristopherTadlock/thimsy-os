@@ -17,6 +17,7 @@ Built 2026-11-21 from the plan docs in this folder, each checked against the REA
    - The Docked checklist (external_display_modes_plan.md §8).
    - The button map checklist (button_map_overlay_plan.md §9.6).
    - First-boot game launch: capture a real first-boot log, then run acceptance tests 1-8 (first_boot_game_launch_plan.md).
+   - The USB-C dock fix, which test 40 ships without a device test (the first run on a Cube is test 40 itself), and the display mode checks (Displays: USB-C docks and display modes).
 3. **First-boot game launch fixes** (first_boot_game_launch_plan.md).
    - A: reload the config explicitly after setup, show "Preparing game library...", and give feedback on a launch tried during it.
    - B: add `mEsdeTheme` to the animation predicate, and record a pending reload while a submenu is open.
@@ -134,7 +135,7 @@ Built 2026-11-21 from the plan docs in this folder, each checked against the REA
 
 ## Displays
 
-- **Monitor resolutions other than 1080p60** (external_display_modes_plan.md §R). README still says a monitor always runs at 1080p 60 Hz.
+- **Monitor resolutions other than 1080p60:** implemented for test 40 on the 1.4.4 base, untested on a device; see "USB-C docks and display modes" below. external_display_modes_plan.md §R ("Resolution") still describes the old 1080p60-only rule.
 - **Mirror mode** (display_mirror_plan.md): document it in README; the "External monitors" section still says nothing is mirrored. Known gaps:
   - clock drift between panel and monitor;
   - the boot splash on the panel only;
@@ -152,6 +153,41 @@ Built 2026-11-21 from the plan docs in this folder, each checked against the REA
 - **(decide)** Unplugging the monitor closes the app on the Cube's screen. Keep that, or keep it open?
 - external_display_modes_plan.md §8 host tests: check which still exist or are obsolete.
 - external_display_routing_plan.md is superseded: archive it.
+
+### USB-C docks and display modes (usb_c_dock_plan.md, display_modes_plan.md): implemented for test 40, nothing run on a device
+- **Goal:** a powered USB-C dock gives power in, picture and USB at once; a monitor can run at modes other than 1080p60 (1440p60, 1080p120, later 4K30), chosen in Nano with confirm-and-revert.
+- **Decisions taken** (dock plan §12; display plan §7):
+  - D1 dtbo entry 2 only; D2 the PPS APDO dropped from sink-pdos; D3 device-tree route, no module patches; D4 DP-B ships, DP-A, DP-C and DP-D don't; D5/D11 no charging step 2 (unidentified sources stay at 1.05 A); D6 no F4; D7 source PDO v3 (5 V 900 mA); D8 no other devices' firmware; D9 back up first, recovery is a Full install; D10 the core c2c set (stage 1b) with `vbus-supply`, no `use-pdhub-c2c` on pd@e00, no 1d.
+  - Test 40 ships the dtbo fix untested on a device (the owner's decision; no phase-1 hand test): `DOCK_FIX` defaults to 1 (`DOCK_FIX=0` keeps the stock dtbo), and `tested_sha256` in `scripts/patch_dtbo.py` holds `94c0f3d4bb1fbbf518a0461db39908d02fd67e320e52c45ced540076d09c5536`, approved without a device test; `build.sh` still refuses any other image, and needs `fdtoverlay`. README tells testers to back up, be ready for a Full install, plug a dock's charger in first, and what to report.
+  - Display modes: kernel route; link-bandwidth check with 1000 (no audio headroom); Auto stays at 1080p60 (stage 1); 3840x2160 only with Step 5 (hidden for now), DCI 4096 wide never; 1440p60 offered; kept per monitor model (a hash of `DeviceProductInfo`); modes below 50 Hz hidden in Dual Screen; 15 s with the cursor on Revert; physical and render range pinned to the mode's rate; no "render at 1080p, output 4K".
+  - Every mode user-defined (1B) only with `SYSTEM_IMG` (`THIMSY_DP_ALL_MODES`, set by `build.sh`, in place of the plan's `--all-modes` flag); recovery never gets it.
+- **Done:**
+  - Build: `scripts/avb_footer.py`, `scripts/patch_dtbo.py` (pure Python, with an `fdtoverlay` merge check that `build.sh` runs against the build's vendor_boot, `fdtoverlay` from `device-tree-compiler` in the Docker image), the `DOCK_FIX` step in `build.sh`, `tests/unit/test_dtbo.py`. The approved image is `out/.dock/dtbo-c2c.img`, sha256 `94c0f3d4bb1fbbf518a0461db39908d02fd67e320e52c45ced540076d09c5536`, checked offline against vendor_boot's base DT and `live.dtb`.
+  - `scripts/sprd_drm.py`: the link-bandwidth check and the DCI reject (display plan 1A, 1C), DP-B as its own list (`HPD_PATCHES`), 1B behind `all_modes`. Checked statically against the original module only.
+  - Framework (1.4.4): the monitor's mode filtered, held, tried, kept and reverted in system_server; the applying marker; `cmd display gammaos-monitor-mode`; `sys.gammaos.display.monitor_mode`.
+  - Nano (1.4.4): Output Resolution, Refresh Rate, Keep This Resolution? and Forget Monitor Resolutions (`NanoMenuMonitorMode.cpp`, `NanoMonitorMode`); NanoTypec 4e items 1-4 and 7 (docks left alone, the flip branch, no dwc3 debugfs, port found by what it can do); `tests/unit/test_nano_units.py` builds both host test suites with g++.
+  - Installer (repo thimsy-os, branch universal-installer): DTBO and DTBO_B written by Update and no longer read back, the `update`/`update_check` overlap check, `MIN_INSTALLER` 0.1.0-test20, e2e and package tests.
+  - README: External monitors (the driver, Output Resolution, USB-C docks, the port lookup), Building (`DOCK_FIX`, `patch_dtbo.py`, `avb_footer.py`).
+- **Still to do without a device:**
+  - Display plan Step 3's SurfaceFlinger part: restart a monitor's vsync window (`gammaCheckMonitorVsync`) when its mode changes. Not implemented (§12 says so); without it a slow modeset can trip the "no composer vsync from monitor" fallback.
+  - Step 5: client composition for a monitor at 3840 wide; then set `ro.gammaos.display.uhd=true` so 3840x2160 is listed.
+  - A full `SYSTEM_IMG` build: the framework code was compiled only against stubs, and Nano's `NanoMenu.cpp`, `NanoMenu.h`, `NanoMenuMtp.cpp`, `NanoMenuPS3Menu.cpp` and `NanoMenuSettings.cpp` (the `ro.thimsy.release` suffix in System Information) edits were never compiled. The text shader's `highp` (`NanoMenuShaders.cpp`) is GLSL compiled only on the device.
+  - A native speaker's review of the 19 new strings in each translation.
+  - Run the installer's `installer/tests/e2e.sh` with a real `WORKSPACE` and `PACK_DIR` before release: `run-all.sh` skips it without them. Meanwhile the engine test `rg_cube_update_writes_dtbo_and_reads_back_the_rest` checks the RG Cube's update plan (both dtbo slots written, no dtbo read back, the rest of the boot chain read back).
+  - Set the executable bit on `scripts/patch_dtbo.py` and `scripts/avb_footer.py` when committing (`git update-index --chmod=+x`).
+  - Optional: `test_vendor_patches.py`'s footer tests onto `avb_footer`, then drop the `footer_info` wrapper in `patch_vendor_boot.py`.
+  - Stale text: external_display_modes_plan.md §R.
+  - Auto stage 2 and a "native" mark in Output Resolution: the framework can't tell the native mode once every mode is user-defined.
+- **Needs the device:**
+  - Phase 1a: back up, confirm download mode, `lpdump` and fastboot `--set-active` (Q6, Q11, Q12).
+  - **The dtbo fix on a device, with test 40** (it ships untested; phase 1's hand test was skipped): boot, a plain charger, a dock with its charger plugged in first (power, HDMI, USB3 and USB2), an HDMI dongle or hub without a charger, and a self-powered dual-role USB-C monitor without PD (VBUS from tcpm `set_vbus` with c2c, never observed; test 40 is a 1.2-base build without NanoTypec, so only the first plug-in after a boot tests the fix, and the NanoTypec flip case waits for a 1.4.4 build); check the installed DTBO's sha256 is `94c0f3d4…`; an Update from a clean install and a Full install (phase 2). If it fails: a Full install of an earlier Thimsy or stock PAC, then debug against build 40 (dock plan §9 stage 1b on slot A) and record the results in dock plan §2.
+  - Before test 40 leaves draft (DP-B changes today's behaviour): matrix rows 1, 3 and 5, and a dongle whose first Attention is 0x18a.
+  - Display modes: display plan §6 for 1440p60, 1080p120 and (after Step 5) 4K30; the revert paths; the applying marker; SELinux for the `sys.` property and `/data/system/gammaos_monitor_modes.txt`; that Nano's `cmd` call passes the uid check; the side panels and dialog in every theme.
+  - Nano's text shader at `highp` (`NanoMenuShaders.cpp`): it compiles on the Mali-G57 (no shader error in logcat at Nano's start), and glyphs packed past texel 1024 of the atlas are sharp. The atlas is 2048 texels tall on every device (`mAtlasH`, `NanoMenuRender.cpp`), so this applies everywhere, not only where it is 2048 wide.
+  - DP-A (with variant (a), or with DP-D), phase 3, after phase 1; Nano's DP retry (4e.5) needs it.
+  - Charging step 2 (phase 5): measure first; needs D5, D11 and Q5.
+  - 4K60 over YCbCr 4:2:0 for video (display plan §8): only after the modes above work on the device.
+  - Phase 6 dock matrix, phase 7 other T820 devices (D8), the Wi-Fi drops (dock plan §11), and the open questions Q1-Q13.
 
 ## Packaging
 

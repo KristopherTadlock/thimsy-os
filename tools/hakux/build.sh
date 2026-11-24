@@ -2,7 +2,8 @@
 # Builds hakuX (the Xbox emulator in mods/added-apps.txt) from source:
 # rfandango/hakuX at HAKUX_COMMIT with the patches in tools/hakux/patches
 # (series), and the native dependencies at the revisions the mirrored build
-# used (scripts/hakux_source.sh): those hakuX's android/README.md names, but
+# used (the mirror release's -build-manifest.json): those hakuX's
+# android/README.md names, but
 # nv2a_vsh_cpu at xemu's 1115255. Runs in tools/hakux/Dockerfile's image:
 #
 #   docker compose run --rm hakux
@@ -38,7 +39,7 @@ HAKUX_COMMIT=a7cdb5a975e31730d488c47f6f10440b16c1e6f4
 # Bump when the patch set changes, so each build has its own file name.
 THIMSY_BUILD=1
 # path in NC_DEPS, repository, commit (the tag or revision hakuX names), as
-# scripts/hakux_source.sh has them for the mirrored APK: nv2a_vsh_cpu is
+# the mirrored APK's -build-manifest.json has them: nv2a_vsh_cpu is
 # xemu's 1115255, as hakuX's 561fe80 is in no published repository.
 DEPS=(
   "volk https://github.com/zeux/volk.git 0b17a763ba5643e32da1b2152f8140461b3b7345 1.4.304"
@@ -130,8 +131,8 @@ fi
 version="$(sed -n 's/^ *versionName = "\(.*\)"/\1/p' "$SRC/android/app/build.gradle.kts")"
 name="hakuX-$version-${HAKUX_COMMIT:0:7}-thimsy$THIMSY_BUILD"
 # FEX names its version and commit from git: in a shallow checkout no version
-# (no tags) and the full commit. Given here, as scripts/build_hakux.sh does,
-# the source tarball (no .git) builds the same.
+# (no tags) and the full commit. Given here, the source tarball (no .git)
+# builds the same.
 export FEX_COMMIT
 if [[ -n "${SOURCE_DIR:-}" ]]; then
   # Not git: inside the checkout, git would answer for Thimsy's repository.

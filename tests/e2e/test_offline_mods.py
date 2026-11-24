@@ -34,6 +34,26 @@ class OfflineMods(ModCase):
             self.assertIn("ro.build.user=gammaos\nro.build.host=localhost\n", prop)
             self.assertTrue(prop.endswith("ro.thimsy.version=9.9\n"))
             self.assertIn("ro.product.system.model=RG Cube", prop)
+        # THIMSY_RELEASE names the build after the version; without it there is no release line.
+        env = {"THIMSY_BUILD_VERSION": "Thimsy_OS_v1.0a", "THIMSY_VERSION": "1.0a"}
+        self.build(True)
+        proc = self.assertOk(self.run_mod("05", env={**env, "THIMSY_RELEASE": "test 40",
+                                                      "THIMSY_COMMIT": "373a8f8-dirty"}))
+        self.assertIn("ro.thimsy.release=test 40, ro.thimsy.commit=373a8f8-dirty", proc.stdout)
+        prop = util.slurp(f"{self.system}/build.prop", text=True)
+        self.assertTrue(prop.endswith("ro.thimsy.version=1.0a\nro.thimsy.release=test 40\n"
+                                      "ro.thimsy.commit=373a8f8-dirty\n"))
+        self.build(True)
+        self.assertOk(self.run_mod("05", env=env))
+        prop = util.slurp(f"{self.system}/build.prop", text=True)
+        self.assertNotIn("ro.thimsy.release", prop)
+        self.assertNotIn("ro.thimsy.commit", prop)
+        for var, bad in [("THIMSY_RELEASE", b) for b in ("test\n40", "test  40", " test", "test$(id)", "x" * 41)] + \
+                        [("THIMSY_COMMIT", b) for b in ("373a8f", "373A8F8", "373a8f8-wip", "373a8f8\nx", "g73a8f8")]:
+            self.build(True)
+            proc = self.run_mod("05", env={**env, var: bad})
+            self.assertNotEqual(proc.returncode, 0, bad)
+            self.assertIn(f"{var} must be", proc.stderr)
 
     def test_12_overlays(self):
         self.build(True)
@@ -252,7 +272,7 @@ class OfflineMods(ModCase):
                     self.assertNotIn("scummvm.tar.zst", result.log)   # no missing-payload or extract warning
                     self.assertNotIn("no owner captured", result.log)
 
-    HAKUX_APP = "hakuX Xbox emulator|com.rfandango.haku_x|/system/etc/hakuX-1.3.0-a7cdb5a.apk||"
+    HAKUX_APP = "hakuX Xbox emulator|com.rfandango.haku_x|/system/etc/hakuX-1.3.0-a7cdb5a-thimsy1.apk||"
     HAKUX_URI = "content://com.android.externalstorage.documents/tree/primary%3AROMs%2Fxbox"
     HAKUX_PREFS = ("<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n<map>\n"
                    f"    <string name=\"gamesFolders\">{HAKUX_URI}</string>\n"

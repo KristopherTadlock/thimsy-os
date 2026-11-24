@@ -56,7 +56,8 @@ class DockerSetup(util.TestCase):
         """Every tool scripts/build.sh stops without (but the 1.0a-only nano-bootlogo) comes with the image:
         from an apt package line of its own, or a link the image makes in /usr/local/bin."""
         packages = {"fsck.erofs": "erofs-utils", "mkfs.erofs": "erofs-utils", "lz4": "lz4", "debugfs": "e2fsprogs",
-                    "secilc": "secilc", "7z": "7zip", "7zz": "7zip", "aapt": "google-android-build-tools-34.0.0-installer"}
+                    "secilc": "secilc", "7z": "7zip", "7zz": "7zip", "aapt": "google-android-build-tools-34.0.0-installer",
+                    "fdtoverlay": "device-tree-compiler"}
         links = {"avbtool", "unpack_bootimg"}
         image = util.slurp(os.path.join(DEV, "Dockerfile"), text=True)
         build = util.slurp(f"{util.SCRIPTS}/build.sh", text=True)
@@ -64,8 +65,9 @@ class DockerSetup(util.TestCase):
         for group in re.findall(r"^for tool in ([^;]+); do\n  command -v", build, re.M):
             tools.update(group.split())
         tools.update(re.findall(r"command -v ([a-z0-9._-]+)(?: >/dev/null)? \|\|", build))
+        tools.update(re.findall(r"! command -v ([a-z0-9._-]+)(?: >/dev/null)?; then", build))
         tools.discard("nano-bootlogo")
-        self.assertTrue({"fsck.erofs", "secilc", "7z", "aapt"} <= tools, tools)
+        self.assertTrue({"fsck.erofs", "secilc", "7z", "aapt", "fdtoverlay"} <= tools, tools)
         for tool in sorted(tools):
             if tool in links:
                 self.assertRegex(image, rf"ln -s \S+ /usr/local/bin/{re.escape(tool)}\b", tool)

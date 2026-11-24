@@ -26,6 +26,14 @@
 # unpack_bootimg, lz4 and avbtool on PATH, MKBOOTIMG naming mkbootimg (or
 # mkbootimg.py) and AVB_KEY naming AOSP's testkey_rsa4096.pem.
 #
+# DOCK_FIX=1, the default, patches the board overlay in dtbo (DTBO and DTBO_B)
+# so a powered USB-C dock can charge the RG Cube and drive its HDMI and USB at
+# the same time (scripts/patch_dtbo.py, usb_c_dock_plan.md). The result must be
+# byte for byte the image approved for the device (patch_dtbo.py's
+# tested_sha256), and the owner approved it for test 40 without a device test.
+# It also needs fdtoverlay on PATH (the merge check). DOCK_FIX=0 keeps the
+# stock dtbo.
+#
 # odm gets a precompiled SELinux policy matching the system image
 # (scripts/odm_sepolicy.py), so init does not compile one at every boot. That
 # needs secilc (from the AOSP host build) and debugfs on PATH.
@@ -69,6 +77,30 @@ VARIANT=""
 [[ -n "${ESDE_APK:-}" ]] && VARIANT="_ES-DE"
 export THIMSY_BUILD_VERSION="Thimsy_OS_v$VERSION$VARIANT"
 export THIMSY_VERSION="$VERSION"
+# The commit the build is made from, with -dirty when tracked files differ from it, for Nano's Quick
+# Menu > Device (ro.thimsy.commit, 05-version.sh). Set THIMSY_COMMIT to override it; a checkout
+# without git leaves it out. safe.directory: in Docker the checkout isn't root's.
+if [[ -z "${THIMSY_COMMIT+set}" ]]; then
+  THIMSY_COMMIT="$(git -c safe.directory="$ROOT" -C "$ROOT" rev-parse --short=7 HEAD 2>/dev/null || true)"
+  if [[ -n "$THIMSY_COMMIT" ]] && ! git -c safe.directory="$ROOT" -C "$ROOT" diff --quiet HEAD -- 2>/dev/null; then
+    THIMSY_COMMIT+="-dirty"
+  fi
+fi
+export THIMSY_COMMIT
+# Every mode the DisplayPort driver accepts is offered (scripts/sprd_drm.py) only with the 1.4.4
+# system, whose framework holds the mode Thimsy picks; the 1.2 framework would switch between them.
+if [[ -n "${SYSTEM_IMG:-}" ]]; then
+  export THIMSY_DP_ALL_MODES=1
+else
+  export THIMSY_DP_ALL_MODES=0
+fi
+DOCK_FIX="${DOCK_FIX:-1}"
+case "$DOCK_FIX" in
+  0) ;;
+  # Before the long steps: refused unless a patched dtbo has been approved for the device.
+  1) python3 -I "$ROOT/scripts/patch_dtbo.py" tested ;;
+  *) echo "DOCK_FIX must be 0 or 1" >&2; exit 1 ;;
+esac
 SEVENZIP="$(command -v 7zz || command -v 7z || true)"
 [[ -n "$SEVENZIP" ]] || { echo "7-Zip (7zz or 7z) is required" >&2; exit 1; }
 if [[ -n "${ESDE_APK:-}" ]]; then
@@ -81,6 +113,10 @@ fi
 for tool in fsck.erofs mkfs.erofs unpack_bootimg lz4 avbtool; do
   command -v "$tool" >/dev/null || { echo "$tool is required (DisplayPort driver patch)" >&2; exit 1; }
 done
+# Without it patch_dtbo.py check would skip the merge check instead of failing.
+if [[ "$DOCK_FIX" == 1 ]] && ! command -v fdtoverlay >/dev/null; then
+  echo "fdtoverlay is required with DOCK_FIX=1 (dtbo merge check)" >&2; exit 1
+fi
 for tool in secilc debugfs; do
   command -v "$tool" >/dev/null || { echo "$tool is required (precompiled SELinux policy)" >&2; exit 1; }
 done
@@ -253,7 +289,20 @@ python3 -I "$ROOT/scripts/patch_vendor_boot.py" "$vendor_boot" "$vendor_boot.pat
 for slot in VENDORBOOT VENDORBOOT_B; do
   python3 -I "$ROOT/scripts/pactool.py" replace "$pac.partial" "$slot" "$vendor_boot.patched"
 done
-rm -f "$vendor_boot" "$vendor_boot.patched"
+rm -f "$vendor_boot"
+if [[ "$DOCK_FIX" == 1 ]]; then
+  # Both slots get the same image; it stays the partition's size (8 MiB), as replace requires.
+  # The check also merges it into the base DT of the vendor_boot this build ships (fdtoverlay).
+  dtbo="$WORK/images/dtbo.img"
+  python3 -I "$ROOT/scripts/pactool.py" extract "$base_pac" DTBO "$dtbo"
+  python3 -I "$ROOT/scripts/patch_dtbo.py" patch --tested "$dtbo" "$dtbo.patched"
+  python3 -I "$ROOT/scripts/patch_dtbo.py" check "$dtbo.patched" "$vendor_boot.patched"
+  for slot in DTBO DTBO_B; do
+    python3 -I "$ROOT/scripts/pactool.py" replace "$pac.partial" "$slot" "$dtbo.patched"
+  done
+  rm -f "$dtbo" "$dtbo.patched"
+fi
+rm -f "$vendor_boot.patched"
 if [[ -n "${SYSTEM_IMG:-}" ]]; then
   logo="$WORK/images/logo.img"
   python3 -I "$ROOT/scripts/pactool.py" extract "$base_pac" logo.img "$logo"
