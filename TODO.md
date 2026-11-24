@@ -23,6 +23,8 @@ Built 2026-11-21 from the plan docs in this folder, each checked against the REA
    - B: add `mEsdeTheme` to the animation predicate, and record a pending reload while a submenu is open.
    - D: install `nano_systems.json` atomically in `mods/50-nano.sh`, and report a failure.
    - Launch diagnostics: config generation token, rejected-launch reasons.
+4. **Multi-device support** (multi_device_plan.md). Phase 0 (facts from one firmware image per chipset family, no hardware needed) and the owner's decisions 1-6 (first device after the Cube, shared system image, devices without odm, scope, BROM unlock and patched SPLs, hardware) come before any code.
+5. **Linux handhelds** (linux_handheld_plan.md). Phase 0 spikes and decisions 1, 2, 5, 7 and 11 (base, first device, boot target and what "Paper Plane" is, the order of the five plans that share foundations, GPU driver) come before any code.
 
 ## Global shaders: multi-pass filters like RetroArch (user request, 2026-11-21)
 
@@ -205,6 +207,28 @@ Built 2026-11-21 from the plan docs in this folder, each checked against the REA
   - Small's home theme;
   - Medium's DS default;
   - keep the H700?
+- Phase 3 (RG556) is the same work as multi_device_plan.md phase 2.
+
+### Multi-device support (multi_device_plan.md): not started (user request, 2026-11-24)
+- **Goal:** every handheld GammaOS supports with an Android build (47 entries in scope; the two Konkr devices run GammaOS Pico, which isn't Android, and are excluded), from one tree, one shared system image and one installer.
+- **Android 14:** 26 entries already run an Android 14 system on their vendor (25 a GammaOS build, the RP Classic its stock firmware), 6 likely work, 15 are assumed (plan §2).
+- **Known or likely incompatible** (plan §2.1):
+  - GameMT E6 Max: MTP crashes;
+  - RP Classic made from March 2026 and RG557 on stock v1.26+: hardware revisions that boot loop;
+  - Helio G99 devices: KeyMint/TEE OS-version lock;
+  - RP Duo Lite: Android 14 system on an Android 15 vendor.
+- **Works, with limits:** A133P vendors boot Android 14 but fail a strict VINTF check, and Android 14 is their last release; RK3566 has no Android 14 boot yet (an Android 12 GSI runs on the RG353P/V/M and ARC-D stock vendor); 1 GB devices (RG DS Plus, TrimUI Brick, TSP, most RK3566) are short of memory.
+- **Bases:** only public GammaOS releases can be fetched: the RG DS is on v1.4.1 (v1.4.4 is supporter-only), and the RG DS Plus has no public download at all.
+- [ ] Phase 0: unpack one image per family; record partition tables, super sizes, vbmeta, vendor props, kernels, power-supply names and maskrom IDs; diff GammaOS system images against Thimsy's; offline `checkvintf`.
+- [ ] Phase 1: device descriptors and `build.sh DEVICE=` (the release-system build stays Cube only), container and logo backends, optional vendor steps, a byte-identical Cube golden test; `ro.thimsy.device` and Cube facts moved out of the shared system image; upstream's updaters (`gammaos-ota`, `NanoOtaCheck`) dealt with before any device that has a GammaOS OTA endpoint; installer Backend/Container traits, family files, typed recipes, identify probe and model check by readback, variants and preconditions.
+- [ ] Phase 2: the other T820 devices, RG556 first, then RG406H, RG406V, RG476H, RG Slide.
+- [ ] Phase 3: T618 PAC devices: RG Rotate, RG Vita.
+- [ ] Phase 4: installer fastboot backend: RG405V, RG405M, RG505, the three Helio G99 devices, RP4 Pro, RP Classic.
+- [ ] Phase 5: installer SD-card backend: RG DS, RG Vita Pro, GKD 350H Ultra, then the three 2 GB A133P devices (MagicX Mini Zero 28, Zero 40, XU20 V32).
+- [ ] Phase 6: qdl (Air X), SP Flash (Pocket Air Mini, RG557, RG477M, RG477V), PhoenixSuit walkthrough (E6 Max).
+- [ ] Phase 7: deferred: RP Duo Lite (after GammaOS 1.5.0 is public), RK3566 Core devices (after a test boot), TrimUI Smart Pro, RG DS Plus (also needs a public release), TrimUI Brick and other 1 GB devices.
+- [ ] Alongside: package format 2 with a shared system artifact (a minimum-size system grown per device); signed remote catalog.
+- **(decide)** The plan's §12 decisions 1-18. First: RG556 or RG Rotate as the first device after the Cube. Also: release-system builds Cube only (15), supporter-only bases (16), Format All on the Pocket Air Mini (17), upstream updaters (18).
 
 ### Redistribution clean-up (plan_remove_unlicensed_files.md): partly done
 - Step 0.3: `scripts/banned_files.txt` and a build check that fails on banned files.
@@ -240,6 +264,51 @@ Built 2026-11-21 from the plan docs in this folder, each checked against the REA
 - Phase 3: `ThimsyEmulatorRegistry` (signer pinning, consent), registry-owned All files access grants, Import Definition...
 - Phase 4: declarative button map readers. Phase 5: data-driven storage groups and a definition BIOS slot. Phase 6: pad provisioning and players (with controller_layout_plan.md phase 5). Phase 7: a signed community definition index.
 - **(decide)** D1-D10 in the plan's "Decisions for the user": profile vs separate definitions directory, community index, the All files access prop, fallback on uninstall, generic card storage, DuckStation's load and quit keys, 1.4.4 only or a 1.2 port, signer lineage, grants for imported definitions.
+
+## Android launcher
+
+### Thimsy Home: Nano as an installable Android home app (android_launcher_plan.md): not started (user request, 2026-11-24)
+- **Goal:** Nano's features, UI and navigation as a launcher APK for stock-Android handhelds (Anbernic, AYN, Retroid Pocket), installable as the home app. Its game lists and emulator profiles are interchangeable with Thimsy OS through the `ES-DE` folder, `ROMs` and `emulator_config`.
+- **Today:** Nano is a root native process tied to the patched framework (properties, raw evdev, DRM/SurfaceFlinger, `/data/system`), so nothing runs on stock Android. The library is portable only in store mode, which only a move to a card turns on. The installer speaks no ADB.
+- **Approach (plan §1; D1 decided by the user, 2026-11-24):** one Nano source with a platform layer under it: today's code for the firmware, JNI to a Kotlin shell for the app. Features work by access level: plain, user grants (Accessibility, overlay), shell (Shizuku), root, firmware only (plan §6).
+- Phase 0: facts and spikes, nothing run on a device yet:
+  - build Nano outside AOSP with the NDK and list every non-NDK call. **Fetch, patch and list done 2026-11-24** (`tools/android-launcher/fetch_nano.sh`, `ndk_probe.py`; plan, "Phase 0 results"): 114 source files, 156,985 lines; 26 compile unchanged, 17 more need only easy headers; platform headers spread through `NanoMenu.h`, `NanoMenuDrm.h` and `NanoVideo.h`; 2,739 privileged uses, 1,639 of them property calls a link-time shim covers. Go so far. **Still open:** a build to object files with shim headers and FreeType, libpng and tinyxml2 from source;
+  - draw the ES-DE theme in a plain activity;
+  - the launch matrix (each pack-in emulator from an ordinary app) and the input matrix (what the Accessibility key filter sees per device);
+  - hotkey drivers without system_server; store mode on the internal `ES-DE` folder; the licence and asset audit; vendor root switches.
+- Phase 1: the platform seam in the Nano patch, firmware behaviour unchanged.
+- Phase 2: launcher MVP: home role, ES-DE theme with Minima settings, store-mode library, launches, Applications, Android Games, keyboard, scraper, setup.
+- Phase 3: the library contract: `LIBRARY-FORMAT.md`, `nano/format.json`, `names.json` and `index.json` without volume-bound paths, store mode on internal storage in the firmware, an ES-DE command and `custom_systems` reader on both sides, shared emulator definitions in `Thimsy/emulators`, round-trip tests.
+- Phase 4: over a game: Accessibility key filter with `ThimsyHotkeyController`, the overlay window (Quick Menu, Applications, button map), Close Current App.
+- Phase 5: emulator files: guided Move Emulator Files, Shizuku and root providers, hotkey provisioning, button-map readers and the BIOS installer by level.
+- Phase 6: the installer's "Keep my Android: add Thimsy Home" journey: an `adb` module, `pack.json` format 2 (`kind: "launcher"`), catalog `launcher:` blocks, devices with no firmware source (AYN, Retroid Pocket 5 and Mini).
+- Phase 7: XMB and DSi themes (after the redistribution clean-up), players, File Explorer, share client, Nano Keyboard as an input method, Kiosk Mode, second-screen devices. Phase 8: Thimsy Home as the Boot Android home.
+- Shares work with: usb_storage_plan.md (ES-DE Drive = Internal Storage is the same switch as store mode on internal storage), user_emulators_plan.md (the emulator definition becomes the shared profile format), device_profiles_plan.md (profiles pick the launcher journey's emulators), controller_layout_plan.md Phase 1 (`face_layout`), multi_device_plan.md (one device descriptor for firmware, installer and app; one package format 2 covering both the shared system artifact and the launcher kind), plan_remove_unlicensed_files.md (blocks the XMB and DSi themes in an APK).
+- **(decide)** D13 (new, from Phase 0): the scraper's built-in ScreenScraper developer credentials in an APK.
+- **(decide)** D2-D12 in the plan's "Decisions for the user": name and package id, where the code lives, lowest Android version, distribution, whether Shizuku and root are in scope, store mode on internal storage by default, first themes, whether the app installs emulators, test devices, Thimsy Home as the Android-mode home, a card-less library export.
+
+## Linux handhelds
+
+### Thimsy OS on Linux firmware (linux_handheld_plan.md): not started (user request, 2026-11-24)
+- **Goal:** a Linux build of Thimsy OS for handhelds with no Android 14 base (RK3566 first, then H700), with the same Nano UI, one card profile that works in Android and Linux devices, an installer that writes bootable cards, and boot time tracked from the first build.
+- **Base:** a pinned, patch-based downstream of ROCKNIX in a new GPL-2.0 repository, `thimsy-os-linux` (plan §3). About a dozen patch points.
+- **First device:** the RG ARC pair on the RK3566 Generic image. The ARC-D boots it only after Android is erased from eMMC; the ARC-S needs only a card.
+- **Card contract (plan §7):** the drive mounts at `/storage/<VOLID>` on Linux too; no symlink ever lives on a drive. v1 shares the library, BIOS and same-core saves. States and settings are per platform; N64 and DS saves are not shared.
+- **"Paper Plane" was not found.** References are FlipBase, BaseOS and RetroStoneOS (plan §9).
+- Phase 0: spikes, no product code:
+  - stock ROCKNIX on the ARC: boot timeline, the emulator set on Panfrost, silencing the pad for RetroArch and PPSSPP;
+  - build ROCKNIX RK3566 and a `BASE_ONLY` image in WSL2;
+  - build Nano outside AOSP (shared with android_launcher_plan.md Phase 0);
+  - mount a Cube-made card at `/storage/<VOLID>` on ROCKNIX and load a save;
+  - a Windows raw-write spike (broker, lock, write, verify).
+- Phase 1: the `NanoPlatform.h` seam, `compat/` shims, CMake, the config store. Same work as android_launcher_plan.md Phase 1; the Cube image stays byte-identical.
+- Phase 2: Linux alpha on the ARC as a plain `.img.gz`: Nano under Sway, the ARC pad model, `thimsy-session` (mounting, launch, volume and power keys), `thimsy-fonts`, RetroArch cores, boot instrumentation and the autostart split.
+- Phase 3: card interop v1: `LIBRARY-FORMAT.md`, the drive model, the immutable mount point, links and re-pointing, the per-system core table, emulator definitions schema 2, `systems.linux.json`, `card.json`, and the Android-side changes (label rule, not overwriting unknown launch tuples, dialog wording).
+- Phase 4: installer: `thimsy-disk`, the `sdcard` module, `pack.json` format 2, the card picker, the erase-Android guide, images with bmap and source tarballs.
+- Linux v1 release: RetroArch hotkeys and Close Current App, scraper, BIOS manager, File Explorer, setup wizard, update file, PPSSPP and ScummVM.
+- Phase 5: Quick Menu over a game, button map overlay. Phase 6: boot time (plan §9.3). Phase 7: RG353, RG503, RGB30, then H700 (two images, panel question). Phase 8: Qualcomm, media apps, Quick Resume.
+- Shares work with: android_launcher_plan.md (seam, library format), multi_device_plan.md (descriptors, SdCard backend, package format 2), device_profiles_plan.md (resolver, Small and Medium), user_emulators_plan.md (definitions), usb_storage_plan.md (drive model). Plan §4.5 names an owner for each piece.
+- **(decide)** The plan's §14 decisions 1-15. First: the base (1), erase Android on the ARC-D or buy an ARC-S (2), the boot target and what "Paper Plane" is (5), the order of the five plans (7), Panfrost only or libmali (11).
 
 ## Scraping
 
