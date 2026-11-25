@@ -1,0 +1,14 @@
+Thimsy-Import-Provenance: ROCKNIX projects/ROCKNIX/devices/RK3566/patches/linux/0025-arc-swap-touch-axes.patch at 0f4806b59bfd1d3e6b17e3a632e95ced82a28719 (tag next); GPL-2.0, used under ROCKNIX's licence; author not recovered (Q22)
+diff --git a/arch/arm64/boot/dts/rockchip/rk3566-anbernic-rg-arc-d.dts b/arch/arm64/boot/dts/rockchip/rk3566-anbernic-rg-arc-d.dts
+index ab83e8a61615..74efd941b474 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3566-anbernic-rg-arc-d.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3566-anbernic-rg-arc-d.dts
+@@ -33,7 +33,7 @@ touchscreen@14 {
+ 		pinctrl-0 = <&touch_int>;
+ 		pinctrl-names = "default";
+ 		reset-gpios = <&gpio4 RK_PA6 GPIO_ACTIVE_HIGH>;
+-		touchscreen-inverted-y;
++        touchscreen-swapped-x-y;
+ 		touchscreen-size-x = <640>;
+ 		touchscreen-size-y = <480>;
+ 	};

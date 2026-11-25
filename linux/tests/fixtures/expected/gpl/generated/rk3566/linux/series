@@ -1,0 +1,6 @@
+01-common-mainline/0003-pwm-add-pwm_set_period.patch
+02-common-mainline-rockchip/001-power-supply-rk817-charger-Fix-NVRAM-SoC-Value.patch
+03-common-7.3/9998-silence-initramfs-unpack-warn.patch
+04-device/0014-drm-panel-st7701-fixup-Anbernic-RG-Arc-panel-timings.patch
+04-device/0025-arc-swap-touch-axes.patch
+04-device/0028-regulator-fan53555-accept-the-STI8070A-on-the-Silergy-path.patch

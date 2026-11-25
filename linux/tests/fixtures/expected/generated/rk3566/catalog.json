@@ -1,0 +1,44 @@
+{
+  "family": "rk3566",
+  "rocknix_tag": "next",
+  "rocknix_commit": "0f4806b59bfd1d3e6b17e3a632e95ced82a28719",
+  "dtb_prefix": "rockchip",
+  "images": [
+    {
+      "name": "Generic",
+      "mkimage_options": [
+        "dtb",
+        "extlinux",
+        "uboot"
+      ],
+      "fdt": "device_trees",
+      "fdt_type": "fdtdir",
+      "dtbs": [
+        "rk3566-anbernic-rg-arc-d",
+        "rk3566-anbernic-rg-arc-s"
+      ]
+    }
+  ],
+  "products": [
+    {
+      "id": "anbernic-rg-arc-d",
+      "dtb": "rockchip/rk3566-anbernic-rg-arc-d.dtb",
+      "images": [
+        "Generic"
+      ],
+      "model": "Anbernic RG ARC-D",
+      "model_source": "name-match",
+      "device_json": "devices/anbernic-rg-arc-d.json"
+    },
+    {
+      "id": "anbernic-rg-arc-s",
+      "dtb": "rockchip/rk3566-anbernic-rg-arc-s.dtb",
+      "images": [
+        "Generic"
+      ],
+      "model": "Anbernic RG ARC-S",
+      "model_source": "name-match",
+      "device_json": "devices/anbernic-rg-arc-s.json"
+    }
+  ]
+}

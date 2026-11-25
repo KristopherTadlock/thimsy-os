@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "id": "qemu-virt",
+  "family": "qemu-aarch64-virt",
+  "soc": "QEMU virt (aarch64)",
+  "model": "linux,dummy-virt",
+  "model_source": "hand",
+  "dtb": null,
+  "images": [],
+  "ram_mb": 1024,
+  "panel": {
+    "width": 1280,
+    "height": 800,
+    "rotation": 0,
+    "rotation_source": "device-json"
+  },
+  "touch": {
+    "present": false
+  },
+  "pad": {
+    "producer": "padd",
+    "sources": [
+      {
+        "id": "virtio-keyboard",
+        "role": "buttons",
+        "match": {
+          "name": "QEMU Virtio Keyboard"
+        },
+        "required": true,
+        "grab": true,
+        "hide": true
+      }
+    ],
+    "buttons": [
+      {
+        "source": "virtio-keyboard",
+        "code": "KEY_ENTER",
+        "to": "BTN_SOUTH"
+      },
+      {
+        "source": "virtio-keyboard",
+        "code": "KEY_ESC",
+        "to": "BTN_EAST"
+      },
+      {
+        "source": "virtio-keyboard",
+        "code": "KEY_S",
+        "to": "BTN_NORTH"
+      },
+      {
+        "source": "virtio-keyboard",
+        "code": "KEY_A",
+        "to": "BTN_WEST"
+      },
+      {
+        "source": "virtio-keyboard",
+        "code": "KEY_Q",
+        "to": "BTN_TL"
+      },
+      {
+        "source": "virtio-keyboard",
+        "code": "KEY_W",
+        "to": "BTN_TR"
+      },
+      {
+        "source": "virtio-keyboard",
+        "code": "KEY_1",
+        "to": "BTN_TL2"
+      },
+      {
+        "source": "virtio-keyboard",
+        "code": "KEY_2",
+        "to": "BTN_TR2"
+      },
+      {
+        "source": "virtio-keyboard",
+        "code": "KEY_TAB",
+        "to": "BTN_SELECT"
+      },
+      {
+        "source": "virtio-keyboard",
+        "code": "KEY_SPACE",
+        "to": "BTN_START"
+      },
+      {
+        "source": "virtio-keyboard",
+        "code": "KEY_HOME",
+        "to": "BTN_MODE"
+      },
+      {
+        "source": "virtio-keyboard",
+        "code": "KEY_UP",
+        "to": "BTN_DPAD_UP"
+      },
+      {
+        "source": "virtio-keyboard",
+        "code": "KEY_DOWN",
+        "to": "BTN_DPAD_DOWN"
+      },
+      {
+        "source": "virtio-keyboard",
+        "code": "KEY_LEFT",
+        "to": "BTN_DPAD_LEFT"
+      },
+      {
+        "source": "virtio-keyboard",
+        "code": "KEY_RIGHT",
+        "to": "BTN_DPAD_RIGHT"
+      }
+    ],
+    "face_buttons": 4,
+    "face_layout": "xbox",
+    "sticks": [],
+    "hotkey": {
+      "button": "BTN_MODE",
+      "quit_combo": [
+        "BTN_MODE",
+        "BTN_START"
+      ]
+    }
+  },
+  "power": {
+    "key": {
+      "match": {
+        "name": "gpio-keys"
+      },
+      "code": "KEY_POWER"
+    }
+  },
+  "profile_default": "small",
+  "status": "imported",
+  "notes": {
+    "": "Test target only (decision I8): the QEMU boot test (IMPLEMENTATION.md E.9) sends Enter through QMP and expects BTN_SOUTH from padd",
+    "/model": "QEMU's virt machine generates its device tree with model linux,dummy-virt",
+    "/dtb": "QEMU passes its own device tree; no DTB is built",
+    "/panel": "guess: virtio-gpu's default 1280x800 scan-out",
+    "/pad/sources": "guess: virtio-input names the keyboard 'QEMU Virtio Keyboard'",
+    "/power": "guess: virt's power button is a gpio-keys node sending KEY_POWER (system_powerdown)"
+  }
+}

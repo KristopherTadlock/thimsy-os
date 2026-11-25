@@ -1,0 +1,18 @@
+<rocknix>
+  <!-- Thimsy fixture: cut down from ROCKNIX projects/ROCKNIX/config.xml at
+       0f4806b59bfd1d3e6b17e3a632e95ced82a28719 (next): two families, three products. -->
+  <H700 dtb_prefix="allwinner">
+    <DDR4 mkimage_options="dtb,extlinux,uboot" fdt="dtb.img" fdt_type="fdt">
+        <file>sun50i-h700-anbernic-rg40xx-h</file>
+    </DDR4>
+    <DDR3 mkimage_options="dtb,extlinux,uboot" fdt="dtb.img" fdt_type="fdt" fdt_overlays="sun50i-h700-anbernic-rg35xx-2024-ddr3.dtbo">
+        <file>sun50i-h700-anbernic-rg40xx-h</file>
+    </DDR3>
+  </H700>
+  <RK3566 dtb_prefix="rockchip">
+    <Generic mkimage_options="dtb,extlinux,uboot" fdt="device_trees" fdt_type="fdtdir">
+      <file>rk3566-anbernic-rg-arc-d</file>
+      <file>rk3566-anbernic-rg-arc-s</file>
+    </Generic>
+  </RK3566>
+</rocknix>

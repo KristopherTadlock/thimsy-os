@@ -1,0 +1,67 @@
+{
+  "family": "RK3566",
+  "rocknix_tag": "next",
+  "rocknix_commit": "0f4806b59bfd1d3e6b17e3a632e95ced82a28719",
+  "blocks": {
+    "projects/ROCKNIX/packages/linux/package.mk:case:RK3566": {
+      "path": "projects/ROCKNIX/packages/linux/package.mk",
+      "kind": "case",
+      "line": 31,
+      "hash": "sha256:a7abadc8d5fd574e8ee0335f7134cf9ee2677f99c710dc2ee124cf98f4af8d11"
+    },
+    "projects/ROCKNIX/packages/linux/package.mk:patch-dirs": {
+      "path": "projects/ROCKNIX/packages/linux/package.mk",
+      "kind": "patch-dirs",
+      "line": 17,
+      "hash": "sha256:742e2f4282362a51eb481b1236d2a13ea38991fe4a05123125f2368b5bd90944"
+    },
+    "projects/ROCKNIX/packages/linux/package.mk:top:if#1": {
+      "path": "projects/ROCKNIX/packages/linux/package.mk",
+      "kind": "if",
+      "line": 47,
+      "hash": "sha256:ac30b13c125c217122b44d3d3e606c59e0d851232ec3923713d6d1f9dae47679"
+    },
+    "projects/ROCKNIX/packages/linux/package.mk:post_patch:if#1": {
+      "path": "projects/ROCKNIX/packages/linux/package.mk",
+      "kind": "if",
+      "line": 69,
+      "hash": "sha256:64eec530d1569d821e9337a758a7c420f4242eea71ae735bc6b8e07c3bcb069f"
+    },
+    "projects/ROCKNIX/packages/linux/package.mk:makeinstall_target:if#1": {
+      "path": "projects/ROCKNIX/packages/linux/package.mk",
+      "kind": "if",
+      "line": 132,
+      "hash": "sha256:061535b66853326110d7a08c77e82794ac12381163cad644f6557d8eb5f41f23"
+    },
+    "projects/ROCKNIX/packages/linux/package.mk:post_patch()": {
+      "path": "projects/ROCKNIX/packages/linux/package.mk",
+      "kind": "function",
+      "line": 59,
+      "hash": "sha256:f28230cd6186c27d113712f5ee5aac731c773089a14d871b87c2b7ff0c2b5179"
+    },
+    "projects/ROCKNIX/packages/linux/package.mk:top:cfg80211#1": {
+      "path": "projects/ROCKNIX/packages/linux/package.mk",
+      "kind": "cfg80211",
+      "line": 55,
+      "hash": "sha256:d00ac0a72d3e824dcebad5bfa845369c7e777b4ce4d035bcaa179714c5bbaebd"
+    },
+    "projects/ROCKNIX/packages/linux/package.mk:pre_make_target:cfg80211#2": {
+      "path": "projects/ROCKNIX/packages/linux/package.mk",
+      "kind": "cfg80211",
+      "line": 110,
+      "hash": "sha256:1281311c9eb277ed1c2a43d14d4d2b8593b4aba718efda730c91bf7390f534bb"
+    },
+    "scripts/unpack:patch-order": {
+      "path": "scripts/unpack",
+      "kind": "unpack",
+      "line": 9,
+      "hash": "sha256:e60b02537ce28a8cc7832ed17434085aeb3a3c07bf1e8ea964cd42f7e5775b74"
+    },
+    "projects/ROCKNIX/packages/hardware/quirks/package.mk:post_install:if#1": {
+      "path": "projects/ROCKNIX/packages/hardware/quirks/package.mk",
+      "kind": "if",
+      "line": 25,
+      "hash": "sha256:3db8833592ff7e17562b8579852cf3e56b19e6f957729bc7b4c84a6976612204"
+    }
+  }
+}

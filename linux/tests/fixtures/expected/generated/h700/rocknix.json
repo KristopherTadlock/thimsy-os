@@ -1,0 +1,33 @@
+{
+  "family": "H700",
+  "tag": "next",
+  "commit": "0f4806b59bfd1d3e6b17e3a632e95ced82a28719",
+  "linux": {
+    "version": "7.2",
+    "sha256": "f9fef3d14c0df53819026f4be74459835c2a0b0dcbf5b5bbd9ea19f0829402b3",
+    "url": "https://www.kernel.org/pub/linux/kernel/v7.x/linux-7.2.tar.xz",
+    "LINUX": "",
+    "patch_dirs": [
+      "mainline",
+      "H700",
+      "default"
+    ],
+    "patch_arch": "aarch64",
+    "config": "projects/ROCKNIX/devices/H700/linux/linux.aarch64.conf",
+    "patches": 4,
+    "patches_without_from": 2
+  },
+  "dts": [
+    "allwinner/sun50i-h700-anbernic-rg40xx-h.dts"
+  ],
+  "handport": [
+    {
+      "block": "projects/ROCKNIX/packages/linux/package.mk:top:elif#1",
+      "does": "adds unpack-time dependencies (kernel-firmware)"
+    },
+    {
+      "block": "projects/ROCKNIX/packages/linux/package.mk:makeinstall_target:if#1",
+      "does": "installs DTBs under device_trees/"
+    }
+  ]
+}

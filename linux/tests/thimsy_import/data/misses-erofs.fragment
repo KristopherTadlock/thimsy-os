@@ -1,0 +1,3 @@
+# A fragment that leaves ROCKNIX's "EROFS not set" in place (test data): must fail conformance.
+CONFIG_INITRAMFS_SOURCE=""
+CONFIG_DRM_PANFROST=y

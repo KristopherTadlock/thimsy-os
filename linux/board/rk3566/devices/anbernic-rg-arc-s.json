@@ -1,0 +1,247 @@
+{
+  "schema_version": 1,
+  "id": "anbernic-rg-arc-s",
+  "family": "rk3566",
+  "soc": "Rockchip RK3566",
+  "model": "Anbernic RG ARC-S",
+  "model_source": "hand",
+  "dtb": "rockchip/rk3566-anbernic-rg-arc-s.dtb",
+  "images": [
+    "Generic"
+  ],
+  "ram_mb": 1024,
+  "panel": {
+    "width": 480,
+    "height": 640,
+    "rotation": 90,
+    "rotation_source": "drm-panel-orientation",
+    "size_mm": [
+      63,
+      84
+    ]
+  },
+  "touch": {
+    "present": false
+  },
+  "pad": {
+    "producer": "padd",
+    "sources": [
+      {
+        "id": "gpio-keys-control",
+        "role": "buttons",
+        "match": {
+          "name": "gpio-keys-control",
+          "phys": "gpio-keys/input0"
+        },
+        "required": true,
+        "grab": true,
+        "hide": true
+      },
+      {
+        "id": "adc-keys-home",
+        "role": "buttons",
+        "match": {
+          "name": "adc-keys-home"
+        },
+        "required": false,
+        "grab": true,
+        "hide": true
+      },
+      {
+        "id": "pwm-vibrator",
+        "role": "rumble",
+        "match": {
+          "name": "pwm-vibrator"
+        },
+        "required": false,
+        "grab": false,
+        "hide": true
+      }
+    ],
+    "buttons": [
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_EAST",
+        "to": "BTN_SOUTH",
+        "label": "B"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_SOUTH",
+        "to": "BTN_EAST",
+        "label": "A"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_NORTH",
+        "to": "BTN_NORTH",
+        "label": "X"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_WEST",
+        "to": "BTN_WEST",
+        "label": "Y"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_C",
+        "to": "BTN_THUMBR",
+        "label": "C"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_Z",
+        "to": "BTN_THUMBL",
+        "label": "Z"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_TL",
+        "to": "BTN_TL",
+        "label": "L"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_TR",
+        "to": "BTN_TR",
+        "label": "R"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_TL2",
+        "to": "BTN_TL2",
+        "label": "L2"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_TR2",
+        "to": "BTN_TR2",
+        "label": "R2"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_SELECT",
+        "to": "BTN_SELECT",
+        "label": "Select"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_START",
+        "to": "BTN_START",
+        "label": "Start"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_DPAD_UP",
+        "to": "BTN_DPAD_UP"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_DPAD_DOWN",
+        "to": "BTN_DPAD_DOWN"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_DPAD_LEFT",
+        "to": "BTN_DPAD_LEFT"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_DPAD_RIGHT",
+        "to": "BTN_DPAD_RIGHT"
+      },
+      {
+        "source": "adc-keys-home",
+        "code": "BTN_BACK",
+        "to": "BTN_MODE",
+        "label": "F"
+      }
+    ],
+    "face_buttons": 6,
+    "face_layout": "saturn",
+    "labels": {
+      "BTN_SOUTH": "B",
+      "BTN_EAST": "A",
+      "BTN_NORTH": "X",
+      "BTN_WEST": "Y",
+      "BTN_THUMBR": "C",
+      "BTN_THUMBL": "Z",
+      "BTN_TL": "L",
+      "BTN_TR": "R",
+      "BTN_TL2": "L2",
+      "BTN_TR2": "R2",
+      "BTN_SELECT": "Select",
+      "BTN_START": "Start",
+      "BTN_MODE": "F"
+    },
+    "sticks": [],
+    "rumble": {
+      "source": "pwm-vibrator"
+    },
+    "hotkey": {
+      "button": "BTN_MODE",
+      "quit_combo": [
+        "BTN_MODE",
+        "BTN_START"
+      ]
+    }
+  },
+  "vibrator": {
+    "type": "pwm",
+    "pwm_chip": "pwmchip1"
+  },
+  "audio": {
+    "card": "rk817_ext",
+    "card_index": 1,
+    "playback": {
+      "control": "Playback Mux",
+      "speaker": "HP",
+      "headphone": "HP"
+    },
+    "fake_jack_sense": false
+  },
+  "power": {
+    "key": {
+      "match": {
+        "name": "rk805 pwrkey"
+      },
+      "code": "KEY_POWER"
+    },
+    "volume": {
+      "match": {
+        "name": "gpio-keys-vol"
+      }
+    },
+    "wake_sources": [
+      "rk805 pwrkey"
+    ]
+  },
+  "profile_default": "small",
+  "status": "imported",
+  "rocknix": {
+    "tag": "next",
+    "commit": "0f4806b59bfd1d3e6b17e3a632e95ced82a28719",
+    "quirk_sources": [
+      "projects/ROCKNIX/packages/hardware/quirks/platforms/RK3566/050-audio_path",
+      "projects/ROCKNIX/packages/hardware/quirks/devices/Anbernic RG ARC-S/001-device_config",
+      "projects/ROCKNIX/packages/hardware/quirks/devices/Anbernic RG ARC-S/020-gpios"
+    ],
+    "inputplumber": [
+      "projects/ROCKNIX/devices/RK3566/filesystem/usr/share/inputplumber/devices/01-rg-arc.yaml",
+      "projects/ROCKNIX/devices/RK3566/filesystem/usr/share/inputplumber/capability_maps/anbernic_arc.yaml"
+    ]
+  },
+  "notes": {
+    "": "Hand-written for Phase 2a from mainline rk3566-anbernic-rg-arc.dtsi, ROCKNIX next 0f4806b (quirks, InputPlumber map, patches 0014, 0025, 0029) and linux_handheld_plan.md; a note starting with 'guess' marks a value unverified on a unit",
+    "/ram_mb": "guess: 1 GB, from plan Phase 2's 'resident memory measured with 1 GB (an ARC-S)'",
+    "/panel": "st7701 rg_arc_mode is 480x640 (ROCKNIX 0014's context) with width_mm 63 and height_mm 84; the dtsi sets rotation = <90>, from which the DRM panel-orientation property comes",
+    "/touch": "ROCKNIX sets DEVICE_HAS_TOUCHSCREEN only for the ARC-D",
+    "/pad/buttons": "ROCKNIX's InputPlumber map (anbernic_arc): South and East swapped, Z and C as the stick clicks. ROCKNIX maps BTN_BACK to KEY_F1 and Select also to Guide; Thimsy maps the home key (adc-keys-home, ROCKNIX 0029) to BTN_MODE instead",
+    "/pad/labels": "printed labels from the dtsi's gpio-keys labels; the home key's 'F' follows InputPlumber's 'F Button' (guess)",
+    "/pad/hotkey": "guess: the home key (BTN_MODE) as hotkey; the quit combo is a placeholder for Nano's setting",
+    "/audio": "card name from the dtsi (simple-audio-card,name); index and paths from ROCKNIX's RK3566 050-audio_path (ALSA_PRIMARY_CARD=1); unverified on mainline (plan open question 25)",
+    "/power": "guess: the rk817 power key registers as 'rk805 pwrkey' (rk805-pwrkey driver); the volume keys are the dtsi's gpio-keys-vol node",
+    "/profile_default": "plan 5.4: profiles recommended small"
+  }
+}

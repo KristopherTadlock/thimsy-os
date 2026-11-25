@@ -1,0 +1,4 @@
+# A fragment that turns a Thimsy-critical option off (test data): must fail conformance.
+CONFIG_INITRAMFS_SOURCE=""
+# CONFIG_EROFS_FS is not set
+CONFIG_DRM_PANFROST=y

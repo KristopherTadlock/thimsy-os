@@ -1,0 +1,16 @@
+################################################################################
+# setup build defaults
+################################################################################
+# Thimsy fixture: cut down from ROCKNIX projects/ROCKNIX/options at 0f4806b (next).
+
+  # SquashFS compression method (gzip / lzo / xz)
+    SQUASHFS_COMPRESSION="zstd"
+
+  # OpenGL-ES implementation to use (no / mesa)
+    OPENGLES="mesa"
+
+  # Additional Firmware to use ( )
+    FIRMWARE=""
+
+  # Satisfy legacy build dependencies
+    SWAP_SUPPORT="yes"

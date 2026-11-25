@@ -1,0 +1,31 @@
+Thimsy-Import-Provenance: ROCKNIX projects/ROCKNIX/devices/H700/patches/linux/0140-rg35xx-2024-use-rocknix-joypad-driver.patch at 0f4806b59bfd1d3e6b17e3a632e95ced82a28719 (tag next); GPL-2.0, used under ROCKNIX's licence; author not recovered (Q22)
+From a0e931952dc69378bb50fcf673ac94c4fb4fc78c Mon Sep 17 00:00:00 2001
+From: Philippe Simons <simons.philippe@gmail.com>
+Date: Tue, 17 Dec 2024 13:40:16 +0100
+Subject: [PATCH] rg35xx-2024 use rocknix joypad driver
+
+---
+ .../sun50i-h700-anbernic-rg35xx-2024.dts      | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-2024.dts b/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-2024.dts
+index a8f36c4f1..1c2637d21 100644
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-2024.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h700-anbernic-rg35xx-2024.dts
+@@ -47,3 +47,14 @@ chosen {
+ 		stdout-path = "serial0:115200n8";
+ 	};
+ 
++	joypad: rocknix-singleadc-joypad {
++		compatible = "rocknix-singleadc-joypad";
++		hw_info = <0x01>;
++
++		joypad-name = "H700 Gamepad";
++		joypad-product = <0x14DF>;
++		joypad-revision = <0x0100>;
++		joypad-vendor = <0x484B>;
++
++		status = "okay";
++	};
+-- 
+2.34.1

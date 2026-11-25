@@ -1,0 +1,10 @@
+# Files written by thimsy-import from ROCKNIX (https://github.com/ROCKNIX/distribution),
+# tag next, commit 0f4806b59bfd1d3e6b17e3a632e95ced82a28719. Used under ROCKNIX's licence, GPL-2.0 (gpl/COPYING); no author is
+# recovered for patches without a From: line (open question 22). Each line: file <- ROCKNIX path.
+
+linux/config <- projects/ROCKNIX/devices/H700/linux/linux.aarch64.conf
+linux/patches/01-common-mainline/0003-pwm-add-pwm_set_period.patch <- projects/ROCKNIX/packages/linux/patches/mainline/0003-pwm-add-pwm_set_period.patch
+linux/patches/02-common-7.2/9998-silence-initramfs-unpack-warn.patch <- projects/ROCKNIX/packages/linux/patches/7.2/9998-silence-initramfs-unpack-warn.patch
+linux/patches/03-device/0124-battery-name.patch <- projects/ROCKNIX/devices/H700/patches/linux/0124-battery-name.patch
+linux/patches/03-device/0140-rg35xx-2024-use-rocknix-joypad-driver.patch <- projects/ROCKNIX/devices/H700/patches/linux/0140-rg35xx-2024-use-rocknix-joypad-driver.patch
+dts/allwinner/sun50i-h700-anbernic-rg40xx-h.dts <- projects/ROCKNIX/devices/H700/linux/dts/allwinner/sun50i-h700-anbernic-rg40xx-h.dts

@@ -1,0 +1,35 @@
+#!/bin/bash
+
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (C) 2009-2016 Stephan Raue (stephan@openelec.tv)
+# Copyright (C) 2018-present Team LibreELEC (https://libreelec.tv)
+# Thimsy fixture: cut down from ROCKNIX scripts/unpack at 0f4806b59bfd1d3e6b17e3a632e95ced82a28719
+# (next): only the patch loop that fixes the series order is kept, verbatim.
+
+    PATCH_DIRS_PKG=""
+    PATCH_DIRS_PRJ=""
+    if [ -n "${PKG_PATCH_DIRS}" ]; then
+      for patch_dir in ${PKG_PATCH_DIRS}; do
+        if [[ ${patch_dir} =~ ^/ ]]; then
+          [ -f ${patch_dir} ] && PATCH_DIRS_PKG+=" ${patch_dir}"
+          [ -d ${patch_dir} ] && PATCH_DIRS_PKG+=" ${patch_dir}/*.patch"
+        else
+          [ -d ${PKG_DIR}/patches/${patch_dir} ] && PATCH_DIRS_PKG+=" ${PKG_DIR}/patches/${patch_dir}/*.patch"
+          [ -d ${PROJECT_DIR}/${PROJECT}/patches/${PKG_NAME}/${patch_dir} ] && PATCH_DIRS_PRJ+=" ${PROJECT_DIR}/${PROJECT}/patches/${PKG_NAME}/${patch_dir}/*.patch"
+          [ -d ${PROJECT_DIR}/${PROJECT}/devices/${DEVICE}/patches/${PKG_NAME}/${patch_dir} ] && PATCH_DIRS_PRJ+=" ${PROJECT_DIR}/${PROJECT}/devices/${DEVICE}/patches/${PKG_NAME}/${patch_dir}/*.patch"
+        fi
+      done
+    fi
+
+    for i in ${PKG_DIR}/patches/*.patch \
+      ${PKG_DIR}/patches/${PATCH_ARCH}/*.patch \
+      ${PATCH_DIRS_PKG} \
+      ${PKG_DIR}/patches/${PKG_VERSION}/*.patch \
+      ${PKG_DIR}/patches/${PKG_VERSION}/${PATCH_ARCH}/*.patch \
+      ${PROJECT_DIR}/${PROJECT}/patches/${PKG_NAME}/*.patch \
+      ${PROJECT_DIR}/${PROJECT}/patches/${PKG_NAME}/${PATCH_ARCH}/*.patch \
+      ${PATCH_DIRS_PRJ} \
+      ${PROJECT_DIR}/${PROJECT}/patches/${PKG_NAME}/${PKG_VERSION}/*.patch \
+      ${PROJECT_DIR}/${PROJECT}/devices/${DEVICE}/patches/${PKG_NAME}/*.patch; do
+      : # apply
+    done

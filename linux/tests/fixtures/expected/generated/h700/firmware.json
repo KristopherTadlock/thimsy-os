@@ -1,0 +1,213 @@
+{
+  "family": "h700",
+  "rocknix_commit": "0f4806b59bfd1d3e6b17e3a632e95ced82a28719",
+  "policy": "D24: ship known licences only; the rest is fetched from the user's device or left out",
+  "whence": "given",
+  "entries": [
+    {
+      "path": "panels/anbernic,rg40xx-panel.panel",
+      "package": "kernel-firmware",
+      "builtin": true,
+      "origin": "projects/ROCKNIX/packages/linux/package.mk:pre_make_target:elif#1",
+      "licence": null,
+      "decision": "exclude",
+      "reason": "linux-firmware WHENCE has no licence for it",
+      "fetch_candidate": true
+    },
+    {
+      "path": "panels/anbernic,rg40xx-v2-panel.panel",
+      "package": "kernel-firmware",
+      "builtin": true,
+      "origin": "projects/ROCKNIX/packages/linux/package.mk:pre_make_target:elif#1",
+      "licence": null,
+      "decision": "exclude",
+      "reason": "linux-firmware WHENCE has no licence for it",
+      "fetch_candidate": true
+    },
+    {
+      "path": "rtl_bt/rtl8821cs_config.bin",
+      "package": "kernel-firmware",
+      "builtin": true,
+      "origin": "projects/ROCKNIX/packages/linux/package.mk:pre_make_target:elif#1",
+      "licence": "Redistributable. See LICENCE.rtlwifi_firmware.txt for details.",
+      "decision": "ship",
+      "reason": "linux-firmware WHENCE names a licence"
+    },
+    {
+      "path": "rtl_bt/rtl8821cs_fw.bin",
+      "package": "kernel-firmware",
+      "builtin": true,
+      "origin": "projects/ROCKNIX/packages/linux/package.mk:pre_make_target:elif#1",
+      "licence": "Redistributable. See LICENCE.rtlwifi_firmware.txt for details.",
+      "decision": "ship",
+      "reason": "linux-firmware WHENCE names a licence"
+    },
+    {
+      "path": "rtw88/rtw8821c_fw.bin",
+      "package": "kernel-firmware",
+      "builtin": true,
+      "origin": "projects/ROCKNIX/packages/linux/package.mk:pre_make_target:elif#1",
+      "licence": "Redistributable. See LICENCE.rtlwifi_firmware.txt for details.",
+      "decision": "ship",
+      "reason": "linux-firmware WHENCE names a licence"
+    },
+    {
+      "path": "regulatory.db",
+      "package": "wireless-regdb",
+      "builtin": true,
+      "origin": "projects/ROCKNIX/packages/linux/package.mk:pre_make_target:cfg80211#2",
+      "licence": "ISC",
+      "decision": "ship",
+      "reason": "package wireless-regdb has a known licence"
+    },
+    {
+      "path": "regulatory.db.p7s",
+      "package": "wireless-regdb",
+      "builtin": true,
+      "origin": "projects/ROCKNIX/packages/linux/package.mk:pre_make_target:cfg80211#2",
+      "licence": "ISC",
+      "decision": "ship",
+      "reason": "package wireless-regdb has a known licence"
+    },
+    {
+      "path": "panels/anbernic,rg28xx-panel.panel",
+      "package": "kernel-firmware",
+      "builtin": false,
+      "driver": "Panels",
+      "origin": "projects/ROCKNIX/devices/H700/config/kernel-firmware.dat",
+      "licence": null,
+      "decision": "exclude",
+      "reason": "linux-firmware WHENCE has no licence for it",
+      "fetch_candidate": true
+    },
+    {
+      "path": "panels/anbernic,rg34xx-panel.panel",
+      "package": "kernel-firmware",
+      "builtin": false,
+      "driver": "Panels",
+      "origin": "projects/ROCKNIX/devices/H700/config/kernel-firmware.dat",
+      "licence": null,
+      "decision": "exclude",
+      "reason": "linux-firmware WHENCE has no licence for it",
+      "fetch_candidate": true
+    },
+    {
+      "path": "panels/anbernic,rg34xx-sp-panel.panel",
+      "package": "kernel-firmware",
+      "builtin": false,
+      "driver": "Panels",
+      "origin": "projects/ROCKNIX/devices/H700/config/kernel-firmware.dat",
+      "licence": null,
+      "decision": "exclude",
+      "reason": "linux-firmware WHENCE has no licence for it",
+      "fetch_candidate": true
+    },
+    {
+      "path": "panels/anbernic,rg34xx-sp-v2-panel.panel",
+      "package": "kernel-firmware",
+      "builtin": false,
+      "driver": "Panels",
+      "origin": "projects/ROCKNIX/devices/H700/config/kernel-firmware.dat",
+      "licence": null,
+      "decision": "exclude",
+      "reason": "linux-firmware WHENCE has no licence for it",
+      "fetch_candidate": true
+    },
+    {
+      "path": "panels/anbernic,rg35xx-plus-panel.panel",
+      "package": "kernel-firmware",
+      "builtin": false,
+      "driver": "Panels",
+      "origin": "projects/ROCKNIX/devices/H700/config/kernel-firmware.dat",
+      "licence": null,
+      "decision": "exclude",
+      "reason": "linux-firmware WHENCE has no licence for it",
+      "fetch_candidate": true
+    },
+    {
+      "path": "panels/anbernic,rg35xx-plus-rev6-panel.panel",
+      "package": "kernel-firmware",
+      "builtin": false,
+      "driver": "Panels",
+      "origin": "projects/ROCKNIX/devices/H700/config/kernel-firmware.dat",
+      "licence": null,
+      "decision": "exclude",
+      "reason": "linux-firmware WHENCE has no licence for it",
+      "fetch_candidate": true
+    },
+    {
+      "path": "panels/anbernic,rg35xx-sp-v2-panel.panel",
+      "package": "kernel-firmware",
+      "builtin": false,
+      "driver": "Panels",
+      "origin": "projects/ROCKNIX/devices/H700/config/kernel-firmware.dat",
+      "licence": null,
+      "decision": "exclude",
+      "reason": "linux-firmware WHENCE has no licence for it",
+      "fetch_candidate": true
+    },
+    {
+      "path": "panels/anbernic,rg40xx-panel.panel",
+      "package": "kernel-firmware",
+      "builtin": false,
+      "driver": "Panels",
+      "origin": "projects/ROCKNIX/devices/H700/config/kernel-firmware.dat",
+      "licence": null,
+      "decision": "exclude",
+      "reason": "linux-firmware WHENCE has no licence for it",
+      "fetch_candidate": true
+    },
+    {
+      "path": "panels/anbernic,rg40xx-v2-panel.panel",
+      "package": "kernel-firmware",
+      "builtin": false,
+      "driver": "Panels",
+      "origin": "projects/ROCKNIX/devices/H700/config/kernel-firmware.dat",
+      "licence": null,
+      "decision": "exclude",
+      "reason": "linux-firmware WHENCE has no licence for it",
+      "fetch_candidate": true
+    },
+    {
+      "path": "panels/anbernic,rgcubexx-panel.panel",
+      "package": "kernel-firmware",
+      "builtin": false,
+      "driver": "Panels",
+      "origin": "projects/ROCKNIX/devices/H700/config/kernel-firmware.dat",
+      "licence": null,
+      "decision": "exclude",
+      "reason": "linux-firmware WHENCE has no licence for it",
+      "fetch_candidate": true
+    },
+    {
+      "path": "rtl_bt/rtl8821cs_config.bin",
+      "package": "kernel-firmware",
+      "builtin": false,
+      "driver": "RTL_8821CS",
+      "origin": "projects/ROCKNIX/devices/H700/config/kernel-firmware.dat",
+      "licence": "Redistributable. See LICENCE.rtlwifi_firmware.txt for details.",
+      "decision": "ship",
+      "reason": "linux-firmware WHENCE names a licence"
+    },
+    {
+      "path": "rtl_bt/rtl8821cs_fw.bin",
+      "package": "kernel-firmware",
+      "builtin": false,
+      "driver": "RTL_8821CS",
+      "origin": "projects/ROCKNIX/devices/H700/config/kernel-firmware.dat",
+      "licence": "Redistributable. See LICENCE.rtlwifi_firmware.txt for details.",
+      "decision": "ship",
+      "reason": "linux-firmware WHENCE names a licence"
+    },
+    {
+      "path": "rtw88/rtw8821c_fw.bin",
+      "package": "kernel-firmware",
+      "builtin": false,
+      "driver": "RTW_88",
+      "origin": "projects/ROCKNIX/devices/H700/config/kernel-firmware.dat",
+      "licence": "Redistributable. See LICENCE.rtlwifi_firmware.txt for details.",
+      "decision": "ship",
+      "reason": "linux-firmware WHENCE names a licence"
+    }
+  ]
+}

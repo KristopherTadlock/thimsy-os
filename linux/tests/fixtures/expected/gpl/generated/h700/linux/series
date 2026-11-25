@@ -1,0 +1,4 @@
+01-common-mainline/0003-pwm-add-pwm_set_period.patch
+02-common-7.2/9998-silence-initramfs-unpack-warn.patch
+03-device/0124-battery-name.patch
+03-device/0140-rg35xx-2024-use-rocknix-joypad-driver.patch

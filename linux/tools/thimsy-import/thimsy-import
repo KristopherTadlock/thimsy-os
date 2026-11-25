@@ -1,0 +1,12 @@
+#!/usr/bin/env python3
+"""thimsy-import entry point: see thimsy_import/cli.py and docs/linux/IMPLEMENTATION.md E.7."""
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from thimsy_import.cli import main  # noqa: E402
+
+if __name__ == "__main__":
+    sys.exit(main())

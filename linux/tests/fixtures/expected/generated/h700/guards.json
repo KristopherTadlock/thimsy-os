@@ -1,0 +1,61 @@
+{
+  "family": "H700",
+  "rocknix_tag": "next",
+  "rocknix_commit": "0f4806b59bfd1d3e6b17e3a632e95ced82a28719",
+  "blocks": {
+    "projects/ROCKNIX/packages/linux/package.mk:case:H700": {
+      "path": "projects/ROCKNIX/packages/linux/package.mk",
+      "kind": "case",
+      "line": 37,
+      "hash": "sha256:ddf94236f80407185b57b3a6e0bdae996b614f5ff4f0ad202656579e7bb0140e"
+    },
+    "projects/ROCKNIX/packages/linux/package.mk:patch-dirs": {
+      "path": "projects/ROCKNIX/packages/linux/package.mk",
+      "kind": "patch-dirs",
+      "line": 17,
+      "hash": "sha256:742e2f4282362a51eb481b1236d2a13ea38991fe4a05123125f2368b5bd90944"
+    },
+    "projects/ROCKNIX/packages/linux/package.mk:top:elif#1": {
+      "path": "projects/ROCKNIX/packages/linux/package.mk",
+      "kind": "if",
+      "line": 49,
+      "hash": "sha256:cae0aad5267d64adefb225434eda02a4fa932d171d8cd9fc9a17ff26ade6d784"
+    },
+    "projects/ROCKNIX/packages/linux/package.mk:pre_make_target:elif#1": {
+      "path": "projects/ROCKNIX/packages/linux/package.mk",
+      "kind": "if",
+      "line": 93,
+      "hash": "sha256:7ce8193f8d61efc6d876cd1001031f43001abd41cf6cf91e363e5e4c089b35ed"
+    },
+    "projects/ROCKNIX/packages/linux/package.mk:makeinstall_target:if#1": {
+      "path": "projects/ROCKNIX/packages/linux/package.mk",
+      "kind": "if",
+      "line": 132,
+      "hash": "sha256:061535b66853326110d7a08c77e82794ac12381163cad644f6557d8eb5f41f23"
+    },
+    "projects/ROCKNIX/packages/linux/package.mk:post_patch()": {
+      "path": "projects/ROCKNIX/packages/linux/package.mk",
+      "kind": "function",
+      "line": 59,
+      "hash": "sha256:f28230cd6186c27d113712f5ee5aac731c773089a14d871b87c2b7ff0c2b5179"
+    },
+    "projects/ROCKNIX/packages/linux/package.mk:top:cfg80211#1": {
+      "path": "projects/ROCKNIX/packages/linux/package.mk",
+      "kind": "cfg80211",
+      "line": 55,
+      "hash": "sha256:d00ac0a72d3e824dcebad5bfa845369c7e777b4ce4d035bcaa179714c5bbaebd"
+    },
+    "projects/ROCKNIX/packages/linux/package.mk:pre_make_target:cfg80211#2": {
+      "path": "projects/ROCKNIX/packages/linux/package.mk",
+      "kind": "cfg80211",
+      "line": 110,
+      "hash": "sha256:1281311c9eb277ed1c2a43d14d4d2b8593b4aba718efda730c91bf7390f534bb"
+    },
+    "scripts/unpack:patch-order": {
+      "path": "scripts/unpack",
+      "kind": "unpack",
+      "line": 9,
+      "hash": "sha256:e60b02537ce28a8cc7832ed17434085aeb3a3c07bf1e8ea964cd42f7e5775b74"
+    }
+  }
+}
