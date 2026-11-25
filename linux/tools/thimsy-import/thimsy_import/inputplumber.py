@@ -13,6 +13,7 @@ tags, flow collections with content and multi-line scalars are refused.
 
 from __future__ import annotations
 
+import json
 import re
 from collections import OrderedDict
 
@@ -253,6 +254,7 @@ def pad_facts(composite: Composite, maps: dict):
             srcs = ent.get("source_events") or []
             tgt = ent.get("target_event") or {}
             if len(srcs) != 1 or "evdev" not in srcs[0]:
+                abs_seen = True   # what it feeds (often a stick) is unknown: derive nothing
                 notes.append("mapping %r: chorded or non-evdev source skipped" % ent.get("name"))
                 continue
             ev = srcs[0]["evdev"]
@@ -266,6 +268,9 @@ def pad_facts(composite: Composite, maps: dict):
             if isinstance(gp, dict):
                 if "button" in gp:
                     to = GAMEPAD.get(str(gp["button"]))
+                    km = _KEY.match(str(gp["button"]))
+                    if to is None and km:
+                        to = "KEY_" + km.group(1).upper()
                 elif isinstance(gp.get("trigger"), dict):
                     to = GAMEPAD.get(str(gp["trigger"].get("name")))
             elif "keyboard" in tgt:
@@ -273,7 +278,8 @@ def pad_facts(composite: Composite, maps: dict):
                 if km:
                     to = "KEY_" + km.group(1).upper()
             if to is None:
-                notes.append("mapping %r: target %r not mapped" % (ent.get("name"), tgt))
+                notes.append("mapping %r: target %s not mapped"
+                             % (ent.get("name"), json.dumps(tgt, sort_keys=True)))
                 continue
             row = OrderedDict([("source", sid), ("code", code), ("to", to)])
             if any(b["source"] == sid and b["code"] == code for b in buttons):
@@ -290,7 +296,8 @@ def pad_facts(composite: Composite, maps: dict):
     clicks = tos & {"BTN_THUMBL", "BTN_THUMBR"}
     if abs_seen:
         pad["face_buttons"] = 4
-        notes.append("sticks: axis mappings are not read yet; fill the sticks by hand")
+        notes.append("sticks and face_buttons not derived: the map has axis or non-evdev mappings; "
+                     "fill them by hand")
     else:
         pad["face_buttons"] = 6 if face == 4 and len(clicks) == 2 else 4
         if pad["face_buttons"] == 6:
@@ -298,4 +305,6 @@ def pad_facts(composite: Composite, maps: dict):
         pad["sticks"] = []
     if rumble_source:
         pad["rumble"] = OrderedDict([("source", rumble_source)])
+    seen = set()
+    notes = [n for n in notes if not (n in seen or seen.add(n))]
     return pad, notes, used_maps
