@@ -1,0 +1,262 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://thimsy.invalid/linux/schema/device.schema.json",
+  "title": "Thimsy device.json",
+  "description": "One product's hardware facts, read by the image build, thimsy-session, thimsy-padd and Nano (docs/linux/IMPLEMENTATION.md E.7, F). thimsy-import writes the facts it can read from ROCKNIX into linux/generated/<family>/devices/<id>.json; board/<family>/devices/<id>.json is Thimsy's own (hand-written) document for the product. Only draft-07 keywords that linux/tools/thimsy-import/thimsy_import/devicejson.py validates are used: type, enum, const, pattern, minLength, minimum, maximum, minItems, maxItems, uniqueItems, properties, required, additionalProperties, patternProperties, propertyNames, items, $ref, anyOf.",
+  "type": "object",
+  "required": ["schema_version", "id", "family", "model", "status"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": 1},
+    "id": {"$ref": "#/definitions/slug", "description": "Product id: the DTB name without its SoC prefix (anbernic-rg-arc-d), or a Thimsy name for targets without a DTB."},
+    "family": {"$ref": "#/definitions/slug", "description": "Hardware-pack family, lower case (rk3566, h700, qemu-aarch64-virt)."},
+    "soc": {"type": "string", "minLength": 1, "description": "ROCKNIX's HW_CPU option, or the SoC's name."},
+    "model": {"type": "string", "minLength": 1, "description": "The device-tree model string the device is matched by at run time (/proc/device-tree/model)."},
+    "model_source": {"enum": ["dts", "patch", "kernel-src", "name-match", "hand"], "description": "Where the model came from; name-match is a guess the importer made from the DTB name."},
+    "dtb": {"anyOf": [{"type": "null"}, {"type": "string", "pattern": "^[a-z0-9-]+/[A-Za-z0-9._,+-]+\\.dtb$"}], "description": "<vendor>/<name>.dtb, or null when the firmware provides the device tree (QEMU)."},
+    "images": {"type": "array", "items": {"type": "string"}, "uniqueItems": true, "description": "ROCKNIX sub-images (config.xml) that carry this DTB; empty for a family-level image."},
+    "ram_mb": {"type": "integer", "minimum": 64},
+    "panel": {"$ref": "#/definitions/panel"},
+    "touch": {"$ref": "#/definitions/touch"},
+    "pad": {"$ref": "#/definitions/pad"},
+    "vibrator": {"$ref": "#/definitions/vibrator"},
+    "audio": {"$ref": "#/definitions/audio"},
+    "leds": {"type": "array", "items": {"$ref": "#/definitions/led"}},
+    "fans": {"type": "array", "items": {"$ref": "#/definitions/fan"}},
+    "thermal": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"sensor": {"$ref": "#/definitions/syspath"}}
+    },
+    "power": {"$ref": "#/definitions/power"},
+    "profile_default": {"enum": ["small", "medium", "large", "ultra"]},
+    "status": {"enum": ["imported", "built", "boots", "works", "certified"], "description": "imported: facts only, nothing built; then the catalog levels of plan section 8.3."},
+    "quirk_facts": {
+      "type": "object",
+      "description": "ROCKNIX quirk KEY=value facts not mapped to a field above, as plain strings (never shell text).",
+      "propertyNames": {"pattern": "^[A-Z_][A-Z0-9_]*$"},
+      "additionalProperties": {"type": "string", "pattern": "^[^$`]*$"}
+    },
+    "rocknix": {
+      "type": "object", "additionalProperties": false,
+      "description": "Where the facts were read: ROCKNIX tag, commit and paths.",
+      "properties": {
+        "tag": {"type": "string"},
+        "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "dts": {"type": "string"},
+        "quirk_sources": {"type": "array", "items": {"type": "string"}},
+        "inputplumber": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "notes": {
+      "type": "object",
+      "description": "Free notes keyed by the JSON pointer of the field they qualify ('' for the whole document). A note starting with 'guess' marks the value as unverified.",
+      "propertyNames": {"pattern": "^(/[^/]*)*$"},
+      "additionalProperties": {"type": "string", "minLength": 1}
+    }
+  },
+  "definitions": {
+    "slug": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+    "syspath": {"type": "string", "pattern": "^/(sys|dev|proc)/"},
+    "source_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+    "input_code": {"type": "string", "pattern": "^(BTN|KEY)_[A-Z0-9_]+$", "description": "An EV_KEY code by its name in include/uapi/linux/input-event-codes.h; aliases (BTN_A) are written as their canonical name (BTN_SOUTH)."},
+    "abs_code": {"type": "string", "pattern": "^ABS_[A-Z0-9_]+$"},
+    "pad_button": {
+      "description": "The normalised layout padd emits (kernel Documentation/input/gamepad.rst). BTN_DPAD_* name the d-pad directions; padd emits them as ABS_HAT0X/ABS_HAT0Y. A KEY_* target is passed through on padd's keyboard side.",
+      "anyOf": [
+        {"enum": ["BTN_SOUTH", "BTN_EAST", "BTN_NORTH", "BTN_WEST", "BTN_TL", "BTN_TR", "BTN_TL2", "BTN_TR2",
+                  "BTN_SELECT", "BTN_START", "BTN_MODE", "BTN_THUMBL", "BTN_THUMBR",
+                  "BTN_DPAD_UP", "BTN_DPAD_DOWN", "BTN_DPAD_LEFT", "BTN_DPAD_RIGHT"]},
+        {"type": "string", "pattern": "^KEY_[A-Z0-9_]+$"}
+      ]
+    },
+    "panel": {
+      "type": "object", "additionalProperties": false,
+      "required": ["width", "height", "rotation"],
+      "properties": {
+        "width": {"type": "integer", "minimum": 1, "description": "Native (scan-out) width in pixels, before rotation."},
+        "height": {"type": "integer", "minimum": 1},
+        "rotation": {"enum": [0, 90, 180, 270], "description": "Clockwise rotation that turns the native mode into the landscape image the user sees."},
+        "rotation_source": {"enum": ["drm-panel-orientation", "fbcon", "device-json", "device-tree"], "description": "The rotation contract (plan 5.3): the DRM property first, then fbcon, then this file."},
+        "size_mm": {"type": "array", "items": {"type": "integer", "minimum": 1}, "minItems": 2, "maxItems": 2}
+      }
+    },
+    "touch": {
+      "type": "object", "additionalProperties": false,
+      "required": ["present"],
+      "properties": {
+        "present": {"type": "boolean"},
+        "match": {"$ref": "#/definitions/match"},
+        "size_x": {"type": "integer", "minimum": 1},
+        "size_y": {"type": "integer", "minimum": 1},
+        "swap_xy": {"type": "boolean"},
+        "invert_x": {"type": "boolean"},
+        "invert_y": {"type": "boolean"}
+      }
+    },
+    "match": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name"],
+      "description": "How an evdev node is recognised: all given fields must equal the node's (EVIOCGNAME, EVIOCGPHYS, EVIOCGUNIQ, EVIOCGID).",
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "phys": {"type": "string", "minLength": 1},
+        "uniq": {"type": "string"},
+        "bus": {"type": "integer", "minimum": 0, "maximum": 65535},
+        "vendor": {"type": "integer", "minimum": 0, "maximum": 65535},
+        "product": {"type": "integer", "minimum": 0, "maximum": 65535}
+      }
+    },
+    "calibration": {
+      "type": "object", "additionalProperties": false,
+      "description": "Raw range of one axis; padd rescales it to the output range. Omitted values come from EVIOCGABS.",
+      "properties": {
+        "min": {"type": "integer"},
+        "max": {"type": "integer"},
+        "center": {"type": "integer"},
+        "deadzone": {"type": "integer", "minimum": 0},
+        "fuzz": {"type": "integer", "minimum": 0},
+        "flat": {"type": "integer", "minimum": 0}
+      }
+    },
+    "axis": {
+      "type": "object", "additionalProperties": false,
+      "required": ["code", "to"],
+      "properties": {
+        "code": {"$ref": "#/definitions/abs_code"},
+        "to": {"enum": ["ABS_X", "ABS_Y", "ABS_RX", "ABS_RY"]},
+        "invert": {"type": "boolean"},
+        "calibration": {"$ref": "#/definitions/calibration"}
+      }
+    },
+    "stick": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "source", "x", "y"],
+      "properties": {
+        "name": {"enum": ["left", "right"]},
+        "source": {"$ref": "#/definitions/source_id"},
+        "x": {"$ref": "#/definitions/axis"},
+        "y": {"$ref": "#/definitions/axis"}
+      }
+    },
+    "trigger": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source", "code", "to"],
+      "description": "An analog trigger; a digital one is a button mapped to BTN_TL2/BTN_TR2.",
+      "properties": {
+        "source": {"$ref": "#/definitions/source_id"},
+        "code": {"$ref": "#/definitions/abs_code"},
+        "to": {"enum": ["ABS_Z", "ABS_RZ"]},
+        "invert": {"type": "boolean"},
+        "calibration": {"$ref": "#/definitions/calibration"}
+      }
+    },
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "role", "match"],
+      "properties": {
+        "id": {"$ref": "#/definitions/source_id"},
+        "role": {"enum": ["buttons", "sticks", "buttons+sticks", "rumble"]},
+        "match": {"$ref": "#/definitions/match"},
+        "required": {"type": "boolean", "description": "padd waits for this node before presenting the pad (default true)."},
+        "grab": {"type": "boolean", "description": "EVIOCGRAB the node (default true for input roles)."},
+        "hide": {"type": "boolean", "description": "Unlink the node from devtmpfs after opening it (default true)."}
+      }
+    },
+    "pad": {
+      "type": "object", "additionalProperties": false,
+      "required": ["producer", "sources", "buttons"],
+      "properties": {
+        "producer": {"enum": ["padd", "kernel-joypad"], "description": "padd merges the listed sources into the Thimsy Gamepad; kernel-joypad: one kernel node (rocknix-joypad) that padd re-exposes under the same identity."},
+        "sources": {"type": "array", "items": {"$ref": "#/definitions/source"}},
+        "buttons": {
+          "type": "array",
+          "description": "Source code -> normalised code. With producer padd a source code not listed is dropped; with producer kernel-joypad an empty list passes the node's codes through unchanged.",
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["source", "code", "to"],
+            "properties": {
+              "source": {"$ref": "#/definitions/source_id"},
+              "code": {"$ref": "#/definitions/input_code"},
+              "to": {"$ref": "#/definitions/pad_button"},
+              "label": {"type": "string", "description": "The printed label on the button."}
+            }
+          }
+        },
+        "face_buttons": {"enum": [4, 6]},
+        "face_layout": {"enum": ["xbox", "nintendo", "saturn"], "description": "Label convention (controller_layout_plan.md); saturn: the ARC's A B C / X Y Z print."},
+        "labels": {
+          "type": "object",
+          "description": "Printed label of each normalised button.",
+          "propertyNames": {"pattern": "^(BTN|KEY)_[A-Z0-9_]+$"},
+          "additionalProperties": {"type": "string", "minLength": 1}
+        },
+        "sticks": {"type": "array", "items": {"$ref": "#/definitions/stick"}, "maxItems": 2},
+        "triggers": {"type": "array", "items": {"$ref": "#/definitions/trigger"}, "maxItems": 2},
+        "rumble": {
+          "type": "object", "additionalProperties": false,
+          "required": ["source"],
+          "properties": {"source": {"$ref": "#/definitions/source_id"}}
+        },
+        "hotkey": {
+          "type": "object", "additionalProperties": false,
+          "required": ["button"],
+          "properties": {
+            "button": {"$ref": "#/definitions/pad_button", "description": "The hotkey button Nano and RetroArch use."},
+            "quit_combo": {"type": "array", "items": {"$ref": "#/definitions/pad_button"}, "minItems": 1, "uniqueItems": true}
+          }
+        }
+      }
+    },
+    "vibrator": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {"enum": ["pwm", "pm8xxx", "gpio", "none"]},
+        "pwm_chip": {"type": "string", "pattern": "^pwmchip[0-9]+$"}
+      }
+    },
+    "audio": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "card": {"type": "string", "description": "ALSA card id (/proc/asound/cards)."},
+        "card_index": {"type": "integer", "minimum": 0},
+        "playback": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "control": {"type": "string", "description": "Mixer control that selects the output path."},
+            "speaker": {"type": "string"},
+            "headphone": {"type": "string"}
+          }
+        },
+        "fake_jack_sense": {"type": "boolean"}
+      }
+    },
+    "led": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "path"],
+      "properties": {"name": {"type": "string"}, "path": {"$ref": "#/definitions/syspath"}, "color": {"type": "string"}}
+    },
+    "fan": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "path"],
+      "properties": {"type": {"enum": ["pwm", "hwmon"]}, "path": {"$ref": "#/definitions/syspath"}}
+    },
+    "power": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "key": {
+          "type": "object", "additionalProperties": false,
+          "required": ["match", "code"],
+          "properties": {"match": {"$ref": "#/definitions/match"}, "code": {"$ref": "#/definitions/input_code"}}
+        },
+        "volume": {
+          "type": "object", "additionalProperties": false,
+          "required": ["match"],
+          "properties": {"match": {"$ref": "#/definitions/match"}}
+        },
+        "wake_sources": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "mem_sleep": {"enum": ["s2idle", "shallow", "deep"]}
+      }
+    }
+  }
+}

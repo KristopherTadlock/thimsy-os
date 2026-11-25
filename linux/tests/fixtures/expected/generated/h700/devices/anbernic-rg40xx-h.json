@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "id": "anbernic-rg40xx-h",
+  "family": "h700",
+  "soc": "Allwinner H700",
+  "model": "Anbernic RG40XX H",
+  "model_source": "dts",
+  "dtb": "allwinner/sun50i-h700-anbernic-rg40xx-h.dtb",
+  "images": [
+    "DDR4",
+    "DDR3"
+  ],
+  "pad": {
+    "producer": "kernel-joypad",
+    "sources": [
+      {
+        "id": "h700-gamepad",
+        "role": "buttons+sticks",
+        "match": {
+          "name": "H700 Gamepad"
+        },
+        "grab": true,
+        "hide": true
+      }
+    ],
+    "buttons": [],
+    "face_buttons": 4,
+    "sticks": [
+      {
+        "name": "left",
+        "source": "h700-gamepad",
+        "x": {
+          "code": "ABS_X",
+          "to": "ABS_X"
+        },
+        "y": {
+          "code": "ABS_Y",
+          "to": "ABS_Y"
+        }
+      },
+      {
+        "name": "right",
+        "source": "h700-gamepad",
+        "x": {
+          "code": "ABS_RX",
+          "to": "ABS_RX"
+        },
+        "y": {
+          "code": "ABS_RY",
+          "to": "ABS_RY"
+        }
+      }
+    ]
+  },
+  "thermal": {
+    "sensor": "/sys/devices/virtual/thermal/thermal_zone2/temp"
+  },
+  "status": "imported",
+  "quirk_facts": {
+    "DEVICE_ANALOG_STICKS_LED_CONTROL": "true",
+    "DEVICE_GPU_OVERCLOCK": "true",
+    "DEVICE_TEMP_SENSOR": "/sys/devices/virtual/thermal/thermal_zone2/temp"
+  },
+  "rocknix": {
+    "tag": "next",
+    "commit": "0f4806b59bfd1d3e6b17e3a632e95ced82a28719",
+    "dts": "projects/ROCKNIX/devices/H700/linux/dts/allwinner/sun50i-h700-anbernic-rg40xx-h.dts",
+    "quirk_sources": [
+      "projects/ROCKNIX/packages/hardware/quirks/platforms/H700/001-device_config",
+      "projects/ROCKNIX/packages/hardware/quirks/devices/Anbernic RG40XX H/010-analog_sticks_led_control"
+    ]
+  },
+  "notes": {
+    "/pad/sources": "guess: the device tree names no joypad-name; 'H700 Gamepad' is the only one the family's device trees and patches set",
+    "/pad": "kernel joypad (rocknix-joypad): buttons pass through; face_buttons 4 is a guess",
+    "/pad/sticks": "the driver inverts rx, ry itself (invert-abs* in the device tree); padd must not invert again"
+  }
+}

@@ -1,0 +1,5 @@
+# A Thimsy kernel fragment that meets kernel-critical.conf for RK3566 and H700 (test data).
+CONFIG_INITRAMFS_SOURCE=""
+CONFIG_EROFS_FS=y
+CONFIG_DRM_PANFROST=y
+# CONFIG_JOYSTICK_XPAD is not set

@@ -1,0 +1,44 @@
+{
+  "values": {
+    "ADDITIONAL_DRIVERS": "mali-bifrost",
+    "ADDITIONAL_PACKAGES": "libmali inputplumber",
+    "ADDITIONAL_PACKAGES_32BIT": "libmali",
+    "ATF_PLATFORM": "rk3568",
+    "BATTERYPLUS_SUPPORT": "no",
+    "BOOTLOADER": "u-boot",
+    "DEBUG_TTY": "/dev/ttyS2",
+    "DISPLAYSERVER": "wl",
+    "EXTRA_CMDLINE": "quiet console=ttyS2,1500000 console=tty0 systemd.debug_shell=ttyS2",
+    "FIRMWARE": "extra-firmware",
+    "GRAPHIC_DRIVERS": "mali panfrost",
+    "HW_CPU": "Rockchip RK3566",
+    "KERNEL_MAKE_EXTRACMD": " $(get_kernel_make_extracmd)",
+    "KERNEL_TARGET": "Image",
+    "MALI_FAMILY": "bifrost-g52",
+    "OPENGLES": "mesa",
+    "PARTITION_TABLE": "gpt",
+    "PIPEWIRE_SUPPORT": "yes",
+    "PREFER_GLES": "yes",
+    "ROCKNIX_DEVICE_TREE_OVERLAYS": "yes",
+    "ROCKNIX_JOYPAD": "no",
+    "SQUASHFS_COMPRESSION": "zstd",
+    "SWAP_FILE_SIZE": "0",
+    "SWAP_SUPPORT": "yes",
+    "TARGET_CPU": "cortex-a55",
+    "TARGET_CPU_FLAGS": "+crc+crypto+fp+simd+rcpc",
+    "THP_DEFRAG": "defer",
+    "UBOOT_FIRMWARE": "rkbin atf",
+    "VULKAN": "vulkan-loader",
+    "VULKAN_SUPPORT": "yes",
+    "WINDOWMANAGER": "swaywm-env",
+    "ZRAM_COMPRESSION_ALGO": "lz4",
+    "ZRAM_SWAP_SIZE": "0"
+  },
+  "dynamic": [
+    "KERNEL_MAKE_EXTRACMD"
+  ],
+  "sources": [
+    "projects/ROCKNIX/options",
+    "projects/ROCKNIX/devices/RK3566/options"
+  ]
+}

@@ -1,0 +1,265 @@
+{
+  "schema_version": 1,
+  "id": "anbernic-rg-arc-s",
+  "family": "rk3566",
+  "soc": "Rockchip RK3566",
+  "model": "Anbernic RG ARC-S",
+  "model_source": "name-match",
+  "dtb": "rockchip/rk3566-anbernic-rg-arc-s.dtb",
+  "images": [
+    "Generic"
+  ],
+  "pad": {
+    "producer": "padd",
+    "sources": [
+      {
+        "id": "gpio-keys-control",
+        "role": "buttons",
+        "match": {
+          "name": "gpio-keys-control",
+          "phys": "gpio-keys/input0"
+        },
+        "grab": true,
+        "hide": true
+      },
+      {
+        "id": "adc-keys-home",
+        "role": "buttons",
+        "match": {
+          "name": "adc-keys-home"
+        },
+        "grab": true,
+        "hide": true
+      },
+      {
+        "id": "pwm-vibrator",
+        "role": "rumble",
+        "match": {
+          "name": "pwm-vibrator"
+        },
+        "grab": false,
+        "hide": true
+      }
+    ],
+    "buttons": [
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_EAST",
+        "to": "BTN_SOUTH"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_SOUTH",
+        "to": "BTN_EAST"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_NORTH",
+        "to": "BTN_NORTH"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_WEST",
+        "to": "BTN_WEST"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_START",
+        "to": "BTN_START"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_SELECT",
+        "to": "BTN_SELECT"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_TL",
+        "to": "BTN_TL"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_TR",
+        "to": "BTN_TR"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_TL2",
+        "to": "BTN_TL2"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_TR2",
+        "to": "BTN_TR2"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_Z",
+        "to": "BTN_THUMBL"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_C",
+        "to": "BTN_THUMBR"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_DPAD_UP",
+        "to": "BTN_DPAD_UP"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_DPAD_DOWN",
+        "to": "BTN_DPAD_DOWN"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_DPAD_LEFT",
+        "to": "BTN_DPAD_LEFT"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_DPAD_RIGHT",
+        "to": "BTN_DPAD_RIGHT"
+      },
+      {
+        "source": "gpio-keys-control",
+        "code": "BTN_BACK",
+        "to": "KEY_F1"
+      },
+      {
+        "source": "adc-keys-home",
+        "code": "BTN_EAST",
+        "to": "BTN_SOUTH"
+      },
+      {
+        "source": "adc-keys-home",
+        "code": "BTN_SOUTH",
+        "to": "BTN_EAST"
+      },
+      {
+        "source": "adc-keys-home",
+        "code": "BTN_NORTH",
+        "to": "BTN_NORTH"
+      },
+      {
+        "source": "adc-keys-home",
+        "code": "BTN_WEST",
+        "to": "BTN_WEST"
+      },
+      {
+        "source": "adc-keys-home",
+        "code": "BTN_START",
+        "to": "BTN_START"
+      },
+      {
+        "source": "adc-keys-home",
+        "code": "BTN_SELECT",
+        "to": "BTN_SELECT"
+      },
+      {
+        "source": "adc-keys-home",
+        "code": "BTN_TL",
+        "to": "BTN_TL"
+      },
+      {
+        "source": "adc-keys-home",
+        "code": "BTN_TR",
+        "to": "BTN_TR"
+      },
+      {
+        "source": "adc-keys-home",
+        "code": "BTN_TL2",
+        "to": "BTN_TL2"
+      },
+      {
+        "source": "adc-keys-home",
+        "code": "BTN_TR2",
+        "to": "BTN_TR2"
+      },
+      {
+        "source": "adc-keys-home",
+        "code": "BTN_Z",
+        "to": "BTN_THUMBL"
+      },
+      {
+        "source": "adc-keys-home",
+        "code": "BTN_C",
+        "to": "BTN_THUMBR"
+      },
+      {
+        "source": "adc-keys-home",
+        "code": "BTN_DPAD_UP",
+        "to": "BTN_DPAD_UP"
+      },
+      {
+        "source": "adc-keys-home",
+        "code": "BTN_DPAD_DOWN",
+        "to": "BTN_DPAD_DOWN"
+      },
+      {
+        "source": "adc-keys-home",
+        "code": "BTN_DPAD_LEFT",
+        "to": "BTN_DPAD_LEFT"
+      },
+      {
+        "source": "adc-keys-home",
+        "code": "BTN_DPAD_RIGHT",
+        "to": "BTN_DPAD_RIGHT"
+      },
+      {
+        "source": "adc-keys-home",
+        "code": "BTN_BACK",
+        "to": "KEY_F1"
+      }
+    ],
+    "face_buttons": 6,
+    "sticks": [],
+    "rumble": {
+      "source": "pwm-vibrator"
+    }
+  },
+  "audio": {
+    "card_index": 1,
+    "playback": {
+      "control": "Playback Mux",
+      "speaker": "HP",
+      "headphone": "HP"
+    },
+    "fake_jack_sense": false
+  },
+  "vibrator": {
+    "type": "pwm",
+    "pwm_chip": "pwmchip1"
+  },
+  "status": "imported",
+  "quirk_facts": {
+    "ALSA_PRIMARY_CARD": "1",
+    "DEVICE_BATTERY_LED_STATUS": "true",
+    "DEVICE_FAKE_JACKSENSE": "false",
+    "DEVICE_PLAYBACK_PATH": "Playback Mux",
+    "DEVICE_PLAYBACK_PATH_HP": "HP",
+    "DEVICE_PLAYBACK_PATH_SPK": "HP",
+    "DEVICE_PWM_MOTOR": "pwmchip1",
+    "DEVICE_WIFI": "0"
+  },
+  "rocknix": {
+    "tag": "next",
+    "commit": "0f4806b59bfd1d3e6b17e3a632e95ced82a28719",
+    "quirk_sources": [
+      "projects/ROCKNIX/packages/hardware/quirks/platforms/RK3566/001-device_config",
+      "projects/ROCKNIX/packages/hardware/quirks/platforms/RK3566/010-governors",
+      "projects/ROCKNIX/packages/hardware/quirks/platforms/RK3566/050-audio_path",
+      "projects/ROCKNIX/packages/hardware/quirks/devices/Anbernic RG ARC-S/001-device_config",
+      "projects/ROCKNIX/packages/hardware/quirks/devices/Anbernic RG ARC-S/020-gpios"
+    ],
+    "inputplumber": [
+      "projects/ROCKNIX/devices/RK3566/filesystem/usr/share/inputplumber/devices/01-rg-arc.yaml",
+      "projects/ROCKNIX/devices/RK3566/filesystem/usr/share/inputplumber/capability_maps/anbernic_arc.yaml"
+    ]
+  },
+  "notes": {
+    "/model": "guess: matched from the DTB name against ROCKNIX's model strings",
+    "/pad": "gpio-keys-control BTN_SELECT also maps to BTN_MODE in InputPlumber; Thimsy keeps the first target; adc-keys-home BTN_SELECT also maps to BTN_MODE in InputPlumber; Thimsy keeps the first target; face_buttons 6: stick clicks are mapped and the map has no sticks (derived)"
+  }
+}

@@ -1,0 +1,6 @@
+diff --git a/sound/soc/sunxi/Kconfig b/sound/soc/sunxi/Kconfig
+--- a/sound/soc/sunxi/Kconfig
++++ b/sound/soc/sunxi/Kconfig
+@@ -1,1 +1,2 @@
+ menu "Allwinner SoC Audio support"
++source "sound/soc/sunxi_v2/Kconfig"

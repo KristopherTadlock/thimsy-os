@@ -1,0 +1,13 @@
+Thimsy-Import-Provenance: ROCKNIX projects/ROCKNIX/packages/linux/patches/7.3/9998-silence-initramfs-unpack-warn.patch at 0f4806b59bfd1d3e6b17e3a632e95ced82a28719 (tag next); GPL-2.0, used under ROCKNIX's licence; author not recovered (Q22)
+diff -rupbN linux.orig/init/initramfs.c linux/init/initramfs.c
+--- linux.orig/init/initramfs.c	2026-07-28 15:53:35.261634269 +0000
++++ linux/init/initramfs.c	2026-07-28 15:56:55.329082848 +0000
+@@ -728,7 +728,7 @@ static void __init do_populate_rootfs(vo
+ #ifdef CONFIG_BLK_DEV_RAM
+ 		populate_initrd_image(err);
+ #else
+-		printk(KERN_EMERG "Initramfs unpacking failed: %s\n", err);
++		printk(KERN_DEBUG "Initramfs unpacking failed: %s\n", err);
+ #endif
+ 	}
+ 

@@ -1,0 +1,30 @@
+Thimsy fixture: imitates the format of linux-firmware's WHENCE file (git.kernel.org
+firmware/linux-firmware.git, WHENCE): blocks between dashed lines, File:/Link: entries and one
+Licence: line per block. Written for the test from the format, not copied; entries cut to two.
+
+--------------------------------------------------------------------------
+
+Driver: rtw88 - Realtek 802.11ac wireless network adapters
+
+File: rtw88/rtw8821c_fw.bin
+
+Licence: Redistributable. See LICENCE.rtlwifi_firmware.txt for details.
+
+--------------------------------------------------------------------------
+
+Driver: btrtl - Realtek Bluetooth adapters
+
+File: rtl_bt/rtl8821cs_fw.bin
+File: rtl_bt/rtl8821cs_config.bin
+
+Licence: Redistributable. See LICENCE.rtlwifi_firmware.txt for details.
+
+--------------------------------------------------------------------------
+
+Driver: example - a block whose licence is not stated
+
+File: rtl_bt/unknown_example.bin
+
+Licence: Unknown
+
+--------------------------------------------------------------------------

@@ -1,0 +1,48 @@
+{
+  "family": "h700",
+  "rocknix_tag": "next",
+  "rocknix_commit": "0f4806b59bfd1d3e6b17e3a632e95ced82a28719",
+  "dtb_prefix": "allwinner",
+  "images": [
+    {
+      "name": "DDR4",
+      "mkimage_options": [
+        "dtb",
+        "extlinux",
+        "uboot"
+      ],
+      "fdt": "dtb.img",
+      "fdt_type": "fdt",
+      "dtbs": [
+        "sun50i-h700-anbernic-rg40xx-h"
+      ]
+    },
+    {
+      "name": "DDR3",
+      "mkimage_options": [
+        "dtb",
+        "extlinux",
+        "uboot"
+      ],
+      "fdt": "dtb.img",
+      "fdt_type": "fdt",
+      "fdt_overlays": "sun50i-h700-anbernic-rg35xx-2024-ddr3.dtbo",
+      "dtbs": [
+        "sun50i-h700-anbernic-rg40xx-h"
+      ]
+    }
+  ],
+  "products": [
+    {
+      "id": "anbernic-rg40xx-h",
+      "dtb": "allwinner/sun50i-h700-anbernic-rg40xx-h.dtb",
+      "images": [
+        "DDR4",
+        "DDR3"
+      ],
+      "model": "Anbernic RG40XX H",
+      "model_source": "dts",
+      "device_json": "devices/anbernic-rg40xx-h.json"
+    }
+  ]
+}

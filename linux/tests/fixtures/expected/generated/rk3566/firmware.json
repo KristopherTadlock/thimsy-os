@@ -1,0 +1,36 @@
+{
+  "family": "rk3566",
+  "rocknix_commit": "0f4806b59bfd1d3e6b17e3a632e95ced82a28719",
+  "policy": "D24: ship known licences only; the rest is fetched from the user's device or left out",
+  "whence": "given",
+  "entries": [
+    {
+      "path": "regulatory.db",
+      "package": "wireless-regdb",
+      "builtin": true,
+      "origin": "projects/ROCKNIX/packages/linux/package.mk:pre_make_target:cfg80211#2",
+      "licence": "ISC",
+      "decision": "ship",
+      "reason": "package wireless-regdb has a known licence"
+    },
+    {
+      "path": "regulatory.db.p7s",
+      "package": "wireless-regdb",
+      "builtin": true,
+      "origin": "projects/ROCKNIX/packages/linux/package.mk:pre_make_target:cfg80211#2",
+      "licence": "ISC",
+      "decision": "ship",
+      "reason": "package wireless-regdb has a known licence"
+    },
+    {
+      "path": "*",
+      "package": "extra-firmware",
+      "builtin": false,
+      "origin": "projects/ROCKNIX/devices/RK3566/options FIRMWARE",
+      "licence": null,
+      "decision": "exclude",
+      "reason": "package extra-firmware is proprietary, with no licence file",
+      "fetch_candidate": true
+    }
+  ]
+}

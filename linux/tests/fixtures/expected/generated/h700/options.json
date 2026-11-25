@@ -1,0 +1,40 @@
+{
+  "values": {
+    "ADDITIONAL_DRIVERS": "",
+    "ADDITIONAL_PACKAGES": "",
+    "ATF_BL31_BINARY": "bl31.bin",
+    "ATF_PLATFORM": "sun50i_h616",
+    "BATTERYPLUS_SUPPORT": "yes",
+    "BOOTLOADER": "u-boot",
+    "DEBUG_TTY": "/dev/ttyS0",
+    "DISPLAYSERVER": "wl",
+    "EXTRA_CMDLINE": "quiet console=ttyS0,115200 console=tty0 systemd.debug_shell=ttyS0",
+    "FIRMWARE": "",
+    "GRAPHIC_DRIVERS": "panfrost",
+    "HW_CPU": "Allwinner H700",
+    "KERNEL_MAKE_EXTRACMD": " $(get_kernel_make_extracmd)",
+    "KERNEL_TARGET": "Image",
+    "MALI_FAMILY": "g31",
+    "OPENGLES": "mesa",
+    "PARTITION_TABLE": "msdos",
+    "PREFER_GLES": "yes",
+    "ROCKNIX_DEVICE_TREE_OVERLAYS": "yes",
+    "SQUASHFS_COMPRESSION": "zstd",
+    "SWAP_FILE_SIZE": "0",
+    "SWAP_SUPPORT": "yes",
+    "TARGET_CPU": "cortex-a53",
+    "TARGET_CPU_FLAGS": "+crc+fp+simd",
+    "THP_DEFRAG": "defer",
+    "UBOOT_FIRMWARE": " atf",
+    "WINDOWMANAGER": "swaywm-env",
+    "ZRAM_COMPRESSION_ALGO": "lz4",
+    "ZRAM_SWAP_SIZE": "0"
+  },
+  "dynamic": [
+    "KERNEL_MAKE_EXTRACMD"
+  ],
+  "sources": [
+    "projects/ROCKNIX/options",
+    "projects/ROCKNIX/devices/H700/options"
+  ]
+}
