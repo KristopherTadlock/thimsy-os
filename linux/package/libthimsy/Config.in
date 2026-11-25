@@ -1,0 +1,17 @@
+config BR2_PACKAGE_LIBTHIMSY
+	bool "libthimsy"
+	depends on BR2_INSTALL_LIBSTDCPP
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	depends on BR2_TOOLCHAIN_GCC_AT_LEAST_7 # C++17
+	help
+	  Thimsy's config store (Android-style properties with a
+	  persist file), atomic files, the uevent parser and a small
+	  JSON reader, as a static library in staging, plus the
+	  thimsy-prop tool in the target. MIT.
+
+	  Built from a git archive of the repository's libthimsy/ at
+	  HEAD, which linux/build.sh writes (IMPLEMENTATION.md E.1).
+
+comment "libthimsy needs a toolchain w/ C++, threads, gcc >= 7"
+	depends on !BR2_INSTALL_LIBSTDCPP || !BR2_TOOLCHAIN_HAS_THREADS || \
+		!BR2_TOOLCHAIN_GCC_AT_LEAST_7

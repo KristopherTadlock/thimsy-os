@@ -1,0 +1,47 @@
+config BR2_PACKAGE_THIMSY_NANO
+	bool "thimsy-nano"
+	depends on BR2_INSTALL_LIBSTDCPP
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	depends on BR2_TOOLCHAIN_GCC_AT_LEAST_7 # C++17
+	depends on BR2_PACKAGE_HAS_LIBEGL
+	depends on BR2_PACKAGE_HAS_LIBGLES
+	depends on BR2_PACKAGE_HAS_LIBGBM
+	select BR2_PACKAGE_LIBTHIMSY
+	select BR2_PACKAGE_LIBDRM
+	select BR2_PACKAGE_FREETYPE
+	select BR2_PACKAGE_LIBPNG
+	select BR2_PACKAGE_JPEG
+	select BR2_PACKAGE_LIBWEBP
+	select BR2_PACKAGE_GIFLIB
+	select BR2_PACKAGE_ZLIB
+	select BR2_PACKAGE_TINYXML2
+	select BR2_PACKAGE_LIBCURL
+	select BR2_PACKAGE_OPENSSL
+	select BR2_PACKAGE_ALSA_LIB
+	help
+	  Nano, Thimsy's frontend, on DRM/KMS with GBM, EGL and
+	  OpenGL ES, built with CMake from a git archive of the
+	  repository's nano/ at HEAD (IMPLEMENTATION.md E.1, E.3).
+
+	  Licence: Apache-2.0, GPL-2.0+ (NanoOskKanji.h, from
+	  SKK-JISYO), Zlib (nanosvg), MIT (rcheevos); see
+	  nano/NOTICE.
+
+if BR2_PACKAGE_THIMSY_NANO
+
+config BR2_PACKAGE_THIMSY_NANO_SCRAPE
+	bool "thimsy-nano-scrape"
+	default y
+	help
+	  The scraper as its own process, started by thimsy-session
+	  when Nano asks for a scrape (decision I25).
+
+endif
+
+comment "thimsy-nano needs a toolchain w/ C++, threads, gcc >= 7"
+	depends on !BR2_INSTALL_LIBSTDCPP || !BR2_TOOLCHAIN_HAS_THREADS || \
+		!BR2_TOOLCHAIN_GCC_AT_LEAST_7
+
+comment "thimsy-nano needs EGL, OpenGL ES and GBM"
+	depends on !BR2_PACKAGE_HAS_LIBEGL || !BR2_PACKAGE_HAS_LIBGLES || \
+		!BR2_PACKAGE_HAS_LIBGBM

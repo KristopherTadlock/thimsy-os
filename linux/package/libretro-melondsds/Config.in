@@ -1,0 +1,20 @@
+config BR2_PACKAGE_LIBRETRO_MELONDSDS
+	bool "libretro-melondsds"
+	depends on BR2_PACKAGE_RETROARCH
+	depends on BR2_INSTALL_LIBSTDCPP
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	depends on BR2_TOOLCHAIN_GCC_AT_LEAST_12
+	depends on BR2_PACKAGE_HAS_LIBGLES
+	depends on BR2_PACKAGE_HAS_LIBEGL
+	select BR2_PACKAGE_ZLIB
+	help
+	  The melondsds core for RetroArch: Nintendo DS (melonDS DS).
+
+	  Set: v1 (IMPLEMENTATION.md E.3). Licence: GPL-3.0.
+	  Renders with OpenGL ES 3 (Panfrost on Mali).
+
+	  https://github.com/JesseTG/melonds-ds
+
+comment "libretro-melondsds needs a toolchain w/ C++, threads, gcc >= 12"
+	depends on BR2_PACKAGE_RETROARCH
+	depends on !BR2_INSTALL_LIBSTDCPP || !BR2_TOOLCHAIN_HAS_THREADS || !BR2_TOOLCHAIN_GCC_AT_LEAST_12

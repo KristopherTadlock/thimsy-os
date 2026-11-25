@@ -1,0 +1,14 @@
+config BR2_PACKAGE_LIBRETRO_PROSYSTEM
+	bool "libretro-prosystem"
+	depends on BR2_PACKAGE_RETROARCH
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	help
+	  The prosystem core for RetroArch: Atari 7800.
+
+	  Set: v1 (IMPLEMENTATION.md E.3). Licence: GPL-2.0.
+
+	  https://github.com/libretro/prosystem-libretro
+
+comment "libretro-prosystem needs a toolchain w/ threads"
+	depends on BR2_PACKAGE_RETROARCH
+	depends on !BR2_TOOLCHAIN_HAS_THREADS

@@ -1,0 +1,16 @@
+config BR2_PACKAGE_LIBRETRO_PICODRIVE
+	bool "libretro-picodrive"
+	depends on BR2_PACKAGE_RETROARCH
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	help
+	  The picodrive core for RetroArch: Sega Mega Drive, Mega-CD and
+	  32X.
+
+	  Set: alpha (IMPLEMENTATION.md E.3). Licence: MAME-style
+	  licence (non-commercial).
+
+	  https://github.com/libretro/picodrive
+
+comment "libretro-picodrive needs a toolchain w/ threads"
+	depends on BR2_PACKAGE_RETROARCH
+	depends on !BR2_TOOLCHAIN_HAS_THREADS

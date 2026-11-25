@@ -1,0 +1,14 @@
+config BR2_PACKAGE_LIBRETRO_SAMEBOY
+	bool "libretro-sameboy"
+	depends on BR2_PACKAGE_RETROARCH
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	help
+	  The sameboy core for RetroArch: Game Boy and Game Boy Color.
+
+	  Set: alpha (IMPLEMENTATION.md E.3). Licence: MIT.
+
+	  https://github.com/libretro/SameBoy
+
+comment "libretro-sameboy needs a toolchain w/ threads"
+	depends on BR2_PACKAGE_RETROARCH
+	depends on !BR2_TOOLCHAIN_HAS_THREADS

@@ -1,0 +1,46 @@
+# Every hardware pack: the kernel, U-Boot where the family has one, modules and
+# firmware, built against a tier's SDK as an external toolchain instead of a
+# toolchain of its own (plan section 10, decision D25). linux/build.sh unpacks
+# the SDK named by the target's "sdk_from" (configs/targets.json) at
+# /build/sdk and runs its relocate-sdk.sh first (guess at the layout).
+#
+# override: a hardware pack builds no toolchain; it uses the tier's SDK
+# BR2_TOOLCHAIN_BUILDROOT_GLIBC is not set
+# override: a hardware pack builds no toolchain; it uses the tier's SDK
+# BR2_TOOLCHAIN_BUILDROOT_CXX is not set
+# override: a hardware pack builds no toolchain; it uses the tier's SDK
+# BR2_KERNEL_HEADERS_6_12 is not set
+# override: a hardware pack builds no toolchain; it uses the tier's SDK
+# BR2_GCC_VERSION_14_X is not set
+BR2_TOOLCHAIN_EXTERNAL=y
+BR2_TOOLCHAIN_EXTERNAL_CUSTOM=y
+BR2_TOOLCHAIN_EXTERNAL_PREINSTALLED=y
+BR2_TOOLCHAIN_EXTERNAL_PATH="/build/sdk/aarch64-buildroot-linux-gnu_sdk-buildroot"
+BR2_TOOLCHAIN_EXTERNAL_CUSTOM_PREFIX="$(ARCH)-buildroot-linux-gnu"
+# The SDK's versions: the same as common.fragment's (test_defconfig.py).
+BR2_TOOLCHAIN_EXTERNAL_GCC_14=y
+BR2_TOOLCHAIN_EXTERNAL_HEADERS_6_12=y
+BR2_TOOLCHAIN_EXTERNAL_CUSTOM_GLIBC=y
+BR2_TOOLCHAIN_EXTERNAL_CXX=y
+
+# The kernel: each family pins its own version (decision D22: ROCKNIX's for
+# the family, from the generated fragment) and config source. The FIT is
+# written by tools/fit.py from images/Image, so nothing goes to /boot.
+BR2_LINUX_KERNEL=y
+BR2_LINUX_KERNEL_CUSTOM_VERSION=y
+BR2_LINUX_KERNEL_IMAGE=y
+BR2_LINUX_KERNEL_NEEDS_HOST_OPENSSL=y
+# BR2_LINUX_KERNEL_INSTALL_TARGET is not set
+
+# Firmware (decision D24): only linux-firmware files with known licences are
+# selected, and only by a family's generated fragment (thimsy-import's firmware
+# list, filtered by the policy); nothing is selected here. A file no licence
+# covers is fetched from the user's own device at install time, never shipped.
+
+# Host tools for the boot files and the cards (tools/fit.py, genimage,
+# tools/gpt_check.py).
+BR2_PACKAGE_HOST_UBOOT_TOOLS=y
+BR2_PACKAGE_HOST_UBOOT_TOOLS_FIT_SUPPORT=y
+BR2_PACKAGE_HOST_DTC=y
+BR2_PACKAGE_HOST_GENIMAGE=y
+BR2_PACKAGE_HOST_BMAP_TOOLS=y

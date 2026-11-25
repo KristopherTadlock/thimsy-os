@@ -1,0 +1,8 @@
+config BR2_PACKAGE_THIMSY_FONTS
+	bool "thimsy-fonts"
+	help
+	  Fonts from upstream releases, pinned by hash, installed to
+	  /usr/share/fonts/thimsy under Android's file names, as
+	  replacements for DroidSans and NotoColorEmoji (plan 5.2).
+
+	  Licences: Apache-2.0 and OFL-1.1.

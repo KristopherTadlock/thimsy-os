@@ -1,0 +1,62 @@
+# Every target: the architecture, Buildroot's own glibc toolchain (built once
+# per tier tree and reused by the hardware packs as their SDK), BusyBox init
+# from the overlay, libudev-zero, the EROFS root, the overlay and the post
+# scripts (IMPLEMENTATION.md E.4).
+#
+# Option names are Buildroot's as of the version linux/build.sh pins
+# (2026.08.2, FlipBase's). Names marked "(guess)" were written from memory of
+# Buildroot 2025.02 and are confirmed by tools/defconfig.py --check --buildroot
+# DIR against that tree.
+#
+# Syntax: SYMBOL=value or "# SYMBOL is not set", one per line. A later fragment
+# may change a value set here only on a line preceded by "# override: <why>".
+
+BR2_aarch64=y
+BR2_DL_DIR="/dl"
+BR2_CCACHE=y
+BR2_CCACHE_DIR="/build/ccache"
+BR2_PER_PACKAGE_DIRECTORIES=y
+BR2_GLOBAL_PATCH_DIR="$(BR2_EXTERNAL_THIMSY_PATH)/gpl/patches"
+BR2_DOWNLOAD_FORCE_CHECK_HASHES=y
+BR2_REPRODUCIBLE=y
+
+# Toolchain: glibc and C++. GCC 14, not 15: GCC 15 compiles C as C23 by
+# default, which older emulator cores (typedefs of bool and the like) do not
+# survive (guess that 2026.08 still offers 14). Headers no newer than the
+# oldest kernel any family runs (decision D22); 6.12 is an LTS (guess).
+# hw-common.fragment states the same versions for its external toolchain;
+# test_defconfig.py keeps the two in step.
+BR2_TOOLCHAIN_BUILDROOT_GLIBC=y
+BR2_TOOLCHAIN_BUILDROOT_CXX=y
+BR2_KERNEL_HEADERS_6_12=y
+BR2_GCC_VERSION_14_X=y
+
+# System: no Buildroot init scripts. FlipBase's /init execs BusyBox init, and
+# /etc/inittab, rcS, rcK and the S* scripts are the overlay's (E.5).
+BR2_TARGET_GENERIC_HOSTNAME="thimsy"
+BR2_TARGET_GENERIC_ISSUE="Thimsy"
+BR2_ROOTFS_MERGED_USR=y
+BR2_INIT_NONE=y
+BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_DEVTMPFS=y
+BR2_PACKAGE_BUSYBOX=y
+BR2_SYSTEM_BIN_SH_BUSYBOX=y
+BR2_PACKAGE_LIBUDEV_ZERO=y
+# Locked unless dev.fragment says otherwise: Buildroot's default is root login
+# with an empty password (decision I37).
+# BR2_TARGET_ENABLE_ROOT_LOGIN is not set
+BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_THIMSY_PATH)/board/common/rootfs-overlay"
+BR2_ROOTFS_USERS_TABLES="$(BR2_EXTERNAL_THIMSY_PATH)/board/common/users.table"
+BR2_ROOTFS_DEVICE_TABLE="system/device_table.txt $(BR2_EXTERNAL_THIMSY_PATH)/board/common/device.table"
+BR2_ROOTFS_POST_BUILD_SCRIPT="$(BR2_EXTERNAL_THIMSY_PATH)/board/common/post-build.sh"
+BR2_ROOTFS_POST_IMAGE_SCRIPT="$(BR2_EXTERNAL_THIMSY_PATH)/board/common/post-image.sh"
+
+# Images: an EROFS root, lz4hc in 16 KiB clusters as FlipBase measured; no
+# initramfs. The ext4 data partition and the cards are made by post-image.d.
+BR2_TARGET_ROOTFS_EROFS=y
+BR2_TARGET_ROOTFS_EROFS_LZ4HC=y
+BR2_TARGET_ROOTFS_EROFS_LZ4HC_LEVEL=12
+BR2_TARGET_ROOTFS_EROFS_PCLUSTERSIZE=16384
+# BR2_TARGET_ROOTFS_INITRAMFS is not set
+BR2_PACKAGE_HOST_EROFS_UTILS=y
+BR2_PACKAGE_HOST_E2FSPROGS=y
+BR2_PACKAGE_HOST_ZSTD=y

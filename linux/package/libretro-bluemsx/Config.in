@@ -1,0 +1,14 @@
+config BR2_PACKAGE_LIBRETRO_BLUEMSX
+	bool "libretro-bluemsx"
+	depends on BR2_PACKAGE_RETROARCH
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	help
+	  The bluemsx core for RetroArch: MSX.
+
+	  Set: v1 (IMPLEMENTATION.md E.3). Licence: GPL-2.0.
+
+	  https://github.com/libretro/blueMSX-libretro
+
+comment "libretro-bluemsx needs a toolchain w/ threads"
+	depends on BR2_PACKAGE_RETROARCH
+	depends on !BR2_TOOLCHAIN_HAS_THREADS

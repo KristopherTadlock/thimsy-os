@@ -1,0 +1,32 @@
+# Thimsy Base (BR2_EXTERNAL name THIMSY). Options that are not packages come
+# first; the packages are in package/Config.in. gpl/package/ gets its source
+# line here with its first recipe (G2d).
+
+menu "Thimsy image"
+
+choice
+	prompt "Image flavour"
+	default BR2_THIMSY_FLAVOUR_RELEASE
+	help
+	  Which services and access an image carries. configs/
+	  targets.json picks it per target through dev.fragment or
+	  release.fragment; tools/defconfig.py --check refuses a
+	  publishable target that is not a release (decision I37).
+
+config BR2_THIMSY_FLAVOUR_RELEASE
+	bool "release"
+	help
+	  No adbd, no serial getty, SSH off until the user turns it
+	  on and then key-only, the root password locked.
+
+config BR2_THIMSY_FLAVOUR_DEV
+	bool "development"
+	help
+	  adbd, a serial console, SSH at boot with password logins,
+	  root login allowed. Never published.
+
+endchoice
+
+endmenu
+
+source "$BR2_EXTERNAL_THIMSY_PATH/package/Config.in"

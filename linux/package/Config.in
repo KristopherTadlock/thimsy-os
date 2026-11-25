@@ -1,0 +1,52 @@
+# Every package of IMPLEMENTATION.md E.3. One "source" line per package; the
+# recipes (<pkg>.mk, <pkg>.hash) are G2d's. test_defconfig.py checks that every
+# package directory is sourced here.
+
+menu "Thimsy"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/libthimsy/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/thimsy-nano/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/thimsy-data/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/thimsy-session/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/thimsy-padd/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/thimsy-fonts/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/thimsy-gpu-pack/Config.in"
+endmenu
+
+menu "Emulators"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/retroarch/Config.in"
+
+	menu "libretro cores"
+	comment "alpha set"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/libretro-snes9x/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/libretro-genesis-plus-gx/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/libretro-picodrive/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/libretro-mgba/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/libretro-sameboy/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/libretro-mesen/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/libretro-fceumm/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/libretro-pcsx-rearmed/Config.in"
+	comment "v1 set"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/libretro-fbneo/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/libretro-mame2003-plus/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/libretro-mamearcade/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/libretro-stella/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/libretro-prosystem/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/libretro-a5200/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/libretro-gearcoleco/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/libretro-bluemsx/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/libretro-mednafen-vb/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/libretro-mednafen-ngp/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/libretro-mednafen-pce-fast/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/libretro-mednafen-wswan/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/libretro-mednafen-lynx/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/libretro-fake08/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/libretro-opera/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/libretro-yabasanshiro/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/libretro-mupen64plus-next/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/libretro-melondsds/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/libretro-flycast/Config.in"
+	endmenu
+
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/ppsspp/Config.in"
+	source "$BR2_EXTERNAL_THIMSY_PATH/package/scummvm/Config.in"
+endmenu

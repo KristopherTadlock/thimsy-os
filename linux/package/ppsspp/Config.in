@@ -1,0 +1,23 @@
+config BR2_PACKAGE_PPSSPP
+	bool "ppsspp"
+	depends on BR2_INSTALL_LIBSTDCPP
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	depends on BR2_TOOLCHAIN_GCC_AT_LEAST_9
+	depends on BR2_PACKAGE_HAS_LIBEGL
+	depends on BR2_PACKAGE_HAS_LIBGLES
+	select BR2_PACKAGE_SDL2 # sdl2-compat on SDL3 when Thimsy adds it
+	select BR2_PACKAGE_ZLIB
+	select BR2_PACKAGE_LIBPNG
+	help
+	  PPSSPP, the PSP emulator, as the Android app's version
+	  (1.20.4), with OpenGL ES and EGL through SDL; no Vulkan on
+	  Mali. GPL-2.0+.
+
+	  https://github.com/hrydgard/ppsspp
+
+comment "ppsspp needs a toolchain w/ C++, threads, gcc >= 9"
+	depends on !BR2_INSTALL_LIBSTDCPP || !BR2_TOOLCHAIN_HAS_THREADS || \
+		!BR2_TOOLCHAIN_GCC_AT_LEAST_9
+
+comment "ppsspp needs EGL and OpenGL ES"
+	depends on !BR2_PACKAGE_HAS_LIBEGL || !BR2_PACKAGE_HAS_LIBGLES
