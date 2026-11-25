@@ -1,0 +1,2159 @@
+/*
+ * Copyright (C) 2026 GammaOS
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ */
+
+// NanoMenu glue for the boxart/cover scraper: the on-disk manifest, the
+// background scrape worker (mirrors the music scanner: snapshot inputs, work
+// without locks, publish under a mutex, drain on the render thread), per-system
+// credential/engine resolution, and the progress modal. The network + image
+// fetching lives in NanoScraper.cpp; this file owns the NanoMenu state.
+
+#define LOG_TAG "GammaOSNano"
+
+#include <ctype.h>
+#include "NanoMenu.h"
+#include "NanoScraper.h"
+#include "NanoJson.h"
+#include "NanoI18n.h"    // trDyn() runtime translation of hardcoded UI strings
+#include "stb_image.h"   // stbi_load (impl in NanoMenuPS3Icons.cpp); AImageDecoder fails on the scrape art
+
+#include <algorithm>
+#include <atomic>
+#include <dirent.h>
+#include <functional>
+#include <linux/input.h>   // BTN_* codes for the touch button hints
+#include <fcntl.h>
+#include <errno.h>
+#include <utils/SystemClock.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <sys/statvfs.h>
+#include <time.h>
+#include <string.h>
+#include <thread>
+#include <cmath>
+
+#include <cutils/properties.h>
+#include <log/log.h>
+
+namespace android {
+
+// An error the scrape service reported (in English, it loads no translations): its translation,
+// or for a ScreenScraper reply it does not know, the translated prefix and the reply as sent.
+static std::string scrapeErrorText(const std::string& e) {
+    static const char kSs[] = "ScreenScraper: ";
+    const char* t = trDyn(e.c_str());
+    if (t != e.c_str() || e.compare(0, sizeof(kSs) - 1, kSs) != 0) return t;
+    return std::string(trDyn(kSs)) + e.substr(sizeof(kSs) - 1);
+}
+
+// Title overrides stay on internal storage whatever the boxart folder is: they are tiny, they
+// must survive the SD card being pulled, and the PC Boxart Tool writes them here.
+
+// ---------------------------------------------------------------------------
+// Cache folder: default internal, or the user's Boxart Folder (persist.gammaos.scraper.dir).
+// ---------------------------------------------------------------------------
+void NanoMenu::scraperRefreshDir() {
+    char buf[PROPERTY_VALUE_MAX] = {};
+    property_get("persist.gammaos.scraper.dir", buf, "");
+    std::string d = (buf[0] == '/') ? buf : kScrapeDefaultDir;
+    while (d.size() > 1 && d.back() == '/') d.pop_back();
+    mScrapeCacheDir = d;
+}
+
+// The default dir is on /data, which is always there. A custom folder lives on a volume that
+// mounts after boot (or gets hot-plugged), and vold only creates /storage/<UUID> while the card
+// is mounted, so a plain stat answers "is it reachable right now".
+bool NanoMenu::scraperDirAvailable() const {
+    if (mScrapeCacheDir == kScrapeDefaultDir) return true;
+    struct stat st;
+    return stat(mScrapeCacheDir.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+}
+
+// ---------------------------------------------------------------------------
+// Manifest (index.json): romPath -> {box, fan, title, scraper, when}
+// ---------------------------------------------------------------------------
+void NanoMenu::scraperEnsureLoaded() {
+    if (mScrapeIndexLoaded) return;
+    mScrapeIndexLoaded = true;
+    scraperRefreshDir();
+    // Make sure the cache dir exists (0700, owned by system). Fails harmlessly while the
+    // volume holding a custom folder is not mounted; scraperStorageTick loads it later.
+    mkdir(mScrapeCacheDir.c_str(), 0700);
+    mScrapeDirAvail = scraperDirAvailable();
+    loadScrapeIndex();
+}
+
+void NanoMenu::loadScrapeIndex() {
+    mScrapeIndex.clear();
+    // Whether an Android game's icon shows depends on its cover here: resolve those again.
+    for (auto it = mEsdeMediaPath.begin(); it != mEsdeMediaPath.end();) {
+        const size_t sep = it->first.find('\x1f');
+        const bool app = sep != std::string::npos && sep > 4 && it->first.compare(sep - 4, 4, ".app") == 0;
+        it = app ? mEsdeMediaPath.erase(it) : std::next(it);
+    }
+    mScrapeIndexLoadErr = false;
+    mScrapeJournalRun.clear();
+    mScrapeJournalOffset = 0;
+    if (!scraperDirAvailable()) {
+        // The folder is not mounted: nothing to show, and nothing may be written (a save would
+        // create a bare index next to nothing, then be shadowed once the card comes back).
+        mScrapeIndexLoadErr = true;
+        ALOGI("scraper: boxart folder %s not available yet; waiting for the volume", mScrapeCacheDir.c_str());
+        return;
+    }
+    int fd = open(scrapeIndexPath().c_str(), O_RDONLY);
+    if (fd < 0) { scraperJournalAtEnd(); return; }   // absent: clean start, safe to save
+    std::string content;
+    struct stat st;
+    if (fstat(fd, &st) == 0 && st.st_size > 0) {
+        // 128MB ceiling. The read allocates the ACTUAL file size (lazy), not 128MB, so this reserves
+        // no extra memory; it only lets a genuinely huge scraped library (thousands of games with
+        // synopses) load instead of being discarded.
+        if (st.st_size < 128 * 1024 * 1024) {
+            content.resize(st.st_size);
+            ssize_t rd = read(fd, &content[0], st.st_size);
+            if (rd > 0) content.resize(rd); else { content.clear(); mScrapeIndexLoadErr = true; }
+        } else {
+            mScrapeIndexLoadErr = true;          // present but over the ceiling: never let a save clobber it
+        }
+    }
+    close(fd);
+    if (mScrapeIndexLoadErr) {
+        ALOGW("scraper: index.json present but unreadable; refusing to overwrite (no data loss)");
+        return;
+    }
+    if (content.empty()) return;
+    njson::Value root;
+    if (!njson::parse(content, &root) || !root.isObject()) {
+        mScrapeIndexLoadErr = true;              // corrupt/partial: keep the file, do not clobber
+        ALOGW("scraper: index.json parse failed; refusing to overwrite (no data loss)");
+        return;
+    }
+    // How much of the scrape service's results this manifest already holds.
+    if (const njson::Value* j = root.find("journal"); j && j->isObject()) {
+        mScrapeJournalRun = j->getString("run");
+        mScrapeJournalOffset = j->getInt("offset");
+    } else {
+        scraperJournalAtEnd();
+    }
+    const njson::Value* items = root.find("items");
+    if (!items || !items->isArray()) return;
+    // On the card (the ES-DE folder) anything can write the index: its pictures are only the ones in
+    // the media folders Nano uses (they are deleted with Clear Boxart).
+    const bool onCard = esdeStoreMode();
+    auto artOk = [&](const std::string& p) {
+        if (!onCard || p.empty()) return true;
+        if (p.find("..") != std::string::npos) return false;
+        for (const std::string& pre : {esdeDataDir() + "/downloaded_media/", mScrapeCacheDir + "/"})
+            if (pre.size() > 1 && p.compare(0, pre.size(), pre) == 0) return true;
+        return false;
+    };
+    for (const auto& it : items->arr) {
+        if (!it.isObject()) continue;
+        std::string rom = it.getString("rom");
+        if (rom.empty()) continue;
+        ScrapeEntry e;
+        e.box     = it.getString("box");
+        e.fan     = it.getString("fan");
+        if (!artOk(e.box)) e.box.clear();
+        if (!artOk(e.fan)) e.fan.clear();
+        e.title   = it.getString("title");
+        e.scraper = it.getString("scraper");
+        e.when    = (long long)it.getInt("when", 0);
+        e.synopsis    = it.getString("desc");
+        e.genre       = it.getString("genre");
+        e.players     = it.getString("players");
+        e.rating      = it.getString("rating");
+        e.releaseDate = it.getString("date");
+        e.developer   = it.getString("dev");
+        e.publisher   = it.getString("pub");
+        e.extrasMissing   = it.getInt("xmiss", 0);
+        e.extrasCheckedAt = (long long)it.getInt("xwhen", 0);
+        e.artKept = it.getInt("kept", 0);
+        mScrapeIndex[rom] = std::move(e);
+    }
+    ALOGD("scraper: loaded %zu manifest entries", mScrapeIndex.size());
+}
+
+void NanoMenu::saveScrapeIndex() {
+    // Never clobber good on-disk data: if the last load failed (present but too big,
+    // unreadable, or corrupt) mScrapeIndex is empty and writing it would DELETE the
+    // user's whole scraped library. Refuse.
+    if (mScrapeIndexLoadErr) {
+        ALOGW("scraper: NOT saving index.json - prior load failed (avoiding data loss)");
+        return;
+    }
+    std::string text = scrapeIndexText(mScrapeIndex);
+    const std::string dest = scrapeIndexPath();
+    std::string tmp = dest + ".tmp." + std::to_string(getpid());   // both homes may save at once
+    int fd = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (fd < 0) { ALOGW("scraper: cannot write %s", tmp.c_str()); return; }
+    ssize_t wr = write(fd, text.data(), text.size());
+    close(fd);
+    if (wr == (ssize_t)text.size()) rename(tmp.c_str(), dest.c_str());
+    else                            unlink(tmp.c_str());
+}
+
+std::string NanoMenu::scrapeIndexText(const std::unordered_map<std::string, ScrapeEntry>& index) {
+    njson::Value root = njson::Value::makeObject();
+    root.set("version") = njson::Value::makeNumber(2);
+    njson::Value items = njson::Value::makeArray();
+    for (const auto& kv : index) {
+        njson::Value o = njson::Value::makeObject();
+        o.set("rom")     = njson::Value::makeString(kv.first);
+        if (!kv.second.box.empty())     o.set("box")     = njson::Value::makeString(kv.second.box);
+        if (!kv.second.fan.empty())     o.set("fan")     = njson::Value::makeString(kv.second.fan);
+        if (!kv.second.title.empty())   o.set("title")   = njson::Value::makeString(kv.second.title);
+        if (!kv.second.scraper.empty()) o.set("scraper") = njson::Value::makeString(kv.second.scraper);
+        if (!kv.second.synopsis.empty())    o.set("desc")    = njson::Value::makeString(kv.second.synopsis);
+        if (!kv.second.genre.empty())       o.set("genre")   = njson::Value::makeString(kv.second.genre);
+        if (!kv.second.players.empty())     o.set("players") = njson::Value::makeString(kv.second.players);
+        if (!kv.second.rating.empty())      o.set("rating")  = njson::Value::makeString(kv.second.rating);
+        if (!kv.second.releaseDate.empty()) o.set("date")    = njson::Value::makeString(kv.second.releaseDate);
+        if (!kv.second.developer.empty())   o.set("dev")     = njson::Value::makeString(kv.second.developer);
+        if (!kv.second.publisher.empty())   o.set("pub")     = njson::Value::makeString(kv.second.publisher);
+        o.set("when")    = njson::Value::makeNumber((double)kv.second.when);
+        if (kv.second.artKept) o.set("kept") = njson::Value::makeNumber((double)kv.second.artKept);
+        if (kv.second.extrasMissing) {
+            o.set("xmiss") = njson::Value::makeNumber((double)kv.second.extrasMissing);
+            o.set("xwhen") = njson::Value::makeNumber((double)kv.second.extrasCheckedAt);
+        }
+        items.arr.push_back(std::move(o));
+    }
+    root.set("items") = std::move(items);
+    if (!mScrapeJournalRun.empty()) {
+        njson::Value j = njson::Value::makeObject();
+        j.set("run") = njson::Value::makeString(mScrapeJournalRun);
+        j.set("offset") = njson::Value::makeNumber((double)mScrapeJournalOffset);
+        root.set("journal") = std::move(j);
+    }
+    return njson::serialize(root, true);
+}
+
+static bool endsWithNoCase(const std::string& s, const char* suf) {
+    const size_t n = strlen(suf);
+    if (s.size() <= n) return false;
+    for (size_t i = 0; i < n; i++)
+        if (tolower((unsigned char)s[s.size() - n + i]) != suf[i]) return false;
+    return true;
+}
+
+// A PICO-8 cart that is a picture: Celeste.p8.png, or a .p8 that is really a PNG. Carts are shared
+// both ways - the .p8 extension is also used for the plain-text source format - so a .p8 is told
+// apart by its PNG signature. Asked for every visible ROM every frame, so the answer for a .p8 is
+// read from the file once and remembered; any other path is answered from its name alone.
+bool NanoMenu::isPico8Cart(const std::string& path) {
+    if (endsWithNoCase(path, ".p8.png")) return true;
+    if (!endsWithNoCase(path, ".p8")) return false;
+    static std::mutex mu;
+    static std::unordered_map<std::string, bool> known;
+    {
+        std::lock_guard<std::mutex> lk(mu);
+        auto it = known.find(path);
+        if (it != known.end()) return it->second;
+    }
+    static const uint8_t kPng[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'};
+    uint8_t head[8] = {};
+    bool png = false, readable = false;
+    int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
+    if (fd >= 0) {
+        readable = true;
+        png = read(fd, head, sizeof(head)) == (ssize_t)sizeof(head) && !memcmp(head, kPng, sizeof(kPng));
+        close(fd);
+    }
+    // Storage that is not up yet (a card still mounting) is asked again later, not cached as text.
+    if (readable) { std::lock_guard<std::mutex> lk(mu); known[path] = png; }
+    return png;
+}
+
+// The cover of a PICO-8 cart is the cart itself (a .p8.png is the cartridge picture with the game
+// data stored in it), which ScreenScraper rarely has and sometimes matches to the wrong game. A cover
+// the user set by hand (scraper "manual") still wins; any scraped metadata and fanart are kept. Called
+// per visible ROM per frame, so the synthesized entry is cached and rebuilt only when its manifest
+// entry changes.
+const NanoMenu::ScrapeEntry* NanoMenu::scrapeEntryFor(const std::string& romPath) {
+    const ScrapeEntry* e = scrapeIndexLookup(romPath);
+    if (!isPico8Cart(romPath)) return e;
+    if (e && e->scraper == "manual" && !e->box.empty()) return e;
+    CartArt& c = mCartArt[romPath];
+    const bool stale = !c.valid || c.src != e ||
+        (e && (c.srcWhen != e->when || c.srcScraper != e->scraper || c.srcBox != e->box));
+    if (stale) {
+        c.entry = e ? *e : ScrapeEntry{};
+        c.entry.box = romPath;
+        c.src = e;
+        c.srcWhen = e ? e->when : 0;
+        c.srcScraper = e ? e->scraper : std::string();
+        c.srcBox = e ? e->box : std::string();
+        c.valid = true;
+    }
+    return &c.entry;
+}
+
+bool NanoMenu::romUsesCartArt(const std::string& romPath) {
+    if (!isPico8Cart(romPath)) return false;
+    const ScrapeEntry* e = scrapeIndexLookup(romPath);
+    return !(e && e->scraper == "manual" && !e->box.empty());
+}
+
+float NanoMenu::cartPixelSize(float target, float maxSide) {
+    const float px = (float)kCartLabelPx;
+    int k = (int)lroundf(target / px);                      // nearest integer scale to the target
+    while (k > 1 && px * k > maxSide) k--;                  // ...but it has to fit
+    if (k >= 1 && px * k <= maxSide) return px * k;
+    // Smaller than the label itself: an integer fraction, so pixels still drop out evenly.
+    const float lim = fminf(target, maxSide);
+    int d = 2;
+    while (px / d > lim && d < 64) d++;
+    return px / d;
+}
+
+bool NanoMenu::romBoxartIsPixel(const std::string& romPath) {
+    auto it = mRomBoxartCache.find(romPath);
+    return it != mRomBoxartCache.end() && it->second.pixel;
+}
+
+const NanoMenu::ScrapeEntry* NanoMenu::scrapeIndexLookup(const std::string& romPath) {
+    scraperEnsureLoaded();
+    auto it = mScrapeIndex.find(romPath);
+    if (it != mScrapeIndex.end()) return &it->second;
+    // Storage-alias normalization: /storage/emulated/0, /data/media/0, /sdcard and
+    // /storage/self/primary all name the SAME internal storage, but the Recently
+    // Played playlist (RetroArch history) and the ROM scanner can use different ones,
+    // so a recent game's path may not string-match the manifest key. Retry the lookup
+    // with each equivalent prefix so boxart/fanart/Information resolve for recents too.
+    static const char* const kAliases[] = {
+        "/storage/emulated/0", "/data/media/0", "/sdcard", "/storage/self/primary" };
+    std::string rest; size_t matchedLen = 0;
+    for (const char* a : kAliases) {
+        size_t al = strlen(a);
+        if (romPath.size() > al && romPath.compare(0, al, a) == 0 && romPath[al] == '/') {
+            rest = romPath.substr(al); matchedLen = al; break;
+        }
+    }
+    if (matchedLen > 0) {
+        for (const char* a : kAliases) {
+            std::string alt = std::string(a) + rest;
+            if (alt == romPath) continue;
+            auto it2 = mScrapeIndex.find(alt);
+            if (it2 != mScrapeIndex.end()) return &it2->second;
+        }
+    }
+    return nullptr;
+}
+
+// ---------------------------------------------------------------------------
+// Per-game title override sidecar (names.json): romPath -> user-typed title.
+// The override is BOTH the shown display name (all themes + recents + search +
+// Info) and the scraper search query. Same atomic tmp+rename write + storage-alias
+// lookup as the scrape manifest above.
+// ---------------------------------------------------------------------------
+void NanoMenu::loadRomNameOverrides() {
+    mRomNameOverride.clear();
+    mEsdeStoreNames.clear();
+    mRomNamesLoadErr = false;
+    const std::string namesPath = romNamesPath();
+    struct EsdeSnapshot {   // in store mode, what the gamelists hold now
+        NanoMenu* m;
+        ~EsdeSnapshot() { if (m->esdeStoreMode()) m->mEsdeStoreNames = m->mRomNameOverride; }
+    } snapshot{this};
+    if (esdeStoreMode() && !esdeStoreReady()) {   // the card is out: read them when it is in
+        mRomNamesLoadErr = true;
+        mEsdeNamesNeedLoad = true;
+        return;
+    }
+    int fd = open(namesPath.c_str(), O_RDONLY);
+    if (fd < 0) return;                          // absent: clean start, safe to save
+    std::string content;
+    struct stat st;
+    bool tooBig = false;
+    if (fstat(fd, &st) == 0 && st.st_size > 0) {
+        if (st.st_size < 64 * 1024 * 1024) {     // 64MB, not 8MB: a large scraped library (thousands of games with synopses) exceeds 8MB and the whole manifest would silently fail to load
+            content.resize(st.st_size);
+            ssize_t rd = read(fd, &content[0], st.st_size);
+            if (rd > 0) content.resize(rd); else { content.clear(); mRomNamesLoadErr = true; }
+        } else {
+            tooBig = true;                       // present but over the ceiling: never let a save clobber it
+        }
+    }
+    close(fd);
+    if (tooBig || mRomNamesLoadErr) {
+        mRomNamesLoadErr = true;
+        ALOGW("scraper: names.json present but unreadable; refusing to overwrite (no data loss)");
+        return;
+    }
+    if (content.empty()) return;
+    njson::Value root;
+    if (!njson::parse(content, &root) || !root.isObject()) {
+        mRomNamesLoadErr = true;                 // corrupt/partial: keep the file, do not clobber
+        ALOGW("scraper: names.json parse failed; refusing to overwrite (no data loss)");
+        return;
+    }
+    const njson::Value* items = root.find("items");
+    if (!items || !items->isArray()) return;
+    for (const auto& it : items->arr) {
+        if (!it.isObject()) continue;
+        std::string rom = it.getString("rom");
+        std::string name = it.getString("name");
+        if (rom.empty() || name.empty()) continue;
+        // A title changed elsewhere (ES-DE, another card's copy) is the gamelist's: the override goes.
+        if (!mEsdeGlNames.empty()) {
+            auto gi = mEsdeGlNames.find(esdeKey(rom));
+            if (gi != mEsdeGlNames.end() && gi->second != name) continue;
+        }
+        mRomNameOverride[rom] = std::move(name);
+    }
+    ALOGD("scraper: loaded %zu name overrides", mRomNameOverride.size());
+}
+
+void NanoMenu::saveRomNameOverrides() {
+    // Never clobber good on-disk data if the last load failed (see saveScrapeIndex).
+    if (mRomNamesLoadErr) {
+        ALOGW("scraper: NOT saving names.json - prior load failed (avoiding data loss)");
+        return;
+    }
+    njson::Value root = njson::Value::makeObject();
+    root.set("version") = njson::Value::makeNumber(1);
+    njson::Value items = njson::Value::makeArray();
+    for (const auto& kv : mRomNameOverride) {
+        if (kv.first.empty() || kv.second.empty()) continue;
+        // Prune entries whose ROM file no longer exists (skip network/content paths,
+        // which stat unreliably; keep those). A stale local path just wastes a line.
+        bool localPath = kv.first.rfind("content://", 0) != 0
+                         && kv.first.rfind("/mnt/shares/", 0) != 0;
+        if (localPath) {
+            struct stat pst;
+            if (stat(kv.first.c_str(), &pst) != 0) continue;
+        }
+        njson::Value o = njson::Value::makeObject();
+        o.set("rom")  = njson::Value::makeString(kv.first);
+        o.set("name") = njson::Value::makeString(kv.second);
+        items.arr.push_back(std::move(o));
+    }
+    root.set("items") = std::move(items);
+    std::string text = njson::serialize(root, true);
+    const std::string namesPath = romNamesPath();
+    if (esdeStoreMode()) mkdir(namesPath.substr(0, namesPath.find_last_of('/')).c_str(), 0775);
+    std::string tmp = namesPath + ".tmp";
+    int fd = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (fd < 0) { ALOGW("scraper: cannot write %s", tmp.c_str()); return; }
+    ssize_t wr = write(fd, text.data(), text.size());
+    close(fd);
+    if (wr == (ssize_t)text.size()) rename(tmp.c_str(), namesPath.c_str());
+    else                            unlink(tmp.c_str());
+    esdeNoteWrite(namesPath);
+    esdeStoreSaveNames();
+}
+
+const std::string* NanoMenu::romNameOverrideFor(const std::string& romPath) {
+    if (!mRomNameOverrideLoaded) { mRomNameOverrideLoaded = true; loadRomNameOverrides(); }
+    if (romPath.empty()) return nullptr;
+    auto it = mRomNameOverride.find(romPath);
+    if (it != mRomNameOverride.end()) return &it->second;
+    // Storage-alias normalization: the same internal-storage ROM can be keyed under
+    // different prefixes by the scanner vs the Recently Played playlist (see
+    // scrapeEntryFor). Retry each equivalent prefix so a rename resolves for recents too.
+    static const char* const kAliases[] = {
+        "/storage/emulated/0", "/data/media/0", "/sdcard", "/storage/self/primary" };
+    std::string rest; size_t matchedLen = 0;
+    for (const char* a : kAliases) {
+        size_t al = strlen(a);
+        if (romPath.size() > al && romPath.compare(0, al, a) == 0 && romPath[al] == '/') {
+            rest = romPath.substr(al); matchedLen = al; break;
+        }
+    }
+    if (matchedLen > 0) {
+        for (const char* a : kAliases) {
+            std::string alt = std::string(a) + rest;
+            if (alt == romPath) continue;
+            auto it2 = mRomNameOverride.find(alt);
+            if (it2 != mRomNameOverride.end()) return &it2->second;
+        }
+    }
+    return nullptr;
+}
+
+void NanoMenu::setRomNameOverride(const std::string& romPath, const std::string& name) {
+    if (!mRomNameOverrideLoaded) { mRomNameOverrideLoaded = true; loadRomNameOverrides(); }
+    if (romPath.empty() || name.empty()) return;
+    mRomNameOverride[romPath] = name;
+}
+
+void NanoMenu::clearRomNameOverride(const std::string& romPath) {
+    if (!mRomNameOverrideLoaded) { mRomNameOverrideLoaded = true; loadRomNameOverrides(); }
+    if (romPath.empty()) return;
+    mRomNameOverride.erase(romPath);
+    // Also drop any entry stored under an equivalent storage-alias prefix, so a revert
+    // does not leave a stale override the alias-aware lookup would still resolve.
+    static const char* const kAliases[] = {
+        "/storage/emulated/0", "/data/media/0", "/sdcard", "/storage/self/primary" };
+    std::string rest; size_t matchedLen = 0;
+    for (const char* a : kAliases) {
+        size_t al = strlen(a);
+        if (romPath.size() > al && romPath.compare(0, al, a) == 0 && romPath[al] == '/') {
+            rest = romPath.substr(al); matchedLen = al; break;
+        }
+    }
+    if (matchedLen > 0)
+        for (const char* a : kAliases) {
+            std::string alt = std::string(a) + rest;
+            if (alt != romPath) mRomNameOverride.erase(alt);
+        }
+}
+
+// ---------------------------------------------------------------------------
+// Custom box art: use any user-picked image as a game's cover. Stored in the same
+// cover cache + manifest the scraper writes, so every theme (XMB / DSi / Minima)
+// renders it through scrapeEntryFor/romBoxartTex with no per-theme change.
+// ---------------------------------------------------------------------------
+void NanoMenu::boxartApplyPick(const std::string& srcFile) {
+    scraperEnsureLoaded();
+    mkdir(mScrapeCacheDir.c_str(), 0700);
+    const std::string rom = mBoxartPickRom;
+    if (rom.empty() || srcFile.empty()) { mBoxartPickRom.clear(); mBoxartPickName.clear(); return; }
+    if (!scraperDirAvailable() || mScrapeIndexLoadErr) {
+        photoShowBanner(trDyn("Boxart folder is not available"));
+        mBoxartPickRom.clear(); mBoxartPickName.clear();
+        return;
+    }
+
+    // Same filename the scraper uses for a cover, so the decoder path is identical (it
+    // content-sniffs, so a .png holding jpg bytes is fine). Copy src -> dest.tmp with a
+    // plain read/write loop (no stb_image_write; feCopyFile is file-static/O_EXCL), then
+    // fsync + atomic rename over any existing cover.
+    nanoscraper::ArtDest art;
+    const std::string dest = esdeArtDest(rom, -1, &art) ? art.box : mScrapeCacheDir + "/" + nanoscraper::cacheKey(rom) + ".box.png";
+    if (!art.box.empty()) {
+        const std::string covers = dest.substr(0, dest.find_last_of('/'));
+        for (size_t i = 1; i <= covers.size(); i++)
+            if ((i == covers.size() || covers[i] == '/') && !nanoscraper::isVolumeRoot(covers.substr(0, i)))
+                mkdir(covers.substr(0, i).c_str(), 0775);
+    }
+    const std::string tmp  = dest + ".tmp";
+    int in = open(srcFile.c_str(), O_RDONLY);
+    if (in < 0) { ALOGW("boxart: cannot open source %s", srcFile.c_str());
+                  mBoxartPickRom.clear(); mBoxartPickName.clear(); return; }
+    int out = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (out < 0) { ALOGW("boxart: cannot write %s", tmp.c_str()); close(in);
+                   mBoxartPickRom.clear(); mBoxartPickName.clear(); return; }
+    char buf[64 * 1024];
+    bool ok = true;
+    for (;;) {
+        ssize_t rd = read(in, buf, sizeof(buf));
+        if (rd < 0) { ok = false; break; }
+        if (rd == 0) break;
+        ssize_t off = 0;
+        while (off < rd) {
+            ssize_t wr = write(out, buf + off, (size_t)(rd - off));
+            if (wr <= 0) { ok = false; break; }
+            off += wr;
+        }
+        if (!ok) break;
+    }
+    if (ok && fsync(out) != 0) ok = false;
+    close(in);
+    close(out);
+    if (!ok || rename(tmp.c_str(), dest.c_str()) != 0) {
+        ALOGW("boxart: copy/rename failed for %s", dest.c_str());
+        unlink(tmp.c_str());
+        mBoxartPickRom.clear(); mBoxartPickName.clear();
+        return;
+    }
+
+    // Merge the manifest: set/overwrite only the cover fields, leaving any scraped
+    // fanart + metadata untouched. A box-only entry is valid (saveScrapeIndex serializes
+    // only non-empty fields). A game listed under another name of the same storage (a Recently
+    // Played path) updates the entry the lookups find.
+    std::string key = rom;
+    if (!mScrapeIndex.count(rom))
+        if (const ScrapeEntry* old = scrapeIndexLookup(rom))
+            for (const auto& kv : mScrapeIndex)
+                if (&kv.second == old) { key = kv.first; break; }
+    ScrapeEntry& e = mScrapeIndex[key];
+    e.box     = dest;
+    e.artKept &= ~1;   // Nano's now
+    e.scraper = "manual";
+    e.when    = (long long)time(nullptr);
+    if (e.title.empty()) e.title = mBoxartPickName;
+    saveScrapeIndex();
+    esdeForgetGameMedia(rom);   // an Android game's icon gives way to the new cover
+
+    // Live refresh: drop the cached textures of the old picture (under every name of the game, and
+    // the ES-DE media texture of a cover file that was overwritten) so the new one loads.
+    for (auto it = mRomBoxartCache.begin(); it != mRomBoxartCache.end();) {
+        if (it->first != rom && scrapeIndexLookup(it->first) != &e) { ++it; continue; }
+        if (it->second.tex) glDeleteTextures(1, &it->second.tex);
+        it = mRomBoxartCache.erase(it);
+    }
+    auto t = mEsdeTexCache.find(dest);
+    if (t != mEsdeTexCache.end()) {
+        if (t->second) glDeleteTextures(1, &t->second);
+        mEsdeTexCache.erase(t);
+    }
+    mEsdePngDims.erase(dest);
+    mEsdeMediaUse.erase(dest);
+    esdeArtForget(dest);
+    mDisplayDirty = true;
+    mBoxartPickRom.clear();
+    mBoxartPickName.clear();
+}
+
+// Remove a game's custom (or scraped) cover: delete the cover file, drop it from the
+// manifest (erasing the whole entry only when nothing else is left), and free the live
+// texture so the generic cartridge icon returns immediately.
+void NanoMenu::resetBoxart(const std::string& romPath) {
+    if (romPath.empty()) return;
+    scraperEnsureLoaded();
+    // The game may be listed under another name of the same storage (a Recently Played path):
+    // act on the entry the lookups find, and drop its cached textures under every name.
+    const ScrapeEntry* old = scrapeIndexLookup(romPath);
+    for (auto it = mRomBoxartCache.begin(); it != mRomBoxartCache.end();) {
+        if (it->first != romPath && (!old || scrapeIndexLookup(it->first) != old)) { ++it; continue; }
+        if (it->second.tex) glDeleteTextures(1, &it->second.tex);
+        it = mRomBoxartCache.erase(it);
+    }
+    auto mi = mScrapeIndex.end();
+    for (auto i = mScrapeIndex.begin(); old && i != mScrapeIndex.end(); ++i)
+        if (&i->second == old) { mi = i; break; }
+    if (mi != mScrapeIndex.end()) {
+        ScrapeEntry& e = mi->second;
+        if (!e.box.empty() && !(e.artKept & 1)) unlink(e.box.c_str());   // a picture the ES-DE folder had stays
+        e.artKept &= ~1;
+        e.box.clear();
+        // Nothing else worth keeping (no fanart, no metadata) -> drop the entry entirely.
+        if (e.fan.empty() && e.synopsis.empty() && e.genre.empty() && e.players.empty()
+            && e.rating.empty() && e.releaseDate.empty() && e.developer.empty()
+            && e.publisher.empty())
+            mScrapeIndex.erase(mi);
+        saveScrapeIndex();
+    }
+    esdeForgetGameMedia(romPath);   // an Android game's icon shows again
+    mDisplayDirty = true;
+}
+
+bool NanoMenu::scraperBoxartEnabled() {
+    return property_get_bool("persist.gammaos.scraper.boxart", true);
+}
+
+// GL-free half of the decode: stb_image load + nearest-downscale to a tightly
+// packed RGBA buffer. Safe on the async worker thread (no GL). maxDim>0 bounds the
+// long side. *outAR = the TRUE source aspect (width/height).
+bool NanoMenu::scraperDecodeRGBACpu(const std::string& path, int maxDim, int* outW,
+                                    int* outH, float* outAR, std::vector<uint8_t>& out) {
+    int w = 0, h = 0, n = 0;
+    stbi_uc* d = stbi_load(path.c_str(), &w, &h, &n, 4);
+    if (!d || w <= 0 || h <= 0) { if (d) stbi_image_free(d); return false; }
+    if (outAR) *outAR = (float)w / (float)h;
+    int sw = w, sh = h;
+    int longSide = w > h ? w : h;
+    if (maxDim > 0 && longSide > maxDim) {
+        float s = (float)maxDim / (float)longSide;
+        int tw = (int)(w * s + 0.5f), th = (int)(h * s + 0.5f);
+        if (tw < 1) tw = 1; if (th < 1) th = 1;
+        out.resize((size_t)tw * th * 4);
+        for (int y = 0; y < th; y++) {
+            int sy = (int)(((float)y + 0.5f) / th * h); if (sy >= h) sy = h - 1;
+            for (int x = 0; x < tw; x++) {
+                int sx = (int)(((float)x + 0.5f) / tw * w); if (sx >= w) sx = w - 1;
+                memcpy(&out[((size_t)y * tw + x) * 4], &d[((size_t)sy * w + sx) * 4], 4);
+            }
+        }
+        sw = tw; sh = th;
+    } else {
+        out.resize((size_t)w * h * 4);
+        memcpy(out.data(), d, out.size());
+    }
+    stbi_image_free(d);
+    if (outW) *outW = sw; if (outH) *outH = sh;
+    return true;
+}
+
+// Upload a packed RGBA buffer to a GL texture (render thread only).
+static GLuint saUploadRGBA(const uint8_t* px, int w, int h,
+                           GLenum minFilter = GL_LINEAR, GLenum magFilter = GL_LINEAR) {
+    if (!px || w <= 0 || h <= 0) return 0;
+    GLuint t = 0; glGenTextures(1, &t); glBindTexture(GL_TEXTURE_2D, t);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, px);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minFilter);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, magFilter);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    return t;
+}
+
+// Synchronous decode-to-GL (kept for any inline use; the three hot art sites now go
+// through the async worker below). Render thread only.
+GLuint NanoMenu::scraperDecodeTex(const std::string& path, int maxDim, float* outAR) {
+    int w = 0, h = 0; std::vector<uint8_t> px;
+    if (!scraperDecodeRGBACpu(path, maxDim, &w, &h, outAR, px)) return 0;
+    return saUploadRGBA(px.data(), w, h);
+}
+
+// ---- async scraper-art decode worker (mirrors the photo-viewer pattern) --------
+static std::string saTagKey(int target, const std::string& path) {
+    return std::string(1, (char)('0' + target)) + "|" + path;
+}
+
+void NanoMenu::saStartArtWorker() {
+    if (mSaDecStarted.load()) return;
+    mSaDecStop.store(false);
+    mSaDecThread = std::thread([this] { saArtThreadFunc(); });
+    mSaDecStarted.store(true);
+}
+
+void NanoMenu::saStopArtWorker() {
+    if (!mSaDecStarted.load()) return;
+    mSaDecStop.store(true);
+    mSaDecCv.notify_all();
+    if (mSaDecThread.joinable()) mSaDecThread.join();
+    mSaDecStarted.store(false);
+    mSaDecGen.fetch_add(1);                   // drop any in-flight/finished results
+    std::lock_guard<std::mutex> lk(mSaDecMutex);
+    mSaDecQueue.clear(); mSaDecDone.clear(); mSaDecInFlight.clear();
+}
+
+// Worker: pop a request, decode RGBA off-thread (NO GL), publish for the drain.
+void NanoMenu::saArtThreadFunc() {
+    for (;;) {
+        SaDecReq req;
+        {
+            std::unique_lock<std::mutex> lk(mSaDecMutex);
+            mSaDecCv.wait(lk, [&] { return mSaDecStop.load() || !mSaDecQueue.empty(); });
+            if (mSaDecStop.load()) return;
+            req = mSaDecQueue.front(); mSaDecQueue.pop_front();
+        }
+        if (req.gen != mSaDecGen.load()) {    // stale (left Game / reopened)
+            std::lock_guard<std::mutex> lk(mSaDecMutex);
+            mSaDecInFlight.erase(saTagKey(req.target, req.path));
+            continue;
+        }
+        SaDecRes res; res.path = req.path; res.target = req.target; res.key = req.key; res.gen = req.gen;
+        bool ok = scraperDecodeRGBACpu(req.path, req.maxDim, &res.w, &res.h, &res.ar, res.px);
+        // A PICO-8 cart picture is 160x205: the cartridge frame, the title, and the game's
+        // 128x128 label at (16,24). The label is the game's own art, so that is the cover.
+        if (ok && req.target == SA_CART_BOX && res.w == 160 && res.h == 205) {
+            const int L = kCartLabelPx, ox = 16, oy = 24;
+            std::vector<uint8_t> lab((size_t)L * L * 4);
+            for (int y = 0; y < L; y++)
+                memcpy(&lab[(size_t)y * L * 4], &res.px[((size_t)(oy + y) * res.w + ox) * 4], (size_t)L * 4);
+            res.px.swap(lab); res.w = res.h = L; res.ar = 1.0f;
+        }
+        std::lock_guard<std::mutex> lk(mSaDecMutex);
+        mSaDecInFlight.erase(saTagKey(req.target, req.path));
+        if (ok && req.gen == mSaDecGen.load()) mSaDecDone.push_back(std::move(res));
+        FrameFlag::wake();   // uploaded on the next frame
+    }
+}
+
+void NanoMenu::saRequestArt(const std::string& path, int maxDim, int target, const std::string& key) {
+    if (path.empty()) return;
+    saStartArtWorker();
+    {
+        std::lock_guard<std::mutex> lk(mSaDecMutex);
+        std::string tk = saTagKey(target, path);
+        if (mSaDecInFlight.count(tk)) return;     // already queued / decoding
+        mSaDecInFlight.insert(tk);
+        SaDecReq r; r.path = path; r.maxDim = maxDim; r.target = target; r.key = key; r.gen = mSaDecGen.load();
+        mSaDecQueue.push_back(std::move(r));
+    }
+    mSaDecCv.notify_one();
+}
+
+// Render thread: upload any finished CPU decodes to GL and route each to its target.
+void NanoMenu::saDrainArt() {
+    std::vector<SaDecRes> done;
+    { std::lock_guard<std::mutex> lk(mSaDecMutex); if (mSaDecDone.empty()) return; done.swap(mSaDecDone); }
+    uint64_t gen = mSaDecGen.load();
+    for (auto& r : done) {
+        if (r.gen != gen) continue;
+        // A cover dropped from the cache while it decoded is not wanted any more.
+        if ((r.target == SA_BOX || r.target == SA_CART_BOX) && !mRomBoxartCache.count(r.key)) continue;
+        // Fan art (the full-frame hover / dialog background) uses NEAREST so the
+        // upscale to fill the frame stays crisp instead of a soft bilinear blur; the
+        // small boxart column covers keep LINEAR (NEAREST would alias thumbnails).
+        bool fan = (r.target == SA_CINFO_FAN || r.target == SA_DLG_FAN || r.target == SA_NDS_FAN
+                    || r.target == SA_CART_BOX);   // cart labels are pixel art: NEAREST too
+        GLuint tex = fan ? saUploadRGBA(r.px.data(), r.w, r.h, GL_NEAREST, GL_NEAREST)
+                         : saUploadRGBA(r.px.data(), r.w, r.h);
+        if (!tex) continue;
+        switch (r.target) {
+            case SA_BOX:
+            case SA_CART_BOX: {
+                BoxTex& bt = mRomBoxartCache[r.key];
+                if (bt.tex) glDeleteTextures(1, &bt.tex);
+                bt.tex = tex; bt.ar = r.ar; bt.bytes = (size_t)r.w * r.h * 4;
+                bt.pixel = (r.target == SA_CART_BOX && r.w == kCartLabelPx && r.h == kCartLabelPx);
+                break;
+            }
+            case SA_CINFO_FAN:
+                if (mFanartPath == r.path) {
+                    if (mFanartTex) glDeleteTextures(1, &mFanartTex);
+                    mFanartTex = tex; mFanartTexW = r.w; mFanartTexH = r.h;
+                } else glDeleteTextures(1, &tex);
+                break;
+            case SA_NDS_FAN:
+                // DSi top-screen preview fanart (#66): keep only if it is still the focus.
+                if (mNdsFanPath == r.path) {
+                    if (mNdsFanTex) glDeleteTextures(1, &mNdsFanTex);
+                    mNdsFanTex = tex; mNdsFanW = r.w; mNdsFanH = r.h;
+                } else glDeleteTextures(1, &tex);
+                break;
+            case SA_DLG_FAN:
+                if (mPs3DlgRomInfo && mPs3DlgPendingFan == r.path) {
+                    if (mPs3DlgFanTex) glDeleteTextures(1, &mPs3DlgFanTex);
+                    mPs3DlgFanTex = tex; mPs3DlgFanW = r.w; mPs3DlgFanH = r.h;
+                } else glDeleteTextures(1, &tex);
+                break;
+            case SA_DLG_BOX:
+                if (mPs3DlgRomInfo && mPs3DlgPendingBox == r.path) {
+                    if (mPs3DlgBoxTex) glDeleteTextures(1, &mPs3DlgBoxTex);
+                    mPs3DlgBoxTex = tex; mPs3DlgBoxW = r.w; mPs3DlgBoxH = r.h;
+                } else glDeleteTextures(1, &tex);
+                break;
+            default: glDeleteTextures(1, &tex); break;
+        }
+    }
+}
+
+// Lazy per-ROM cover texture. The decode is now ASYNC (saRequestArt): the first
+// call enqueues the cover and inserts a 0-texture placeholder so the column draws
+// the generic cartridge icon until the worker finishes; saDrainArt fills the entry
+// in and the cover appears the next frame. Render thread (drawList). Freed by
+// scraperFreeBoxart().
+GLuint NanoMenu::romBoxartTex(const std::string& romPath, float* outAR) {
+    auto it = mRomBoxartCache.find(romPath);
+    if (it != mRomBoxartCache.end()) {
+        it->second.used = ++mBoxartUseClock;
+        if (outAR) *outAR = it->second.ar;
+        return it->second.tex;
+    }
+    // The ES-DE theme draws covers far larger than the XMB's icons, so it decodes them at screen
+    // size and, when the cache is full, drops the least recently drawn quarter rather than all of
+    // them (a dense grid draws more covers than a wipe-everything cache could hold).
+    const bool esde = mEsdeTheme || mEsdeSettingsMinima;
+    // Covers drawn in this frame or the last are never dropped, so a grid showing more than the
+    // cap lets the cache grow past it rather than churn. Queued decodes for dropped covers are
+    // cancelled. The cache is held to 96 covers and 64 MB.
+    size_t boxBytes = 0;
+    if (esde) for (const auto& kv : mRomBoxartCache) boxBytes += kv.second.bytes;
+    if (esde && (mRomBoxartCache.size() >= 96 || boxBytes > (64u << 20))) {
+        std::vector<std::pair<uint64_t, std::string>> byUse;
+        byUse.reserve(mRomBoxartCache.size());
+        for (const auto& kv : mRomBoxartCache)
+            if (kv.second.used <= mBoxartPrevFrameClock) byUse.push_back({kv.second.used, kv.first});
+        std::sort(byUse.begin(), byUse.end());
+        std::set<std::string> evicted;
+        const size_t drop = mRomBoxartCache.size() / 4;
+        for (size_t k = 0; k < byUse.size() && k < drop; k++) {
+            auto ev = mRomBoxartCache.find(byUse[k].second);
+            if (ev->second.tex) glDeleteTextures(1, &ev->second.tex);
+            mRomBoxartCache.erase(ev);
+            evicted.insert(byUse[k].second);
+        }
+        if (!evicted.empty()) {
+            std::lock_guard<std::mutex> lk(mSaDecMutex);
+            for (auto q = mSaDecQueue.begin(); q != mSaDecQueue.end();) {
+                if ((q->target == SA_BOX || q->target == SA_CART_BOX) && evicted.count(q->key)) {
+                    mSaDecInFlight.erase(saTagKey(q->target, q->path));
+                    q = mSaDecQueue.erase(q);
+                } else {
+                    ++q;
+                }
+            }
+        }
+    }
+    // Backstop FIRST (before enqueueing) so the just-queued request is not wiped:
+    // if the cache grows large (browsing many systems without leaving Game), free it
+    // all + stop the worker, then re-request lazily. Normal lifecycle = leave-Game.
+    if (!esde && mRomBoxartCache.size() >= 96) scraperFreeBoxart();
+    if (romUsesCartArt(romPath)) {
+        saRequestArt(romPath, 0, SA_CART_BOX, romPath);    // full size: the label is cropped from it
+    } else {
+        const ScrapeEntry* e = scrapeEntryFor(romPath);
+        std::string box = e ? e->box : std::string();
+        if (box.empty() && romPath.size() > 4 && romPath.compare(romPath.size() - 4, 4, ".app") == 0) {
+            // An Android game with no cover of its own: the icon the Android Games helper saved,
+            // which may have arrived since the last look.
+            esdeForgetGameMedia(romPath);
+            box = esdeGameMediaPath(romPath, "cover");
+        }
+        if (!box.empty()) saRequestArt(box, esde ? std::min(720, std::min(mWidth, mHeight)) : 256, SA_BOX, romPath);
+    }
+    mRomBoxartCache[romPath].used = ++mBoxartUseClock;   // tex=0 placeholder; drain fills it
+    if (outAR) *outAR = 1.0f;
+    return 0;
+}
+
+// Per-frame scraper-art lifecycle, shared by the XMB (renderPs3Xmb) and the DSi theme
+// (renderNds*). Caches the boxart toggle (drawList / the DSi tiles read it per visible
+// ROM), frees all cover/fanart GL + joins the decode worker whenever the Game category
+// is not active (so nothing lingers when not browsing games; it reloads lazily from the
+// disk cache on return), and uploads any finished async art decodes to GL on the render
+// thread. MUST be called once per frame from whichever theme render path is live, or
+// async covers never land (the DSi bug: renderPs3Xmb was the only caller of saDrainArt).
+// Live reload from disk without a Nano restart. An external editor (the PC
+// GammaOS Boxart Tool) rewrites index.json/names.json out-of-process, then bumps
+// sys.gammaos.nano.scrape_reload with a fresh token. We notice the token change
+// here on the render thread (GL context live), reload both sidecars, drop every
+// cached cover/fanart texture so the new art re-decodes, re-apply the title
+// overrides, and echo the token back on sys.gammaos.nano.scrape_reload_ack so the
+// tool knows the reload landed (and can skip the heavier ctl.restart fallback).
+void NanoMenu::scraperPollReload() {
+    char tok[PROPERTY_VALUE_MAX] = {};
+    if (property_get("sys.gammaos.nano.scrape_reload", tok, "") <= 0 || !tok[0]) return;
+    if (mScrapeReloadToken == tok) return;         // already handled this token
+    mScrapeReloadToken = tok;
+    scraperReloadFromDisk();
+    property_set("sys.gammaos.nano.scrape_reload_ack", tok);
+    ALOGD("scraper: live-reloaded index/names (token %s), %zu entries", tok, mScrapeIndex.size());
+}
+
+void NanoMenu::scraperReloadFromDisk() {
+    // Reload the manifest + name overrides from disk. loadScrapeIndex clears and
+    // refills mScrapeIndex (and honours the no-data-loss guard on a bad file).
+    mScrapeIndexLoaded = true;                      // keep the loaded-guard satisfied
+    loadScrapeIndex();
+    loadRomNameOverrides();
+    mScrapeIndexDirty = false;
+
+    // Drop all live scraper textures so covers/fanart re-decode from the new files.
+    scraperFreeBoxart();
+    if (mPs3DlgBoxTex) { glDeleteTextures(1, &mPs3DlgBoxTex); mPs3DlgBoxTex = 0; mPs3DlgBoxW = mPs3DlgBoxH = 0; }
+    if (mPs3DlgFanTex) { glDeleteTextures(1, &mPs3DlgFanTex); mPs3DlgFanTex = 0; }
+
+    // Re-apply titles so renamed/newly-scraped games show their name immediately.
+    for (auto& sys : mXmbSystems) applyRomNameOverrides(sys);
+    applyRomNameOverridesToRecents();
+    mPs3CatsStale = true;
+    mDisplayDirty = true;
+}
+
+void NanoMenu::scraperArtTick() {
+    mBoxartPrevFrameClock = mBoxartFrameClock;
+    mBoxartFrameClock = mBoxartUseClock;
+    mEsdeMediaPrevFrameClock = mEsdeMediaFrameClock;
+    mEsdeMediaFrameClock = mEsdeMediaClock;
+    mScrapeBoxartOn = scraperBoxartEnabled();
+    mNdsTileIcon = mNdsTheme && property_get_bool("persist.gammaos.nano.nds.tileicon", false);
+    // The ES-DE theme browses games through its own selection (not the shared mPs3CatIdx
+    // category rail), so keep boxart alive whenever it is active; otherwise a per-frame
+    // free/rebuild would thrash the decode worker and the cover would never land.
+    bool inGame = mEsdeTheme || mEsdeSettingsMinima ||
+                  (mPs3CatIdx >= 0 && mPs3CatIdx < (int)mPs3Cats.size()
+                   && mPs3Cats[mPs3CatIdx].name == "Game");
+    if (!inGame && (!mRomBoxartCache.empty() || mFanartTex || mNdsFanTex || mSaDecStarted.load()))
+        scraperFreeBoxart();
+    saDrainArt();
+    ndsBannerTick();
+}
+
+void NanoMenu::scraperFreeBoxart() {
+    saStopArtWorker();                          // join the worker so nothing runs at idle
+    for (auto& kv : mRomBoxartCache)
+        if (kv.second.tex) glDeleteTextures(1, &kv.second.tex);
+    mRomBoxartCache.clear();
+    // Also drop the hover-fanart texture (Phase 4) so no scraper GL lingers.
+    if (mFanartTex) { glDeleteTextures(1, &mFanartTex); mFanartTex = 0; }
+    mFanartPath.clear(); mFanartTexW = mFanartTexH = 0;
+    // DSi top-screen preview fanart (#66) shares the Game-category lifecycle.
+    if (mNdsFanTex) { glDeleteTextures(1, &mNdsFanTex); mNdsFanTex = 0; }
+    mNdsFanPath.clear(); mNdsFanW = mNdsFanH = 0;
+    // The cinfo "shown" alias may point at the fanart we just freed; clear it so the
+    // hover-bg fade-out never reads a dangling texture after leaving Game.
+    mCinfoShownTex = 0; mCinfoShownW = mCinfoShownH = 0;
+}
+bool NanoMenu::scraperFanartEnabled() {
+    return property_get_bool("persist.gammaos.scraper.fanart", true);
+}
+
+// ---------------------------------------------------------------------------
+// Boxart folder lifecycle (render thread, once a second). A custom folder on the SD card is
+// not there at boot (vold mounts the card well after the home is up) and can be pulled or
+// re-inserted at any time. Load the manifest the moment the folder appears, drop every entry
+// and live texture the moment it is gone (so nothing is written to a vanished card and the
+// generic icons return), and pick up a folder change made by the other nano process.
+// ---------------------------------------------------------------------------
+void NanoMenu::scraperStorageTick() {
+    const int64_t now = android::uptimeMillis();
+    if (now - mScrapeDirPollMs < 1000) return;
+    mScrapeDirPollMs = now;
+    scraperEnsureLoaded();
+    if (!mScrapeMoveDst.empty()) return;            // a relocation owns the folder until it lands
+    const std::string before = mScrapeCacheDir;
+    scraperRefreshDir();
+    const bool dirChanged = (mScrapeCacheDir != before);
+    const bool avail = scraperDirAvailable();
+    if (!dirChanged && avail == mScrapeDirAvail) return;
+    mScrapeDirAvail = avail;
+    if (avail) {
+        mkdir(mScrapeCacheDir.c_str(), 0700);
+        loadScrapeIndex();
+        ALOGI("scraper: boxart folder %s available, %zu entries", mScrapeCacheDir.c_str(), mScrapeIndex.size());
+    } else {
+        mScrapeIndex.clear();
+        mScrapeIndexLoadErr = true;                 // refuse saves until the folder is back
+        ALOGI("scraper: boxart folder %s unmounted, art hidden until it returns", mScrapeCacheDir.c_str());
+    }
+    scraperFreeBoxart();
+    if (mPs3DlgBoxTex) { glDeleteTextures(1, &mPs3DlgBoxTex); mPs3DlgBoxTex = 0; mPs3DlgBoxW = mPs3DlgBoxH = 0; }
+    if (mPs3DlgFanTex) { glDeleteTextures(1, &mPs3DlgFanTex); mPs3DlgFanTex = 0; }
+    for (auto& sys : mXmbSystems) applyRomNameOverrides(sys);
+    applyRomNameOverridesToRecents();
+    mPs3CatsStale = true;
+    mDisplayDirty = true;
+}
+
+// Move one file across folders: rename when both sit on one filesystem, otherwise copy to a
+// temp file, fsync, rename into place and unlink the source. Returns false with the source
+// intact on any failure (the manifest then keeps pointing at the old path).
+static bool scraperMoveFile(const std::string& src, const std::string& dst) {
+    if (rename(src.c_str(), dst.c_str()) == 0) return true;
+    if (errno != EXDEV) return false;
+    int in = open(src.c_str(), O_RDONLY);
+    if (in < 0) return false;
+    const std::string tmp = dst + ".tmp";
+    int out = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (out < 0) { close(in); return false; }
+    char buf[128 * 1024];
+    bool ok = true;
+    for (;;) {
+        ssize_t rd = read(in, buf, sizeof(buf));
+        if (rd < 0) { ok = false; break; }
+        if (rd == 0) break;
+        ssize_t off = 0;
+        while (off < rd) {
+            ssize_t wr = write(out, buf + off, (size_t)(rd - off));
+            if (wr <= 0) { ok = false; break; }
+            off += wr;
+        }
+        if (!ok) break;
+    }
+    if (ok && fsync(out) != 0) ok = false;
+    close(in); close(out);
+    if (!ok || rename(tmp.c_str(), dst.c_str()) != 0) { unlink(tmp.c_str()); return false; }
+    unlink(src.c_str());
+    return true;
+}
+
+// Settings > Boxart Scraper > Boxart Folder (folder-picker target 7). Validates the folder like
+// the DraStic data folder (created if missing, must be writable), then moves every cover and
+// fanart file the manifest knows about from the current folder on a worker thread behind the
+// scraper progress modal; scraperDrainResults switches the live folder + property when it is
+// done. Empty / "@default" (the "Use Default Folder" row) moves everything back to internal.
+void NanoMenu::boxartFolderSelect(const std::string& path) {
+    if (!mPs3Stack.empty() && mPs3Stack.back().screenKind == GS_FOLDERBROWSE) mPs3Stack.pop_back();
+    mDisplayDirty = true;
+    if (esdeStoreMode()) {   // the ES-DE folder on the card holds the art
+        photoShowBanner(trDyn("Box art is kept in the ES-DE folder on the microSD card."));
+        return;
+    }
+    scraperEnsureLoaded();
+    std::string dst = (path.empty() || path == "@default") ? std::string(kScrapeDefaultDir) : path;
+    while (dst.size() > 1 && dst.back() == '/') dst.pop_back();
+    if (dst == mScrapeCacheDir) { photoShowBanner(trDyn("Boxart folder unchanged")); return; }
+    if (mScrapeRunning || !mScrapeMoveDst.empty()) { photoShowBanner(trDyn("Scraper is busy")); return; }
+    struct stat st = {};
+    if (stat(dst.c_str(), &st) != 0) ::mkdir(dst.c_str(), 0775);
+    if (stat(dst.c_str(), &st) != 0 || !S_ISDIR(st.st_mode) || access(dst.c_str(), W_OK) != 0) {
+        photoShowBanner(trDyn("Boxart folder: not writable"));
+        ALOGW("scraper: boxart folder %s rejected: %s", dst.c_str(), strerror(errno));
+        return;
+    }
+    // The current folder may be unreachable (card pulled): nothing to move, just switch. The
+    // manifest is reloaded from the new folder (empty or whatever it already holds).
+    if (!scraperDirAvailable() || mScrapeIndexLoadErr) {
+        mScrapeCacheDir = dst;
+        property_set("persist.gammaos.scraper.dir", dst == kScrapeDefaultDir ? "" : dst.c_str());
+        mScrapeDirAvail = true;
+        loadScrapeIndex();
+        scraperFreeBoxart();
+        mPs3CatsStale = true;
+        photoShowBanner(trDyn("Boxart folder set"));
+        ALOGI("scraper: boxart folder -> %s (previous folder unavailable, nothing moved)", dst.c_str());
+        return;
+    }
+    // Snapshot the entries whose files live in the current folder; the worker never touches
+    // mScrapeIndex. Entries elsewhere (a manual cover picked from another path) stay as they are.
+    std::vector<std::pair<std::string, ScrapeEntry>> entries;
+    const std::string prefix = mScrapeCacheDir + "/";
+    for (const auto& kv : mScrapeIndex) {
+        const bool boxHere = kv.second.box.compare(0, prefix.size(), prefix) == 0;
+        const bool fanHere = kv.second.fan.compare(0, prefix.size(), prefix) == 0;
+        if (boxHere || fanHere) entries.push_back(kv);
+    }
+    int files = 0;
+    for (const auto& e : entries) files += (int)!e.second.box.empty() + (int)!e.second.fan.empty();
+    mScrapeMoveSrc = mScrapeCacheDir;
+    mScrapeMoveDst = dst;
+    mScrapeMoveMode = true; mScrapeCopyMode = false;
+    mScrapeProgActive = true;
+    mScrapeDoneFlag = false;
+    mScrapeCancel = false;
+    mScrapeError.clear();
+    mScrapeStatus.clear();
+    mScrapeDone = 0; mScrapeHits = 0; mScrapeFail = 0;
+    mScrapeTotal = files;
+    mScrapeRunning = true;
+    ALOGI("scraper: moving %d files (%zu games) %s -> %s", files, entries.size(), mScrapeMoveSrc.c_str(), dst.c_str());
+    std::thread(&NanoMenu::scrapeMoveThreadFunc, this, std::move(entries), mScrapeMoveSrc, dst).detach();
+}
+
+void NanoMenu::scrapeMoveThreadFunc(std::vector<std::pair<std::string, ScrapeEntry>> entries,
+                                    std::string src, std::string dst) {
+    const std::string prefix = src + "/";
+    // Room on the new folder's drive, before anything moves. Files go one at a time (renamed, or
+    // copied then deleted), so on the same storage only the largest one needs room; on another
+    // drive all of them do. Compared through the backing paths: /storage/emulated/0 is /data's.
+    {
+        std::string dir = rawStoragePath(dst);
+        struct stat dirSt;
+        while (dir.size() > 1 && stat(dir.c_str(), &dirSt) != 0) dir = dir.substr(0, dir.find_last_of('/'));
+        struct statvfs vfs;
+        if (dir.size() > 1 && statvfs(dir.c_str(), &vfs) == 0) {
+            const uint64_t cluster = vfs.f_bsize ? (uint64_t)vfs.f_bsize : 4096;
+            uint64_t want = 8ull * 1024 * 1024, largest = 0;
+            auto add = [&](const std::string& p) {
+                struct stat st;
+                if (p.empty() || p.compare(0, prefix.size(), prefix) != 0 || stat(rawStoragePath(p).c_str(), &st) != 0) return;
+                const uint64_t size = ((uint64_t)st.st_size + cluster - 1) / cluster * cluster;
+                if (st.st_dev != dirSt.st_dev) want += size;
+                else largest = std::max(largest, size);
+            };
+            for (const auto& e : entries) { add(e.second.box); add(e.second.fan); }
+            want += largest;
+            const uint64_t avail = (uint64_t)vfs.f_bavail * (uint64_t)vfs.f_frsize;
+            if (want > avail) {
+                ALOGW("scraper: move to %s needs %llu bytes, %llu free", dst.c_str(),
+                      (unsigned long long)want, (unsigned long long)avail);
+                char buf[256];
+                snprintf(buf, sizeof(buf), trDyn("Not enough space: %.1f MB needed, %.1f MB free. Nothing was moved."),
+                         want / 1048576.0, avail / 1048576.0);
+                std::lock_guard<std::mutex> lk(mScrapeMutex);
+                mScrapeMoveNoRoom = true;
+                mScrapeFail++;
+                mScrapeError = buf;
+                mScrapeRunning = false;
+                mScrapeDoneFlag = true; FrameFlag::wake();
+                return;
+            }
+        }
+    }
+    auto moveOne = [&](std::string& p) {
+        if (p.empty() || p.compare(0, prefix.size(), prefix) != 0) return;
+        const std::string np = dst + p.substr(src.size());
+        struct stat st;
+        bool ok;
+        if (stat(p.c_str(), &st) != 0) ok = (stat(np.c_str(), &st) == 0);   // already there (retry)
+        else ok = scraperMoveFile(p, np);
+        std::lock_guard<std::mutex> lk(mScrapeMutex);
+        mScrapeDone++; FrameFlag::wakeThrottled();
+        if (ok) { mScrapeHits++; p = np; }
+        else { mScrapeFail++; if (mScrapeError.empty()) mScrapeError = trDyn("Some files could not be moved."); }
+    };
+    for (auto& e : entries) {
+        {
+            std::lock_guard<std::mutex> lk(mScrapeMutex);
+            if (mScrapeCancel) break;
+            mScrapeStatus = e.second.title.empty() ? e.first : e.second.title;
+        }
+        moveOne(e.second.box);
+        moveOne(e.second.fan);
+        std::lock_guard<std::mutex> lk(mScrapeMutex);
+        mScrapePending.emplace_back(e.first, e.second);
+    }
+    std::lock_guard<std::mutex> lk(mScrapeMutex);
+    mScrapeRunning = false;
+    mScrapeDoneFlag = true; FrameFlag::wake();
+}
+
+// Game Systems editor > Clear Boxart: delete the covers, fanart and manifest entries of every
+// game in the system (the storage-alias twins too, like clearRomNameOverride), then free the
+// live textures so the generic icons come back at once. Title overrides are not touched.
+void NanoMenu::gsClearSystemArt(int sysIdx) {
+    if (sysIdx < 0 || sysIdx >= (int)mXmbSystems.size()) return;
+    if (scraperRefuseWhileBusy()) return;   // a scrape would write the art back
+    if (!scraperDirAvailable() || mScrapeIndexLoadErr) {
+        photoShowBanner(trDyn("Boxart folder is not available"));
+        return;
+    }
+    static const char* const kAliases[] = {
+        "/storage/emulated/0", "/data/media/0", "/sdcard", "/storage/self/primary" };
+    int cleared = 0;
+    auto dropEntry = [&](const std::string& key) {
+        auto it = mScrapeIndex.find(key);
+        if (it == mScrapeIndex.end()) return;
+        // A picture the ES-DE folder already had stays (only the entry goes).
+        if (!it->second.box.empty() && !(it->second.artKept & 1)) unlink(it->second.box.c_str());
+        if (!it->second.fan.empty() && !(it->second.artKept & 2)) unlink(it->second.fan.c_str());
+        mScrapeIndex.erase(it);
+        cleared++;
+    };
+    for (const std::string& rom : mXmbSystems[sysIdx].roms) {
+        dropEntry(rom);
+        for (const char* a : kAliases) {
+            size_t al = strlen(a);
+            if (rom.size() > al && rom.compare(0, al, a) == 0 && rom[al] == '/') {
+                for (const char* b : kAliases) { std::string alt = std::string(b) + rom.substr(al); if (alt != rom) dropEntry(alt); }
+                break;
+            }
+        }
+        // A cover file may exist without a manifest entry (interrupted scrape); remove it too.
+        unlink((mScrapeCacheDir + "/" + nanoscraper::cacheKey(rom) + ".box.png").c_str());
+        unlink((mScrapeCacheDir + "/" + nanoscraper::cacheKey(rom) + ".fan.jpg").c_str());
+    }
+    saveScrapeIndex();
+    scraperFreeBoxart();
+    if (mPs3DlgBoxTex) { glDeleteTextures(1, &mPs3DlgBoxTex); mPs3DlgBoxTex = 0; mPs3DlgBoxW = mPs3DlgBoxH = 0; }
+    if (mPs3DlgFanTex) { glDeleteTextures(1, &mPs3DlgFanTex); mPs3DlgFanTex = 0; }
+    // Scraped titles came from the manifest; rebuild the display names from filenames/overrides.
+    for (auto& sys : mXmbSystems) applyRomNameOverrides(sys);
+    applyRomNameOverridesToRecents();
+    mPs3CatsStale = true;
+    mDisplayDirty = true;
+    char msg[160];
+    snprintf(msg, sizeof(msg), cleared == 1 ? trDyn("Cleared boxart for %d game") : trDyn("Cleared boxart for %d games"), cleared);
+    photoShowBanner(msg);
+    ALOGI("scraper: cleared art for %d games in %s", cleared, mXmbSystems[sysIdx].name.c_str());
+}
+
+// ---------------------------------------------------------------------------
+// Per-system credential / engine resolution (global Settings + per-system
+// override). Empty per-system fields inherit the global value.
+// ---------------------------------------------------------------------------
+nanoscraper::Credentials NanoMenu::scraperCredsFor(int sysIdx) {
+    nanoscraper::Credentials c = nanoscraper::globalCredentials();
+    if (sysIdx >= 0 && sysIdx < (int)mXmbSystems.size()) {
+        const XmbSystem& s = mXmbSystems[sysIdx];
+        if (!s.scrapeUser.empty()) c.ssUser = s.scrapeUser;   // account override
+        if (!s.scrapePass.empty()) c.ssPass = s.scrapePass;
+        if (!s.scrapeKey.empty())  c.tgdbKey = s.scrapeKey;
+    }
+    return c;
+}
+
+// Why nothing could be scraped for want of credentials: ScreenScraper answers no software without
+// developer credentials, which a build from the public source does not include (see
+// NanoScraperDevCreds.h); a user account does not replace them. TheGamesDB needs an API key.
+std::string NanoMenu::scraperMissingCredsMsg(bool needSsDev, bool needTgdb) {
+    if (!needSsDev && !needTgdb) return trDyn("Scraping is off for these systems.");
+    if (needSsDev && needTgdb)
+        return trDyn("This build has no ScreenScraper developer credentials, and TheGamesDB needs an API key (Boxart Scraper settings).");
+    return needSsDev ? trDyn("This build has no ScreenScraper developer credentials. Use TheGamesDB with an API key instead.")
+                     : trDyn("Set your TheGamesDB API key in Boxart Scraper settings.");
+}
+
+nanoscraper::Engine NanoMenu::scraperEngineFor(int sysIdx, const nanoscraper::Credentials& cred) {
+    (void)cred;
+    std::string eng;
+    if (sysIdx >= 0 && sysIdx < (int)mXmbSystems.size()) {
+        const std::string& ov = mXmbSystems[sysIdx].scraperOverride;
+        if (ov == "off")  return nanoscraper::ENGINE_OFF;
+        if (!ov.empty())  eng = ov;   // explicit per-system engine
+    }
+    if (eng.empty()) {
+        char buf[PROPERTY_VALUE_MAX];
+        property_get("persist.gammaos.scraper.engine", buf, "screenscraper");
+        eng = buf;
+    }
+    return nanoscraper::engineFromName(eng);
+}
+
+// ---------------------------------------------------------------------------
+// Kick off a scrape of the given systems (render thread). Builds the job list
+// (skipping already-scraped ROMs unless Overwrite is on), opens the modal, and
+// launches the worker.
+// ---------------------------------------------------------------------------
+void NanoMenu::scrapeSystemsAsync(const std::vector<int>& sysIdxs) {
+    if (scraperCopyBusy()) return;
+    scraperEnsureLoaded();
+    mkdir(mScrapeCacheDir.c_str(), 0700);
+
+    bool wantBox = scraperBoxartEnabled();
+    bool wantFan = scraperFanartEnabled();
+    bool overwrite = property_get_bool("persist.gammaos.scraper.overwrite", false);
+    const std::vector<int> extraTypes = scrapeEnabledExtras();
+
+    std::vector<ScrapeJob> jobs;
+    bool anyConfigured = false;     // at least one system had a usable engine + creds
+    bool needSsDev = false;         // a ScreenScraper system was skipped for no developer credentials
+    bool needTgdb = false;          // a TheGamesDB system was skipped for no API key
+    for (int sysIdx : sysIdxs) {
+        if (sysIdx < 0 || sysIdx >= (int)mXmbSystems.size()) continue;
+        const XmbSystem& s = mXmbSystems[sysIdx];
+        if (!s.enabled) continue;
+        nanoscraper::Credentials cred = scraperCredsFor(sysIdx);
+        nanoscraper::Engine eng = scraperEngineFor(sysIdx, cred);
+        if (eng == nanoscraper::ENGINE_OFF) continue;
+        // Skip systems whose engine has no credentials at all (nothing to do).
+        bool haveCreds = (eng == nanoscraper::ENGINE_SCREENSCRAPER)
+                             ? (!cred.ssDevId.empty() && !cred.ssDevPw.empty())
+                             : !cred.tgdbKey.empty();
+        if (!haveCreds) { (eng == nanoscraper::ENGINE_SCREENSCRAPER ? needSsDev : needTgdb) = true; continue; }
+        anyConfigured = true;
+        nanoscraper::PlatformIds plat =
+            nanoscraper::platformForSystem(s.romDir, s.shortname, s.name, s.scrapePlatform);
+        for (size_t i = 0; i < s.roms.size(); i++) {
+            const std::string& rom = s.roms[i];
+            ScrapeJob j;
+            j.romPath = rom;
+            j.engine = (int)eng;
+            scrapeJobAddExtras(sysIdx, j, extraTypes, overwrite, false);
+            if (!overwrite) {
+                auto it = mScrapeIndex.find(rom);
+                if (it != mScrapeIndex.end() && (!it->second.box.empty() || !it->second.fan.empty())) {
+                    if (j.extras.empty()) continue;   // already have art
+                    j.wantBox = j.wantFan = false;     // the worker fetches only the missing extra media
+                }
+            }
+            esdeArtDest(rom, sysIdx, &j.art);
+            j.art.keep = !overwrite;   // ES-DE's own cover and fan art of a game stay
+            j.displayName = (i < s.displayNames.size()) ? s.displayNames[i] : rom;
+            j.sysName = s.name;
+            // A user title override drives the scraper search query so a corrected
+            // title can match; empty = query by filename as before.
+            if (const std::string* ov = romNameOverrideFor(rom)) j.queryName = *ov;
+            j.engine = (int)eng;
+            j.ssUser = s.scrapeUser; j.ssPass = s.scrapePass; j.tgdbKey = s.scrapeKey;
+            j.plat = plat;
+            jobs.push_back(std::move(j));
+        }
+    }
+
+    if (scraperOfferQueue(jobs, wantBox, wantFan,
+                          anyConfigured ? trDyn("All games already have art (enable Overwrite to refresh).")
+                                        : scraperMissingCredsMsg(needSsDev, needTgdb)))
+        return;
+    // Show the modal regardless so the user gets feedback (incl. "set credentials").
+    scraperOpenProgress((int)jobs.size());
+
+    if (!scraperDirAvailable() || mScrapeIndexLoadErr) {
+        // The boxart folder (SD card) is not mounted, or its index could not be read: downloading
+        // now would land files nowhere or clobber the manifest. Explain instead.
+        mScrapeError = scraperDirAvailable() ? trDyn("The boxart index could not be read.")
+                                             : trDyn("Boxart folder is not available. Insert the SD card or pick another folder.");
+        mScrapeTotal = 0;
+        mScrapeDoneFlag = true; FrameFlag::wake();
+        return;
+    }
+    if (jobs.empty()) {
+        // Nothing to do: explain why (no credentials, or already complete).
+        mScrapeError = anyConfigured ? trDyn("All games already have art (enable Overwrite to refresh).")
+                                     : scraperMissingCredsMsg(needSsDev, needTgdb);
+        mScrapeDoneFlag = true; FrameFlag::wake();
+        return;
+    }
+    scraperStartBackground(std::move(jobs), wantBox, wantFan);
+}
+
+std::vector<int> NanoMenu::scrapeEnabledExtras() const {
+    std::vector<int> out;
+    for (int t = 0; t < nanoscraper::kExtraMediaCount; t++) {
+        const std::string prop = std::string("persist.gammaos.scraper.media.") + nanoscraper::kExtraMedia[t].key;
+        if (property_get_bool(prop.c_str(), false)) out.push_back(t);
+    }
+    return out;
+}
+
+// The extra media of types the job's service offers, each with the folders a copy may already be in
+// (checked by the worker, so no file access here). Overwrite fetches them again. Media the service
+// did not have last time is not asked for again for a while, unless recheck (one game, on request).
+void NanoMenu::scrapeJobAddExtras(int sysIdx, ScrapeJob& j, const std::vector<int>& types, bool overwrite,
+                                  bool recheck) {
+    if (types.empty()) return;
+    std::string writeDir;
+    if (!esdeMediaStems(j.romPath, sysIdx, &writeDir, &j.haveNames, &j.haveDirs)) return;
+    if (overwrite) j.haveDirs.clear();
+    auto it = mScrapeIndex.find(j.romPath);
+    const ScrapeEntry* se = it == mScrapeIndex.end() ? nullptr : &it->second;
+    const bool recent = se && (long long)time(nullptr) - se->extrasCheckedAt < 30LL * 24 * 3600;
+    for (int t : types) {
+        const nanoscraper::ExtraMediaType& mt = nanoscraper::kExtraMedia[t];
+        if (j.engine == (int)nanoscraper::ENGINE_THEGAMESDB && !mt.tgdbType) continue;
+        if (!overwrite && !recheck && recent && (se->extrasMissing & (1 << t))) continue;
+        nanoscraper::ExtraMediaJob x;
+        x.type = t;
+        x.stem = writeDir + mt.subdir + "/" + j.haveNames[0];
+        j.extras.push_back(std::move(x));
+    }
+}
+
+void NanoMenu::scrapeAllSystems() {
+    std::vector<int> all;
+    for (int i = 0; i < (int)mXmbSystems.size(); i++)
+        if (mXmbSystems[i].enabled) all.push_back(i);
+    scrapeSystemsAsync(all);
+}
+
+void NanoMenu::scrapeOneSystem(int sysIdx) {
+    scrapeSystemsAsync(std::vector<int>{sysIdx});
+}
+
+// ---------------------------------------------------------------------------
+// Re-scrape a single ROM (the per-game "Scrape This Game" option). Unlike
+// scrapeSystemsAsync this always forces overwrite (the user asked to re-fetch)
+// and uses the title override as the search query so a corrected name matches.
+// Builds a one-element job the same way scrapeSystemsAsync does and runs the
+// existing worker + progress modal.
+// ---------------------------------------------------------------------------
+void NanoMenu::scrapeOneRom(int sysIdx, int romIdx, const std::string& queryOverride) {
+    if (scraperCopyBusy()) return;
+    if (sysIdx < 0 || sysIdx >= (int)mXmbSystems.size()) return;
+    scraperEnsureLoaded();
+    mkdir(mScrapeCacheDir.c_str(), 0700);
+
+    const XmbSystem& s = mXmbSystems[sysIdx];
+    if (romIdx < 0 || romIdx >= (int)s.roms.size()) return;
+
+    bool wantBox = scraperBoxartEnabled();
+    bool wantFan = scraperFanartEnabled();
+
+    std::vector<ScrapeJob> jobs;
+    bool anyConfigured = false;
+    bool needSsDev = false, needTgdb = false;
+    if (s.enabled) {
+        nanoscraper::Credentials cred = scraperCredsFor(sysIdx);
+        nanoscraper::Engine eng = scraperEngineFor(sysIdx, cred);
+        if (eng != nanoscraper::ENGINE_OFF) {
+            bool haveCreds = (eng == nanoscraper::ENGINE_SCREENSCRAPER)
+                                 ? (!cred.ssDevId.empty() && !cred.ssDevPw.empty())
+                                 : !cred.tgdbKey.empty();
+            needSsDev = !haveCreds && eng == nanoscraper::ENGINE_SCREENSCRAPER;
+            needTgdb = !haveCreds && eng != nanoscraper::ENGINE_SCREENSCRAPER;
+            if (haveCreds) {
+                anyConfigured = true;
+                nanoscraper::PlatformIds plat =
+                    nanoscraper::platformForSystem(s.romDir, s.shortname, s.name, s.scrapePlatform);
+                const std::string& rom = s.roms[romIdx];
+                ScrapeJob j;
+                j.romPath = rom;
+                j.engine = (int)eng;
+                // A search under a corrected name may match another game: its media replaces the old.
+                scrapeJobAddExtras(sysIdx, j, scrapeEnabledExtras(), !queryOverride.empty(), true);
+                esdeArtDest(rom, sysIdx, &j.art);
+                j.displayName = (romIdx < (int)s.displayNames.size()) ? s.displayNames[romIdx] : rom;
+                j.sysName = s.name;
+                // A one-off custom search name (user typed it for this scrape only) wins over the
+                // saved title override; neither persists a rename here.
+                if (!queryOverride.empty()) j.queryName = queryOverride;
+                else if (const std::string* ov = romNameOverrideFor(rom)) j.queryName = *ov;
+                j.engine = (int)eng;
+                j.ssUser = s.scrapeUser; j.ssPass = s.scrapePass; j.tgdbKey = s.scrapeKey;
+                j.plat = plat;
+                jobs.push_back(std::move(j));
+            }
+        }
+    }
+
+    if (scraperOfferQueue(jobs, wantBox, wantFan,
+                          anyConfigured ? trDyn("Scraping is disabled for this system.")
+                                        : scraperMissingCredsMsg(needSsDev, needTgdb)))
+        return;
+    // Show the modal regardless so the user gets feedback (incl. "set credentials").
+    scraperOpenProgress((int)jobs.size());
+
+    if (!scraperDirAvailable() || mScrapeIndexLoadErr) {
+        mScrapeError = scraperDirAvailable() ? trDyn("The boxart index could not be read.")
+                                             : trDyn("Boxart folder is not available. Insert the SD card or pick another folder.");
+        mScrapeTotal = 0;
+        mScrapeDoneFlag = true; FrameFlag::wake();
+        return;
+    }
+    if (jobs.empty()) {
+        mScrapeError = anyConfigured ? trDyn("Scraping is disabled for this system.")
+                                     : scraperMissingCredsMsg(needSsDev, needTgdb);
+        mScrapeDoneFlag = true; FrameFlag::wake();
+        return;
+    }
+    scraperStartBackground(std::move(jobs), wantBox, wantFan);
+}
+
+// ---------------------------------------------------------------------------
+// Render thread: merge finished entries into the manifest + save. Called every
+// frame from the main loop; cheap when idle.
+// ---------------------------------------------------------------------------
+void NanoMenu::scraperDrainResults() {
+    fileJobTick();
+    biosStartupTick();
+    esdeGamelistTick();
+    emuSdTick();
+    scraperBgPoll(false);
+    std::vector<std::pair<std::string, ScrapeEntry>> pending;
+    bool done = false, noRoom = false;
+    {
+        std::lock_guard<std::mutex> lk(mScrapeMutex);
+        if (!mScrapePending.empty()) pending.swap(mScrapePending);
+        done = mScrapeDoneFlag;
+        if (done) { noRoom = mScrapeMoveNoRoom; mScrapeMoveNoRoom = false; }
+    }
+    if (done && noRoom && !mScrapeMoveDst.empty()) {   // nothing moved: the folder stays as it was
+        ALOGI("scraper: boxart folder stays %s (not enough space at %s)", mScrapeCacheDir.c_str(), mScrapeMoveDst.c_str());
+        mScrapeMoveSrc.clear(); mScrapeMoveDst.clear();
+        mDisplayDirty = true;
+    } else if (done && !mScrapeMoveDst.empty()) {
+        // Relocation worker finished (or was cancelled part-way; every moved file already has its
+        // new path in `pending`, unmoved ones keep the old absolute path, so the manifest stays
+        // correct either way). Switch the live folder, persist it, write the manifest there and
+        // retire the old copy so a later default reset never resurrects stale entries.
+        for (auto& p : pending) mScrapeIndex[p.first] = std::move(p.second);
+        pending.clear();
+        const std::string oldIndex = mScrapeCacheDir + "/index.json";
+        mScrapeCacheDir = mScrapeMoveDst;
+        mScrapeIndexLoadErr = false;
+        mScrapeDirAvail = true;
+        property_set("persist.gammaos.scraper.dir",
+                     mScrapeCacheDir == kScrapeDefaultDir ? "" : mScrapeCacheDir.c_str());
+        saveScrapeIndex();
+        if (oldIndex != scrapeIndexPath()) unlink(oldIndex.c_str());
+        scraperFreeBoxart();
+        if (mPs3DlgBoxTex) { glDeleteTextures(1, &mPs3DlgBoxTex); mPs3DlgBoxTex = 0; mPs3DlgBoxW = mPs3DlgBoxH = 0; }
+        if (mPs3DlgFanTex) { glDeleteTextures(1, &mPs3DlgFanTex); mPs3DlgFanTex = 0; }
+        ALOGI("scraper: boxart folder now %s (%d files moved, %d failed)",
+              mScrapeCacheDir.c_str(), mScrapeHits, mScrapeFail);
+        mScrapeMoveSrc.clear(); mScrapeMoveDst.clear();
+        mPs3CatsStale = true;
+        mDisplayDirty = true;
+    }
+    if (!pending.empty()) {
+        // A scrape that fetched only extra media keeps the game's entry and records what was missing.
+        std::unordered_set<std::string> roms;
+        for (auto& p : pending) {
+            ScrapeEntry& e = p.second;
+            roms.insert(p.first);
+            std::vector<std::string> replaced = e.extrasWritten;
+            if (!e.box.empty()) replaced.push_back(e.box);
+            if (!e.fan.empty()) replaced.push_back(e.fan);
+            for (const auto& f : replaced) {   // a replaced file must not keep showing its old texture
+                auto t = mEsdeTexCache.find(f);
+                if (t != mEsdeTexCache.end()) {
+                    if (t->second) glDeleteTextures(1, &t->second);
+                    mEsdeTexCache.erase(t);
+                }
+                mEsdePngDims.erase(f);
+                mEsdeMediaUse.erase(f);
+                esdeArtForget(f);
+            }
+            e.extrasWritten.clear();
+            auto it = mScrapeIndex.find(p.first);
+            if (e.extrasOnly && it != mScrapeIndex.end()) {
+                ScrapeEntry& o = it->second;
+                o.extrasMissing = (o.extrasMissing & ~e.extrasTried) | e.extrasMissing;
+                if (e.extrasTried) o.extrasCheckedAt = e.when;
+                continue;
+            }
+            e.extrasOnly = false;
+            e.extrasCheckedAt = e.extrasTried ? e.when : 0;
+            if (it != mScrapeIndex.end()) {   // a cover or fan art that failed this time keeps the old one
+                if (e.box.empty()) { e.box = it->second.box; e.artKept |= it->second.artKept & 1; }
+                if (e.fan.empty()) { e.fan = it->second.fan; e.artKept |= it->second.artKept & 2; }
+            }
+            esdeGamelistPushScrape(p.first, e);
+            mScrapeIndex[p.first] = std::move(e);
+        }
+        // New or replaced media shows in the viewer and themes.
+        for (auto it = mEsdeMediaPath.begin(); it != mEsdeMediaPath.end();) {
+            const size_t sep = it->first.find('\x1f');
+            if (sep != std::string::npos && roms.count(it->first.substr(0, sep))) it = mEsdeMediaPath.erase(it);
+            else ++it;
+        }
+        mScrapeIndexDirty = true;
+        // A scrape supplies a matched game title: refresh the display names so each scraped game shows
+        // its title instead of the ROM filename right away (not only after the next rescan). A manual
+        // Rename/Edit Title still wins (applyRomNameOverrides checks the override first).
+        for (auto& sys : mXmbSystems)
+            if (std::any_of(sys.roms.begin(), sys.roms.end(), [&](const std::string& r) { return roms.count(r) > 0; }))
+                applyRomNameOverrides(sys);
+        applyRomNameOverridesToRecents();
+        mPs3CatsStale = true;       // refresh columns so new boxart + titles show (Phase 3)
+        mDisplayDirty = true;
+    }
+    // Results arrive many times a second; write the whole index every few seconds and at the end.
+    if (mScrapeIndexDirty && (done || (int64_t)uptimeMillis() - mScrapeIndexSavedMs >= 3000)) {
+        saveScrapeIndex();
+        mScrapeIndexDirty = false;
+        mScrapeIndexSavedMs = (int64_t)uptimeMillis();
+    }
+    if (done) {
+        // Worker finished: keep the summary on screen, the modal closes on B/enter.
+        mDisplayDirty = true;
+    }
+}
+
+void NanoMenu::scraperCancel() {
+    if (!mBgScrapeRun.empty()) {
+        property_set(nanoscraper::kCancelProp, mBgScrapeRun.c_str());
+        std::lock_guard<std::mutex> lk(mScrapeMutex);
+        mScrapeStatus = trDyn("Cancelling...");
+        mDisplayDirty = true;
+        return;
+    }
+    std::lock_guard<std::mutex> lk(mScrapeMutex);
+    mScrapeCancel = true;
+}
+
+std::string NanoMenu::scrapeStatusLabel() {
+    if (!mScrapeRunning || mBgScrapeRun.empty()) return std::string();
+    int done, total;
+    {
+        std::lock_guard<std::mutex> lk(mScrapeMutex);
+        done = mScrapeDone; total = mScrapeTotal;
+    }
+    char buf[64];
+    snprintf(buf, sizeof(buf), trDyn("Scraping %d/%d"), done, total);
+    return buf;
+}
+
+// Runs are numbered in order, so a home never applies an older run's results over newer ones.
+static long long scrapeRunSeq(const std::string& run) {
+    return strtoll(run.c_str(), nullptr, 10);
+}
+
+// For what cannot run beside a scrape (clearing art): while one runs its progress comes up again,
+// with a note that this has to wait; while a folder copy or move runs, a banner says so.
+bool NanoMenu::scraperRefuseWhileBusy() {
+    scraperEnsureLoaded();   // the poll follows a run only once the manifest is loaded
+    scraperBgPoll(true);
+    if (!mScrapeRunning) return false;
+    if (!mBgScrapeRun.empty()) {
+        mScrapeProgActive = true;
+        mScrapeBusyNote = true;
+        mDisplayDirty = true;
+    } else {
+        photoShowBanner(trDyn("Another copy or scrape is running"));
+    }
+    return true;
+}
+
+// A folder copy or move runs: a banner says so. (A new scrape can wait for a running one; see
+// scraperOfferQueue.)
+bool NanoMenu::scraperCopyBusy() {
+    scraperEnsureLoaded();   // the poll follows a run only once the manifest is loaded
+    scraperBgPoll(true);
+    if (!mScrapeRunning || !mBgScrapeRun.empty()) return false;
+    photoShowBanner(trDyn("Another copy or scrape is running"));
+    return true;
+}
+
+void NanoMenu::scraperOpenProgress(int total) {
+    mScrapeMoveMode = false; mScrapeCopyMode = false;
+    mScrapeProgActive = true;
+    mScrapeDoneFlag = false;
+    mScrapeCancel = false;
+    mScrapeError.clear();
+    mScrapeStatus.clear();
+    mScrapeDone = 0; mScrapeHits = 0; mScrapeFail = 0; mScrapeSkip = 0;
+    mScrapeTotal = total;
+    mDisplayDirty = true;
+}
+
+// While a scrape runs, a new one can join its queue: asks first (theme key 62), or says in a banner
+// why there is nothing to add. False when no scrape runs.
+bool NanoMenu::scraperOfferQueue(std::vector<ScrapeJob>& jobs, bool wantBox, bool wantFan,
+                                 const std::string& emptyMsg) {
+    if (!mScrapeRunning || mBgScrapeRun.empty()) return false;
+    char cancel[PROPERTY_VALUE_MAX] = {};
+    property_get(nanoscraper::kCancelProp, cancel, "");
+    if (mBgScrapeRun == cancel) {   // it would drop a queued one with the rest
+        photoShowBanner(trDyn("The scrape is being cancelled. Try again when it stops."));
+        return true;
+    }
+    if (!scraperDirAvailable() || mScrapeIndexLoadErr) {
+        photoShowBanner(scraperDirAvailable() ? trDyn("The boxart index could not be read.")
+                                              : trDyn("Boxart folder is not available. Insert the SD card or pick another folder."));
+        return true;
+    }
+    if (jobs.empty()) {
+        photoShowBanner(emptyMsg);
+        return true;
+    }
+    mScrapeQueuedJobs = std::move(jobs);
+    mScrapeQueuedBox = wantBox;
+    mScrapeQueuedFan = wantFan;
+    char body[200];
+    snprintf(body, sizeof(body), trDyn("A scrape is in progress (%s). Add this scrape to the queue?"),
+             scrapeStatusLabel().c_str());
+    mPs3DlgOptions.clear(); mPs3DlgSwatch.clear();
+    // The centred confirm: the side chooser shows no body.
+    mPs3DlgSlider = false; mPs3DlgKind = 0; mPs3DlgType = 1; mPs3DlgThemeKey = 62; mPs3DlgBinding = nullptr;
+    mPs3DlgIllust = 0; mPs3DlgNotice.clear(); mPs3DlgRomInfo = false; mPs3DlgAppInfo = false;
+    mPs3DlgTitle = "Scrape in Progress"; mPs3DlgBody = body;
+    mPs3DlgOptions.push_back("Cancel");       mPs3DlgSwatch.push_back(-1);
+    mPs3DlgOptions.push_back("Add to Queue"); mPs3DlgSwatch.push_back(-1);
+    mPs3DlgSel = 1; mPs3DlgOrigSel = 1;
+    mPs3DlgIconTex = 0; mPs3DlgIconNmap = nmapForIcon(22);
+    mPs3DlgIconR = mPs3DlgIconG = mPs3DlgIconB = 1.0f;
+    mPs3DlgActive = true; mPs3DlgAnim = 0.0f; mPs3DlgBlurValid = false;
+    return true;
+}
+
+// Adds the games to the running scrape's queue, or starts them when it ended in the meantime.
+void NanoMenu::scraperQueueAdd(std::vector<ScrapeJob> jobs, bool wantBox, bool wantFan) {
+    if (jobs.empty()) return;
+    // Twice: when the other home started a newer run, the poll follows that one.
+    for (int attempt = 0; attempt < 2; attempt++) {
+        scraperBgPoll(true);
+        if (!mScrapeRunning || mBgScrapeRun.empty()) break;
+        const QueueAdd r = scraperQueueAddLocked(jobs, wantBox, wantFan);
+        if (r == QueueAdd::Done) return;
+        if (r == QueueAdd::Ended) break;
+    }
+    scraperBgPoll(true);   // notices the end
+    if (mScrapeRunning) {
+        photoShowBanner(trDyn("Another copy or scrape is running"));
+        return;
+    }
+    scraperOpenProgress((int)jobs.size());
+    scraperStartBackground(std::move(jobs), wantBox, wantFan);
+}
+
+NanoMenu::QueueAdd NanoMenu::scraperQueueAddLocked(std::vector<ScrapeJob>& jobs, bool wantBox, bool wantFan) {
+    nanoscraper::QueueLock lock;
+    char cancel[PROPERTY_VALUE_MAX] = {}, svc[PROPERTY_VALUE_MAX] = {};
+    property_get(nanoscraper::kCancelProp, cancel, "");
+    property_get(nanoscraper::kServiceProp, svc, "");
+    nanoscraper::Progress p;
+    const bool read = nanoscraper::readProgress(&p);
+    const bool have = read && p.run == mBgScrapeRun;
+    if (read && scrapeRunSeq(p.run) > scrapeRunSeq(mBgScrapeRun)) return QueueAdd::Newer;
+    if (mBgScrapeRun == cancel) {   // it would drop this request with the rest
+        photoShowBanner(trDyn("The scrape is being cancelled. Try again when it stops."));
+        return QueueAdd::Done;
+    }
+    if (!lock.held() || (have && p.running && strcmp(svc, "running") != 0)) {   // or the service died
+        photoShowBanner(trDyn("The scrape could not be added to the queue."));
+        return QueueAdd::Done;
+    }
+    // The service writes its end with the lock held: until then it takes this request too.
+    if (have && !p.running) return QueueAdd::Ended;
+    const int asked = (int)jobs.size();
+    nanoscraper::Queue q;
+    q.run = mBgScrapeRun;
+    q.cacheDir = mScrapeCacheDir;
+    q.wantBox = wantBox;
+    q.wantFan = wantFan;
+    q.jobs = std::move(jobs);
+    const bool ok = nanoscraper::addRequest(q);   // leaves out the games the scrape already has
+    const int n = (int)q.jobs.size();
+    char msg[200];
+    if (!ok)
+        snprintf(msg, sizeof(msg), "%s", trDyn("The scrape could not be added to the queue."));
+    else if (n == 0)
+        snprintf(msg, sizeof(msg), "%s", trDyn("Those games are already in this scrape"));
+    else if (n < asked)
+        snprintf(msg, sizeof(msg), n == 1 ? trDyn("Added %d game to the scrape queue (%d were already in this scrape)")
+                                          : trDyn("Added %d games to the scrape queue (%d were already in this scrape)"),
+                 n, asked - n);
+    else
+        snprintf(msg, sizeof(msg), n == 1 ? trDyn("Added %d game to the scrape queue")
+                                          : trDyn("Added %d games to the scrape queue"), n);
+    photoShowBanner(msg);
+    ALOGI("scraper: queued %d games on run %s", n, mBgScrapeRun.c_str());
+    return QueueAdd::Done;
+}
+
+void NanoMenu::scraperStartBackground(std::vector<ScrapeJob> jobs, bool wantBox, bool wantFan) {
+    nanoscraper::Queue q;
+    q.cacheDir = mScrapeCacheDir;
+    q.wantBox = wantBox;
+    q.wantFan = wantFan;
+    q.jobs = std::move(jobs);
+    // The last run's results not read yet: the new run starts its results file afresh.
+    for (long long at = -1; at != mScrapeJournalOffset;) {
+        at = mScrapeJournalOffset;
+        scraperApplyResults();
+    }
+    mkdir(kScrapeDefaultDir, 0700);
+    char run[32];
+    bool queued;
+    {
+        nanoscraper::QueueLock lock;   // the other home numbers its runs under it too
+        // Past the manifest's own record too: an index on the SD card outlives a factory reset.
+        const long long seq = std::max((long long)property_get_int32("persist.gammaos.nano.scrape_seq", 0),
+                                       scrapeRunSeq(mScrapeJournalRun)) + 1;
+        snprintf(run, sizeof(run), "%lld", seq);
+        property_set("persist.gammaos.nano.scrape_seq", run);
+        q.run = run;
+        // What an earlier run left waiting (it was cancelled, or Nano restarted) is dropped; the run
+        // the service is on keeps its own.
+        char svc[PROPERTY_VALUE_MAX] = {}, live[PROPERTY_VALUE_MAX] = {};
+        property_get(nanoscraper::kServiceProp, svc, "");
+        if (!strcmp(svc, "running")) property_get(nanoscraper::kRunProp, live, "");
+        nanoscraper::clearOtherRequests(live);
+        queued = lock.held() && nanoscraper::addRequest(q);
+    }
+    if (!queued) {
+        mScrapeError = trDyn("The scrape could not be started.");
+        mScrapeDoneFlag = true; FrameFlag::wake();
+        mDisplayDirty = true;
+        return;
+    }
+    property_set(nanoscraper::kCancelProp, "");
+    mBgScrapeRun = run;
+    mBgScrapeOwn = true;
+    mBgScrapeStartMs = (int64_t)uptimeMillis();
+    mScrapeBusyNote = false;
+    mScrapeJournalRun = run;     // its results start from nothing
+    mScrapeJournalOffset = 0;
+    mScrapeWasCancelled = false;
+    // Saved before the service starts: a home that starts again mid-run reads its results from
+    // the start, and the other home, reading the manifest when it sees the run, gets what it lacks.
+    if (mScrapeIndexLoaded && !mScrapeIndexLoadErr) {
+        saveScrapeIndex();
+        mScrapeIndexDirty = false;
+        mScrapeIndexSavedMs = (int64_t)uptimeMillis();
+    }
+    {
+        std::lock_guard<std::mutex> lk(mScrapeMutex);
+        mScrapeWhat.clear();
+        mScrapeBps = 0.0;
+    }
+    mScrapeRunning = true;
+    // init ignores a start while the last service is still exiting: scraperBgPoll starts it then.
+    char svc[PROPERTY_VALUE_MAX] = {};
+    property_get(nanoscraper::kServiceProp, svc, "");
+    mBgScrapeKick = !strcmp(svc, "running");
+    if (!mBgScrapeKick) property_set(nanoscraper::kRunProp, run);
+    ALOGI("scraper: run %s started (%zu games)", run, q.jobs.size());
+}
+
+// Follows the service: picks up a run another home started, mirrors its progress into the modal's
+// counters, applies the games it finished and notices when it ends (or died).
+void NanoMenu::scraperBgPoll(bool now) {
+    const int64_t ms = (int64_t)uptimeMillis();
+    if (!now && ms - mBgScrapePollMs < 250) return;
+    mBgScrapePollMs = ms;
+    if (mFileJobKind != 0 || !mScrapeMoveDst.empty()) return;   // a copy or move owns the modal
+
+    char svc[PROPERTY_VALUE_MAX] = {};
+    property_get(nanoscraper::kServiceProp, svc, "");
+    const bool alive = !strcmp(svc, "running");
+    // Ours waits for the last service to exit: init ignores a start while it still runs.
+    if (mBgScrapeKick) {
+        if (alive) return;
+        mBgScrapeKick = false;
+        mBgScrapeStartMs = ms;
+        property_set(nanoscraper::kRunProp, mBgScrapeRun.c_str());
+        return;
+    }
+
+    nanoscraper::Progress p;
+    const bool have = nanoscraper::readProgress(&p);
+    if (mBgScrapeRun.empty()) {
+        // A run another home started (or this one before a restart): follow it while it lasts.
+        if (!have || !p.running || !alive || p.run == mBgScrapeEnded) {
+            scraperApplyResults();   // what it left that this manifest lacks
+            if (alive) return;
+            if (have && p.running && p.run != mBgScrapeEnded) {
+                // It died with no home following it (killed for memory while a game ran).
+                mBgScrapeEnded = p.run;
+                {
+                    nanoscraper::QueueLock lock;   // what it left waiting can hold an account
+                    nanoscraper::clearRequests(p.run);
+                    nanoscraper::endDeadRun(p.run);
+                }
+                char msg[200];
+                snprintf(msg, sizeof(msg), trDyn("Scrape stopped: %d with art, %d not found"), p.hits, p.fail);
+                photoShowBanner(msg);
+            } else if (const std::string waiting = nanoscraper::newestWaitingRun();
+                       !waiting.empty() && (!have || scrapeRunSeq(waiting) > scrapeRunSeq(p.run))) {
+                // Its start was lost (the home that queued it exited before the last service did):
+                // start it, once; when it still has not started 10 s on, drop it.
+                if (waiting != mBgScrapeLostRun) {
+                    mBgScrapeLostRun = waiting;
+                    mBgScrapeLostMs = ms;
+                    property_set(nanoscraper::kRunProp, waiting.c_str());
+                } else if (ms - mBgScrapeLostMs > 10000) {
+                    nanoscraper::QueueLock lock;
+                    nanoscraper::clearRequests(waiting);
+                }
+            }
+            return;
+        }
+        mBgScrapeRun = p.run;
+        mBgScrapeOwn = false;
+        mBgScrapeStartMs = ms;
+        mScrapeRunning = true;
+        mScrapeMoveMode = mScrapeCopyMode = false;
+        mScrapeDoneFlag = false;
+        mScrapeError.clear();
+        std::lock_guard<std::mutex> lk(mScrapeMutex);
+        mScrapeStatus.clear();
+    } else if (!have || p.run != mBgScrapeRun) {
+        if (have && scrapeRunSeq(p.run) > scrapeRunSeq(mBgScrapeRun)) {
+            // A newer run started, so ours ended unseen: follow that one now (a scrape started
+            // here meanwhile would clear its queue).
+            mBgScrapeEnded = mBgScrapeRun;
+            mBgScrapeRun.clear();
+            mScrapeRunning = false;
+            mScrapeDoneFlag = true; FrameFlag::wake();
+            mScrapeBusyNote = false;
+            mDisplayDirty = true;
+            scraperBgPoll(true);
+            return;
+        }
+        // Ours has not written its progress yet: give init and the service a few seconds.
+        if (alive || ms - mBgScrapeStartMs < 10000) return;
+        if (mBgScrapeOwn) {
+            nanoscraper::QueueLock lock;   // never picked up; it can hold the user's own account
+            nanoscraper::clearRequests(mBgScrapeRun);
+        }
+        p = nanoscraper::Progress();
+        p.run = mBgScrapeRun;
+        p.error = "The scrape could not be started.";
+    }
+
+    scraperApplyResults();
+    // Its service gone while the progress still says running: it died part-way.
+    const bool died = p.running && !alive && ms - mBgScrapeStartMs > 3000;
+    const bool ended = !p.running || died;
+    {
+        std::lock_guard<std::mutex> lk(mScrapeMutex);
+        mScrapeDone = p.done; mScrapeTotal = p.total; mScrapeHits = p.hits;
+        mScrapeFail = p.fail; mScrapeSkip = p.skip;
+        mScrapeWhat = ended ? std::string() : p.what;
+        mScrapeBps = ended ? 0.0 : p.bps;
+        if (!p.status.empty() && mScrapeStatus != trDyn("Cancelling...")) mScrapeStatus = p.status;
+        if (!p.error.empty()) mScrapeError = scrapeErrorText(p.error);
+        if (died) mScrapeError = trDyn("The scrape stopped before it finished.");
+    }
+    mScrapeWasCancelled = p.cancelled;
+    mDisplayDirty = true;
+    if (!ended) return;
+    if (died) {   // what it left waiting; it can hold the user's own account
+        nanoscraper::QueueLock lock;
+        nanoscraper::clearRequests(mBgScrapeRun);
+        nanoscraper::endDeadRun(mBgScrapeRun);
+    }
+
+    ALOGI("scraper: run %s ended (%d/%d, %d with art%s)", mBgScrapeRun.c_str(), p.done, p.total, p.hits,
+          died ? ", service died" : p.cancelled ? ", cancelled" : "");
+    mBgScrapeEnded = mBgScrapeRun;
+    mBgScrapeRun.clear();
+    mScrapeRunning = false;
+    mScrapeDoneFlag = true; FrameFlag::wake();
+    mScrapeBusyNote = false;
+    if (!mScrapeProgActive) {   // carried on in the background: say how it ended
+        char msg[200];
+        if (died) snprintf(msg, sizeof(msg), trDyn("Scrape stopped: %d with art, %d not found"), p.hits, p.fail);
+        else if (p.cancelled) snprintf(msg, sizeof(msg), trDyn("Scrape cancelled: %d with art"), p.hits);
+        else if (p.total == 0) snprintf(msg, sizeof(msg), "%s", p.error.empty() ? trDyn("Scrape finished") : scrapeErrorText(p.error).c_str());
+        else snprintf(msg, sizeof(msg), trDyn("Scrape finished: %d with art, %d not found"), p.hits, p.fail);
+        photoShowBanner(msg);
+    }
+}
+
+// A manifest that does not say how much of the service's results it holds (rewritten by the PC
+// Boxart Tool, restored from a backup, or never saved) is taken to hold all of them: applying a
+// whole run again would undo the user's changes since.
+void NanoMenu::scraperJournalAtEnd() {
+    nanoscraper::Progress p;
+    struct stat st;
+    if (!nanoscraper::readProgress(&p) || stat(nanoscraper::kResultsPath, &st) != 0) return;
+    mScrapeJournalRun = p.run;
+    mScrapeJournalOffset = st.st_size;
+}
+
+// The lines of the service's results file this home has not applied, as finished entries for
+// scraperDrainResults to merge. A run this home did not start may follow a manifest the other home
+// saved, so that is read first.
+void NanoMenu::scraperApplyResults() {
+    if (!mScrapeIndexLoaded) return;   // loading it later picks up from what it holds
+    nanoscraper::Progress p;
+    if (!nanoscraper::readProgress(&p)) return;
+    if (p.run != mScrapeJournalRun) {
+        if (scrapeRunSeq(p.run) < scrapeRunSeq(mScrapeJournalRun)) return;   // already in, or superseded
+        if (!(mBgScrapeOwn && p.run == mBgScrapeRun)) scraperReloadFromDisk();
+        if (p.run != mScrapeJournalRun) {   // the manifest on disk does not hold any of it either
+            mScrapeJournalRun = p.run;
+            mScrapeJournalOffset = 0;
+        }
+    }
+    int fd = open(nanoscraper::kResultsPath, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return;
+    struct stat st;
+    if (fstat(fd, &st) != 0 || st.st_size <= mScrapeJournalOffset) { close(fd); return; }
+    // A few MB per call at most; the rest follows on the next.
+    const size_t want = (size_t)std::min<long long>(st.st_size - mScrapeJournalOffset, 4LL * 1024 * 1024);
+    std::string buf(want, '\0');
+    const ssize_t n = pread(fd, &buf[0], want, mScrapeJournalOffset);
+    close(fd);
+    if (n <= 0) return;
+    buf.resize(n);
+    const size_t end = buf.rfind('\n');
+    if (end == std::string::npos) return;   // a line still being written
+    std::vector<std::pair<std::string, ScrapeEntry>> got;
+    for (size_t pos = 0; pos <= end;) {
+        const size_t nl = buf.find('\n', pos);
+        nanoscraper::Result r;
+        if (nanoscraper::parseResultLine(buf.substr(pos, nl - pos), &r)) {
+            ScrapeEntry e;
+            e.box = r.box; e.fan = r.fan; e.title = r.title; e.scraper = r.scraper;
+            e.synopsis = r.synopsis; e.genre = r.genre; e.players = r.players; e.rating = r.rating;
+            e.releaseDate = r.releaseDate; e.developer = r.developer; e.publisher = r.publisher;
+            e.when = r.when;
+            e.extrasOnly = r.extrasOnly; e.extrasTried = r.extrasTried; e.extrasMissing = r.extrasMissing;
+            e.extrasWritten = std::move(r.extrasWritten);
+            e.artKept = r.kept;
+            e.metaForce = r.force;
+            got.emplace_back(r.rom, std::move(e));
+        }
+        pos = nl + 1;
+    }
+    mScrapeJournalOffset += (long long)end + 1;
+    std::lock_guard<std::mutex> lk(mScrapeMutex);
+    for (auto& g : got) mScrapePending.push_back(std::move(g));
+}
+
+// ---------------------------------------------------------------------------
+// Progress / result modal. Centered panel over a dim backdrop. While running it
+// shows the live count + current game; when done a summary. Dismissed by the
+// input layer (B / enter) which clears mScrapeProgActive.
+// ---------------------------------------------------------------------------
+void NanoMenu::renderScrapeProgress() {
+    if (!mScrapeProgActive) return;
+    const float W = (float)mWidth, H = (float)mHeight;
+    float sf = fminf(W / 1080.0f, H / 720.0f); if (sf < 0.5f) sf = 0.5f;
+
+    int done, total, hits, fail, skip; bool running; std::string status, err, what; double bps;
+    {
+        std::lock_guard<std::mutex> lk(mScrapeMutex);
+        done = mScrapeDone; total = mScrapeTotal; hits = mScrapeHits; fail = mScrapeFail; skip = mScrapeSkip;
+        running = mScrapeRunning; status = mScrapeStatus; err = mScrapeError;
+        what = mScrapeWhat; bps = mScrapeBps;
+    }
+
+    // Theme the modal chrome to match the active home instead of always showing the XMB-style
+    // dark panel (user 2026-07-30): XMB = dark panel + blue accent; DSi = light message box +
+    // favColour blue; Minima = flat dark card + the Colour accent. Layout is shared.
+    float panR, panG, panB, panA;   // panel fill
+    float accR, accG, accB;         // accent (top edge + progress fill + title)
+    float t1R, t1G, t1B;            // primary text
+    float t2R, t2G, t2B;            // secondary text
+    float dimA, rad;                // backdrop dim, panel corner radius (0 = square)
+    if (mNdsTheme) {
+        panR = 0.97f; panG = 0.97f; panB = 0.98f; panA = 1.0f;
+        accR = 0.16f; accG = 0.42f; accB = 0.85f;               // DSi favColour blue
+        t1R = 0.20f; t1G = 0.20f; t1B = 0.22f;
+        t2R = 0.40f; t2G = 0.42f; t2B = 0.48f;
+        dimA = 0.42f; rad = 8.0f * sf;
+    } else if (mMinimaTheme) {
+        minimaAccent(accR, accG, accB);
+        panR = 0.06f; panG = 0.07f; panB = 0.09f; panA = 0.97f;
+        t1R = 1.0f; t1G = 1.0f; t1B = 1.0f;
+        t2R = 0.72f; t2G = 0.75f; t2B = 0.80f;
+        dimA = 0.55f; rad = 10.0f * sf;
+    } else {
+        panR = 0.07f; panG = 0.08f; panB = 0.10f; panA = 0.94f;
+        accR = 0.47f; accG = 0.78f; accB = 1.0f;
+        t1R = 1.0f; t1G = 1.0f; t1B = 1.0f;
+        t2R = 0.75f; t2G = 0.78f; t2B = 0.82f;
+        dimA = 0.55f; rad = 0.0f;
+    }
+
+    drawQuad(0, 0, W, H, 0.0f, 0.0f, 0.0f, dimA);           // dim backdrop
+    float pw = W * 0.62f, ph = H * 0.30f;
+    float px = (W - pw) * 0.5f, py = (H - ph) * 0.5f;
+    if (rad > 0.0f) {
+        drawRoundedRect(px, py + 3.0f * sf, pw, ph, rad, 0.0f, 0.0f, 0.0f, 0.35f);   // soft shadow
+        drawRoundedRect(px, py, pw, ph, rad, panR, panG, panB, panA);                // panel
+        drawRoundedRect(px, py, pw, 3.0f * sf, rad, accR, accG, accB, 0.95f);        // accent top edge
+    } else {
+        drawQuad(px, py, pw, ph, panR, panG, panB, panA);                            // panel
+        drawQuad(px, py, pw, 3.0f * sf, accR, accG, accB, 0.9f);                     // accent top edge
+    }
+
+    float cx = W * 0.5f;
+    auto centered = [&](const char* s, float y, float scale, float r, float g, float b, float a) {
+        float w = measureText(s, scale);
+        drawText(s, cx - w * 0.5f, y, scale, r, g, b, a);
+    };
+    // Touch: nothing under the modal; its hint line presses the buttons it names.
+    const bool touch = mRenderingPanel == 0;
+    if (touch) mTouch.block({0.0f, 0.0f, W, H});
+    auto hintZones = [&](const std::string& s, float y, float scale, std::initializer_list<uint16_t> codes) {
+        if (touch) touchHintText(s, cx - measureText(s.c_str(), scale) * 0.5f, y, scale, codes);
+    };
+
+    // The same modal fronts a Boxart Folder relocation (files moved instead of games scraped).
+    const bool moving = mScrapeMoveMode, copying = mScrapeCopyMode;
+    const char* title = copying ? trDyn(mScrapeJobTitle.c_str()) : (moving ? trDyn("Boxart Folder") : trDyn("Boxart Scraper"));
+    centered(title, py + ph * 0.18f, 1.7f * sf, accR, accG, accB, 1.0f);   // title in the theme accent
+
+    char line[256];
+    if (!running && mScrapeDoneFlag) {
+        if (!err.empty() && hits == 0) {
+            centered(err.c_str(), py + ph * 0.52f, 1.0f * sf, t1R, t1G, t1B, 1.0f);
+        } else if (copying) {
+            snprintf(line, sizeof(line), trDyn("Done. %d copied, %d already there, %d failed."), hits, skip, fail);
+            centered(line, py + ph * 0.50f, 1.15f * sf, t1R, t1G, t1B, 1.0f);
+        } else if (moving) {
+            snprintf(line, sizeof(line), trDyn("Done. %d files moved, %d failed."), hits, fail);
+            centered(line, py + ph * 0.50f, 1.15f * sf, t1R, t1G, t1B, 1.0f);
+        } else if (mScrapeWasCancelled) {
+            snprintf(line, sizeof(line), trDyn("Cancelled. %d with art, %d not found."), hits, fail);
+            centered(line, py + ph * 0.50f, 1.15f * sf, t1R, t1G, t1B, 1.0f);
+        } else if (skip > 0 && hits == 0 && fail == 0) {
+            centered(trDyn("All games are up to date."), py + ph * 0.50f, 1.15f * sf, t1R, t1G, t1B, 1.0f);
+        } else if (skip > 0) {
+            snprintf(line, sizeof(line), trDyn("Done. %d updated, %d up to date, %d not found."), hits, skip, fail);
+            centered(line, py + ph * 0.50f, 1.15f * sf, t1R, t1G, t1B, 1.0f);
+        } else {
+            snprintf(line, sizeof(line),
+                     hits == 1 ? trDyn("Done. %d game with art, %d not found.")
+                               : trDyn("Done. %d games with art, %d not found."),
+                     hits, fail);
+            centered(line, py + ph * 0.50f, 1.15f * sf, t1R, t1G, t1B, 1.0f);
+        }
+        if (!err.empty() && hits > 0)   // e.g. the service stopped part-way
+            centered(err.c_str(), py + ph * 0.66f, 0.85f * sf, t2R, t2G, t2B, 1.0f);
+        centered(themeButtonText(trDyn("Press Cross or Circle to close")).c_str(), py + ph * 0.82f, 0.95f * sf, t2R, t2G, t2B, 0.95f);
+        hintZones(themeButtonText(trDyn("Press Cross or Circle to close")), py + ph * 0.82f, 0.95f * sf, {BTN_EAST});
+    } else {
+        if (copying) snprintf(line, sizeof(line), trDyn("%d / %d files"), done, total);
+        else if (moving) snprintf(line, sizeof(line), trDyn("%d / %d files moved"), done, total);
+        else snprintf(line, sizeof(line), trDyn("%d / %d   (%d found)"), done, total, hits);
+        centered(line, py + ph * 0.42f, 1.3f * sf, t1R, t1G, t1B, 1.0f);
+        // progress bar (accent fill on a dim track), in the theme accent
+        const float barW = pw * 0.72f, barH = 6.0f * sf;
+        const float barX = cx - barW * 0.5f, barY = py + ph * 0.56f;
+        drawRoundedRect(barX, barY, barW, barH, barH * 0.5f, t2R, t2G, t2B, 0.28f);
+        float frac = (total > 0) ? (float)done / (float)total : 0.0f;
+        if (frac > 0.0f) drawRoundedRect(barX, barY, barW * frac, barH, barH * 0.5f, accR, accG, accB, 1.0f);
+        // current game (clipped), and under it the art downloading and its speed
+        std::string s = status;
+        if (measureText(s.c_str(), 0.95f * sf) > pw * 0.9f) {
+            while (s.size() > 4 && measureText((s + "...").c_str(), 0.95f * sf) > pw * 0.9f) s.pop_back();
+            s += "...";
+        }
+        centered(s.c_str(), py + ph * 0.68f, 0.95f * sf, t2R, t2G, t2B, 1.0f);
+        if (!what.empty() && !moving && !copying) {
+            std::string dl = trDyn(what.c_str());
+            char sp[32] = "";
+            if (bps >= 1024.0 * 1024.0) snprintf(sp, sizeof(sp), "%.1f MB/s", bps / (1024.0 * 1024.0));
+            else if (bps >= 1024.0) snprintf(sp, sizeof(sp), "%.0f KB/s", bps / 1024.0);
+            if (sp[0]) dl += std::string("  ·  ") + sp;
+            centered(dl.c_str(), py + ph * 0.79f, 0.85f * sf, t2R, t2G, t2B, 0.85f);
+        }
+        if (mScrapeBusyNote)
+            centered(trDyn("Clearing boxart has to wait until this scrape finishes."),
+                     py + ph * 0.29f, 0.85f * sf, t2R, t2G, t2B, 1.0f);
+        const char* hint = mBgScrapeRun.empty() ? trDyn("Press Circle to cancel")
+                                                : trDyn("Circle: keep scraping in the background   Square: cancel");
+        centered(themeButtonText(hint).c_str(), py + ph * 0.91f, 0.9f * sf, t2R, t2G, t2B, 0.9f);
+        if (mBgScrapeRun.empty()) hintZones(themeButtonText(hint), py + ph * 0.91f, 0.9f * sf, {BTN_EAST});
+        else                      hintZones(themeButtonText(hint), py + ph * 0.91f, 0.9f * sf, {BTN_EAST, BTN_WEST});
+    }
+}
+
+} // namespace android

@@ -1,0 +1,44 @@
+{
+  "databaseVersion": 14,
+  "revisionNumber": 1,
+  "platform": {
+    "name": "Tangerine Oric",
+    "uniqueId": "oric",
+    "shortname": "oric",
+    "description": null,
+    "acceptedFilenameRegex": "^(?!(?:\\._|\\.).*).*$",
+    "scraperSourceList": [
+      "LIBRETRO:Tangerine Computer Systems - Oric"
+    ],
+    "boxArtAspectRatioId": 2,
+    "useCustomBoxArtAspectRatio": false,
+    "customBoxArtAspectRatio": null,
+    "screenAspectRatioId": 0,
+    "useCustomScreenAspectRatio": false,
+    "customScreenAspectRatio": null,
+    "retroAchievementsConsoleIdList": [],
+    "extra": ""
+  },
+  "playerList": [
+    {
+      "name": "oric - MAME4droid 2024 (Oric-1)",
+      "uniqueId": "oric.m4d2024.oric1",
+      "description": "MAME driver oric1. Supported extensions: tap, wav, zip, 7z.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:tap|wav|zip|7z)$",
+      "amStartArguments": "-n com.seleuco.mame4d2024/com.seleuco.mame4droid.MAME4droid\n -a android.intent.action.VIEW\n -d oric1\n -e cli_params \"-rompath '{file.storagedir};/storage/emulated/0/Android/data/com.seleuco.mame4d2024/files/roms' -autoboot_delay '4' -autoboot_command 'cload\\\"\\\"\\n' -cass '{file.storagepath}'\"\n --activity-clear-task\n --activity-clear-top",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    },
+    {
+      "name": "oric - MAME4droid 2024 (Oric Atmos)",
+      "uniqueId": "oric.m4d2024.oricatmos",
+      "description": "MAME driver orica. Supported extensions: tap, wav, zip, 7z.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:tap|wav|zip|7z)$",
+      "amStartArguments": "-n com.seleuco.mame4d2024/com.seleuco.mame4droid.MAME4droid\n -a android.intent.action.VIEW\n -d orica\n -e cli_params \"-rompath '{file.storagedir};/storage/emulated/0/Android/data/com.seleuco.mame4d2024/files/roms' -autoboot_delay '4' -autoboot_command 'cload\\\"\\\"\\n' -cass '{file.storagepath}'\"\n --activity-clear-task\n --activity-clear-top",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    }
+  ]
+}

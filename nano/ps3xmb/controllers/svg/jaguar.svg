@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 668" width="1000" height="668">
+<g transform="scale(0.96581) translate(17.7 26)">
+<rect x="170" y="0" width="660" height="640" rx="120" ry="120" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<ellipse cx="200" cy="260" rx="190" ry="240" transform="rotate(10 200 260)" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<ellipse cx="800" cy="260" rx="190" ry="240" transform="rotate(-10 800 260)" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<rect id="body" x="170" y="0" width="660" height="640" rx="120" ry="120" fill="#2E2E2E"/>
+<ellipse cx="200" cy="260" rx="190" ry="240" transform="rotate(10 200 260)" fill="#2E2E2E"/>
+<ellipse cx="800" cy="260" rx="190" ry="240" transform="rotate(-10 800 260)" fill="#2E2E2E"/>
+<circle cx="200" cy="230" r="121.6" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon id="dpad" points="167.7,135 232.3,135 232.3,197.7 295,197.7 295,262.3 232.3,262.3 232.3,325 167.7,325 167.7,262.3 105,262.3 105,197.7 167.7,197.7" fill="#EDEDED"/>
+<rect id="btn-pause" x="385" y="66" width="70" height="28" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="btn-option" x="545" y="66" width="70" height="28" rx="14" ry="14" fill="#EDEDED"/>
+<circle id="btn-c" cx="730" cy="300" r="42" fill="#EDEDED"/>
+<circle id="btn-b" cx="825" cy="245" r="42" fill="#EDEDED"/>
+<circle id="btn-a" cx="915" cy="190" r="42" fill="#EDEDED"/>
+<rect id="key-1" x="358" y="181" width="84" height="58" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-2" x="458" y="181" width="84" height="58" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-3" x="558" y="181" width="84" height="58" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-4" x="358" y="273" width="84" height="58" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-5" x="458" y="273" width="84" height="58" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-6" x="558" y="273" width="84" height="58" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-7" x="358" y="365" width="84" height="58" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-8" x="458" y="365" width="84" height="58" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-9" x="558" y="365" width="84" height="58" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-star" x="358" y="457" width="84" height="58" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-0" x="458" y="457" width="84" height="58" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-hash" x="558" y="457" width="84" height="58" rx="14" ry="14" fill="#EDEDED"/>
+<polygon id="dpad-up" points="200,155.9 211.4,174.9 188.6,174.9" fill="#2E2E2E"/>
+<polygon id="dpad-down" points="200,304.1 188.6,285.1 211.4,285.1" fill="#2E2E2E"/>
+<polygon id="dpad-left" points="125.9,230 144.9,218.6 144.9,241.4" fill="#2E2E2E"/>
+<polygon id="dpad-right" points="274.1,230 255.1,241.4 255.1,218.6" fill="#2E2E2E"/>
+</g></svg>

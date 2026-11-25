@@ -1,0 +1,142 @@
+{
+  "title": "PlayStation 2",
+  "subtitle": "ARMSX2 · RG Cube",
+  "badge": "Default mapping",
+  "drawing": "dualshock",
+  "table": true,
+  "rows": [
+    {
+      "anchor": "btn-l2",
+      "console": "L2",
+      "keys": "L2"
+    },
+    {
+      "anchor": "btn-r2",
+      "console": "R2",
+      "keys": "R2"
+    },
+    {
+      "anchor": "btn-l1",
+      "console": "L1",
+      "keys": "L1"
+    },
+    {
+      "anchor": "btn-r1",
+      "console": "R1",
+      "keys": "R1"
+    },
+    {
+      "anchor": "dpad",
+      "console": "D-Pad",
+      "keys": "D-pad"
+    },
+    {
+      "anchor": "btn-select",
+      "console": "Select",
+      "keys": "Select"
+    },
+    {
+      "anchor": "btn-start",
+      "console": "Start",
+      "keys": "Start"
+    },
+    {
+      "anchor": "btn-triangle",
+      "console": "Triangle",
+      "keys": "X"
+    },
+    {
+      "anchor": "btn-circle",
+      "console": "Circle",
+      "keys": "A"
+    },
+    {
+      "anchor": "btn-cross",
+      "console": "Cross",
+      "keys": "B"
+    },
+    {
+      "anchor": "btn-square",
+      "console": "Square",
+      "keys": "Y"
+    },
+    {
+      "anchor": "stick-l",
+      "console": "Left stick",
+      "keys": "Left stick"
+    },
+    {
+      "anchor": "stick-r",
+      "console": "Right stick",
+      "keys": "Right stick"
+    },
+    {
+      "anchor": "btn-l3",
+      "console": "L3",
+      "keys": "L3"
+    },
+    {
+      "anchor": "btn-r3",
+      "console": "R3",
+      "keys": "R3"
+    },
+    {
+      "anchor": "",
+      "console": "Analog",
+      "keys": "—",
+      "dim": true
+    }
+  ],
+  "hotkeys": [
+    {
+      "keys": "Select + L3",
+      "action": "Pause menu"
+    },
+    {
+      "keys": "Anbernic + R1",
+      "action": "Save state"
+    },
+    {
+      "keys": "Anbernic + L1",
+      "action": "Load state"
+    },
+    {
+      "keys": "Anbernic + R2",
+      "action": "Fast forward"
+    },
+    {
+      "keys": "Hold Anbernic for 3 s",
+      "action": "Quit game"
+    },
+    {
+      "keys": "Start + Select",
+      "action": "Works in place of the function button for these"
+    },
+    {
+      "keys": "Anbernic",
+      "action": "Quick Menu"
+    },
+    {
+      "keys": "Anbernic + Start",
+      "action": "Applications"
+    },
+    {
+      "keys": "Anbernic + Select",
+      "action": "Shader on/off"
+    },
+    {
+      "keys": "Anbernic + Volume",
+      "action": "Brightness"
+    },
+    {
+      "keys": "Anbernic + B",
+      "action": "Button map"
+    }
+  ],
+  "footer": [
+    "B Close",
+    "Y Table"
+  ],
+  "pageHint": "L1/R1 Page",
+  "page": 2
+}

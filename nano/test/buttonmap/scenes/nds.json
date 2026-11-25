@@ -1,0 +1,64 @@
+{
+  "title": "Nintendo DS",
+  "subtitle": "WatermelonDS · RG Cube",
+  "badge": "Default mapping",
+  "drawing": "nds",
+  "rows": [
+    {
+      "anchor": "btn-l",
+      "console": "L",
+      "keys": "L1"
+    },
+    {
+      "anchor": "btn-r",
+      "console": "R",
+      "keys": "R1"
+    },
+    {
+      "anchor": "dpad",
+      "console": "D-Pad",
+      "keys": "D-pad / Left stick"
+    },
+    {
+      "anchor": "btn-x",
+      "console": "X",
+      "keys": "X"
+    },
+    {
+      "anchor": "btn-a",
+      "console": "A",
+      "keys": "A"
+    },
+    {
+      "anchor": "btn-b",
+      "console": "B",
+      "keys": "B"
+    },
+    {
+      "anchor": "btn-y",
+      "console": "Y",
+      "keys": "Y"
+    },
+    {
+      "anchor": "btn-start",
+      "console": "Start",
+      "keys": "Start"
+    },
+    {
+      "anchor": "btn-select",
+      "console": "Select",
+      "keys": "Select"
+    }
+  ],
+  "hotkeys": [
+    {
+      "keys": "Home",
+      "action": "Pause menu"
+    }
+  ],
+  "footer": [
+    "B Close",
+    "Y Table"
+  ],
+  "pageHint": "L1/R1 Page"
+}

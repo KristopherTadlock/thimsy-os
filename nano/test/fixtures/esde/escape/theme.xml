@@ -1,0 +1,3 @@
+<theme><include>/etc/passwd.xml</include><include>../../../../../../etc/fstab</include>
+<view name="system"><image name="bg"><path>../../../../../../../data/system/locksettings.db</path></image>
+<text name="t"><fontPath>/data/misc/wifi/WifiConfigStore.xml</fontPath></text></view></theme>

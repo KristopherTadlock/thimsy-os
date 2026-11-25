@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 981" width="1000" height="981">
+<g transform="scale(0.95057) translate(26 26)">
+<rect id="btn-zl" x="110" y="440" width="120" height="70" rx="26" ry="26" fill="#EDEDED" stroke="#2E2E2E" stroke-width="8"/>
+<rect id="btn-zr" x="770" y="440" width="120" height="70" rx="26" ry="26" fill="#EDEDED" stroke="#2E2E2E" stroke-width="8"/>
+<rect id="btn-l" x="0" y="420" width="120" height="90" rx="30" ry="30" fill="#EDEDED" stroke="#2E2E2E" stroke-width="8"/>
+<rect id="btn-r" x="880" y="420" width="120" height="90" rx="30" ry="30" fill="#EDEDED" stroke="#2E2E2E" stroke-width="8"/>
+<rect x="70" y="0" width="860" height="430" rx="40" ry="40" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<rect x="0" y="490" width="1000" height="490" rx="50" ry="50" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<rect id="body" x="70" y="0" width="860" height="430" rx="40" ry="40" fill="#2E2E2E"/>
+<rect x="0" y="490" width="1000" height="490" rx="50" ry="50" fill="#2E2E2E"/>
+<rect id="screen" x="230" y="50" width="540" height="320" rx="8" ry="8" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<rect id="touch" x="300" y="570" width="400" height="300" rx="8" ry="8" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="140" cy="610" r="66" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<circle id="stick-l" cx="140" cy="610" r="43.6" fill="#EDEDED"/>
+<polygon id="dpad" points="119.6,750 160.4,750 160.4,789.6 200,789.6 200,830.4 160.4,830.4 160.4,870 119.6,870 119.6,830.4 80,830.4 80,789.6 119.6,789.6" fill="#EDEDED"/>
+<circle id="btn-x" cx="860" cy="604" r="28" fill="#EDEDED"/>
+<circle id="btn-a" cx="916" cy="660" r="28" fill="#EDEDED"/>
+<circle id="btn-b" cx="860" cy="716" r="28" fill="#EDEDED"/>
+<circle id="btn-y" cx="804" cy="660" r="28" fill="#EDEDED"/>
+<circle id="stick-r" cx="760" cy="570" r="18" fill="#EDEDED"/>
+<rect id="btn-start" x="833" y="884" width="54" height="22" rx="11" ry="11" fill="#EDEDED"/>
+<rect id="btn-select" x="833" y="929" width="54" height="22" rx="11" ry="11" fill="#EDEDED"/>
+<rect id="btn-home" x="468" y="919" width="64" height="26" rx="13" ry="13" fill="#EDEDED"/>
+<circle cx="140" cy="610" r="23.8" fill="none" stroke="#2E2E2E" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon id="dpad-up" points="140,763.2 147.2,775.2 132.8,775.2" fill="#2E2E2E"/>
+<polygon id="dpad-down" points="140,856.8 132.8,844.8 147.2,844.8" fill="#2E2E2E"/>
+<polygon id="dpad-left" points="93.2,810 105.2,802.8 105.2,817.2" fill="#2E2E2E"/>
+<polygon id="dpad-right" points="186.8,810 174.8,817.2 174.8,802.8" fill="#2E2E2E"/>
+</g></svg>

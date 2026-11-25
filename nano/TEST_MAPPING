@@ -1,0 +1,14 @@
+{
+  "presubmit": [
+    { "name": "gammaos_nano_unit_tests", "host": true },
+    { "name": "gammaos_nano_json_fastmath_tests", "host": true },
+    { "name": "gammaos_nano_archive_tests", "host": true },
+    { "name": "gammaos_nano_i18n_check", "host": true },
+    { "name": "nano_bootlogo_golden_test", "host": true },
+    { "name": "gammaos_nano_buttonmap_tests", "host": true },
+    { "name": "nano_buttonmap_golden_test", "host": true }
+  ],
+  "imports": [
+    { "path": "frameworks/base/cmds/gammaos-sharefs" }
+  ]
+}

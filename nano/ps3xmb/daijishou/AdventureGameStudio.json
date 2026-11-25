@@ -1,0 +1,52 @@
+{
+  "databaseVersion": 14,
+  "revisionNumber": 1,
+  "platform": {
+    "name": "Adventure Game Studio",
+    "uniqueId": "ags",
+    "shortname": "ags",
+    "description": "AGS games run in ScummVM: add the game in ScummVM, then start it from a .scummvm file holding its ScummVM ID.",
+    "acceptedFilenameRegex": "^(?!(?:\\._|\\.).*).*$",
+    "scraperSourceList": [],
+    "boxArtAspectRatioId": 2,
+    "useCustomBoxArtAspectRatio": false,
+    "customBoxArtAspectRatio": null,
+    "screenAspectRatioId": 0,
+    "useCustomScreenAspectRatio": false,
+    "customScreenAspectRatio": null,
+    "retroAchievementsConsoleIdList": [],
+    "extra": ""
+  },
+  "playerList": [
+    {
+      "name": "ags - scummvm",
+      "uniqueId": "ags.org.scummvm.scummvm",
+      "description": "Supported extensions: scummvm, svm. Each file holds the game's ID in ScummVM's game list (its target, such as sky).",
+      "acceptedFilenameRegex": "^(.*)\\.(?:scummvm|svm)$",
+      "amStartArguments": "-n org.scummvm.scummvm/org.scummvm.scummvm.SplashActivity\n -a android.intent.action.MAIN\n -c android.intent.category.LAUNCHER\n -d {file.content}",
+      "killPackageProcesses": true,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    },
+    {
+      "name": "ags - scummvm debug build",
+      "uniqueId": "ags.org.scummvm.scummvm.debug",
+      "description": "Supported extensions: scummvm, svm. Each file holds the game's ID in ScummVM's game list (its target, such as sky).",
+      "acceptedFilenameRegex": "^(.*)\\.(?:scummvm|svm)$",
+      "amStartArguments": "-n org.scummvm.scummvm.debug/org.scummvm.scummvm.SplashActivity\n -a android.intent.action.MAIN\n -c android.intent.category.LAUNCHER\n -d {file.content}",
+      "killPackageProcesses": true,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    },
+    {
+      "name": "ags - RetroArch 64 - scummvm",
+      "uniqueId": "ags.ra64.scummvm",
+      "description": "Supported extensions: sh, svm, scummvm.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:sh|svm|scummvm)$",
+      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO scummvm\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
+      "killPackageProcesses": true,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    }
+  ]
+}

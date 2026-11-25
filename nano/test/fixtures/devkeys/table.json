@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "default": {
+    "function": [
+      {"label": "Anbernic", "linux": 68, "android": "F10", "gamepad_only": true},
+      {"label": "Mode", "linux": 316, "android": "BUTTON_MODE"},
+      {"label": "Home", "linux": 172, "android": "HOME"}
+    ],
+    "back": [{"label": "Back", "linux": 158, "android": "BACK"}]
+  },
+  "devices": [
+    {
+      "id": "cube",
+      "name": "Cube",
+      "match": [{"ro.product.vendor.model": "RGCUBE"}, {"ro.product.odm.model": "RGCUBE"}],
+      "function": [
+        {"label": "Anbernic", "linux": 68, "android": "F10", "gamepad_only": true},
+        {"label": "Mode", "linux": 316, "android": "BUTTON_MODE"}
+      ]
+    },
+    {
+      "id": "modeonly",
+      "match": {"ro.gammaos.device": ["dsa", "dsb"]},
+      "function": [{"label": "Mode", "linux": 316, "android": "BUTTON_MODE"}]
+    },
+    {
+      "id": "backonly",
+      "match": [{"ro.board.platform": "ums512", "ro.product.vendor.manufacturer": "Anbernic"}],
+      "function": [],
+      "fallback": "back"
+    },
+    {
+      "id": "prefix",
+      "match": {"ro.product.vendor.model": "PFX*"},
+      "function": [{"label": "Menu", "android": "MENU"}, {"label": "bad"}, {"linux": 99999}],
+      "back": []
+    },
+    {
+      "id": "noback-shared",
+      "match": {"ro.product.vendor.model": "NOBACK"},
+      "back": [],
+      "fallback": "back"
+    },
+    {
+      "id": "menu-is-back",
+      "match": {"ro.gammaos.device": "menuback"},
+      "function": [],
+      "back": [{"label": "Menu", "linux": 316, "android": "BUTTON_MODE"}],
+      "fallback": "back"
+    },
+    {
+      "id": "spaced",
+      "match": {"ro.product.vendor.model": ["RG 406H", "RG 476H"]},
+      "function": [{"label": "Anbernic", "linux": 68, "android": "F10", "gamepad_only": true}]
+    },
+    {
+      "id": "remapped",
+      "match": {"ro.gammaos.device": "airmini"},
+      "function": [
+        {"label": "raw", "prompt": "≡", "linux": 753},
+        {"label": "remap", "linux": 204, "android": "NOTIFICATION"},
+        {"label": "remap, other layout", "linux": 204, "android": "ALL_APPS"}
+      ],
+      "back": [{"label": "raw", "linux": 754}, {"label": "remap", "linux": 158, "android": "BACK"}]
+    },
+    {
+      "id": "prompted",
+      "match": {"ro.product.vendor.model": "RG556"},
+      "function": [{"label": "Anbernic / Home", "prompt": "Anbernic", "linux": 68, "android": "F10", "gamepad_only": true}]
+    },
+    {
+      "id": "unnamed",
+      "match": {"ro.product.vendor.model": "UNNAMED"},
+      "function": [{"linux": 316, "android": "BUTTON_MODE"}, {"label": "Home", "prompt": 7, "linux": 172, "android": "HOME"}]
+    },
+    {
+      "id": "unnamed-back",
+      "match": {"ro.product.vendor.model": "UNNAMEDBACK"},
+      "function": [{"label": "F10", "linux": 68, "android": "F10"}],
+      "back": [{"linux": 158, "android": "BACK"}],
+      "fallback": "back"
+    },
+    {
+      "id": "oddlabels",
+      "match": {"ro.product.vendor.model": "ODDLABELS"},
+      "function": [
+        {"label": null, "linux": 68, "android": "F10"},
+        {"label": 5, "linux": 316, "android": "BUTTON_MODE"},
+        {"label": "Select", "prompt": null, "linux": 314, "android": "BUTTON_SELECT"}
+      ]
+    },
+    {"id": "nomatch-empty", "match": {}},
+    {"id": "nomatch-star", "match": {"ro.product.vendor.model": "*"}},
+    {"id": "late-cube", "match": {"ro.product.vendor.model": "RGCUBE"}, "function": []}
+  ]
+}

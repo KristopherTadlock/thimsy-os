@@ -1,0 +1,62 @@
+{
+  "databaseVersion": 14,
+  "revisionNumber": 1,
+  "platform": {
+    "name": "Nintendo 64DD",
+    "uniqueId": "n64dd",
+    "shortname": "n64dd",
+    "description": "Needs the 64DD IPL (64DD_IPL.bin), which Install Your Own BIOS Files puts where each emulator reads it.",
+    "acceptedFilenameRegex": "^(?!(?:\\._|\\.).*).*$",
+    "scraperSourceList": [],
+    "boxArtAspectRatioId": 2,
+    "useCustomBoxArtAspectRatio": false,
+    "customBoxArtAspectRatio": null,
+    "screenAspectRatioId": 0,
+    "useCustomScreenAspectRatio": false,
+    "customScreenAspectRatio": null,
+    "retroAchievementsConsoleIdList": [],
+    "extra": ""
+  },
+  "playerList": [
+    {
+      "name": "n64dd - RetroArch 64 - mupen64plus_next_gles3",
+      "uniqueId": "n64dd.ra64.mupen64plus_next_gles3",
+      "description": "Supported extensions: n64, v64, z64, ndd, bin, u1.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:n64|v64|z64|ndd|bin|u1)$",
+      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO mupen64plus_next_gles3\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
+      "killPackageProcesses": true,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    },
+    {
+      "name": "n64dd - RetroArch 64 - parallel_n64",
+      "uniqueId": "n64dd.ra64.parallel_n64",
+      "description": "Supported extensions: n64, v64, z64, bin, u1, ndd.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:n64|v64|z64|bin|u1|ndd)$",
+      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO parallel_n64\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
+      "killPackageProcesses": true,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    },
+    {
+      "name": "n64dd - M64Plus FZ",
+      "uniqueId": "n64dd.org.mupen64plusae.v3.fzurita",
+      "description": "Supported extensions: bin, d64, n64, ndd, u1, v64, z64, 7z, zip.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:bin|d64|n64|ndd|u1|v64|z64|7z|zip)$",
+      "amStartArguments": "-n org.mupen64plusae.v3.fzurita/paulscode.android.mupen64plusae.SplashActivity\n -a android.intent.action.VIEW\n -d {file.uri}",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    },
+    {
+      "name": "n64dd - Mupen64Plus AE",
+      "uniqueId": "n64dd.org.mupen64plusae.v3.alpha",
+      "description": "Supported extensions: bin, d64, n64, ndd, u1, v64, z64, 7z, zip.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:bin|d64|n64|ndd|u1|v64|z64|7z|zip)$",
+      "amStartArguments": "-n org.mupen64plusae.v3.alpha/paulscode.android.mupen64plusae.SplashActivity\n -a android.intent.action.VIEW\n -d {file.uri}",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    }
+  ]
+}

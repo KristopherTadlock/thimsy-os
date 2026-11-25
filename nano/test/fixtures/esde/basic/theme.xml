@@ -1,0 +1,17 @@
+<theme>
+    <variables>
+        <accent>ff8800</accent>
+        <logo>./logos/${system.theme}.svg</logo>
+    </variables>
+    <include>./sub/colors.xml</include>
+    <view name="system">
+        <image name="logo"><path>${logo}</path><pos>0.5 0.25</pos></image>
+        <text name="title"><text>${title}</text><color>${accent}</color><fontSize>0.05</fontSize></text>
+    </view>
+    <variant name="alt">
+        <view name="system"><text name="title"><text>Alt ${title}</text></text></view>
+    </variant>
+    <aspectRatio name="4:3">
+        <view name="system"><image name="logo"><pos>0.5 0.3</pos></image></view>
+    </aspectRatio>
+</theme>

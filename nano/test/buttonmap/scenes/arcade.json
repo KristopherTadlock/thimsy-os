@@ -1,0 +1,68 @@
+{
+  "title": "Arcade",
+  "subtitle": "RetroArch MAME · RG Cube",
+  "badge": "From your RetroArch settings · Per-game layout",
+  "drawing": "arcade6",
+  "rows": [
+    {
+      "anchor": "stick-l",
+      "console": "Stick",
+      "keys": "D-pad / Left stick"
+    },
+    {
+      "anchor": "btn-1",
+      "console": "1",
+      "keys": "B"
+    },
+    {
+      "anchor": "btn-2",
+      "console": "2",
+      "keys": "A"
+    },
+    {
+      "anchor": "btn-3",
+      "console": "3",
+      "keys": "Y"
+    },
+    {
+      "anchor": "btn-4",
+      "console": "4",
+      "keys": "X"
+    },
+    {
+      "anchor": "btn-5",
+      "console": "5",
+      "keys": "L1"
+    },
+    {
+      "anchor": "btn-6",
+      "console": "6",
+      "keys": "R1"
+    },
+    {
+      "anchor": "btn-coin",
+      "console": "Coin",
+      "keys": "Select"
+    },
+    {
+      "anchor": "btn-start",
+      "console": "Start",
+      "keys": "Start"
+    },
+    {
+      "anchor": "",
+      "console": "Button 7",
+      "keys": "L3"
+    },
+    {
+      "anchor": "",
+      "console": "Button 8",
+      "keys": "R3"
+    }
+  ],
+  "footer": [
+    "B Close",
+    "Y Table"
+  ],
+  "pageHint": "L1/R1 Page"
+}

@@ -1,0 +1,115 @@
+{
+  "title": "WonderSwan",
+  "subtitle": "RetroArch Beetle WonderSwan · RG Cube",
+  "badge": "From your RetroArch settings · Pad profile: retrogame_joypad.cfg",
+  "drawing": "wonderswan",
+  "rows": [
+    {
+      "anchor": "btn-y1",
+      "console": "Y1",
+      "keys": "R2"
+    },
+    {
+      "anchor": "btn-y2",
+      "console": "Y2",
+      "keys": "R1"
+    },
+    {
+      "anchor": "btn-y3",
+      "console": "Y3",
+      "keys": "L2"
+    },
+    {
+      "anchor": "btn-y4",
+      "console": "Y4",
+      "keys": "L1"
+    },
+    {
+      "anchor": "btn-x1",
+      "console": "X1",
+      "keys": "D-pad Up / Left stick Up"
+    },
+    {
+      "anchor": "btn-x2",
+      "console": "X2",
+      "keys": "D-pad Right / Left stick Right"
+    },
+    {
+      "anchor": "btn-x3",
+      "console": "X3",
+      "keys": "D-pad Down / Left stick Down"
+    },
+    {
+      "anchor": "btn-x4",
+      "console": "X4",
+      "keys": "D-pad Left / Left stick Left"
+    },
+    {
+      "anchor": "btn-b",
+      "console": "B",
+      "keys": "B"
+    },
+    {
+      "anchor": "btn-a",
+      "console": "A",
+      "keys": "A"
+    },
+    {
+      "anchor": "btn-start",
+      "console": "Start",
+      "keys": "Start"
+    },
+    {
+      "anchor": "",
+      "console": "Rotate",
+      "keys": "Select"
+    }
+  ],
+  "hotkeys": [
+    {
+      "keys": "Anbernic + R1",
+      "action": "Save state"
+    },
+    {
+      "keys": "Anbernic + L1",
+      "action": "Load state"
+    },
+    {
+      "keys": "Hold Anbernic for 3 s",
+      "action": "Quit game"
+    },
+    {
+      "keys": "Anbernic",
+      "action": "Quick Menu"
+    },
+    {
+      "keys": "Anbernic + B",
+      "action": "Button map"
+    },
+    {
+      "keys": "Select + R2",
+      "action": "Save state"
+    },
+    {
+      "keys": "Select + L2",
+      "action": "Load state"
+    },
+    {
+      "keys": "Select + R1",
+      "action": "Fast forward"
+    },
+    {
+      "keys": "Select + A",
+      "action": "Rewind"
+    },
+    {
+      "keys": "L3 + R3",
+      "action": "RetroArch menu"
+    }
+  ],
+  "footer": [
+    "B Close",
+    "Y Table"
+  ],
+  "pageHint": "L1/R1 Page"
+}

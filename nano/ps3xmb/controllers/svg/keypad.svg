@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 658 1000" width="658" height="1000">
+<g transform="scale(0.95057) translate(56 26)">
+<rect id="btn-1" x="-40" y="160" width="90" height="150" rx="26" ry="26" fill="#EDEDED" stroke="#2E2E2E" stroke-width="8"/>
+<rect id="btn-2" x="530" y="160" width="90" height="150" rx="26" ry="26" fill="#EDEDED" stroke="#2E2E2E" stroke-width="8"/>
+<rect id="btn-3" x="-40" y="360" width="90" height="150" rx="26" ry="26" fill="#EDEDED" stroke="#2E2E2E" stroke-width="8"/>
+<rect id="btn-4" x="530" y="360" width="90" height="150" rx="26" ry="26" fill="#EDEDED" stroke="#2E2E2E" stroke-width="8"/>
+<rect x="0" y="0" width="580" height="1000" rx="70" ry="70" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<rect id="body" x="0" y="0" width="580" height="1000" rx="70" ry="70" fill="#2E2E2E"/>
+<circle cx="290" cy="220" r="140" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<circle id="stick-l" cx="290" cy="220" r="92.4" fill="#EDEDED"/>
+<rect id="btn-start" x="115" y="414" width="90" height="32" rx="16" ry="16" fill="#EDEDED"/>
+<rect id="btn-pause" x="245" y="414" width="90" height="32" rx="16" ry="16" fill="#EDEDED"/>
+<rect id="btn-reset" x="375" y="414" width="90" height="32" rx="16" ry="16" fill="#EDEDED"/>
+<rect id="key-1" x="80" y="524" width="120" height="72" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-2" x="230" y="524" width="120" height="72" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-3" x="380" y="524" width="120" height="72" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-4" x="80" y="629" width="120" height="72" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-5" x="230" y="629" width="120" height="72" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-6" x="380" y="629" width="120" height="72" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-7" x="80" y="734" width="120" height="72" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-8" x="230" y="734" width="120" height="72" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-9" x="380" y="734" width="120" height="72" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-star" x="80" y="839" width="120" height="72" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-0" x="230" y="839" width="120" height="72" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-hash" x="380" y="839" width="120" height="72" rx="14" ry="14" fill="#EDEDED"/>
+<circle cx="290" cy="220" r="50.4" fill="none" stroke="#2E2E2E" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</g></svg>

@@ -1,0 +1,34 @@
+{
+  "databaseVersion": 14,
+  "revisionNumber": 1,
+  "platform": {
+    "name": "Entex Adventure Vision",
+    "uniqueId": "advision",
+    "shortname": "advision",
+    "description": null,
+    "acceptedFilenameRegex": "^(?!(?:\\._|\\.).*).*$",
+    "scraperSourceList": [
+      "LIBRETRO:Entex - Adventure Vision"
+    ],
+    "boxArtAspectRatioId": 2,
+    "useCustomBoxArtAspectRatio": false,
+    "customBoxArtAspectRatio": null,
+    "screenAspectRatioId": 0,
+    "useCustomScreenAspectRatio": false,
+    "customScreenAspectRatio": null,
+    "retroAchievementsConsoleIdList": [],
+    "extra": ""
+  },
+  "playerList": [
+    {
+      "name": "advision - MAME4droid 2024",
+      "uniqueId": "advision.m4d2024",
+      "description": "MAME driver advision. Supported extensions: bin, zip, 7z.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:bin|zip|7z)$",
+      "amStartArguments": "-n com.seleuco.mame4d2024/com.seleuco.mame4droid.MAME4droid\n -a android.intent.action.VIEW\n -d advision\n -e cli_params \"-rompath '{file.storagedir};/storage/emulated/0/Android/data/com.seleuco.mame4d2024/files/roms' -cart '{file.storagepath}'\"\n --activity-clear-task\n --activity-clear-top",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    }
+  ]
+}

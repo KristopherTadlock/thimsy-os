@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 585" width="1000" height="585">
+<g transform="scale(0.97799) translate(11.3 -4)">
+<rect id="btn-l" x="110" y="20" width="220" height="80" rx="40" ry="40" fill="#EDEDED" stroke="#2E2E2E" stroke-width="8"/>
+<rect id="btn-r" x="670" y="20" width="220" height="80" rx="40" ry="40" fill="#EDEDED" stroke="#2E2E2E" stroke-width="8"/>
+<rect x="220" y="80" width="560" height="230" rx="80" ry="80" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<ellipse cx="195" cy="330" rx="175" ry="250" transform="rotate(14 195 330)" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<ellipse cx="805" cy="330" rx="175" ry="250" transform="rotate(-14 805 330)" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<rect id="body" x="220" y="80" width="560" height="230" rx="80" ry="80" fill="#2E2E2E"/>
+<ellipse cx="195" cy="330" rx="175" ry="250" transform="rotate(14 195 330)" fill="#2E2E2E"/>
+<ellipse cx="805" cy="330" rx="175" ry="250" transform="rotate(-14 805 330)" fill="#2E2E2E"/>
+<circle cx="200" cy="230" r="96" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon id="dpad" points="174.5,155 225.5,155 225.5,204.5 275,204.5 275,255.5 225.5,255.5 225.5,305 174.5,305 174.5,255.5 125,255.5 125,204.5 174.5,204.5" fill="#EDEDED"/>
+<circle cx="800" cy="230" r="96" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon id="rpad" points="774.5,155 825.5,155 825.5,204.5 875,204.5 875,255.5 825.5,255.5 825.5,305 774.5,305 774.5,255.5 725,255.5 725,204.5 774.5,204.5" fill="#EDEDED"/>
+<circle id="btn-select" cx="150" cy="430" r="30" fill="#EDEDED"/>
+<circle id="btn-start" cx="240" cy="450" r="30" fill="#EDEDED"/>
+<circle id="btn-b" cx="760" cy="450" r="36" fill="#EDEDED"/>
+<circle id="btn-a" cx="850" cy="430" r="36" fill="#EDEDED"/>
+<polygon id="dpad-up" points="200,171.5 209,186.5 191,186.5" fill="#2E2E2E"/>
+<polygon id="dpad-down" points="200,288.5 191,273.5 209,273.5" fill="#2E2E2E"/>
+<polygon id="dpad-left" points="141.5,230 156.5,221 156.5,239" fill="#2E2E2E"/>
+<polygon id="dpad-right" points="258.5,230 243.5,239 243.5,221" fill="#2E2E2E"/>
+<polygon id="rpad-up" points="800,171.5 809,186.5 791,186.5" fill="#2E2E2E"/>
+<polygon id="rpad-down" points="800,288.5 791,273.5 809,273.5" fill="#2E2E2E"/>
+<polygon id="rpad-left" points="741.5,230 756.5,221 756.5,239" fill="#2E2E2E"/>
+<polygon id="rpad-right" points="858.5,230 843.5,239 843.5,221" fill="#2E2E2E"/>
+</g></svg>

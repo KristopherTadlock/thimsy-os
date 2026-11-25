@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <int name="_KeyMapVer" value="2" />
+    <int name="_KeyMapId" value="2" />
+    <int name="k_4" value="100" />
+    <int name="p2_k_4" value="97" />
+    <int name="p2_k_5" value="96" />
+    <int name="p2_k_6" value="96" />
+    <int name="p2_k_8" value="-1" />
+</map>

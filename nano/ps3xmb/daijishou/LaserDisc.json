@@ -1,0 +1,32 @@
+{
+  "databaseVersion": 14,
+  "revisionNumber": 1,
+  "platform": {
+    "name": "LaserDisc",
+    "uniqueId": "laserdisc",
+    "shortname": "laserdisc",
+    "description": "DirkSimple plays Dragon's Lair, Space Ace and Cliff Hanger from .ogv videos.",
+    "acceptedFilenameRegex": "^(?!(?:\\._|\\.).*).*$",
+    "scraperSourceList": [],
+    "boxArtAspectRatioId": 2,
+    "useCustomBoxArtAspectRatio": false,
+    "customBoxArtAspectRatio": null,
+    "screenAspectRatioId": 0,
+    "useCustomScreenAspectRatio": false,
+    "customScreenAspectRatio": null,
+    "retroAchievementsConsoleIdList": [],
+    "extra": ""
+  },
+  "playerList": [
+    {
+      "name": "laserdisc - RetroArch 64 - dirksimple",
+      "uniqueId": "laserdisc.ra64.dirksimple",
+      "description": "Supported extensions: ogv, dirksimple.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:ogv|dirksimple)$",
+      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO dirksimple\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
+      "killPackageProcesses": true,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 644" width="1000" height="644">
+<g transform="scale(1.06459) translate(-30.3 16)">
+<rect id="btn-l" x="110" y="0" width="280" height="100" rx="50" ry="50" fill="#EDEDED" stroke="#2E2E2E" stroke-width="8"/>
+<rect id="btn-r" x="610" y="0" width="280" height="100" rx="50" ry="50" fill="#EDEDED" stroke="#2E2E2E" stroke-width="8"/>
+<rect id="btn-z" x="660" y="50" width="190" height="64" rx="32" ry="32" fill="#EDEDED" stroke="#2E2E2E" stroke-width="8"/>
+<rect x="190" y="80" width="620" height="400" rx="130" ry="130" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<ellipse cx="250" cy="330" rx="185" ry="240" transform="rotate(22 250 330)" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<ellipse cx="750" cy="330" rx="185" ry="240" transform="rotate(-22 750 330)" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<rect id="body" x="190" y="80" width="620" height="400" rx="130" ry="130" fill="#2E2E2E"/>
+<ellipse cx="250" cy="330" rx="185" ry="240" transform="rotate(22 250 330)" fill="#2E2E2E"/>
+<ellipse cx="750" cy="330" rx="185" ry="240" transform="rotate(-22 750 330)" fill="#2E2E2E"/>
+<circle cx="245" cy="235" r="92" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<circle id="stick-l" cx="245" cy="235" r="60.7" fill="#EDEDED"/>
+<polygon id="dpad" points="352.9,355 397.1,355 397.1,397.9 440,397.9 440,442.1 397.1,442.1 397.1,485 352.9,485 352.9,442.1 310,442.1 310,397.9 352.9,397.9" fill="#EDEDED"/>
+<circle id="btn-start" cx="500" cy="250" r="26" fill="#EDEDED"/>
+<circle cx="630" cy="420" r="70" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<circle id="stick-r" cx="630" cy="420" r="46.2" fill="#EDEDED"/>
+<circle id="btn-a" cx="735" cy="260" r="64" fill="#EDEDED"/>
+<circle id="btn-b" cx="635" cy="320" r="36" fill="#EDEDED"/>
+<ellipse id="btn-x" cx="840" cy="240" rx="30" ry="62" transform="rotate(10 840 240)" fill="#EDEDED"/>
+<ellipse id="btn-y" cx="722" cy="165" rx="60" ry="30" transform="rotate(-8 722 165)" fill="#EDEDED"/>
+<circle cx="245" cy="235" r="33.1" fill="none" stroke="#2E2E2E" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon id="dpad-up" points="375,369.3 382.8,382.3 367.2,382.3" fill="#2E2E2E"/>
+<polygon id="dpad-down" points="375,470.7 367.2,457.7 382.8,457.7" fill="#2E2E2E"/>
+<polygon id="dpad-left" points="324.3,420 337.3,412.2 337.3,427.8" fill="#2E2E2E"/>
+<polygon id="dpad-right" points="425.7,420 412.7,427.8 412.7,412.2" fill="#2E2E2E"/>
+<circle cx="630" cy="420" r="25.2" fill="none" stroke="#2E2E2E" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</g></svg>

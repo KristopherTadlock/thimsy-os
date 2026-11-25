@@ -1,0 +1,44 @@
+{
+  "title": "סופר נינטנדו",
+  "subtitle": "RetroArch Snes9x · RG Cube",
+  "badge": "ממופה לפי ההגדרות שלך",
+  "rtl": true,
+  "drawing": "snes",
+  "table": true,
+  "consoleHeader": "כפתור בקונסולה",
+  "padHeader": "הבקר שלך",
+  "controlsTitle": "פקדים",
+  "hotkeysTitle": "קיצורים",
+  "rows": [
+    {
+      "anchor": "btn-a",
+      "console": "A",
+      "keys": "A"
+    },
+    {
+      "anchor": "btn-b",
+      "console": "B",
+      "keys": "B"
+    },
+    {
+      "anchor": "dpad",
+      "console": "לחצני כיוון",
+      "keys": "לחצני כיוון / סטיק שמאלי"
+    },
+    {
+      "anchor": "btn-start",
+      "console": "Start",
+      "keys": "Start"
+    }
+  ],
+  "hotkeys": [
+    {
+      "keys": "Select + R2",
+      "action": "שמירת מצב"
+    }
+  ],
+  "footer": [
+    "B סגירה"
+  ],
+  "pageHint": "L1/R1 עמוד"
+}

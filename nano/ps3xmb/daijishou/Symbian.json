@@ -1,0 +1,32 @@
+{
+  "databaseVersion": 14,
+  "revisionNumber": 1,
+  "platform": {
+    "name": "Symbian",
+    "uniqueId": "symbian",
+    "shortname": "symbian",
+    "description": "EKA2L1 starts installed apps from .json launch files.",
+    "acceptedFilenameRegex": "^(?!(?:\\._|\\.).*).*$",
+    "scraperSourceList": [],
+    "boxArtAspectRatioId": 2,
+    "useCustomBoxArtAspectRatio": false,
+    "customBoxArtAspectRatio": null,
+    "screenAspectRatioId": 0,
+    "useCustomScreenAspectRatio": false,
+    "customScreenAspectRatio": null,
+    "retroAchievementsConsoleIdList": [],
+    "extra": ""
+  },
+  "playerList": [
+    {
+      "name": "symbian - EKA2L1",
+      "uniqueId": "symbian.com.github.eka2l1",
+      "description": "Supported extensions: json.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:json)$",
+      "amStartArguments": "-n com.github.eka2l1/.emu.EmulatorActivity\n --activity-clear-task\n --activity-clear-top\n -a android.intent.action.VIEW\n -d {file.uri}",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    }
+  ]
+}

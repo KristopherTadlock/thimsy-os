@@ -1,0 +1,18 @@
+# The retroarch.cfg RetroArch launches pass, for NanoRaConfig_test.cpp and NanoRetroArchConfigCheck.java
+# (RootWindowContainer's copy of the rule). Tab-separated:
+# persist.gammaos.retroarch.dir	mount points in /proc/self/mounts (space-separated, - = none)	config there (1/0)	expected CONFIGFILE (default = RetroArch's default config)
+-	/storage/emulated /storage/1234-ABCD	1	default
+-	-	0	default
+/storage/1234-ABCD/emulator_config/retroarch	/storage/emulated /mnt/media_rw/1234-ABCD /storage/1234-ABCD	1	/storage/1234-ABCD/emulator_config/retroarch/retroarch.cfg
+/storage/1234-ABCD/emulator_config/retroarch	/storage/emulated /mnt/media_rw/1234-ABCD /storage/1234-ABCD	0	default
+/storage/1234-ABCD/emulator_config/retroarch	/storage/emulated	1	default
+/storage/1234-ABCD/emulator_config/retroarch	/storage/emulated /mnt/media_rw/1234-ABCD	1	default
+/storage/1234-ABCD/emulator_config/retroarch	/storage/emulated /storage/1234-ABCDE /storage/1234-ABC	1	default
+/storage/1234-ABCD/emulator_config/retroarch	/storage/emulated /storage/1234-ABCD/sub	1	default
+/storage/1234-ABCD/emulator_config/retroarch	-	1	default
+/storage/emulated/0/RetroArchSet	/storage/emulated /storage/emulated/0/Android/data	1	/storage/emulated/0/RetroArchSet/retroarch.cfg
+/storage/emulated/0/RetroArchSet	/storage/emulated/0/Android/data	1	default
+/storage/self/primary/RetroArchSet	/storage/emulated	1	/storage/self/primary/RetroArchSet/retroarch.cfg
+/data/media/0/RetroArchSet	-	1	/data/media/0/RetroArchSet/retroarch.cfg
+/data/media/0/RetroArchSet	-	0	default
+relative/retroarch	/storage/emulated	1	default

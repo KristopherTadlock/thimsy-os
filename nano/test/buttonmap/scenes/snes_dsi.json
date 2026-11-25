@@ -1,0 +1,101 @@
+{
+  "title": "SNES",
+  "subtitle": "RetroArch Snes9x · RG Cube",
+  "badge": "From your RetroArch settings",
+  "drawing": "snes",
+  "rows": [
+    {
+      "anchor": "btn-l",
+      "console": "L",
+      "keys": "L1"
+    },
+    {
+      "anchor": "btn-r",
+      "console": "R",
+      "keys": "R1"
+    },
+    {
+      "anchor": "dpad",
+      "console": "D-Pad",
+      "keys": "D-pad / Left stick"
+    },
+    {
+      "anchor": "btn-select",
+      "console": "Select",
+      "keys": "Select"
+    },
+    {
+      "anchor": "btn-start",
+      "console": "Start",
+      "keys": "Start"
+    },
+    {
+      "anchor": "btn-x",
+      "console": "X",
+      "keys": "X"
+    },
+    {
+      "anchor": "btn-a",
+      "console": "A",
+      "keys": "A"
+    },
+    {
+      "anchor": "btn-b",
+      "console": "B",
+      "keys": "B"
+    },
+    {
+      "anchor": "btn-y",
+      "console": "Y",
+      "keys": "Y"
+    }
+  ],
+  "hotkeys": [
+    {
+      "keys": "Select + R2",
+      "action": "Save state"
+    },
+    {
+      "keys": "Select + L2",
+      "action": "Load state"
+    },
+    {
+      "keys": "Select + R1",
+      "action": "Fast forward"
+    },
+    {
+      "keys": "Select + A",
+      "action": "Rewind"
+    },
+    {
+      "keys": "L3 + R3",
+      "action": "RetroArch menu"
+    },
+    {
+      "keys": "Anbernic + R1",
+      "action": "Save state"
+    },
+    {
+      "keys": "Anbernic + L1",
+      "action": "Load state"
+    },
+    {
+      "keys": "Hold Anbernic for 3 s",
+      "action": "Quit game"
+    },
+    {
+      "keys": "Anbernic",
+      "action": "Quick Menu"
+    },
+    {
+      "keys": "Anbernic + B",
+      "action": "Button map"
+    }
+  ],
+  "footer": [
+    "B Close",
+    "Y Table"
+  ],
+  "pageHint": "L1/R1 Page",
+  "palette": "dsi"
+}

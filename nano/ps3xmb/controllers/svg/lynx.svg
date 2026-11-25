@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 458" width="1000" height="458">
+<g transform="scale(0.95057) translate(26 -14)">
+<rect x="0" y="40" width="1000" height="430" rx="130" ry="130" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<rect id="body" x="0" y="40" width="1000" height="430" rx="130" ry="130" fill="#2E2E2E"/>
+<rect id="screen" x="250" y="85" width="500" height="340" rx="14" ry="14" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="125" cy="250" r="96" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon id="dpad" points="99.5,175 150.5,175 150.5,224.5 200,224.5 200,275.5 150.5,275.5 150.5,325 99.5,325 99.5,275.5 50,275.5 50,224.5 99.5,224.5" fill="#EDEDED"/>
+<circle id="btn-b" cx="840" cy="300" r="38" fill="#EDEDED"/>
+<circle id="btn-a" cx="910" cy="210" r="38" fill="#EDEDED"/>
+<rect id="btn-opt1" x="795" y="409" width="50" height="22" rx="11" ry="11" fill="#EDEDED"/>
+<rect id="btn-pause" x="855" y="409" width="50" height="22" rx="11" ry="11" fill="#EDEDED"/>
+<rect id="btn-opt2" x="929" y="355" width="22" height="50" rx="11" ry="11" fill="#EDEDED"/>
+<polygon id="dpad-up" points="125,191.5 134,206.5 116,206.5" fill="#2E2E2E"/>
+<polygon id="dpad-down" points="125,308.5 116,293.5 134,293.5" fill="#2E2E2E"/>
+<polygon id="dpad-left" points="66.5,250 81.5,241 81.5,259" fill="#2E2E2E"/>
+<polygon id="dpad-right" points="183.5,250 168.5,259 168.5,241" fill="#2E2E2E"/>
+</g></svg>

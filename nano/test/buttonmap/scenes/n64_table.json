@@ -1,0 +1,80 @@
+{
+  "title": "Nintendo 64",
+  "subtitle": "M64Plus FZ · RG Cube",
+  "badge": "From your M64Plus settings · Profile: Android Gamepad",
+  "drawing": "n64",
+  "table": true,
+  "rows": [
+    {
+      "anchor": "btn-l",
+      "console": "L",
+      "keys": "L1"
+    },
+    {
+      "anchor": "btn-r",
+      "console": "R",
+      "keys": "R1"
+    },
+    {
+      "anchor": "btn-z",
+      "console": "Z",
+      "keys": "L2 / L3"
+    },
+    {
+      "anchor": "dpad",
+      "console": "D-Pad",
+      "keys": "D-pad"
+    },
+    {
+      "anchor": "stick-l",
+      "console": "Stick",
+      "keys": "Left stick"
+    },
+    {
+      "anchor": "btn-start",
+      "console": "Start",
+      "keys": "Start / R3"
+    },
+    {
+      "anchor": "btn-b",
+      "console": "B",
+      "keys": "Left"
+    },
+    {
+      "anchor": "btn-a",
+      "console": "A",
+      "keys": "Bottom"
+    },
+    {
+      "anchor": "c-up",
+      "console": "C-Up",
+      "keys": "Right stick Up"
+    },
+    {
+      "anchor": "c-right",
+      "console": "C-Right",
+      "keys": "Right stick Right"
+    },
+    {
+      "anchor": "c-down",
+      "console": "C-Down",
+      "keys": "Right stick Down"
+    },
+    {
+      "anchor": "c-left",
+      "console": "C-Left",
+      "keys": "Right stick Left"
+    }
+  ],
+  "hotkeys": [
+    {
+      "keys": "A / X",
+      "action": "M64Plus menu"
+    }
+  ],
+  "footer": [
+    "B Close",
+    "Y Drawing"
+  ],
+  "pageHint": "L1/R1 Page"
+}

@@ -1,0 +1,52 @@
+{
+  "databaseVersion": 14,
+  "revisionNumber": 1,
+  "platform": {
+    "name": "Dragon 32/64",
+    "uniqueId": "dragon32",
+    "shortname": "dragon32",
+    "description": null,
+    "acceptedFilenameRegex": "^(?!(?:\\._|\\.).*).*$",
+    "scraperSourceList": [],
+    "boxArtAspectRatioId": 2,
+    "useCustomBoxArtAspectRatio": false,
+    "customBoxArtAspectRatio": null,
+    "screenAspectRatioId": 0,
+    "useCustomScreenAspectRatio": false,
+    "customScreenAspectRatio": null,
+    "retroAchievementsConsoleIdList": [],
+    "extra": ""
+  },
+  "playerList": [
+    {
+      "name": "dragon32 - MAME4droid 2024 (Dragon 32 Cartridge)",
+      "uniqueId": "dragon32.m4d2024.dragon32cartridge",
+      "description": "MAME driver dragon32. Supported extensions: ccc, rom, bin, zip, 7z.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:ccc|rom|bin|zip|7z)$",
+      "amStartArguments": "-n com.seleuco.mame4d2024/com.seleuco.mame4droid.MAME4droid\n -a android.intent.action.VIEW\n -d dragon32\n -e cli_params \"-rompath '{file.storagedir};/storage/emulated/0/Android/data/com.seleuco.mame4d2024/files/roms' -cart '{file.storagepath}'\"\n --activity-clear-task\n --activity-clear-top",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    },
+    {
+      "name": "dragon32 - MAME4droid 2024 (Dragon 64 Cartridge)",
+      "uniqueId": "dragon32.m4d2024.dragon64cartridge",
+      "description": "MAME driver dragon64. Supported extensions: ccc, rom, bin, zip, 7z.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:ccc|rom|bin|zip|7z)$",
+      "amStartArguments": "-n com.seleuco.mame4d2024/com.seleuco.mame4droid.MAME4droid\n -a android.intent.action.VIEW\n -d dragon64\n -e cli_params \"-rompath '{file.storagedir};/storage/emulated/0/Android/data/com.seleuco.mame4d2024/files/roms' -cart '{file.storagepath}'\"\n --activity-clear-task\n --activity-clear-top",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    },
+    {
+      "name": "dragon32 - MAME4droid 2024 (Tape)",
+      "uniqueId": "dragon32.m4d2024.tape",
+      "description": "MAME driver dragon32. Supported extensions: cas, wav, zip, 7z.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:cas|wav|zip|7z)$",
+      "amStartArguments": "-n com.seleuco.mame4d2024/com.seleuco.mame4droid.MAME4droid\n -a android.intent.action.VIEW\n -d dragon32\n -e cli_params \"-rompath '{file.storagedir};/storage/emulated/0/Android/data/com.seleuco.mame4d2024/files/roms' -autoboot_delay '4' -autoboot_command 'cloadm\\\"\\\"\\n' -cass '{file.storagepath}'\"\n --activity-clear-task\n --activity-clear-top",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    }
+  ]
+}

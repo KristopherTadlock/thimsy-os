@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 487" width="1000" height="487">
+<g transform="scale(0.95057) translate(26 26)">
+<rect x="0" y="0" width="1000" height="460" rx="200" ry="200" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<rect id="body" x="0" y="0" width="1000" height="460" rx="200" ry="200" fill="#2E2E2E"/>
+<circle cx="240" cy="230" r="128" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon id="dpad" points="206,130 274,130 274,196 340,196 340,264 274,264 274,330 206,330 206,264 140,264 140,196 206,196" fill="#EDEDED"/>
+<rect id="btn-start" x="455" y="305" width="90" height="30" rx="15" ry="15" fill="#EDEDED"/>
+<circle id="btn-o" cx="720" cy="270" r="56" fill="#EDEDED"/>
+<circle id="btn-x" cx="850" cy="200" r="56" fill="#EDEDED"/>
+<polygon id="dpad-up" points="240,152 252,172 228,172" fill="#2E2E2E"/>
+<polygon id="dpad-down" points="240,308 228,288 252,288" fill="#2E2E2E"/>
+<polygon id="dpad-left" points="162,230 182,218 182,242" fill="#2E2E2E"/>
+<polygon id="dpad-right" points="318,230 298,242 298,218" fill="#2E2E2E"/>
+<circle cx="720" cy="270" r="24" fill="none" stroke="#2E2E2E" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M830.4 180.4L869.6 219.6M869.6 180.4L830.4 219.6" fill="none" stroke="#2E2E2E" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</g></svg>

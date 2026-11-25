@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 962" width="1000" height="962">
+<g transform="scale(0.95057) translate(26 26)">
+<rect id="btn-l" x="0" y="420" width="190" height="80" rx="30" ry="30" fill="#EDEDED" stroke="#2E2E2E" stroke-width="8"/>
+<rect id="btn-r" x="810" y="420" width="190" height="80" rx="30" ry="30" fill="#EDEDED" stroke="#2E2E2E" stroke-width="8"/>
+<rect x="130" y="0" width="740" height="440" rx="40" ry="40" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<rect x="0" y="480" width="1000" height="480" rx="50" ry="50" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<rect id="body" x="130" y="0" width="740" height="440" rx="40" ry="40" fill="#2E2E2E"/>
+<rect x="0" y="480" width="1000" height="480" rx="50" ry="50" fill="#2E2E2E"/>
+<rect id="screen" x="300" y="60" width="400" height="310" rx="8" ry="8" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<rect id="touch" x="300" y="560" width="400" height="310" rx="8" ry="8" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon id="dpad" points="124.5,575 175.5,575 175.5,624.5 225,624.5 225,675.5 175.5,675.5 175.5,725 124.5,725 124.5,675.5 75,675.5 75,624.5 124.5,624.5" fill="#EDEDED"/>
+<circle id="btn-x" cx="860" cy="592" r="30" fill="#EDEDED"/>
+<circle id="btn-a" cx="918" cy="650" r="30" fill="#EDEDED"/>
+<circle id="btn-b" cx="860" cy="708" r="30" fill="#EDEDED"/>
+<circle id="btn-y" cx="802" cy="650" r="30" fill="#EDEDED"/>
+<circle id="btn-start" cx="860" cy="830" r="17" fill="#EDEDED"/>
+<circle id="btn-select" cx="860" cy="885" r="17" fill="#EDEDED"/>
+<polygon id="dpad-up" points="150,591.5 159,606.5 141,606.5" fill="#2E2E2E"/>
+<polygon id="dpad-down" points="150,708.5 141,693.5 159,693.5" fill="#2E2E2E"/>
+<polygon id="dpad-left" points="91.5,650 106.5,641 106.5,659" fill="#2E2E2E"/>
+<polygon id="dpad-right" points="208.5,650 193.5,659 193.5,641" fill="#2E2E2E"/>
+</g></svg>

@@ -1,0 +1,52 @@
+{
+  "databaseVersion": 14,
+  "revisionNumber": 1,
+  "platform": {
+    "name": "Visual Pinball",
+    "uniqueId": "vpinball",
+    "shortname": "vpinball",
+    "description": null,
+    "acceptedFilenameRegex": "^(?!(?:\\._|\\.).*).*$",
+    "scraperSourceList": [],
+    "boxArtAspectRatioId": 2,
+    "useCustomBoxArtAspectRatio": false,
+    "customBoxArtAspectRatio": null,
+    "screenAspectRatioId": 0,
+    "useCustomScreenAspectRatio": false,
+    "customScreenAspectRatio": null,
+    "retroAchievementsConsoleIdList": [],
+    "extra": ""
+  },
+  "playerList": [
+    {
+      "name": "vpinball - Visual Pinball",
+      "uniqueId": "vpinball.org.vpinball.app.gl",
+      "description": "Supported extensions: vpinball, vpt, vpx.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:vpinball|vpt|vpx)$",
+      "amStartArguments": "-n org.vpinball.app.gl/org.vpinball.app.VPinballActivity\n --activity-clear-task\n --activity-clear-top\n -d {file.uri}",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    },
+    {
+      "name": "vpinball - Visual Pinball (BGFX)",
+      "uniqueId": "vpinball.org.vpinball.vpinball_bgfx",
+      "description": "Supported extensions: vpinball, vpt, vpx.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:vpinball|vpt|vpx)$",
+      "amStartArguments": "-n org.vpinball.vpinball_bgfx/org.vpinball.app.VPinballActivity\n --activity-clear-task\n --activity-clear-top\n -d {file.uri}",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    },
+    {
+      "name": "vpinball - Visual Pinball",
+      "uniqueId": "vpinball.org.vpinball.app",
+      "description": "Supported extensions: vpinball, vpt, vpx.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:vpinball|vpt|vpx)$",
+      "amStartArguments": "-n org.vpinball.app/.VpxLauncherActivity\n --activity-clear-task\n --activity-clear-top\n -d {file.uri}",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    }
+  ]
+}

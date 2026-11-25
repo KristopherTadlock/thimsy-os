@@ -1,0 +1,32 @@
+{
+  "databaseVersion": 14,
+  "revisionNumber": 1,
+  "platform": {
+    "name": "Atari 8-bit",
+    "uniqueId": "atari800",
+    "shortname": "atari800",
+    "description": "Atari 800 / XL / XE. The Atari800 core needs ATARIXL.ROM, ATARIBAS.ROM, ATARIOSA.ROM and ATARIOSB.ROM in RetroArch's system folder.",
+    "acceptedFilenameRegex": "^(?!(?:\\._|\\.).*).*$",
+    "scraperSourceList": [],
+    "boxArtAspectRatioId": 2,
+    "useCustomBoxArtAspectRatio": false,
+    "customBoxArtAspectRatio": null,
+    "screenAspectRatioId": 0,
+    "useCustomScreenAspectRatio": false,
+    "customScreenAspectRatio": null,
+    "retroAchievementsConsoleIdList": [],
+    "extra": ""
+  },
+  "playerList": [
+    {
+      "name": "atari800 - RetroArch 64 - atari800",
+      "uniqueId": "atari800.ra64.atari800",
+      "description": "Supported extensions: xfd, atr, dcm, cas, bin, a52, zip, atx, car, rom, com, xex, m3u.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:xfd|atr|dcm|cas|bin|a52|zip|atx|car|rom|com|xex|m3u)$",
+      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO atari800\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
+      "killPackageProcesses": true,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    }
+  ]
+}

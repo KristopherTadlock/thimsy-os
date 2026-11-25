@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <int name="pad.map.cross" value="97" />
+    <int name="pad.map.circle" value="96" />
+    <int name="pad.map.square" value="97" />
+    <int name="pad.map.l3" value="0" />
+    <int name="game.Ico (USA).pad.map.triangle" value="102" />
+    <string name="pad.lstick.mode">dpad</string>
+    <int name="pad.savestate.keycode" value="107" />
+    <int name="pad.macro.0.keycode" value="0" />
+</map>

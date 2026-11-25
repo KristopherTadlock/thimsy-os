@@ -1,0 +1,85 @@
+{
+  "title": "Browser Controls",
+  "subtitle": "Brave · RG Cube",
+  "consoleHeader": "Action",
+  "greyed": true,
+  "hint": "Browser controls need Controller Enable (Settings > Gamepad Settings)",
+  "rows": [
+    {
+      "console": "Enter",
+      "keys": "A"
+    },
+    {
+      "console": "Back",
+      "keys": "B"
+    },
+    {
+      "console": "Refresh",
+      "keys": "X"
+    },
+    {
+      "console": "Bookmark this page",
+      "keys": "Y"
+    },
+    {
+      "console": "Previous tab",
+      "keys": "L1"
+    },
+    {
+      "console": "Next tab",
+      "keys": "R1"
+    },
+    {
+      "console": "Left click (hold to drag)",
+      "keys": "R2"
+    },
+    {
+      "console": "Right click (hold to drag)",
+      "keys": "L2"
+    },
+    {
+      "console": "Close tab",
+      "keys": "L3"
+    },
+    {
+      "console": "New tab",
+      "keys": "R3"
+    },
+    {
+      "console": "Scroll",
+      "keys": "Left stick"
+    },
+    {
+      "console": "Mouse cursor",
+      "keys": "Right stick"
+    },
+    {
+      "console": "Arrow keys",
+      "keys": "D-pad"
+    },
+    {
+      "console": "Address bar",
+      "keys": "Start"
+    },
+    {
+      "console": "Bookmarks",
+      "keys": "Select"
+    },
+    {
+      "console": "Close tab",
+      "keys": "Select + L1"
+    },
+    {
+      "console": "New tab",
+      "keys": "Select + R1"
+    },
+    {
+      "console": "Cursor mode on/off",
+      "keys": "Select + A"
+    }
+  ],
+  "footer": [
+    "B Close"
+  ],
+  "pageHint": "L1/R1 Page"
+}

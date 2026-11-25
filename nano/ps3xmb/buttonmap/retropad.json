@@ -1,0 +1,942 @@
+{
+  "version": 1,
+  "note": "RetroArch core -> console buttons, per RetroPad id (button_map_overlay_plan.md 3.1, each core's source at the shipped version). Values are anchor ids of the console's drawing (controllers.json), or the console's own name for a control the drawing lacks. RetroPad b/a/y/x are bottom/right/left/top. up/down/left/right go to the drawing's d-pad unless 'dpad' says otherwise (an anchor such as stick-l, or '' for none). lstick/rstick expand to <anchor>:up/down/left/right; l_x+ ... r_y- name one half. 'library' is the core's library_name, the folder RetroArch keeps its overrides, remaps and options in.",
+  "cores": {
+    "sameboy": {
+      "library": "SameBoy",
+      "systems": [
+        "gb",
+        "gbc"
+      ],
+      "map": {
+        "b": "btn-b",
+        "a": "btn-a",
+        "start": "btn-start",
+        "select": "btn-select"
+      }
+    },
+    "DoubleCherryGB": {
+      "library": "DoubleCherryGB",
+      "systems": [
+        "gb",
+        "gbc"
+      ],
+      "map": {
+        "b": "btn-b",
+        "a": "btn-a",
+        "l": "Previous audio mode",
+        "r": "Next audio mode",
+        "start": "btn-start",
+        "select": "btn-select"
+      }
+    },
+    "mgba": {
+      "library": "mGBA",
+      "systems": [
+        "gba",
+        "gb",
+        "gbc"
+      ],
+      "map": {
+        "b": "btn-b",
+        "a": "btn-a",
+        "y": "Turbo B",
+        "x": "Turbo A",
+        "l": "btn-l",
+        "r": "btn-r",
+        "l2": "Turbo L",
+        "r2": "Turbo R",
+        "l3": "Solar sensor -",
+        "r3": "Solar sensor +",
+        "start": "btn-start",
+        "select": "btn-select"
+      },
+      "variants": [
+        {
+          "system": [
+            "gb",
+            "gbc"
+          ],
+          "map": {
+            "l": "",
+            "r": "",
+            "l2": "",
+            "r2": ""
+          }
+        }
+      ]
+    },
+    "gpsp": {
+      "library": "gpSP",
+      "systems": [
+        "gba"
+      ],
+      "map": {
+        "b": "btn-b",
+        "a": "btn-a",
+        "y": "Turbo B",
+        "x": "Turbo A",
+        "l": "btn-l",
+        "r": "btn-r",
+        "r2": "Fast forward",
+        "start": "btn-start",
+        "select": "btn-select"
+      },
+      "notes": {
+        "r2": "With RetroArch's fast-forward override only"
+      }
+    },
+    "mesen": {
+      "library": "Mesen",
+      "systems": [
+        "nes",
+        "fds"
+      ],
+      "map": {
+        "b": "btn-b",
+        "a": "btn-a",
+        "y": "Turbo B",
+        "x": "Turbo A",
+        "l": "(FDS) Next disk",
+        "r": "(FDS) Switch side",
+        "l2": "(VS) Coin 1",
+        "r2": "(VS) Coin 2",
+        "l3": "(Famicom) Microphone",
+        "start": "btn-start",
+        "select": "btn-select"
+      },
+      "optionKeys": [
+        "mesen_shift_buttons_clockwise"
+      ],
+      "variants": [
+        {
+          "option": "mesen_shift_buttons_clockwise",
+          "value": "enabled",
+          "map": {
+            "b": "btn-a",
+            "y": "btn-b",
+            "a": "Turbo A",
+            "x": "Turbo B"
+          },
+          "note": "Buttons shifted clockwise (core option)"
+        }
+      ]
+    },
+    "fceumm": {
+      "library": "FCEUmm",
+      "systems": [
+        "nes",
+        "fds"
+      ],
+      "map": {
+        "b": "btn-b",
+        "a": "btn-a",
+        "y": "Turbo B",
+        "x": "Turbo A",
+        "l": "(FDS) Disk side",
+        "r": "(FDS) Insert/eject",
+        "r2": "(VS) Coin",
+        "l3": "A+B",
+        "r3": "Turbo A+B",
+        "start": "btn-start",
+        "select": "btn-select"
+      },
+      "notes": {
+        "y": "With the core's Turbo Enable option",
+        "x": "With the core's Turbo Enable option"
+      }
+    },
+    "snes9x": {
+      "library": "Snes9x",
+      "systems": [
+        "snes"
+      ],
+      "map": {
+        "b": "btn-b",
+        "a": "btn-a",
+        "y": "btn-y",
+        "x": "btn-x",
+        "l": "btn-l",
+        "r": "btn-r",
+        "start": "btn-start",
+        "select": "btn-select"
+      }
+    },
+    "bsnes": {
+      "library": "bsnes",
+      "systems": [
+        "snes"
+      ],
+      "map": {
+        "b": "btn-b",
+        "a": "btn-a",
+        "y": "btn-y",
+        "x": "btn-x",
+        "l": "btn-l",
+        "r": "btn-r",
+        "start": "btn-start",
+        "select": "btn-select"
+      }
+    },
+    "mupen64plus_next_gles3": {
+      "library": "Mupen64Plus-Next",
+      "systems": [
+        "n64"
+      ],
+      "map": {
+        "b": "btn-a",
+        "y": "btn-b",
+        "a": "C-Right (hold R2)",
+        "x": "C-Up (hold R2)",
+        "l": "btn-l",
+        "r": "btn-r",
+        "l2": "btn-z",
+        "r2": "C-button mode (hold)",
+        "start": "btn-start",
+        "lstick": "stick-l",
+        "r_x+": "c-right",
+        "r_x-": "c-left",
+        "r_y+": "c-down",
+        "r_y-": "c-up"
+      }
+    },
+    "mednafen_vb": {
+      "library": "Beetle VB",
+      "systems": [
+        "virtualboy"
+      ],
+      "map": {
+        "b": "btn-b",
+        "a": "btn-a",
+        "x": "Low battery",
+        "l": "btn-l",
+        "r": "btn-r",
+        "l2": "rpad-up",
+        "r2": "rpad-left",
+        "l3": "rpad-down",
+        "r3": "rpad-right",
+        "start": "btn-start",
+        "select": "btn-select",
+        "r_x+": "rpad-right",
+        "r_x-": "rpad-left",
+        "r_y+": "rpad-down",
+        "r_y-": "rpad-up"
+      }
+    },
+    "genesis_plus_gx": {
+      "library": "Genesis Plus GX",
+      "systems": [
+        "genesis",
+        "mastersystem",
+        "gamegear",
+        "segacd"
+      ],
+      "map": {
+        "b": "btn-b",
+        "a": "btn-c",
+        "y": "btn-a",
+        "x": "btn-y",
+        "l": "btn-x",
+        "r": "btn-z",
+        "start": "btn-start",
+        "select": "btn-mode"
+      },
+      "notes": {
+        "x": "6-button games",
+        "l": "6-button games",
+        "r": "6-button games",
+        "select": "6-button games"
+      },
+      "variants": [
+        {
+          "system": [
+            "mastersystem"
+          ],
+          "map": {
+            "b": "btn-1",
+            "a": "btn-2",
+            "y": "",
+            "x": "",
+            "l": "",
+            "r": "",
+            "select": "",
+            "start": "Pause"
+          }
+        },
+        {
+          "system": [
+            "gamegear"
+          ],
+          "map": {
+            "b": "btn-1",
+            "a": "btn-2",
+            "y": "",
+            "x": "",
+            "l": "",
+            "r": "",
+            "select": ""
+          }
+        },
+        {
+          "device": 769,
+          "map": {
+            "b": "btn-1",
+            "a": "btn-2",
+            "y": "",
+            "x": "",
+            "l": "",
+            "r": "",
+            "select": ""
+          }
+        }
+      ]
+    },
+    "picodrive": {
+      "library": "PicoDrive",
+      "systems": [
+        "sega32x",
+        "genesis",
+        "segacd",
+        "mastersystem"
+      ],
+      "map": {
+        "b": "btn-b",
+        "a": "btn-c",
+        "y": "btn-a",
+        "start": "btn-start"
+      },
+      "optionKeys": [
+        "picodrive_input1"
+      ],
+      "variants": [
+        {
+          "system": [
+            "mastersystem"
+          ],
+          "map": {
+            "b": "btn-1",
+            "a": "btn-2",
+            "y": "",
+            "start": "Pause"
+          }
+        },
+        {
+          "option": "picodrive_input1",
+          "value": "6 button pad",
+          "map": {
+            "x": "btn-y",
+            "l": "btn-x",
+            "r": "btn-z",
+            "select": "btn-mode"
+          }
+        }
+      ]
+    },
+    "yabasanshiro": {
+      "library": "YabaSanshiro",
+      "systems": [
+        "saturn"
+      ],
+      "map": {
+        "b": "btn-a",
+        "a": "btn-b",
+        "y": "btn-x",
+        "x": "btn-y",
+        "l": "btn-c",
+        "r": "btn-z",
+        "l2": "btn-l",
+        "r2": "btn-r",
+        "start": "btn-start"
+      }
+    },
+    "mednafen_saturn": {
+      "library": "Beetle Saturn",
+      "systems": [
+        "saturn",
+        "stv"
+      ],
+      "map": {
+        "b": "btn-a",
+        "a": "btn-b",
+        "y": "btn-x",
+        "x": "btn-y",
+        "l": "btn-z",
+        "r": "btn-c",
+        "l2": "btn-l",
+        "r2": "btn-r",
+        "l3": "(ST-V) Test",
+        "r3": "(ST-V) Service",
+        "start": "btn-start",
+        "select": "(ST-V) Coin"
+      },
+      "variants": [
+        {
+          "system": [
+            "stv"
+          ],
+          "map": {
+            "b": "btn-1",
+            "a": "btn-2",
+            "r": "btn-3",
+            "y": "btn-4",
+            "x": "btn-5",
+            "l": "btn-6",
+            "l2": "",
+            "r2": "",
+            "start": "btn-start",
+            "select": "btn-coin"
+          }
+        }
+      ]
+    },
+    "flycast": {
+      "library": "Flycast",
+      "systems": [
+        "dreamcast",
+        "naomi",
+        "naomi2",
+        "atomiswave"
+      ],
+      "map": {
+        "b": "btn-a",
+        "a": "btn-b",
+        "y": "btn-x",
+        "x": "btn-y",
+        "l2": "btn-l",
+        "r2": "btn-r",
+        "start": "btn-start",
+        "lstick": "stick-l"
+      },
+      "variants": [
+        {
+          "system": [
+            "naomi",
+            "naomi2"
+          ],
+          "map": {
+            "b": "btn-1",
+            "a": "btn-2",
+            "y": "btn-3",
+            "x": "btn-4",
+            "r": "btn-5",
+            "l": "btn-6",
+            "r2": "Button 7",
+            "l2": "Button 8",
+            "start": "btn-start",
+            "select": "btn-coin"
+          }
+        },
+        {
+          "system": [
+            "atomiswave"
+          ],
+          "map": {
+            "b": "btn-1",
+            "a": "btn-2",
+            "y": "btn-3",
+            "x": "btn-4",
+            "r": "btn-5",
+            "l": "",
+            "r2": "",
+            "l2": "",
+            "start": "btn-start",
+            "select": "btn-coin"
+          }
+        }
+      ]
+    },
+    "pcsx_rearmed": {
+      "library": "PCSX-ReARMed",
+      "systems": [
+        "psx"
+      ],
+      "map": {
+        "b": "btn-cross",
+        "a": "btn-circle",
+        "y": "btn-square",
+        "x": "btn-triangle",
+        "l": "btn-l1",
+        "r": "btn-r1",
+        "l2": "btn-l2",
+        "r2": "btn-r2",
+        "start": "btn-start",
+        "select": "btn-select"
+      },
+      "variants": [
+        {
+          "device": 517,
+          "map": {
+            "l3": "btn-l3",
+            "r3": "btn-r3",
+            "lstick": "stick-l",
+            "rstick": "stick-r"
+          },
+          "note": "DualShock"
+        },
+        {
+          "device": 261,
+          "map": {
+            "l3": "btn-l3",
+            "r3": "btn-r3",
+            "lstick": "stick-l",
+            "rstick": "stick-r"
+          },
+          "note": "Analog controller"
+        }
+      ]
+    },
+    "swanstation": {
+      "library": "SwanStation",
+      "systems": [
+        "psx"
+      ],
+      "map": {
+        "b": "btn-cross",
+        "a": "btn-circle",
+        "y": "btn-square",
+        "x": "btn-triangle",
+        "l": "btn-l1",
+        "r": "btn-r1",
+        "l2": "btn-l2",
+        "r2": "btn-r2",
+        "start": "btn-start",
+        "select": "btn-select"
+      },
+      "variants": [
+        {
+          "device": 517,
+          "map": {
+            "l3": "btn-l3",
+            "r3": "btn-r3",
+            "lstick": "stick-l",
+            "rstick": "stick-r"
+          },
+          "note": "DualShock"
+        },
+        {
+          "device": 261,
+          "map": {
+            "l3": "btn-l3",
+            "r3": "btn-r3",
+            "lstick": "stick-l",
+            "rstick": "stick-r"
+          },
+          "note": "Analog controller"
+        }
+      ]
+    },
+    "mednafen_psx_hw": {
+      "library": "Beetle PSX HW",
+      "systems": [
+        "psx"
+      ],
+      "map": {
+        "b": "btn-cross",
+        "a": "btn-circle",
+        "y": "btn-square",
+        "x": "btn-triangle",
+        "l": "btn-l1",
+        "r": "btn-r1",
+        "l2": "btn-l2",
+        "r2": "btn-r2",
+        "start": "btn-start",
+        "select": "btn-select"
+      },
+      "variants": [
+        {
+          "device": 517,
+          "map": {
+            "l3": "btn-l3",
+            "r3": "btn-r3",
+            "lstick": "stick-l",
+            "rstick": "stick-r"
+          },
+          "note": "DualShock"
+        },
+        {
+          "device": 261,
+          "map": {
+            "l3": "btn-l3",
+            "r3": "btn-r3",
+            "lstick": "stick-l",
+            "rstick": "stick-r"
+          },
+          "note": "Analog controller"
+        }
+      ]
+    },
+    "fbneo": {
+      "library": "FinalBurn Neo",
+      "systems": [
+        "fbneo",
+        "neogeo",
+        "arcade",
+        "cps1",
+        "cps2",
+        "cps3",
+        "varcade",
+        "neogeocd"
+      ],
+      "perGame": true,
+      "map": {
+        "b": "btn-1",
+        "a": "btn-2",
+        "y": "btn-3",
+        "x": "btn-4",
+        "l": "btn-6",
+        "r": "btn-5",
+        "l2": "Fire 8",
+        "r2": "Fire 7",
+        "l3": "Fire 10",
+        "r3": "Fire 9",
+        "start": "btn-start",
+        "select": "btn-coin"
+      },
+      "variants": [
+        {
+          "system": [
+            "neogeo",
+            "neogeocd"
+          ],
+          "map": {
+            "b": "btn-a",
+            "a": "btn-b",
+            "y": "btn-c",
+            "x": "btn-d",
+            "l": "",
+            "r": "",
+            "l2": "",
+            "r2": "",
+            "l3": "",
+            "r3": "",
+            "select": "btn-select"
+          }
+        }
+      ]
+    },
+    "mamearcade": {
+      "library": "MAME",
+      "systems": [
+        "arcade",
+        "fbneo",
+        "neogeo",
+        "cps1",
+        "cps2",
+        "cps3",
+        "varcade",
+        "stv",
+        "model2"
+      ],
+      "perGame": true,
+      "map": {
+        "b": "btn-1",
+        "a": "btn-2",
+        "y": "btn-3",
+        "x": "btn-4",
+        "l": "btn-5",
+        "r": "btn-6",
+        "l3": "Button 7",
+        "r3": "Button 8",
+        "start": "btn-start",
+        "select": "btn-coin",
+        "lstick": "stick-l"
+      },
+      "variants": [
+        {
+          "system": [
+            "neogeo"
+          ],
+          "map": {
+            "b": "btn-a",
+            "a": "btn-b",
+            "y": "btn-c",
+            "x": "btn-d",
+            "l": "",
+            "r": "",
+            "l3": "",
+            "r3": "",
+            "select": "btn-select"
+          }
+        }
+      ]
+    },
+    "mame2003_plus": {
+      "library": "MAME 2003-Plus",
+      "systems": [
+        "arcade"
+      ],
+      "perGame": true,
+      "map": {
+        "b": "btn-1",
+        "a": "btn-2",
+        "y": "btn-3",
+        "x": "btn-4",
+        "l": "btn-5",
+        "r": "btn-6",
+        "l2": "Button 7",
+        "r2": "Button 8",
+        "l3": "Button 9",
+        "r3": "Button 10",
+        "start": "btn-start",
+        "select": "btn-coin",
+        "lstick": "stick-l"
+      }
+    },
+    "mednafen_ngp": {
+      "library": "Beetle NeoPop",
+      "systems": [
+        "ngpc"
+      ],
+      "map": {
+        "b": "btn-a",
+        "a": "btn-b",
+        "start": "btn-option"
+      }
+    },
+    "mednafen_pce_fast": {
+      "library": "Beetle PCE Fast",
+      "systems": [
+        "pcengine",
+        "pcenginecd"
+      ],
+      "map": {
+        "b": "btn-ii",
+        "a": "btn-i",
+        "y": "III",
+        "x": "IV",
+        "l": "V",
+        "r": "VI",
+        "l2": "Mode 2/6 switch",
+        "start": "btn-run",
+        "select": "btn-select"
+      },
+      "notes": {
+        "y": "6-button pad",
+        "x": "6-button pad",
+        "l": "6-button pad",
+        "r": "6-button pad"
+      }
+    },
+    "mednafen_wswan": {
+      "library": "Beetle WonderSwan",
+      "systems": [
+        "wonderswan",
+        "wonderswancolor"
+      ],
+      "map": {
+        "b": "btn-b",
+        "a": "btn-a",
+        "l": "btn-y4",
+        "r": "btn-y2",
+        "l2": "btn-y3",
+        "r2": "btn-y1",
+        "start": "btn-start",
+        "select": "Rotate",
+        "dpad": "",
+        "up": "btn-x1",
+        "right": "btn-x2",
+        "down": "btn-x3",
+        "left": "btn-x4"
+      },
+      "optionKeys": [
+        "wswan_rotate_display",
+        "wswan_rotate_keymap"
+      ],
+      "variants": [
+        {
+          "option": "wswan_rotate_display",
+          "value": "portrait",
+          "map": {
+            "y": "btn-x1",
+            "x": "btn-x2",
+            "a": "btn-x3",
+            "b": "btn-x4",
+            "left": "btn-y1",
+            "up": "btn-y2",
+            "right": "btn-y3",
+            "down": "btn-y4",
+            "l": "btn-a",
+            "r": "btn-b",
+            "l2": "",
+            "r2": ""
+          }
+        },
+        {
+          "option": "wswan_rotate_keymap",
+          "value": "disabled",
+          "map": {
+            "y": "",
+            "x": "",
+            "a": "btn-a",
+            "b": "btn-b",
+            "up": "btn-x1",
+            "right": "btn-x2",
+            "down": "btn-x3",
+            "left": "btn-x4",
+            "l": "btn-y4",
+            "r": "btn-y2",
+            "l2": "btn-y3",
+            "r2": "btn-y1"
+          }
+        },
+        {
+          "option": "wswan_rotate_keymap",
+          "value": "enabled",
+          "map": {
+            "y": "btn-x1",
+            "x": "btn-x2",
+            "a": "btn-x3",
+            "b": "btn-x4",
+            "left": "btn-y1",
+            "up": "btn-y2",
+            "right": "btn-y3",
+            "down": "btn-y4",
+            "l": "btn-a",
+            "r": "btn-b",
+            "l2": "",
+            "r2": ""
+          }
+        }
+      ]
+    },
+    "stella": {
+      "library": "Stella",
+      "systems": [
+        "atari2600"
+      ],
+      "map": {
+        "dpad": "stick-l",
+        "b": "btn-1",
+        "a": "Trigger",
+        "y": "Booster",
+        "l": "Left difficulty A",
+        "r": "Right difficulty A",
+        "l2": "Left difficulty B",
+        "r2": "Right difficulty B",
+        "l3": "Color",
+        "r3": "Black and white",
+        "start": "Reset",
+        "select": "Select"
+      }
+    },
+    "a5200": {
+      "library": "a5200",
+      "systems": [
+        "atari5200"
+      ],
+      "map": {
+        "dpad": "stick-l",
+        "b": "btn-3",
+        "a": "btn-1",
+        "y": "key-star",
+        "x": "key-hash",
+        "l": "Keypad",
+        "r": "key-0",
+        "l2": "key-3",
+        "r2": "key-1",
+        "l3": "key-7",
+        "r3": "key-5",
+        "start": "btn-start",
+        "select": "btn-pause",
+        "lstick": "stick-l"
+      }
+    },
+    "prosystem": {
+      "library": "ProSystem",
+      "systems": [
+        "atari7800"
+      ],
+      "map": {
+        "dpad": "stick-l",
+        "b": "btn-1",
+        "a": "btn-2",
+        "x": "Reset",
+        "l": "Left difficulty",
+        "r": "Right difficulty",
+        "start": "Pause",
+        "select": "Select"
+      }
+    },
+    "mednafen_lynx": {
+      "library": "Beetle Lynx",
+      "systems": [
+        "atarilynx"
+      ],
+      "map": {
+        "b": "btn-b",
+        "a": "btn-a",
+        "l": "btn-opt2",
+        "r": "btn-opt1",
+        "start": "btn-pause",
+        "select": "Rotate"
+      }
+    },
+    "opera": {
+      "library": "Opera",
+      "systems": [
+        "3do"
+      ],
+      "map": {
+        "b": "btn-b",
+        "a": "btn-c",
+        "y": "btn-a",
+        "x": "btn-p",
+        "l": "btn-l",
+        "r": "btn-r",
+        "start": "btn-p",
+        "select": "btn-x"
+      }
+    },
+    "gearcoleco": {
+      "library": "Gearcoleco",
+      "systems": [
+        "colecovision"
+      ],
+      "map": {
+        "dpad": "stick-l",
+        "b": "btn-1",
+        "a": "btn-2",
+        "y": "key-1",
+        "x": "key-2",
+        "l": "key-3",
+        "r": "key-4",
+        "l2": "key-5",
+        "r2": "key-6",
+        "l3": "key-7",
+        "r3": "key-8",
+        "start": "key-star",
+        "select": "key-hash"
+      }
+    },
+    "bluemsx": {
+      "library": "blueMSX",
+      "systems": [
+        "msx"
+      ],
+      "drawing": "joystick2",
+      "map": {
+        "dpad": "stick-l",
+        "b": "btn-2",
+        "a": "btn-1",
+        "y": "Button 3",
+        "x": "Button 4",
+        "l": "Button 5",
+        "r": "Button 6",
+        "start": "Coleco #",
+        "select": "Coleco *"
+      }
+    },
+    "fake08": {
+      "library": "fake-08",
+      "systems": [
+        "pico8"
+      ],
+      "map": {
+        "b": "btn-o",
+        "a": "btn-x",
+        "x": "Mouse",
+        "start": "btn-start"
+      }
+    }
+  }
+}

@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 477" width="1000" height="477">
+<g transform="scale(0.95057) translate(26 -14)">
+<rect id="btn-l" x="60" y="30" width="240" height="80" rx="40" ry="40" fill="#EDEDED" stroke="#2E2E2E" stroke-width="8"/>
+<rect id="btn-r" x="700" y="30" width="240" height="80" rx="40" ry="40" fill="#EDEDED" stroke="#2E2E2E" stroke-width="8"/>
+<rect x="0" y="70" width="1000" height="420" rx="210" ry="210" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<rect id="body" x="0" y="70" width="1000" height="420" rx="210" ry="210" fill="#2E2E2E"/>
+<rect id="screen" x="240" y="105" width="520" height="300" rx="10" ry="10" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon id="dpad" points="97.9,165 142.1,165 142.1,207.9 185,207.9 185,252.1 142.1,252.1 142.1,295 97.9,295 97.9,252.1 55,252.1 55,207.9 97.9,207.9" fill="#EDEDED"/>
+<circle id="stick-l" cx="125" cy="385" r="34" fill="#EDEDED"/>
+<circle id="btn-triangle" cx="880" cy="197" r="28" fill="#EDEDED"/>
+<circle id="btn-circle" cx="938" cy="255" r="28" fill="#EDEDED"/>
+<circle id="btn-cross" cx="880" cy="313" r="28" fill="#EDEDED"/>
+<circle id="btn-square" cx="822" cy="255" r="28" fill="#EDEDED"/>
+<rect id="btn-home" x="268" y="434" width="64" height="22" rx="11" ry="11" fill="#EDEDED"/>
+<rect id="btn-select" x="613" y="434" width="54" height="22" rx="11" ry="11" fill="#EDEDED"/>
+<rect id="btn-start" x="683" y="434" width="54" height="22" rx="11" ry="11" fill="#EDEDED"/>
+<polygon id="dpad-up" points="120,179.3 127.8,192.3 112.2,192.3" fill="#2E2E2E"/>
+<polygon id="dpad-down" points="120,280.7 112.2,267.7 127.8,267.7" fill="#2E2E2E"/>
+<polygon id="dpad-left" points="69.3,230 82.3,222.2 82.3,237.8" fill="#2E2E2E"/>
+<polygon id="dpad-right" points="170.7,230 157.7,237.8 157.7,222.2" fill="#2E2E2E"/>
+<polygon points="880,183 893.3,205.7 866.7,205.7" fill="none" stroke="#2E2E2E" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="938" cy="255" r="11.9" fill="none" stroke="#2E2E2E" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M870.2 303.2L889.8 322.8M889.8 303.2L870.2 322.8" fill="none" stroke="#2E2E2E" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="812.2" y="245.2" width="19.6" height="19.6" fill="none" stroke="#2E2E2E" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</g></svg>

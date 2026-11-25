@@ -1,0 +1,2 @@
+<theme><include>./theme.xml</include><include>./theme.xml</include>
+<view name="system"><image name="bg"><path>./a.png</path></image></view></theme>

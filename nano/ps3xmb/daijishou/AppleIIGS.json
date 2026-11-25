@@ -1,0 +1,34 @@
+{
+  "databaseVersion": 14,
+  "revisionNumber": 1,
+  "platform": {
+    "name": "Apple IIGS",
+    "uniqueId": "apple2gs",
+    "shortname": "apple2gs",
+    "description": null,
+    "acceptedFilenameRegex": "^(?!(?:\\._|\\.).*).*$",
+    "scraperSourceList": [
+      "LIBRETRO:Apple - IIGS"
+    ],
+    "boxArtAspectRatioId": 2,
+    "useCustomBoxArtAspectRatio": false,
+    "customBoxArtAspectRatio": null,
+    "screenAspectRatioId": 0,
+    "useCustomScreenAspectRatio": false,
+    "customScreenAspectRatio": null,
+    "retroAchievementsConsoleIdList": [],
+    "extra": ""
+  },
+  "playerList": [
+    {
+      "name": "apple2gs - MAME4droid 2024",
+      "uniqueId": "apple2gs.m4d2024",
+      "description": "MAME driver apple2gs. Supported extensions: 2mg, zip, 7z.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:2mg|zip|7z)$",
+      "amStartArguments": "-n com.seleuco.mame4d2024/com.seleuco.mame4droid.MAME4droid\n -a android.intent.action.VIEW\n -d apple2gs\n -e cli_params \"-rompath '{file.storagedir};/storage/emulated/0/Android/data/com.seleuco.mame4d2024/files/roms' -gameio joy -flop3 '{file.storagepath}'\"\n --activity-clear-task\n --activity-clear-top",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    }
+  ]
+}

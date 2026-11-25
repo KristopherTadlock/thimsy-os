@@ -1,0 +1,32 @@
+{
+  "databaseVersion": 14,
+  "revisionNumber": 1,
+  "platform": {
+    "name": "Microsoft Windows 9x",
+    "uniqueId": "windows9x",
+    "shortname": "windows9x",
+    "description": null,
+    "acceptedFilenameRegex": "^(?!(?:\\._|\\.).*).*$",
+    "scraperSourceList": [],
+    "boxArtAspectRatioId": 2,
+    "useCustomBoxArtAspectRatio": false,
+    "customBoxArtAspectRatio": null,
+    "screenAspectRatioId": 0,
+    "useCustomScreenAspectRatio": false,
+    "customScreenAspectRatio": null,
+    "retroAchievementsConsoleIdList": [],
+    "extra": ""
+  },
+  "playerList": [
+    {
+      "name": "windows9x - RetroArch 64 - dosbox_pure",
+      "uniqueId": "windows9x.ra64.dosbox_pure",
+      "description": "Supported extensions: zip, dosz, exe, com, bat, iso, chd, cue, ins, img, ima, vhd, jrc, tc, m3u, m3u8, conf.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:zip|dosz|exe|com|bat|iso|chd|cue|ins|img|ima|vhd|jrc|tc|m3u|m3u8|conf)$",
+      "amStartArguments": "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n -e ROM {file.path}\n -e LIBRETRO dosbox_pure\n -e CONFIGFILE /storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg",
+      "killPackageProcesses": true,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    }
+  ]
+}

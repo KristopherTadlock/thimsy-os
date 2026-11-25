@@ -1,0 +1,16 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <set name="InputMapping_HostAxis_97">
+        <string>700</string>
+    </set>
+    <set name="InputMapping_HostAxis_96">
+        <string>701</string>
+    </set>
+    <int name="InputMapping_HostAxis_100" value="702" />
+    <int name="InputMapping_HostAxis_0_GuestButton" value="713" />
+    <int name="InputMapping_HostAxis_0_GuestOrientation" value="0" />
+    <int name="InputMapping_HostAxis_1_GuestButton" value="713" />
+    <int name="InputMapping_HostAxis_1_GuestOrientation" value="1" />
+    <int name="InputMapping_HostAxis_17_GuestButton" value="707" />
+    <string name="button_a">Button A</string>
+</map>

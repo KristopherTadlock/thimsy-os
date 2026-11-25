@@ -1,0 +1,42 @@
+{
+  "databaseVersion": 14,
+  "revisionNumber": 1,
+  "platform": {
+    "name": "Tandy TRS-80",
+    "uniqueId": "trs-80",
+    "shortname": "trs-80",
+    "description": null,
+    "acceptedFilenameRegex": "^(?!(?:\\._|\\.).*).*$",
+    "scraperSourceList": [],
+    "boxArtAspectRatioId": 2,
+    "useCustomBoxArtAspectRatio": false,
+    "customBoxArtAspectRatio": null,
+    "screenAspectRatioId": 0,
+    "useCustomScreenAspectRatio": false,
+    "customScreenAspectRatio": null,
+    "retroAchievementsConsoleIdList": [],
+    "extra": ""
+  },
+  "playerList": [
+    {
+      "name": "trs-80 - MAME4droid 2024 (Program)",
+      "uniqueId": "trs-80.m4d2024.program",
+      "description": "MAME driver trs80l2. Supported extensions: cmd.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:cmd)$",
+      "amStartArguments": "-n com.seleuco.mame4d2024/com.seleuco.mame4droid.MAME4droid\n -a android.intent.action.VIEW\n -d trs80l2\n -e cli_params \"-rompath '{file.storagedir};/storage/emulated/0/Android/data/com.seleuco.mame4d2024/files/roms' -quik '{file.storagepath}'\"\n --activity-clear-task\n --activity-clear-top",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    },
+    {
+      "name": "trs-80 - MAME4droid 2024 (Diskette)",
+      "uniqueId": "trs-80.m4d2024.diskette",
+      "description": "MAME driver trs80l2. Supported extensions: dsk, dmk, jv1, jv3, zip, 7z.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:dsk|dmk|jv1|jv3|zip|7z)$",
+      "amStartArguments": "-n com.seleuco.mame4d2024/com.seleuco.mame4droid.MAME4droid\n -a android.intent.action.VIEW\n -d trs80l2\n -e cli_params \"-rompath '{file.storagedir};/storage/emulated/0/Android/data/com.seleuco.mame4d2024/files/roms' -flop1 '{file.storagepath}'\"\n --activity-clear-task\n --activity-clear-top",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    }
+  ]
+}

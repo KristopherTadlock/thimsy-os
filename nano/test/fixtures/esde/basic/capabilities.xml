@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<themeCapabilities>
+    <themeName>Basic</themeName>
+    <variant name="default"><label>Default</label><selectable>true</selectable></variant>
+    <variant name="alt"><label>Alternative</label><selectable>true</selectable></variant>
+    <aspectRatio>16:9</aspectRatio>
+    <aspectRatio>4:3</aspectRatio>
+</themeCapabilities>

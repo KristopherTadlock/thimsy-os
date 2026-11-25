@@ -1,0 +1,49 @@
+{
+  "title": "Sega Saturn (ST-V arcade boards and the home console)",
+  "subtitle": "RetroArch Beetle Saturn · Xbox Wireless Controller",
+  "badge": "From your RetroArch settings · Folder override: Saturn Collection (Disc 1 of 4).cfg",
+  "table": true,
+  "rows": [
+    {
+      "anchor": "btn-a",
+      "console": "A",
+      "keys": "A"
+    },
+    {
+      "anchor": "btn-b",
+      "console": "B",
+      "keys": "B"
+    },
+    {
+      "anchor": "",
+      "console": "(ST-V) Service switch on the board",
+      "keys": "Right stick click (RS) / Left stick click (LS)"
+    },
+    {
+      "anchor": "",
+      "console": "(ST-V) Test",
+      "keys": "LS"
+    },
+    {
+      "anchor": "",
+      "console": "(ST-V) Coin",
+      "keys": "View"
+    },
+    {
+      "anchor": "btn-start",
+      "console": "Start",
+      "keys": "Menu"
+    }
+  ],
+  "hotkeys": [
+    {
+      "keys": "View + RT",
+      "action": "Save state to the currently selected slot and show a notification"
+    }
+  ],
+  "footer": [
+    "B Close",
+    "Y Table"
+  ],
+  "pageHint": "L1/R1 Page"
+}

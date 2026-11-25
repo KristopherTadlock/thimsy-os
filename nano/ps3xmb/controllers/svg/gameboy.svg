@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 1000" width="620" height="1000">
+<g transform="scale(0.95057) translate(26 26)">
+<path d="M30 0H570A30 30 0 0 1 600 30V860A140 140 0 0 1 460 1000H30A30 30 0 0 1 0 970V30A30 30 0 0 1 30 0Z" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<path id="body" d="M30 0H570A30 30 0 0 1 600 30V860A140 140 0 0 1 460 1000H30A30 30 0 0 1 0 970V30A30 30 0 0 1 30 0Z" fill="#2E2E2E"/>
+<rect x="45" y="55" width="510" height="420" rx="22" ry="22" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<rect id="screen" x="115" y="105" width="370" height="320" rx="6" ry="6" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon id="dpad" points="121.1,565 178.9,565 178.9,621.1 235,621.1 235,678.9 178.9,678.9 178.9,735 121.1,735 121.1,678.9 65,678.9 65,621.1 121.1,621.1" fill="#EDEDED"/>
+<circle id="btn-b" cx="405" cy="690" r="48" fill="#EDEDED"/>
+<circle id="btn-a" cx="510" cy="625" r="48" fill="#EDEDED"/>
+<rect id="btn-select" x="203" y="830" width="84" height="30" rx="15" ry="15" transform="rotate(-28 245 845)" fill="#EDEDED"/>
+<rect id="btn-start" x="308" y="830" width="84" height="30" rx="15" ry="15" transform="rotate(-28 350 845)" fill="#EDEDED"/>
+<line x1="430" y1="960" x2="490" y2="880" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<line x1="462" y1="960" x2="522" y2="880" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<line x1="494" y1="960" x2="554" y2="880" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<line x1="526" y1="960" x2="586" y2="880" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon id="dpad-up" points="150,583.7 160.2,600.7 139.8,600.7" fill="#2E2E2E"/>
+<polygon id="dpad-down" points="150,716.3 139.8,699.3 160.2,699.3" fill="#2E2E2E"/>
+<polygon id="dpad-left" points="83.7,650 100.7,639.8 100.7,660.2" fill="#2E2E2E"/>
+<polygon id="dpad-right" points="216.3,650 199.3,660.2 199.3,639.8" fill="#2E2E2E"/>
+</g></svg>

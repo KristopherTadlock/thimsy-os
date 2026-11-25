@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 786" width="1000" height="786">
+<g transform="scale(1.0339) translate(-16.4 86)">
+<rect id="btn-l2" x="110" y="-70" width="230" height="90" rx="34" ry="34" fill="#EDEDED" stroke="#2E2E2E" stroke-width="8"/>
+<rect id="btn-r2" x="660" y="-70" width="230" height="90" rx="34" ry="34" fill="#EDEDED" stroke="#2E2E2E" stroke-width="8"/>
+<rect id="btn-l1" x="100" y="-10" width="250" height="90" rx="34" ry="34" fill="#EDEDED" stroke="#2E2E2E" stroke-width="8"/>
+<rect id="btn-r1" x="650" y="-10" width="250" height="90" rx="34" ry="34" fill="#EDEDED" stroke="#2E2E2E" stroke-width="8"/>
+<rect x="200" y="70" width="600" height="300" rx="60" ry="60" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<circle cx="240" cy="230" r="185" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<circle cx="760" cy="230" r="185" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<ellipse cx="185" cy="450" rx="125" ry="210" transform="rotate(24 185 450)" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<ellipse cx="815" cy="450" rx="125" ry="210" transform="rotate(-24 815 450)" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<rect id="body" x="200" y="70" width="600" height="300" rx="60" ry="60" fill="#2E2E2E"/>
+<circle cx="240" cy="230" r="185" fill="#2E2E2E"/>
+<circle cx="760" cy="230" r="185" fill="#2E2E2E"/>
+<ellipse cx="185" cy="450" rx="125" ry="210" transform="rotate(24 185 450)" fill="#2E2E2E"/>
+<ellipse cx="815" cy="450" rx="125" ry="210" transform="rotate(-24 815 450)" fill="#2E2E2E"/>
+<circle cx="240" cy="230" r="112" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon id="dpad" points="210.2,142.5 269.8,142.5 269.8,200.2 327.5,200.2 327.5,259.8 269.8,259.8 269.8,317.5 210.2,317.5 210.2,259.8 152.5,259.8 152.5,200.2 210.2,200.2" fill="#EDEDED"/>
+<rect id="btn-select" x="388" y="212" width="64" height="26" rx="13" ry="13" fill="#EDEDED"/>
+<rect id="btn-start" x="548" y="212" width="64" height="26" rx="13" ry="13" fill="#EDEDED"/>
+<circle id="btn-triangle" cx="760" cy="154" r="40" fill="#EDEDED"/>
+<circle id="btn-circle" cx="836" cy="230" r="40" fill="#EDEDED"/>
+<circle id="btn-cross" cx="760" cy="306" r="40" fill="#EDEDED"/>
+<circle id="btn-square" cx="684" cy="230" r="40" fill="#EDEDED"/>
+<circle cx="375" cy="380" r="78" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<circle id="stick-l" cx="375" cy="380" r="51.5" fill="#EDEDED"/>
+<circle cx="625" cy="380" r="78" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<circle id="stick-r" cx="625" cy="380" r="51.5" fill="#EDEDED"/>
+<circle id="btn-home" cx="500" cy="330" r="22" fill="#EDEDED"/>
+<polygon id="dpad-up" points="240,161.8 250.5,179.2 229.5,179.2" fill="#2E2E2E"/>
+<polygon id="dpad-down" points="240,298.2 229.5,280.8 250.5,280.8" fill="#2E2E2E"/>
+<polygon id="dpad-left" points="171.8,230 189.2,219.5 189.2,240.5" fill="#2E2E2E"/>
+<polygon id="dpad-right" points="308.2,230 290.8,240.5 290.8,219.5" fill="#2E2E2E"/>
+<polygon points="760,134 779,166.4 741,166.4" fill="none" stroke="#2E2E2E" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="836" cy="230" r="17" fill="none" stroke="#2E2E2E" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M746 292L774 320M774 292L746 320" fill="none" stroke="#2E2E2E" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="670" y="216" width="28" height="28" fill="none" stroke="#2E2E2E" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="375" cy="380" r="28.1" fill="none" stroke="#2E2E2E" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="625" cy="380" r="28.1" fill="none" stroke="#2E2E2E" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</g></svg>

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 477" width="1000" height="477">
+<g transform="scale(0.95057) translate(26 26)">
+<path d="M60 0H940A60 60 0 0 1 1000 60V290A160 160 0 0 1 840 450H160A160 160 0 0 1 0 290V60A60 60 0 0 1 60 0Z" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<path id="body" d="M60 0H940A60 60 0 0 1 1000 60V290A160 160 0 0 1 840 450H160A160 160 0 0 1 0 290V60A60 60 0 0 1 60 0Z" fill="#2E2E2E"/>
+<circle cx="200" cy="235" r="121.6" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon id="dpad" points="167.7,140 232.3,140 232.3,202.7 295,202.7 295,267.3 232.3,267.3 232.3,330 167.7,330 167.7,267.3 105,267.3 105,202.7 167.7,202.7" fill="#EDEDED"/>
+<rect id="btn-select" x="358" y="314" width="84" height="32" rx="16" ry="16" fill="#EDEDED"/>
+<rect id="btn-run" x="478" y="314" width="84" height="32" rx="16" ry="16" fill="#EDEDED"/>
+<circle id="btn-iii" cx="660" cy="170" r="40" fill="#EDEDED"/>
+<circle id="btn-ii" cx="770" cy="160" r="40" fill="#EDEDED"/>
+<circle id="btn-i" cx="880" cy="150" r="40" fill="#EDEDED"/>
+<circle id="btn-iv" cx="660" cy="290" r="40" fill="#EDEDED"/>
+<circle id="btn-v" cx="770" cy="280" r="40" fill="#EDEDED"/>
+<circle id="btn-vi" cx="880" cy="270" r="40" fill="#EDEDED"/>
+<polygon id="dpad-up" points="200,160.9 211.4,179.9 188.6,179.9" fill="#2E2E2E"/>
+<polygon id="dpad-down" points="200,309.1 188.6,290.1 211.4,290.1" fill="#2E2E2E"/>
+<polygon id="dpad-left" points="125.9,235 144.9,223.6 144.9,246.4" fill="#2E2E2E"/>
+<polygon id="dpad-right" points="274.1,235 255.1,246.4 255.1,223.6" fill="#2E2E2E"/>
+</g></svg>

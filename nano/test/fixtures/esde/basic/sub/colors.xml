@@ -1,0 +1,4 @@
+<theme>
+    <variables><title>Hello</title><bg>./../art/bg.png</bg></variables>
+    <view name="gamelist"><image name="bg"><path>${bg}</path></image></view>
+</theme>

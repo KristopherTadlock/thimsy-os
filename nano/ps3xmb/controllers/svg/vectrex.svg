@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 411" width="1000" height="411">
+<g transform="scale(0.95057) translate(26 26)">
+<rect x="0" y="0" width="1000" height="380" rx="40" ry="40" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<rect id="body" x="0" y="0" width="1000" height="380" rx="40" ry="40" fill="#2E2E2E"/>
+<circle cx="180" cy="190" r="110" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<circle id="stick-l" cx="180" cy="190" r="64" fill="#EDEDED"/>
+<circle id="btn-1" cx="470" cy="210" r="48" fill="#EDEDED"/>
+<circle id="btn-2" cx="600" cy="210" r="48" fill="#EDEDED"/>
+<circle id="btn-3" cx="730" cy="210" r="48" fill="#EDEDED"/>
+<circle id="btn-4" cx="860" cy="210" r="48" fill="#EDEDED"/>
+<circle cx="180" cy="190" r="26" fill="none" stroke="#2E2E2E" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</g></svg>

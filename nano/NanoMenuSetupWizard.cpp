@@ -1,0 +1,1713 @@
+/*
+ * Copyright (C) 2026 GammaOS
+ *
+ * NanoMenuSetupWizard: First-boot setup wizard for Nano mode devices.
+ * Runs before the XMB menu on unprovisioned devices. Steps:
+ *   1. Welcome
+ *   2. Wi-Fi (reuses existing WiFi screen)
+ *   3. Timezone selection
+ *   4. System configuration (runs setup.sh, shows progress)
+ *   5. Finish (marks device provisioned)
+ * (There is no Bluetooth step: a fresh install leaves Bluetooth off, and the user
+ *  turns it on from Bluetooth & Accessories or the Quick Menu when they want it.)
+ *
+ * The XMB wallpaper renders in the background throughout. Each step
+ * transition uses a slide+fade animation.
+ */
+
+#define LOG_TAG "GammaOSNano"
+
+#include <algorithm>
+#include <cctype>
+#include <climits>
+#include <chrono>
+#include <cmath>
+#include <cstdio>
+#include <cstring>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <vector>
+
+#include <cutils/properties.h>
+#include <log/log.h>
+#include <utils/SystemClock.h>
+
+#include <GLES2/gl2.h>
+
+#include "NanoMenu.h"
+#include "NanoMenuShaders.h"
+#include "NanoMenuStrings.h"
+#include "NanoMenuPS3.h"   // ps3:: dialog layout for the PS3-styled language step
+#include "NanoI18n.h"      // trDyn() resource-file translations
+#include "NanoMenuUtils.h" // isQrRomStorageReady() - external-storage readiness gate
+#include "NanoMenuPS3Globe.h" // ps3globe::setTarget - aim the globe at the found zone
+
+namespace android {
+
+// ---------------------------------------------------------------------------
+// Timezone table
+// ---------------------------------------------------------------------------
+
+struct TzDef {
+    const char* id;
+    const char* label;
+    int offsetMin;
+    float lat;
+    float lon;
+};
+
+// 1:1 with the web app TZ_LIST (index.html 8841-8866): the firmware Time Zone
+// list (GMT offset + city) with each city's real latitude/longitude so the 3D
+// globe rotates to that location. Each entry is paired here with the matching
+// Android tz id used for `setprop persist.sys.timezone`. Offset-ordered, several
+// cities per offset (the globe lat/lon is what distinguishes them).
+static const TzDef kTimezones[] = {
+    {"Pacific/Pago_Pago",  "GMT-11:00 Samoa",                      -660, -13.8f, -171.8f},
+    {"Pacific/Honolulu",   "GMT-10:00 Hawaii",                     -600,  21.3f, -157.9f},
+    {"America/Anchorage",  "GMT-09:00 Alaska",                     -540,  61.2f, -149.9f},
+    {"America/Los_Angeles","GMT-08:00 Pacific Time (US & Canada)", -480,  34.1f, -118.2f},
+    {"America/Tijuana",    "GMT-08:00 Tijuana",                    -480,  32.5f, -117.0f},
+    {"America/Denver",     "GMT-07:00 Mountain Time (US & Canada)",-420,  39.7f, -104.99f},
+    {"America/Chihuahua",  "GMT-07:00 Chihuahua",                  -420,  28.6f, -106.1f},
+    {"America/Chicago",    "GMT-06:00 Central Time (US & Canada)", -360,  41.9f,  -87.6f},
+    {"America/Mexico_City","GMT-06:00 Mexico City",                -360,  19.4f,  -99.1f},
+    {"America/New_York",   "GMT-05:00 Eastern Time (US & Canada)", -300,  40.7f,  -74.0f},
+    {"America/Bogota",     "GMT-05:00 Bogota",                     -300,   4.7f,  -74.1f},
+    {"America/Lima",       "GMT-05:00 Lima",                       -300, -12.0f,  -77.0f},
+    {"America/Halifax",    "GMT-04:00 Atlantic (Canada)",          -240,  44.6f,  -63.6f},
+    {"America/Caracas",    "GMT-04:00 Caracas",                    -240,  10.5f,  -66.9f},
+    {"America/Santiago",   "GMT-04:00 Santiago",                   -240, -33.4f,  -70.6f},
+    {"America/St_Johns",   "GMT-03:30 Newfoundland",               -210,  47.6f,  -52.7f},
+    {"America/Sao_Paulo",  "GMT-03:00 Sao Paulo",                  -180, -23.5f,  -46.6f},
+    {"America/Argentina/Buenos_Aires", "GMT-03:00 Buenos Aires",   -180, -34.6f,  -58.4f},
+    {"Atlantic/Azores",    "GMT-01:00 Azores",                      -60,  37.7f,  -25.7f},
+    {"Europe/London",      "GMT+00:00 London",                        0,  51.5f,   -0.1f},
+    {"Europe/Dublin",      "GMT+00:00 Dublin",                        0,  53.3f,   -6.3f},
+    {"Europe/Lisbon",      "GMT+00:00 Lisbon",                        0,  38.7f,   -9.1f},
+    {"Atlantic/Reykjavik", "GMT+00:00 Reykjavik",                     0,  64.1f,  -21.9f},
+    {"Africa/Casablanca",  "GMT+00:00 Casablanca",                    0,  33.6f,   -7.6f},
+    {"Europe/Paris",       "GMT+01:00 Paris",                        60,  48.9f,    2.4f},
+    {"Europe/Amsterdam",   "GMT+01:00 Amsterdam",                    60,  52.4f,    4.9f},
+    {"Europe/Berlin",      "GMT+01:00 Berlin",                       60,  52.5f,   13.4f},
+    {"Europe/Rome",        "GMT+01:00 Rome",                         60,  41.9f,   12.5f},
+    {"Europe/Madrid",      "GMT+01:00 Madrid",                       60,  40.4f,   -3.7f},
+    {"Europe/Stockholm",   "GMT+01:00 Stockholm",                    60,  59.3f,   18.1f},
+    {"Africa/Cairo",       "GMT+02:00 Cairo",                       120,  30.0f,   31.2f},
+    {"Europe/Athens",      "GMT+02:00 Athens",                      120,  38.0f,   23.7f},
+    {"Africa/Johannesburg","GMT+02:00 Johannesburg",                120, -26.2f,   28.0f},
+    {"Europe/Helsinki",    "GMT+02:00 Helsinki",                    120,  60.2f,   24.9f},
+    {"Europe/Moscow",      "GMT+03:00 Moscow",                      180,  55.8f,   37.6f},
+    {"Europe/Istanbul",    "GMT+03:00 Istanbul",                    180,  41.0f,   28.9f},
+    {"Africa/Nairobi",     "GMT+03:00 Nairobi",                     180,  -1.3f,   36.8f},
+    {"Asia/Tehran",        "GMT+03:30 Tehran",                      210,  35.7f,   51.4f},
+    {"Asia/Dubai",         "GMT+04:00 Dubai",                       240,  25.2f,   55.3f},
+    {"Asia/Kabul",         "GMT+04:30 Kabul",                       270,  34.5f,   69.2f},
+    {"Asia/Karachi",       "GMT+05:00 Karachi",                     300,  24.9f,   67.0f},
+    {"Asia/Kolkata",       "GMT+05:30 New Delhi",                   330,  28.6f,   77.2f},
+    {"Asia/Kathmandu",     "GMT+05:45 Kathmandu",                   345,  27.7f,   85.3f},
+    {"Asia/Dhaka",         "GMT+06:00 Dhaka",                       360,  23.8f,   90.4f},
+    {"Asia/Bangkok",       "GMT+07:00 Bangkok",                     420,  13.8f,  100.5f},
+    {"Asia/Jakarta",       "GMT+07:00 Jakarta",                     420,  -6.2f,  106.8f},
+    {"Asia/Shanghai",      "GMT+08:00 Beijing",                     480,  39.9f,  116.4f},
+    {"Asia/Singapore",     "GMT+08:00 Singapore",                   480,   1.35f, 103.8f},
+    {"Asia/Hong_Kong",     "GMT+08:00 Hong Kong",                   480,  22.3f,  114.2f},
+    {"Asia/Tokyo",         "GMT+09:00 Tokyo",                       540,  35.7f,  139.7f},
+    {"Asia/Seoul",         "GMT+09:00 Seoul",                       540,  37.6f,  127.0f},
+    {"Australia/Adelaide", "GMT+09:30 Adelaide",                    570, -34.9f,  138.6f},
+    {"Australia/Sydney",   "GMT+10:00 Sydney",                      600, -33.9f,  151.2f},
+    {"Pacific/Guam",       "GMT+10:00 Guam",                        600,  13.4f,  144.8f},
+    {"Pacific/Guadalcanal","GMT+11:00 Solomon Islands",             660,  -9.4f,  159.9f},
+    {"Pacific/Auckland",   "GMT+12:00 Auckland",                    720, -36.8f,  174.8f},
+    {"Pacific/Apia",       "GMT+13:00 Samoa",                       780, -13.8f, -171.8f},
+};
+static const int kNumTimezones = sizeof(kTimezones) / sizeof(kTimezones[0]);
+
+// ---------------------------------------------------------------------------
+// Setup script log file path
+// ---------------------------------------------------------------------------
+
+static const char* kSetupLogPath =
+        "/data/data/org.lineageos.setupwizard/files/gammaos_setup.log";
+
+// ---------------------------------------------------------------------------
+// Lifecycle
+// ---------------------------------------------------------------------------
+
+void NanoMenu::startSetupWizard() {
+    mSetupWizardActive = true;
+    // Keep the display forced on for the whole wizard. On a framework-owned home (the RG DS
+    // never grabs input) PowerManager idles the panel off on the normal timeout, and the
+    // "waiting for Android services" step takes no user input, so the device would sleep
+    // mid-setup. PowerManagerService.isNanoDisplayForcedOn honours this prop.
+    property_set("sys.gammaos.nano.setup_active", "1");
+    // Run the whole first-boot setup at the Max performance mode: the wizard shares the
+    // SoC with system_server coming up, setup.sh extracting and installing the app
+    // payloads and dexopt, and on the 1 GB microSD devices the stock clocks left the
+    // wizard visibly choppy. The user's own mode is saved in a persist marker (not just a
+    // member) so a nano restart mid-setup still restores the original rather than the
+    // "max" the interrupted run left behind; finishSetupWizard() puts it back and clears
+    // the marker. Applied directly through the clock script as well as the property:
+    // the vendor trigger (init.gammaos_power.rc) is gated on sys.screen.state=on, which
+    // the framework has not set this early in the first boot.
+    {
+        char prev[PROPERTY_VALUE_MAX] = {};
+        property_get("persist.gammaos.nano.setup_prev_perf", prev, "");
+        if (!prev[0]) {
+            char cur[PROPERTY_VALUE_MAX] = {};
+            property_get("persist.gammaos.performance_mode", cur, "stock");
+            property_set("persist.gammaos.nano.setup_prev_perf", cur[0] ? cur : "stock");
+        }
+        property_set("persist.gammaos.performance_mode", "max");
+        nanoApplyPerfClock("max");
+        ALOGI("NanoMenu: setup wizard - performance mode max for the wizard (restores %s after)",
+              prev[0] ? prev : "the current mode");
+    }
+    mSetupStep = SETUP_WELCOME;
+    mSetupTransitionAlpha = 1.0f;
+    mSetupSlideOffset = 0.0f;
+    mSetupTransitioning = false;
+    mSetupBootWaited = false;
+    mMenuState = MENU_SETUP_WIZARD;
+    mLangSelected = 0;
+    mLangScrollTop = 0;
+    mGreetingIndex = rand() % 14;
+    nanoInitLocaleFromSystem();
+    mLangSelected = (int)nanoGetLocale();
+    buildTimezoneList();
+    ALOGI("NanoMenu: setup wizard started");
+}
+
+void NanoMenu::finishSetupWizard() {
+    // Mark provisioned via settings DB. Order matters: DEVICE_PROVISIONED
+    // first (triggers AMS's watchDeviceProvisioning() ContentObserver, which
+    // mirrors it to the persisted persist.sys.device_provisioned property --
+    // that mirror is what lets a later boot into normal Android mode see this
+    // device as already provisioned and skip its own SetupWizard), then
+    // USER_SETUP_COMPLETE (unblocks permission grants and storage). Run
+    // synchronously so the framework processes each change before the next
+    // one lands.
+    // These provisioning commands each fork a shell + a framework binary and, run
+    // synchronously here, stalled the render/input thread ~1s (and underran the audio
+    // track), so pressing "start" on the finish screen visibly froze the exit to the
+    // home. Run them off the render thread instead, preserving their order (order
+    // matters: DEVICE_PROVISIONED first -> AMS mirrors it to persist.sys.device_
+    // provisioned; then USER_SETUP_COMPLETE unblocks grants/storage; the IME + lock
+    // settings after). The device is already fully installed by this point, so nothing
+    // on the UI path depends on these completing this frame.
+    std::thread([]() {
+        system("settings put global device_provisioned 1 2>/dev/null");
+        system("settings put secure user_setup_complete 1 2>/dev/null");
+        system("settings put secure tv_user_setup_complete 1 2>/dev/null");
+        // Re-apply the framework's default-enabled IME (stock SetupWizard would; nano
+        // bypasses it, so normal Android would otherwise boot with no IME enabled).
+        // Also show the OSK even when a controller is misdetected as a hardware keyboard.
+        system("settings put secure show_ime_with_hard_keyboard 1 2>/dev/null");
+        system("ime reset 2>/dev/null");
+        selectDefaultIme();   // after the reset, which would undo it
+        // Disable lockscreen (no swipe to unlock).
+        system("locksettings clear --old \"\" 2>/dev/null");
+    }).detach();
+
+    // Fast-path property for next boot
+    property_set("persist.gammaos.nano.setup_done", "1");
+    // Give the performance mode back to the user (see startSetupWizard). The property
+    // change fires the vendor clock trigger now that the screen state is on; apply the
+    // script directly too so the clocks follow even if that edge does not fire.
+    {
+        char prev[PROPERTY_VALUE_MAX] = {};
+        property_get("persist.gammaos.nano.setup_prev_perf", prev, "");
+        if (!prev[0]) strcpy(prev, "stock");
+        property_set("persist.gammaos.performance_mode", prev);
+        nanoApplyPerfClock(prev);
+        property_set("persist.gammaos.nano.setup_prev_perf", "");
+        ALOGI("NanoMenu: setup wizard finished - performance mode restored to %s", prev);
+    }
+    // Setup finished cleanly: clear the "device_provisioned set by an in-progress wizard"
+    // marker so a later nano boot trusts the now-complete provisioning (see the boot check
+    // in the main loop and where dp_wizard is set at boot_completed).
+    property_set("persist.gammaos.nano.dp_wizard", "0");
+
+    // Stop log thread if still running
+    stopSetupLogThread();
+
+    mSetupWizardActive = false;
+    property_set("sys.gammaos.nano.setup_active", "0");   // let the display idle off normally again
+    mMenuState = MENU_MAIN;
+    mXmbMode = true;
+    property_set("persist.gammaos.nano.xmb_mode", "1");
+    mSearchActive = false;   // nothing typed during setup is a game search
+    mSearchResults.clear();
+    mDisplayDirty = true;
+
+    // Refresh the Applications + Games lists now that setup is complete: first-boot
+    // provisioning may have installed/enabled apps (e.g. the Files app) after nano's
+    // initial load, and a WiFi connection made during setup can mount network shares
+    // with new ROMs. finishSetupWizard runs on the render/input thread (pollInput ->
+    // handleSetup*), so these are safe to call directly here - loadInstalledApps re-reads
+    // packages.list, mPs3CatsStale rebuilds the XMB columns at the settled root, and
+    // forceRescanAllSystems kicks a background ROM rescan (no-op if one is already running).
+    loadInstalledApps();
+    mPs3CatsStale = true;
+    forceRescanAllSystems();
+
+    ALOGI("NanoMenu: setup wizard finished, device provisioned");
+}
+
+// ---------------------------------------------------------------------------
+// Timezone list
+// ---------------------------------------------------------------------------
+
+void NanoMenu::buildTimezoneList() {
+    mTzEntries.clear();
+    mTzEntries.reserve(kNumTimezones);
+
+    // Read current timezone to pre-select it
+    char curTz[PROPERTY_VALUE_MAX] = {};
+    property_get("persist.sys.timezone", curTz, "UTC");
+    // Daylight Saving off sets a fixed Etc/GMT zone: the list shows the zone it stands for, when
+    // the remembered zone has that offset; otherwise the first row with it.
+    int etcOffMin = INT32_MAX;
+    if (!strncmp(curTz, "Etc/GMT", 7)) {
+        etcOffMin = curTz[7] ? -atoi(curTz + 7) * 60 : 0;   // Etc/GMT+7 is UTC-7
+        char olson[PROPERTY_VALUE_MAX] = {};
+        if (property_get("persist.gammaos.nano.tz_olson", olson, "") > 0 && tzStandardOffset(olson) == etcOffMin)
+            strlcpy(curTz, olson, sizeof(curTz));
+    }
+
+    mTzSelected = -1;
+    for (int i = 0; i < kNumTimezones; i++) {
+        TimezoneEntry e;
+        e.id = kTimezones[i].id;
+        e.display = kTimezones[i].label;
+        e.offsetMinutes = kTimezones[i].offsetMin;
+        e.lon = kTimezones[i].lon;
+        e.lat = kTimezones[i].lat;
+        mTzEntries.push_back(e);
+        if (e.id == curTz) {
+            mTzSelected = i;
+        }
+    }
+    // A saved zone that is not in the list (one found from the internet in setup) gets its row.
+    if (mTzSelected < 0 && strcmp(curTz, "UTC") != 0 && strncmp(curTz, "Etc/", 4) != 0)
+        mTzSelected = tzRowFor(curTz, tzStandardOffset(curTz));
+    for (int i = 0; i < (int)mTzEntries.size() && mTzSelected < 0 && etcOffMin != INT32_MAX; i++)
+        if (mTzEntries[i].offsetMinutes == etcOffMin) mTzSelected = i;
+    // Fallback when the saved tz id is not in the list: prefer London (the web
+    // default), then index 0, so the globe always opens on a sensible location.
+    if (mTzSelected < 0 || mTzSelected >= (int)mTzEntries.size()) {
+        mTzSelected = 0;
+        for (int i = 0; i < (int)mTzEntries.size(); i++)
+            if (mTzEntries[i].display.find("London") != std::string::npos) { mTzSelected = i; break; }
+    }
+}
+
+// A zone's standard offset in minutes, for placing a zone that is not in the list: the smaller of
+// its January and July offsets (daylight saving only ever adds). INT32_MAX when unknown.
+int NanoMenu::tzStandardOffset(const std::string& id) {
+    if (id.empty() || id.size() > 48) return INT32_MAX;
+    for (char c : id)
+        if (!isalnum((unsigned char)c) && c != '/' && c != '_' && c != '-' && c != '+') return INT32_MAX;
+    int off = INT32_MAX;
+    for (const char* when : {"1767225600", "1782864000"}) {   // 2026-01-01, 2026-07-01 UTC
+        std::string cmd = "TZ=" + id + " date -d @" + when + " +%z 2>/dev/null";
+        std::string z;
+        if (FILE* f = popen(cmd.c_str(), "r")) {
+            char buf[32] = {};
+            if (fgets(buf, sizeof(buf), f)) z = buf;
+            pclose(f);
+        }
+        if (z.size() >= 5 && (z[0] == '+' || z[0] == '-')) {
+            const int m = atoi(z.substr(1, 2).c_str()) * 60 + atoi(z.substr(3, 2).c_str());
+            off = std::min(off, z[0] == '-' ? -m : m);
+        }
+    }
+    return off;
+}
+
+// The list row for a zone. One that is not in the list (Phoenix, with no daylight saving, is not
+// Denver) gets its own row, after a row with the same standard offset (from the same region if
+// there is one), whose place on the globe it borrows. -1 when it cannot be placed.
+int NanoMenu::tzRowFor(const std::string& id, int stdOffMin) {
+    for (int i = 0; i < (int)mTzEntries.size(); i++)
+        if (mTzEntries[i].id == id) return i;
+    if (id.find('/') == std::string::npos || stdOffMin == INT32_MAX) return -1;
+    const std::string region = id.substr(0, id.find('/') + 1);
+    int nb = -1;
+    for (int i = 0; i < (int)mTzEntries.size() && nb < 0; i++)
+        if (mTzEntries[i].offsetMinutes == stdOffMin && mTzEntries[i].id.compare(0, region.size(), region) == 0) nb = i;
+    for (int i = 0; i < (int)mTzEntries.size() && nb < 0; i++)
+        if (mTzEntries[i].offsetMinutes == stdOffMin) nb = i;
+    int at = nb + 1;
+    if (nb < 0) {
+        at = 0;
+        while (at < (int)mTzEntries.size() && mTzEntries[at].offsetMinutes <= stdOffMin) at++;
+    }
+    TimezoneEntry e;
+    e.id = id;
+    std::string city = id.substr(id.rfind('/') + 1);
+    for (auto& c : city) if (c == '_') c = ' ';
+    const int a = std::abs(stdOffMin);
+    char lbl[96];
+    snprintf(lbl, sizeof(lbl), "GMT%c%02d:%02d %s", stdOffMin < 0 ? '-' : '+', a / 60, a % 60, city.c_str());
+    e.display = lbl;
+    e.offsetMinutes = stdOffMin;
+    if (nb >= 0) { e.lon = mTzEntries[nb].lon; e.lat = mTzEntries[nb].lat; }
+    else {   // no row at its offset: its own longitude (15 degrees an hour), a neighbour's latitude
+        e.lon = stdOffMin / 4.0f;
+        const int near = at < (int)mTzEntries.size() ? at : at - 1;
+        if (near >= 0) e.lat = mTzEntries[near].lat;
+    }
+    mTzEntries.insert(mTzEntries.begin() + at, e);
+    if (mTzSelected >= at) mTzSelected++;
+    return at;
+}
+
+// Online at the time zone step: set the clock from the internet and look the zone up from the
+// connection's IP address (ipapi.co, then ip-api.com), off the render thread.
+void NanoMenu::tzAutoDetectAsync() {
+    int st = mTzAutoState.load();
+    if (st == 1 || st == 2) return;   // running, or found: once per setup; a failure tries again
+    if (!mTzAutoState.compare_exchange_strong(st, 1)) return;
+    std::thread([this]() {
+        // Wi-Fi may still be connecting (the wizard can be left the moment it joins a network):
+        // give it a few seconds to come up, so the globe only opens when there is no connection.
+        constexpr int64_t kNetSettleMs = 5000;
+        for (const int64_t until = elapsedRealtime() + kNetSettleMs;
+             !setupOnline() && elapsedRealtime() < until;) {
+            usleep(250 * 1000);
+        }
+        mTzAutoClockSet = setClockFromInternet();
+        auto fetch = [](const char* cmd) {
+            std::string out;
+            if (FILE* f = popen(cmd, "r")) {
+                char buf[128] = {};
+                if (fgets(buf, sizeof(buf), f)) out = buf;
+                pclose(f);
+            }
+            while (!out.empty() && (out.back() == '\n' || out.back() == '\r' || out.back() == ' ')) out.pop_back();
+            // An Olson id ("America/Los_Angeles"); anything else is an error page.
+            if (out.find('/') == std::string::npos || out.size() > 48) return std::string();
+            for (char c : out)
+                if (!isalnum((unsigned char)c) && c != '/' && c != '_' && c != '-' && c != '+') return std::string();
+            return out;
+        };
+        std::string id;
+        for (int attempt = 0; attempt < 2 && id.empty(); attempt++) {
+            if (attempt) {
+                if (!setupOnline()) break;
+                usleep(1500 * 1000);   // DNS can lag a fresh connection by a moment
+            }
+            id = fetch("curl -s --max-time 6 https://ipapi.co/timezone/ 2>/dev/null");
+            if (id.empty()) id = fetch("curl -s --max-time 6 'http://ip-api.com/line/?fields=timezone' 2>/dev/null");
+        }
+        if (id.empty()) { mTzAutoState = 3; return; }
+        mTzAutoOffMin = tzStandardOffset(id);
+        mTzAutoId = id;
+        ALOGI("NanoMenu: time zone from the internet connection: %s (standard offset %s), clock %s",
+              id.c_str(), mTzAutoOffMin == INT32_MAX ? "unknown" : std::to_string(mTzAutoOffMin).c_str(),
+              mTzAutoClockSet ? "set" : "not set");
+        mTzAutoState.store(2, std::memory_order_release);
+    }).detach();
+}
+
+// Render thread: select the found zone once (unless the user has already moved the cursor).
+void NanoMenu::tzAutoDetectTick() {
+    if (mTzAutoShown || mTzAutoState.load(std::memory_order_acquire) != 2 || mTzEntries.empty()) return;
+    mTzAutoShown = true;
+    const int best = tzRowFor(mTzAutoId, mTzAutoOffMin);
+    mTzAutoSel = best;
+    if (best < 0 || mTzUserMoved) return;
+    mTzSelected = best;
+    const TimezoneEntry& z = mTzEntries[best];
+    ps3globe::setTarget(z.lon * (float)M_PI / 180.0f, z.lat * (float)M_PI / 180.0f);
+    mDisplayDirty = true;
+}
+
+// The zone the setup step applies: the selected row (the found zone has a row of its own).
+std::string NanoMenu::tzSetupChoiceId() const {
+    if (mTzSelected < 0 || mTzSelected >= (int)mTzEntries.size()) return std::string();
+    return mTzEntries[mTzSelected].id;
+}
+
+// The time zone chosen in setup sets the clock formats: a US zone (states and territories) gets
+// MM/DD/YYYY and the 12-hour clock, any other the defaults (DD/MM/YYYY, 24-hour).
+void NanoMenu::applySetupClockFormats(const std::string& tz) {
+    static const char* const kUsZones[] = {
+        "America/New_York", "America/Detroit", "America/Kentucky/", "America/Indiana/",
+        "America/Chicago", "America/Menominee", "America/North_Dakota/", "America/Denver",
+        "America/Boise", "America/Phoenix", "America/Los_Angeles", "America/Anchorage",
+        "America/Juneau", "America/Sitka", "America/Metlakatla", "America/Yakutat", "America/Nome",
+        "America/Adak", "America/Puerto_Rico", "America/St_Thomas", "Pacific/Honolulu", "Pacific/Guam",
+        "Pacific/Saipan", "Pacific/Pago_Pago", "US/",
+    };
+    bool us = false;
+    for (const char* z : kUsZones) {
+        const size_t n = strlen(z);
+        if (z[n - 1] == '/' ? tz.compare(0, n, z) == 0 : tz == z) { us = true; break; }
+    }
+    setSetupClockFormats(us ? 1 : 2, us ? 0 : 1);
+    ALOGI("NanoMenu: %s clock formats for %s", us ? "US" : "default", tz.c_str());
+}
+
+// dateIdx: 0 YYYY/MM/DD, 1 MM/DD/YYYY, 2 DD/MM/YYYY. timeIdx: 0 12-hour, 1 24-hour.
+void NanoMenu::setSetupClockFormats(int dateIdx, int timeIdx) {
+    mPs3DateFormatIdx = dateIdx;
+    mPs3TimeFormatIdx = timeIdx;
+    const bool h12 = timeIdx == 0;
+    property_set("persist.gammaos.nano.datetime.date_format", std::to_string(dateIdx).c_str());
+    property_set("persist.gammaos.nano.datetime.time_format", h12 ? "0" : "1");
+    property_set("persist.gammaos.nano.clock12", h12 ? "1" : "0");
+    std::thread([h12] { system(h12 ? "settings put system time_12_24 12 2>/dev/null"
+                                   : "settings put system time_12_24 24 2>/dev/null"); }).detach();
+}
+
+// A zone chosen in setup: the system time zone, and the clock formats that go with it.
+void NanoMenu::setupApplyTimezone(const std::string& tz) {
+    if (tz.empty()) return;
+    char cmd[256];
+    snprintf(cmd, sizeof(cmd), "setprop persist.sys.timezone %s", tz.c_str());
+    system(cmd);
+    ALOGI("NanoMenu: timezone set to %s", tz.c_str());
+    applySetupClockFormats(tz);
+}
+
+// ---------------------------------------------------------------------------
+// Setup script
+// ---------------------------------------------------------------------------
+
+void NanoMenu::startSetupScript() {
+    if (mSetupScriptRunning) return;
+
+    // The setup.sh init service needs sys.boot_completed=1 AND real external storage.
+    // setup.sh does heavy /sdcard writes (tar of ROMs / RetroArch / emulator data). On some
+    // platforms (Allwinner ceres) the emulated FUSE volume mounts several seconds after
+    // boot_completed; firing setup.sh before that mount is served extracts into the empty
+    // tmpfs placeholder vold leaves at /storage/emulated/0 and corrupts the install with
+    // symlink / ENOENT errors. So the trigger (persist.gammaos.setupwizard_run=1) is deferred
+    // to the log-tail thread until isQrRomStorageReady() passes; the UI shows the
+    // "waiting for system" line until then.
+    {
+        std::lock_guard<std::mutex> lk(mSetupLogMutex);
+        mSetupLogLines.clear();
+        mSetupLogLines.push_back(tr(STR_SETUP_INSTALL_BOOT_WAIT));
+    }
+    mSetupLogScrollTop = 0;
+    mSetupScriptDone = false;
+    mSetupScriptDoneMs = 0;
+    mSetupScriptRunning = true;
+    mSetupLogExitRequested = false;
+
+    // Clear previous run state. The actual trigger fires from the log-tail thread once boot
+    // completion AND external-storage readiness are confirmed (see setupLogTailThreadFunc).
+    property_set("persist.gammaos.setupwizard_done", "0");
+    property_set("persist.gammaos.setupwizard_exit_code", "0");
+    property_set("persist.gammaos.setupwizard_run", "0");
+
+    // Start log tail thread (waits for storage, triggers setup.sh, then tails the log)
+    mSetupLogThread = std::thread(&NanoMenu::setupLogTailThreadFunc, this);
+}
+
+void NanoMenu::stopSetupLogThread() {
+    mSetupLogExitRequested = true;
+    if (mSetupLogThread.joinable()) {
+        mSetupLogThread.join();
+    }
+    mSetupScriptRunning = false;
+}
+
+void NanoMenu::setupLogTailThreadFunc() {
+    long pos = 0;
+
+    // Gate the setup.sh trigger on real external-storage readiness before firing it (see
+    // startSetupScript). isPrimaryStorageReady() = the framework's ext_storage_ready signal +
+    // a /storage/emulated/0/Android probe that tells the real FUSE mount apart from vold's
+    // early tmpfs placeholder. (Deliberately not isQrRomStorageReady(): setup.sh only writes
+    // primary /sdcard, so it must not couple to a stale Quick-Resume external-SD ROM path.)
+    // Bounded so a storage failure still runs setup.sh (degraded) instead of hanging forever.
+    {
+        const int kStorageWaitMaxMs = 120000;   // 2 minute ceiling
+        int waited = 0;
+        for (;;) {
+            if (mSetupLogExitRequested) { mSetupScriptRunning = false; return; }
+            char bd[PROPERTY_VALUE_MAX] = {};
+            property_get("sys.boot_completed", bd, "0");
+            if (strcmp(bd, "1") == 0 && isPrimaryStorageReady()) break;
+            if (waited >= kStorageWaitMaxMs) {
+                ALOGW("NanoMenu: external storage not ready after %d ms, "
+                      "running setup.sh anyway", waited);
+                break;
+            }
+            usleep(250 * 1000);
+            waited += 250;
+        }
+        {
+            std::lock_guard<std::mutex> lk(mSetupLogMutex);
+            mSetupLogLines.clear();
+            mSetupLogLines.push_back(tr(STR_SETUP_INSTALL_STARTING));
+        }
+        // Storage is served: fire the init service now (0->1 edge matches the init trigger).
+        property_set("persist.gammaos.setupwizard_run", "0");
+        property_set("persist.gammaos.setupwizard_run", "1");
+        ALOGI("NanoMenu: setup script triggered after storage-ready (waited %d ms)", waited);
+    }
+
+    while (!mSetupLogExitRequested) {
+        // Check if script is done
+        char done[PROPERTY_VALUE_MAX] = {};
+        property_get("persist.gammaos.setupwizard_done", done, "0");
+        if (strcmp(done, "1") == 0) {
+            // Read any remaining log lines
+            FILE* f = fopen(kSetupLogPath, "r");
+            if (f) {
+                fseek(f, pos, SEEK_SET);
+                char line[1024];
+                while (fgets(line, sizeof(line), f)) {
+                    size_t len = strlen(line);
+                    if (len > 0 && line[len - 1] == '\n') line[len - 1] = '\0';
+                    if (strlen(line) > 0) {
+                        std::lock_guard<std::mutex> lk(mSetupLogMutex);
+                        mSetupLogLines.push_back(line);
+                    }
+                }
+                fclose(f);
+            }
+            mSetupScriptDone = true;
+            mSetupScriptRunning = false;
+            ALOGI("NanoMenu: setup script finished");
+            return;
+        }
+
+        // Read new lines from log file
+        FILE* f = fopen(kSetupLogPath, "r");
+        if (f) {
+            fseek(f, 0, SEEK_END);
+            long len = ftell(f);
+            if (len < pos) pos = 0;
+
+            if (len > pos) {
+                fseek(f, pos, SEEK_SET);
+                char line[1024];
+                while (fgets(line, sizeof(line), f)) {
+                    size_t slen = strlen(line);
+                    if (slen > 0 && line[slen - 1] == '\n') line[slen - 1] = '\0';
+                    if (strlen(line) > 0) {
+                        std::lock_guard<std::mutex> lk(mSetupLogMutex);
+                        mSetupLogLines.push_back(line);
+                    }
+                }
+                pos = ftell(f);
+            }
+            fclose(f);
+        }
+
+        usleep(250 * 1000); // 250ms
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Transitions
+// ---------------------------------------------------------------------------
+
+// With Wi-Fi on, Wi-Fi leads to the date and time found from the internet, which the user confirms
+// (or changes the zone on the globe and comes back); it falls through to the globe when no
+// connection comes up (tzAutoDetectAsync waits a few seconds for one). With Wi-Fi off it leads
+// straight to the globe.
+void NanoMenu::advanceSetupStep() {
+    if (mSetupTransitioning) return;
+    int next = (int)mSetupStep + 1;
+    if (mSetupStep == SETUP_WIFI) next = setupWifiOn() ? SETUP_DATETIME : SETUP_TIMEZONE;
+    else if (mSetupStep == SETUP_DATETIME) next = SETUP_INSTALLING;
+    else if (mSetupStep == SETUP_TIMEZONE && mSetupTzFromDt) next = SETUP_DATETIME;
+    // The microSD and BIOS steps only with a card in; the moves only when one was turned on.
+    else if (mSetupStep == SETUP_INSTALLING) next = sdCardRoot().empty() ? SETUP_FINISH : SETUP_SDCARD;
+    else if (mSetupStep == SETUP_SDCARD) next = (mSetupSdEsde || mSetupSdEmu) ? SETUP_SDMOVE : SETUP_BIOS;
+    // The BIOS step installs from the card's folder by default: not when the card has gone.
+    if (next == SETUP_BIOS && sdCardRoot().empty()) next = SETUP_FINISH;
+    if (next >= SETUP_STEP_COUNT) return;
+    if (next != SETUP_TIMEZONE) mSetupTzFromDt = false;
+    setupGoTo((SetupWizardStep)next);
+}
+
+void NanoMenu::goBackSetupStep() {
+    if (mSetupTransitioning) return;
+    if (mSetupStep == SETUP_WELCOME) return;
+    if (mSetupStep == SETUP_INSTALLING) return; // can't go back during install
+    if (mSetupStep >= SETUP_SDCARD) return;      // the steps after it (moves, BIOS) are not undone
+
+    int prev = (int)mSetupStep - 1;
+    if (mSetupStep == SETUP_TIMEZONE) prev = mSetupTzFromDt ? SETUP_DATETIME : SETUP_WIFI;
+    else if (mSetupStep == SETUP_DATETIME) prev = SETUP_WIFI;
+    mSetupTzFromDt = false;
+    setupGoTo((SetupWizardStep)prev, true);
+}
+
+void NanoMenu::setupGoTo(SetupWizardStep step, bool back) {
+    mSetupTransitionBack = back;
+    mSetupTransitioning = true;
+    mSetupTransitionTarget = step;
+    mSetupTransitionAlpha = 1.0f;
+    mSetupSlideOffset = 0.0f;
+}
+
+bool NanoMenu::setupOnline() {
+    std::lock_guard<std::mutex> lk(mNetStateMutex);
+    return mWifiLevel == kWifiLevel_Connected;
+}
+
+// The status poll lags a connection made a moment ago, so a network the wizard just joined can
+// still read as disconnected here: any Wi-Fi that is on may be about to come up.
+bool NanoMenu::setupWifiOn() {
+    std::lock_guard<std::mutex> lk(mNetStateMutex);
+    return mWifiLevel == kWifiLevel_Connected || mWifiRadioOn;
+}
+
+// Render thread, on the Date and Time screen: apply the zone found from the internet once, or, if
+// none was found after all, move on to the globe.
+void NanoMenu::setupDateTimeTick() {
+    if (mSetupTransitioning || mSetupStep != SETUP_DATETIME) return;
+    const int st = mTzAutoState.load(std::memory_order_acquire);
+    if (st == 3) { mSetupTzFromDt = false; setupGoTo(SETUP_TIMEZONE); return; }
+    if (st != 2 || mSetupDtApplied) return;
+    mSetupDtApplied = true;
+    const int row = tzRowFor(mTzAutoId, mTzAutoOffMin);
+    mTzAutoSel = row;
+    if (row >= 0) mTzSelected = row;
+    setupApplyTimezone(mTzAutoId);
+    mDisplayDirty = true;
+}
+
+void NanoMenu::setupDateTimeSelect() {
+    if (!mSetupDtApplied) return;   // still looking
+    if (mSetupDtSel == 0) {
+        mSetupTzFromDt = true;
+        setupGoTo(SETUP_TIMEZONE);
+    } else if (mSetupDtSel == 1 || mSetupDtSel == 2) {
+        setupDateTimeCycle(1);
+    } else {
+        advanceSetupStep();
+    }
+}
+
+void NanoMenu::setupDateTimeCycle(int dir) {
+    if (!mSetupDtApplied) return;
+    if (mSetupDtSel == 1) setSetupClockFormats((mPs3DateFormatIdx + 3 + dir) % 3, mPs3TimeFormatIdx);
+    else if (mSetupDtSel == 2) setSetupClockFormats(mPs3DateFormatIdx, 1 - mPs3TimeFormatIdx);
+    mDisplayDirty = true;
+}
+
+void NanoMenu::updateSetupTransition() {
+    if (!mSetupTransitioning) return;
+
+    bool forward = !mSetupTransitionBack;
+    float speed = 0.08f;
+
+    mSetupTransitionAlpha -= speed;
+    float slideDir = forward ? -1.0f : 1.0f;
+    mSetupSlideOffset += slideDir * speed * (float)mWidth * 0.5f;
+
+    if (mSetupTransitionAlpha <= 0.0f) {
+        // Switch step at midpoint, then fade in
+        mSetupStep = mSetupTransitionTarget;
+        if (mSetupStep != SETUP_BIOS) mBiosDlgSetup = false;
+
+        // Trigger step-specific actions
+        if (mSetupStep == SETUP_WIFI) {
+            // The network step runs the full PS3 Internet Connection wizard (1:1
+            // with the XMB one). Keep MENU_SETUP_WIZARD so the setup input
+            // intercept stays active and routes to the wiz* handlers.
+            mMenuState = MENU_SETUP_WIZARD;
+            startNetWizard();
+        } else if (mSetupStep == SETUP_INSTALLING) {
+            mMenuState = MENU_SETUP_WIZARD;
+            // Defer setup.sh until the fade-in completes + a grace period (see
+            // renderSetupWizard) so the enter transition stays at 60fps instead of
+            // fighting the script's CPU spike.
+            mSetupScriptPending = true;
+            mSetupScriptReadyMs = 0;
+        } else if (mSetupStep == SETUP_TIMEZONE) {
+            // The timezone step is the 1:1 web 3D-globe selector. Rebuild the zone
+            // list (pre-selects the current tz), then start the globe cross-fade
+            // aimed at that zone.
+            mMenuState = MENU_SETUP_WIZARD;
+            buildTimezoneList();
+            beginTzGlobeFade();
+            // (Re)select the found zone on the rebuilt list; from the Date and Time screen it is
+            // already applied, and the list opens on the zone in use.
+            mTzAutoShown = mSetupTzFromDt;
+            if (mSetupTzFromDt) mTzAutoSel = tzRowFor(mTzAutoId, mTzAutoOffMin);
+            mTzUserMoved = false;
+            tzAutoDetectAsync();
+        } else if (mSetupStep == SETUP_DATETIME) {
+            mMenuState = MENU_SETUP_WIZARD;
+            mSetupDtSel = 3;
+            tzAutoDetectAsync();
+        } else if (mSetupStep == SETUP_SDCARD) {
+            mMenuState = MENU_SETUP_WIZARD;
+            mSetupSdSel = 0;
+            // A card with an ES-DE folder: its library is the one to use, so ES-DE starts On.
+            const std::string sd = sdCardRoot();
+            struct stat st;
+            const bool esde = !sd.empty() && stat((sd + "/ES-DE").c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+            if (esde && !mSetupSdHasEsde) mSetupSdEsde = true;
+            mSetupSdHasEsde = esde;
+            // A card with emulator files (a reinstall, another Thimsy's card): they are the ones to use.
+            const bool emu = !sd.empty() && stat((sd + "/emulator_config").c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+            if (emu && !mSetupSdHasEmu) mSetupSdEmu = true;
+            mSetupSdHasEmu = emu;
+        } else if (mSetupStep == SETUP_SDMOVE) {
+            mMenuState = MENU_SETUP_WIZARD;
+            mSetupMovePhase = 0;
+            mSetupMoveDoneMs = 0;
+            mSdMoveAutoNote.clear();
+        } else if (mSetupStep == SETUP_BIOS) {
+            mMenuState = MENU_SETUP_WIZARD;
+            biosDialogOpen(true);
+        } else {
+            mMenuState = MENU_SETUP_WIZARD;
+        }
+
+        // Start the fade-in phase
+        mSetupTransitionAlpha = 0.0f;
+        mSetupSlideOffset = -slideDir * (float)mWidth * 0.3f;
+        mSetupTransitioning = false;
+        // The fade-in is handled by lerping alpha toward 1.0
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Input handling
+// ---------------------------------------------------------------------------
+
+void NanoMenu::handleSetupSelect() {
+    if (mSetupTransitioning) return;
+
+    switch (mSetupStep) {
+    case SETUP_LANGUAGE:
+        handleSetupLanguageSelect();
+        advanceSetupStep();
+        break;
+    case SETUP_WELCOME:
+        advanceSetupStep();
+        break;
+    case SETUP_WIFI:
+        // A in WiFi mode is handled by the WiFi screen
+        handleWifiScreenSelect();
+        break;
+    case SETUP_DATETIME:
+        setupDateTimeSelect();
+        break;
+    case SETUP_TIMEZONE:
+        // A selects the highlighted timezone and advances
+        if (!mTzEntries.empty()) setupApplyTimezone(tzSetupChoiceId());
+        advanceSetupStep();
+        break;
+    case SETUP_INSTALLING:
+        // Can't skip, wait for completion
+        break;
+    case SETUP_SDCARD:
+        setupSdCardSelect();
+        break;
+    case SETUP_SDMOVE:
+        if (mSetupMovePhase == 4) advanceSetupStep();
+        break;
+    case SETUP_BIOS:
+        biosDlgSelect();
+        break;
+    case SETUP_FINISH:
+        finishSetupWizard();
+        break;
+    default:
+        break;
+    }
+}
+
+void NanoMenu::handleSetupBack() {
+    if (mSetupTransitioning) return;
+    // Back closes the OSK first when it is open (wifi password / text fields),
+    // exactly like handleBack(). Otherwise Back fell through to goBackSetupStep()
+    // while the keyboard stayed up, so the previous step showed under a stuck OSK
+    // and the next Enter ran oskConfirm() in the wrong step (broken input).
+    if (mOskActive) { closeOsk(); return; }
+
+    switch (mSetupStep) {
+    case SETUP_WELCOME:
+        break;
+    case SETUP_LANGUAGE:
+        goBackSetupStep();
+        break;
+    case SETUP_WIFI:
+        if (mMenuState == MENU_WIFI) {
+            closeWifiScreen();
+            mMenuState = MENU_SETUP_WIZARD;
+        }
+        goBackSetupStep();
+        break;
+    case SETUP_DATETIME:
+    case SETUP_TIMEZONE:
+        goBackSetupStep();
+        break;
+    case SETUP_INSTALLING:
+        // Can't go back during install
+        break;
+    case SETUP_BIOS:
+        biosDlgBack();
+        break;
+    case SETUP_FINISH:
+        // No going back from finish
+        break;
+    default:
+        break;
+    }
+}
+
+void NanoMenu::handleSetupUp() {
+    switch (mSetupStep) {
+    case SETUP_LANGUAGE:
+        if (mLangSelected > 0) mLangSelected--;
+        break;
+    case SETUP_WIFI:
+        handleWifiScreenUp();
+        break;
+    case SETUP_DATETIME:
+        if (mSetupDtSel > 0) mSetupDtSel--;
+        break;
+    case SETUP_TIMEZONE:
+        tzGlobeNav(-1);   // move selection (wraps) + ease the globe to the new city
+        break;
+    case SETUP_INSTALLING: {
+        std::lock_guard<std::mutex> lk(mSetupLogMutex);
+        if (mSetupLogScrollTop > 0) mSetupLogScrollTop--;
+        break;
+    }
+    case SETUP_SDCARD:
+        if (mSetupSdSel > 0) mSetupSdSel--;
+        break;
+    case SETUP_BIOS:
+        biosDlgNav(-1);
+        break;
+    default:
+        break;
+    }
+}
+
+void NanoMenu::handleSetupDown() {
+    switch (mSetupStep) {
+    case SETUP_LANGUAGE:
+        if (mLangSelected < LOCALE_COUNT - 1) mLangSelected++;
+        break;
+    case SETUP_WIFI:
+        handleWifiScreenDown();
+        break;
+    case SETUP_DATETIME:
+        if (mSetupDtSel < 3) mSetupDtSel++;
+        break;
+    case SETUP_TIMEZONE:
+        tzGlobeNav(+1);   // move selection (wraps) + ease the globe to the new city
+        break;
+    case SETUP_INSTALLING: {
+        std::lock_guard<std::mutex> lk(mSetupLogMutex);
+        int maxScroll = (int)mSetupLogLines.size() - 1;
+        if (maxScroll < 0) maxScroll = 0;
+        if (mSetupLogScrollTop < maxScroll) mSetupLogScrollTop++;
+        break;
+    }
+    case SETUP_SDCARD:
+        if (mSetupSdSel < 2) mSetupSdSel++;
+        break;
+    case SETUP_BIOS:
+        biosDlgNav(1);
+        break;
+    default:
+        break;
+    }
+}
+
+void NanoMenu::handleSetupStart() {
+    if (mSetupTransitioning) return;
+
+    // Start button advances to next step (skip current)
+    switch (mSetupStep) {
+    case SETUP_LANGUAGE:
+        handleSetupLanguageSelect();
+        advanceSetupStep();
+        break;
+    case SETUP_WELCOME:
+        advanceSetupStep();
+        break;
+    case SETUP_WIFI:
+        if (mPs3WizActive) {
+            // Skip the Internet Connection wizard: close it the same way a
+            // normal finish does (renderSetupWizard sees mPs3WizExit>=0 and
+            // advances to the next step).
+            mPs3WizActive = false;
+            mPs3WizExit = 1;
+        } else {
+            if (mMenuState == MENU_WIFI) {
+                closeWifiScreen();
+                mMenuState = MENU_SETUP_WIZARD;
+            }
+            advanceSetupStep();
+        }
+        break;
+    case SETUP_DATETIME:
+        // Confirms what was found; while still looking, skips to the globe.
+        if (mSetupDtApplied) advanceSetupStep();
+        else setupGoTo(SETUP_TIMEZONE);
+        break;
+    case SETUP_TIMEZONE:
+        // Apply selected timezone before advancing
+        if (!mTzEntries.empty()) setupApplyTimezone(tzSetupChoiceId());
+        advanceSetupStep();
+        break;
+    case SETUP_INSTALLING:
+        if (mSetupScriptDone) advanceSetupStep();
+        break;
+    case SETUP_SDCARD:
+        advanceSetupStep();   // with the options as they are
+        break;
+    case SETUP_SDMOVE:
+        if (mSetupMovePhase == 4) advanceSetupStep();
+        break;
+    case SETUP_BIOS:
+        if (mBiosDlgMode == BIOS_REPORT) biosDlgSelect();
+        break;
+    case SETUP_FINISH:
+        finishSetupWizard();
+        break;
+    default:
+        break;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rendering
+// ---------------------------------------------------------------------------
+
+void NanoMenu::renderSetupProgressDots() {
+    float sf = fminf((float)mWidth / 1080.0f, (float)mHeight / 720.0f);
+    if (sf < 0.5f) sf = 0.5f;
+
+    float dotSize = 8.0f * sf;
+    float dotSpacing = 24.0f * sf;
+    float totalW = SETUP_STEP_COUNT * dotSpacing;
+    float startX = ((float)mWidth - totalW) / 2.0f;
+    float y = (float)mHeight - 40.0f * sf;
+
+    for (int i = 0; i < SETUP_STEP_COUNT; i++) {
+        float x = startX + i * dotSpacing;
+        bool active = (i == (int)mSetupStep);
+        float r = active ? 0.3f : 0.4f;
+        float g = active ? 0.8f : 0.4f;
+        float b = active ? 1.0f : 0.5f;
+        float a = active ? 1.0f : 0.5f;
+        float sz = active ? dotSize * 1.4f : dotSize;
+        float offset = (sz - dotSize) / 2.0f;
+        drawQuad(x - offset, y - offset, sz, sz, r, g, b, a);
+    }
+}
+
+void NanoMenu::renderSetupNdsBackdrop() {
+    // DSi theme setup wizard: the wizard steps are forced to the (complete, working) XMB
+    // chrome, but they must sit on the DSi background, not the PS3 wave. Draw the DSi home
+    // background field here (a custom panel wallpaper when set, else the light #f3f3f3
+    // dither field with #dbdbdb edge columns - identical to renderNdsCarousel), then a
+    // dim + blue tint over it so the XMB wizard's light chrome/text stays readable and
+    // reads like the XMB dialog backdrop (a blurred blue wave under a dark dim).
+    setUiBlend();
+    const float W = (float)mWidth, H = (float)mHeight;
+    if (wallpaperActive(mRenderingPanel)) {
+        // A custom panel wallpaper is set: keep it, with a dim + blue cast so the
+        // forced-XMB white chrome/text stays legible over it.
+        drawWallpaperFill(mRenderingPanel);
+        drawQuad(0.0f, 0.0f, W, H, 0.10f, 0.18f, 0.42f, 0.30f);   // blue tint
+        drawQuad(0.0f, 0.0f, W, H, 0.0f,  0.0f,  0.0f,  0.50f);   // dim
+    } else {
+        // No wallpaper (the first-boot default): the user wants a pure BLACK backdrop
+        // for the DSi-theme setup wizard, not the light-grey dither field. The forced
+        // XMB chrome is white text, which reads cleanly on black, so no dim/blue is
+        // needed.
+        drawQuad(0.0f, 0.0f, W, H, 0.0f, 0.0f, 0.0f, 1.0f);
+    }
+}
+
+void NanoMenu::renderSetupWizard() {
+    updateSetupTransition();
+    // Debug/test hook: jump straight to a setup step for on-device 1:1 screenshot
+    // verification. `setprop sys.gammaos.nano.setup_step_jump <n>` (0=welcome ..
+    // installing/finish). Does NOT start setup.sh, so the installing screen shows
+    // the animated (running) progress bar. Self-clears; no effect when empty.
+    {
+        char sj[PROPERTY_VALUE_MAX] = {0};
+        if (property_get("sys.gammaos.nano.setup_step_jump", sj, "") > 0 && sj[0]) {
+            property_set("sys.gammaos.nano.setup_step_jump", "");
+            int s = atoi(sj);
+            if (s >= 0 && s < SETUP_STEP_COUNT) {
+                mSetupStep = (SetupWizardStep)s;
+                mSetupTransitioning = false;
+                mSetupTransitionAlpha = 1.0f;
+                mSetupSlideOffset = 0.0f;
+                mSetupScriptPending = false;
+            }
+        }
+    }
+    // DSi theme: paint the DSi background + dim/blue behind the whole wizard first, so every
+    // step (the XMB-forced Wi-Fi/Bluetooth net wizard, and the language/timezone/installing/
+    // finish steps below) sits on the DSi backdrop instead of the PS3 wave. The net-wizard
+    // steps early-return through renderNetWizard() below, so this must run before them.
+    if (mNdsTheme) renderSetupNdsBackdrop();
+
+    setupDateTimeTick();
+
+    // Anti-alias the wizard text on every step AFTER the Hello/Welcome screen
+    // (language, timezone, the Wi-Fi/Bluetooth net wizard, installing, finish).
+    // The Welcome greeting is large animated text that should stay crisp, and
+    // the OSK is forced back to GL_LINEAR in renderOsk(). Set before the
+    // Wi-Fi/Bluetooth early dispatch below so renderNetWizard() inherits it.
+    setGlyphAtlasAA(mSetupStep != SETUP_WELCOME);
+
+    // The Wi-Fi step IS the full PS3 Internet Connection wizard. It renders its
+    // own fullscreen chrome (blurred wave + dim + header/footer), so dispatch it
+    // here and skip the setup chrome. When it closes, advance to the next step
+    // (completed/forward) or step back (cancelled out of the intro).
+    if (mSetupStep == SETUP_WIFI) {
+        if (mPs3WizActive) {
+            mSetupNetWizSeen = true;
+            renderNetWizard();          // OSK (password fields) is drawn by the caller
+            drawSetupSkipHint();        // Start skips the whole wireless step
+            return;
+        } else if (mSetupNetWizSeen) {
+            mSetupNetWizSeen = false;
+            if (mPs3WizExit >= 0) advanceSetupStep(); else goBackSetupStep();
+        }
+    }
+
+
+    // Fade-in when not transitioning (lerp alpha toward 1.0)
+    if (!mSetupTransitioning && mSetupTransitionAlpha < 1.0f) {
+        mSetupTransitionAlpha += 0.06f;
+        if (mSetupTransitionAlpha >= 1.0f) {
+            mSetupTransitionAlpha = 1.0f;
+            mSetupSlideOffset = 0.0f;   // snap to exactly centred; leaving a residual
+                                        // offset shifts every step (finish title, hints)
+        } else {
+            mSetupSlideOffset *= 0.85f; // ease slide toward zero
+        }
+    }
+
+    // Launch setup.sh only after the enter transition into the installing step has
+    // fully faded in AND settled for a short grace period. setup.sh saturates the CPU
+    // the instant it starts (dexopt, app installs, payload extraction); starting it
+    // during (or on the last frame of) the animation stutters it, so we wait until a
+    // few clean 60fps frames have been presented at the settled position.
+    if (mSetupStep == SETUP_INSTALLING && mSetupScriptPending &&
+            !mSetupTransitioning && mSetupTransitionAlpha >= 1.0f &&
+            mSetupSlideOffset == 0.0f) {
+        int64_t now = elapsedRealtime();
+        if (mSetupScriptReadyMs == 0) {
+            mSetupScriptReadyMs = now + 250;    // arm the grace timer
+        } else if (now >= mSetupScriptReadyMs) {
+            mSetupScriptPending = false;
+            mSetupScriptReadyMs = 0;
+            startSetupScript();
+        }
+    }
+
+    // Auto-advance: once setup.sh has finished, move on to the finish screen by itself after
+    // 10 s. The "Continue" footer hint with its Start glyph left people unsure what to press
+    // (reported 2026-09-27), and there is nothing left to decide on this screen. Pressing
+    // Start still continues at once.
+    if (mSetupStep == SETUP_INSTALLING && mSetupScriptDone && !mSetupTransitioning) {
+        const int64_t now = elapsedRealtime();
+        if (mSetupScriptDoneMs == 0) mSetupScriptDoneMs = now;
+        else if (now - mSetupScriptDoneMs >= 10000) {
+            ALOGI("NanoMenu: setup script finished 10 s ago, continuing");
+            mSetupScriptDoneMs = 0;
+            advanceSetupStep();
+        }
+    }
+
+    // Light dim over wallpaper (skip on welcome for clean iOS-style look; skip on
+    // the timezone step too - the 3D globe is its own opaque backdrop, matching
+    // the web tzglobe screen which draws no dim panel). Under the DSi theme the
+    // renderSetupNdsBackdrop() above already applied the dim + blue, so skip this
+    // one to avoid crushing the background to black.
+    if (!mNdsTheme && mSetupStep != SETUP_WELCOME && mSetupStep != SETUP_TIMEZONE) {
+        drawQuad(0, 0, mWidth, mHeight, 0.0f, 0.0f, 0.0f, 0.4f);
+    }
+
+    // Apply slide offset via a viewport-like translate. Since we don't
+    // have a proper transform matrix pipeline, we pass the offset to
+    // each render function and they add it to their x coordinates.
+    // For simplicity, each step renderer accepts the current alpha and
+    // slide offset implicitly through member vars.
+    float savedAlpha = mSetupTransitionAlpha;
+    float savedSlide = mSetupSlideOffset;
+
+    switch (mSetupStep) {
+    case SETUP_LANGUAGE:   renderSetupLanguage();      break;
+    case SETUP_WELCOME:    renderSetupWelcome();       break;
+    case SETUP_WIFI:       renderSetupWifiStep();      break;
+    case SETUP_DATETIME:   renderSetupDateTime();      break;
+    case SETUP_TIMEZONE:   renderSetupTimezone();      break;
+    case SETUP_INSTALLING: renderSetupInstalling();    break;
+    case SETUP_SDCARD:     renderSetupSdCard();        break;
+    case SETUP_SDMOVE:     renderSetupSdMove();        break;
+    case SETUP_BIOS:       renderSetupBios();          break;
+    case SETUP_FINISH:     renderSetupFinish();        break;
+    default: break;
+    }
+
+    // The timezone globe screen draws its own footer + has no progress dots in
+    // the web tzglobe layout, so skip the setup dots there.
+    if (mSetupStep != SETUP_WELCOME && mSetupStep != SETUP_TIMEZONE) {
+        renderSetupProgressDots();
+    }
+}
+
+void NanoMenu::drawSetupSkipHint() {
+    // Top-right "Start: Skip" hint over the Wireless / Bluetooth net wizard, in the
+    // same PS3 dialog metrics as the footer hints so it matches the chrome. Use a
+    // fixed alpha: the Wi-Fi/Bluetooth branches return before renderSetupWizard's
+    // fade-in runs, so mSetupTransitionAlpha is stuck at 0 on these steps.
+    float alpha = 1.0f;
+    { ps3::LayoutParams lp; lp.panelW = mWidth; lp.panelH = mHeight;
+      lp.uiScale = mPs3UiScale; ps3::layoutCompute(lp); }
+    float ui = mPs3UiScale; if (ui < 0.5f) ui = 0.5f; if (ui > 2.0f) ui = 2.0f;
+    const float S = ps3::gScale / ui;
+    const float offX = ps3::gFrameX + (ps3::gFrameW - S * ps3::XCF(ps3::VW)) * 0.5f;
+    const float offY = ps3::gFrameY + ps3::gFrameH * 0.5f - S * (ps3::VH * 0.5f);
+    auto XC = [&](float vx) { return S * ps3::XCF(vx) + offX; };
+    auto Y  = [&](float vy) { return S * vy + offY; };
+    int   savedMode  = mTextOutlineMode;
+    float savedRatio = mTextOutlineRatio;
+    mTextOutlineMode = 1; mTextOutlineRatio = 0.5f;
+    // Centred, just under the Enter / Cancel footer row (the net wizard draws
+    // those at Y(909)).
+    ps3DlgHintG(XC(ps3::VW * 0.5f), 2, "Skip", Y(955.0f), S, alpha);
+    mTextOutlineMode = savedMode;
+    mTextOutlineRatio = savedRatio;
+}
+
+void NanoMenu::renderSetupWelcome() {
+    // iOS-style greeting animation: large centered greeting word that
+    // cycles through languages with a smooth cross-fade + vertical slide.
+    // Hold ~3s, fade out ~0.5s, fade in next ~0.5s.
+    static const struct { const char* greeting; const char* lang; } kGreetings[] = {
+        {"Hello",
+         "English"},
+        {"Hola",
+         "Espa\xC3\xB1ol"},
+        {"Bonjour",
+         "Fran\xC3\xA7""ais"},
+        {"Hallo",
+         "Deutsch"},
+        {"Ciao",
+         "Italiano"},
+        {"Ol\xC3\xA1",
+         "Portugu\xC3\xAAs"},
+        {"Hallo",
+         "Nederlands"},
+        {"\xD0\x9F\xD1\x80\xD0\xB8\xD0\xB2\xD0\xB5\xD1\x82",
+         "\xD0\xA0\xD1\x83\xD1\x81\xD1\x81\xD0\xBA\xD0\xB8\xD0\xB9"},
+        {"\xE3\x81\x93\xE3\x82\x93\xE3\x81\xAB\xE3\x81\xA1\xE3\x81\xAF",
+         "\xE6\x97\xA5\xE6\x9C\xAC\xE8\xAA\x9E"},
+        {"\xEC\x95\x88\xEB\x85\x95\xED\x95\x98\xEC\x84\xB8\xEC\x9A\x94",
+         "\xED\x95\x9C\xEA\xB5\xAD\xEC\x96\xB4"},
+        {"\xE4\xBD\xA0\xE5\xA5\xBD",
+         "\xE4\xB8\xAD\xE6\x96\x87"},
+        {"\xD9\x85\xD8\xB1\xD8\xAD\xD8\xA8\xD8\xA7",
+         "\xD8\xA7\xD9\x84\xD8\xB9\xD8\xB1\xD8\xA8\xD9\x8A\xD8\xA9"},
+        {"Merhaba",
+         "T\xC3\xBCrk\xC3\xA7""e"},
+        {"Cze\xC5\x9B\xC4\x87",
+         "Polski"},
+        {"\xCE\x93\xCE\xB5\xCE\xB9\xCE\xB1 \xCF\x83\xCE\xB1\xCF\x82",
+         "\xCE\x95\xCE\xBB\xCE\xBB\xCE\xB7\xCE\xBD\xCE\xB9\xCE\xBA\xCE\xAC"},
+        {"\xD7\xA9\xD7\x9C\xD7\x95\xD7\x9D",
+         "\xD7\xA2\xD7\x91\xD7\xA8\xD7\x99\xD7\xAA"},
+        {"\xE0\xB8\xAA\xE0\xB8\xA7\xE0\xB8\xB1\xE0\xB8\xAA\xE0\xB8\x94\xE0\xB8\xB5",
+         "\xE0\xB9\x84\xE0\xB8\x97\xE0\xB8\xA2"},
+        {"Hej",
+         "Dansk"},
+        {"Hei",
+         "Suomi"},
+        {"Hej",
+         "Svenska"},
+        {"Hei",
+         "Norsk bokm\xC3\xA5l"},
+    };
+    static const int kNumGreetings = sizeof(kGreetings) / sizeof(kGreetings[0]);
+
+    float sf = fminf((float)mWidth / 1080.0f, (float)mHeight / 720.0f);
+    if (sf < 0.5f) sf = 0.5f;
+    float alpha = mSetupTransitionAlpha;
+
+    // Transition types:
+    //   0 = slide up        1 = slide down
+    //   2 = zoom in         3 = zoom out
+    //   4 = slide left      5 = slide right
+    static const int kNumTransTypes = 6;
+    static const float kHoldTime = 3.0f;
+    static const float kFadeTime = 0.6f;
+
+    mGreetingTimer += mFrameDt;
+
+    if (!mGreetingFadingOut) {
+        if (mGreetingFade < 1.0f) {
+            mGreetingFade += mFrameDt / kFadeTime;
+            if (mGreetingFade > 1.0f) mGreetingFade = 1.0f;
+        }
+        if (mGreetingTimer >= kHoldTime + kFadeTime) {
+            mGreetingFadingOut = true;
+        }
+    } else {
+        mGreetingFade -= mFrameDt / kFadeTime;
+        if (mGreetingFade <= 0.0f) {
+            mGreetingFade = 0.0f;
+            int next = mGreetingIndex;
+            while (next == mGreetingIndex)
+                next = rand() % kNumGreetings;
+            mGreetingIndex = next;
+            mGreetingTransType = rand() % kNumTransTypes;
+            mGreetingTimer = 0.0f;
+            mGreetingFadingOut = false;
+        }
+    }
+
+    // Compute transition progress (0 = just appeared/about to vanish, 1 = fully visible)
+    // t goes 0->1 during fade-in, stays 1 during hold, 1->0 during fade-out
+    float t = mGreetingFade;
+    // Ease curve: smooth step for more organic motion
+    float easeT = t * t * (3.0f - 2.0f * t);
+
+    // Apply transition-specific offsets
+    float offsetX = 0.0f, offsetY = 0.0f;
+    float scaleMul = 1.0f;
+    float maxSlide = 60.0f * sf;
+    float maxSlideX = 120.0f * sf;
+
+    switch (mGreetingTransType) {
+    case 0: // slide up
+        offsetY = -(1.0f - easeT) * maxSlide;
+        if (mGreetingFadingOut) offsetY = (1.0f - easeT) * maxSlide * -1.0f;
+        else offsetY = (1.0f - easeT) * maxSlide;
+        break;
+    case 1: // slide down
+        if (mGreetingFadingOut) offsetY = (1.0f - easeT) * maxSlide;
+        else offsetY = -(1.0f - easeT) * maxSlide;
+        break;
+    case 2: // zoom in (start small, grow to full)
+        scaleMul = 0.6f + 0.4f * easeT;
+        break;
+    case 3: // zoom out (start large, shrink to normal)
+        if (mGreetingFadingOut) scaleMul = 1.0f + (1.0f - easeT) * 0.5f;
+        else scaleMul = 1.5f - 0.5f * easeT;
+        break;
+    case 4: // slide from left
+        if (mGreetingFadingOut) offsetX = -(1.0f - easeT) * maxSlideX;
+        else offsetX = -(1.0f - easeT) * maxSlideX;
+        break;
+    case 5: // slide from right
+        if (mGreetingFadingOut) offsetX = (1.0f - easeT) * maxSlideX;
+        else offsetX = (1.0f - easeT) * maxSlideX;
+        break;
+    }
+
+    float greetScale = 6.0f * sf * scaleMul;
+    const char* greeting = kGreetings[mGreetingIndex].greeting;
+    float greetW = measureText(greeting, greetScale);
+    float greetX = ((float)mWidth - greetW) / 2.0f + offsetX;
+    float greetY = (float)mHeight * 0.38f + offsetY;
+    float gAlpha = easeT * alpha;
+
+    // Soft glow layer
+    float glowAlpha = gAlpha * 0.25f;
+    drawText(greeting, greetX - 2.0f * sf, greetY - 1.5f * sf,
+             greetScale, 0.4f, 0.7f, 1.0f, glowAlpha);
+    drawText(greeting, greetX + 1.0f * sf, greetY + 0.5f * sf,
+             greetScale, 0.3f, 0.6f, 0.9f, glowAlpha * 0.6f);
+    // Sharp text
+    drawText(greeting, greetX, greetY,
+             greetScale, 0.85f, 0.92f, 1.0f, gAlpha);
+
+    // Language label with matched transition
+    float langScale = 1.6f * sf * fminf(scaleMul, 1.1f);
+    const char* langName = kGreetings[mGreetingIndex].lang;
+    float langW = measureText(langName, langScale);
+    float langX = ((float)mWidth - langW) / 2.0f + offsetX * 0.6f;
+    float langY = greetY + FONT_CHAR_H * greetScale + 14.0f * sf + offsetY * 0.3f;
+    drawText(langName, langX, langY, langScale,
+             0.55f, 0.62f, 0.75f, gAlpha * 0.65f);
+
+    // Pulsing "Press A to begin" at the bottom
+    float promptScale = 1.8f * sf;
+    float pulse = 0.5f + 0.5f * sinf((float)elapsedRealtime() * 0.003f);
+    const std::string promptText = tr(STR_SETUP_PRESS_A);
+    const char* prompt = promptText.c_str();
+    float promptW = measureText(prompt, promptScale);
+    float promptX = ((float)mWidth - promptW) / 2.0f;
+    float promptY = (float)mHeight - 80.0f * sf;
+    drawText(prompt, promptX, promptY, promptScale,
+             0.8f, 0.85f, 0.95f, alpha * pulse * 0.8f);
+}
+
+void NanoMenu::renderSetupWifiStep() {
+    float sf = fminf((float)mWidth / 1080.0f, (float)mHeight / 720.0f);
+    if (sf < 0.5f) sf = 0.5f;
+    float alpha = mSetupTransitionAlpha;
+
+    // Step header
+    float headerScale = 2.8f * sf;
+    float slideX = mSetupSlideOffset;
+    const char* header = tr(STR_SETUP_WIFI_TITLE);
+    float headerW = measureText(header, headerScale);
+    float headerX = ((float)mWidth - headerW) / 2.0f + slideX;
+    float headerY = 15.0f * sf;
+    drawText(header, headerX, headerY, headerScale,
+             0.3f, 0.85f, 1.0f, alpha);
+
+    // Check if boot is complete (WiFi driver needs system_server)
+    char bootDone[PROPERTY_VALUE_MAX] = {};
+    property_get("sys.boot_completed", bootDone, "0");
+    bool booted = (strcmp(bootDone, "1") == 0);
+
+    if (mMenuState == MENU_WIFI) {
+        renderWifiScreen();
+    }
+
+    if (!booted) {
+        // Driver loading overlay with spinning indicator
+        float loadScale = 1.6f * sf;
+        const char* spinner[] = {"|", "/", "-", "\\"};
+        int spinIdx = ((int)(elapsedRealtime() / 150)) % 4;
+        char loadMsg[64];
+        snprintf(loadMsg, sizeof(loadMsg), "%s  %s", spinner[spinIdx], trDyn("Loading driver..."));
+        float loadW = measureText(loadMsg, loadScale);
+        drawText(loadMsg, (float)mWidth - loadW - 12.0f * sf,
+                 15.0f * sf + FONT_CHAR_H * 2.8f * sf + 6.0f * sf,
+                 loadScale, 0.9f, 0.8f, 0.2f, alpha * 0.9f);
+    }
+
+    // Setup footer
+    float footScale = 1.3f * sf;
+    const char* footer = tr(STR_SETUP_WIFI_FOOTER);
+    float footW = measureText(footer, footScale);
+    drawText(footer, ((float)mWidth - footW) / 2.0f,
+             (float)mHeight - 70.0f * sf, footScale,
+             0.9f, 0.9f, 0.95f, alpha * 0.85f);
+}
+
+
+void NanoMenu::renderSetupTimezone() {
+    // The setup wizard timezone step is the 1:1 web 3D-globe selector, shared
+    // with the XMB Date and Time -> Time Zone view (NanoMenuPS3Menu.cpp). It
+    // draws the raymarched Earth backdrop + the "Time Zone" header + the
+    // right-aligned GMT zone list + footer, with its own cross-fade.
+    renderTimezoneGlobe();
+}
+
+// Online: the date and time set from the internet, the time zone found from the connection, and the
+// clock formats that go with it, for the user to confirm or change. The same PS3 dialog layout as
+// the installing step.
+void NanoMenu::renderSetupDateTime() {
+    float alpha = mSetupTransitionAlpha;
+    { ps3::LayoutParams lp; lp.panelW = mWidth; lp.panelH = mHeight;
+      lp.uiScale = mPs3UiScale; ps3::layoutCompute(lp); }
+    float ui = mPs3UiScale; if (ui < 0.5f) ui = 0.5f; if (ui > 2.0f) ui = 2.0f;
+    const float S = ps3::gScale / ui;
+    const float offX = ps3::gFrameX + (ps3::gFrameW - S * ps3::XCF(ps3::VW)) * 0.5f
+                     + mSetupSlideOffset;
+    const float offY = ps3::gFrameY + ps3::gFrameH * 0.5f - S * (ps3::VH * 0.5f);
+    auto X  = [&](float vx) { return S * vx + offX; };
+    auto XC = [&](float vx) { return S * ps3::XCF(vx) + offX; };
+    auto Y  = [&](float vy) { return S * vy + offY; };
+    auto DS = [&](float v)  { return S * v; };
+    const float fb = ps3DlgFontBoost();
+    auto FS = [&](float px) { return S * px * fb / 16.0f; };
+    const float VW = ps3::VW;
+    const float innerTop = 199.0f, innerBot = 880.0f;
+
+    int   savedMode  = mTextOutlineMode;
+    float savedRatio = mTextOutlineRatio;
+    mTextOutlineMode = 1; mTextOutlineRatio = 0.5f;
+
+    ps3DlgText("Date and Time", X(160.0f), Y(187.0f), FS(28.0f), 1, 1, 1, alpha, 0);
+    float divLw = fmaxf(1.0f, DS(1.0f));
+    drawQuad(ps3::gFrameX, Y(innerTop), ps3::gFrameW, divLw, 1, 1, 1, 0.55f * alpha);
+    drawQuad(ps3::gFrameX, Y(innerBot), ps3::gFrameW, divLw, 1, 1, 1, 0.55f * alpha);
+
+    const bool found = mTzAutoState.load(std::memory_order_acquire) == 2 && mSetupDtApplied;
+    if (!found) {
+        static const char* const kDots[] = {"", ".", "..", "..."};
+        std::string msg = std::string(trDyn("Getting the date and time from the internet")) +
+                          kDots[(elapsedRealtime() / 400) % 4];
+        ps3DlgText(msg.c_str(), XC(VW * 0.5f), Y(540.0f), FS(22.0f), 0.9f, 0.9f, 0.95f, alpha, 1);
+        ps3DlgHintG(XC(VW * 0.5f), 2, "Skip", Y(909.0f), S, alpha);
+        mDisplayDirty = true;
+        mTextOutlineMode = savedMode;
+        mTextOutlineRatio = savedRatio;
+        return;
+    }
+
+    // The clock as it now reads, in the chosen formats.
+    time_t now = time(nullptr);
+    struct tm lt; localtime_r(&now, &lt);
+    char date[32], clock[80];
+    const int y = lt.tm_year + 1900, mo = lt.tm_mon + 1, d = lt.tm_mday;
+    if (mPs3DateFormatIdx == 0)      snprintf(date, sizeof(date), "%04d/%02d/%02d", y, mo, d);
+    else if (mPs3DateFormatIdx == 1) snprintf(date, sizeof(date), "%02d/%02d/%04d", mo, d, y);
+    else                             snprintf(date, sizeof(date), "%02d/%02d/%04d", d, mo, y);
+    if (mPs3TimeFormatIdx == 0)
+        snprintf(clock, sizeof(clock), "%d:%02d %s", lt.tm_hour % 12 ? lt.tm_hour % 12 : 12, lt.tm_min,
+                 trDyn(lt.tm_hour < 12 ? "AM" : "PM"));
+    else
+        snprintf(clock, sizeof(clock), "%02d:%02d", lt.tm_hour, lt.tm_min);
+    std::string big = std::string(date) + "   " + clock;
+    ps3DlgText(big.c_str(), XC(VW * 0.5f), Y(innerTop + 120.0f), FS(40.0f), 1, 1, 1, alpha, 1);
+    ps3DlgText(mTzAutoClockSet ? "Set from your internet connection. Is this right?"
+                               : "The time zone was found from your internet connection, but the clock could not be set.",
+               XC(VW * 0.5f), Y(innerTop + 175.0f), FS(18.0f), 0.75f, 0.78f, 0.82f, alpha, 1);
+
+    static const char* const kDateFmts[] = {"YYYY/MM/DD", "MM/DD/YYYY", "DD/MM/YYYY"};
+    static const char* const kTimeFmts[] = {"12-Hour Clock", "24-Hour Clock"};
+    char tzNow[PROPERTY_VALUE_MAX] = {};
+    property_get("persist.sys.timezone", tzNow, "");
+    std::string zone = tzNow;
+    for (const TimezoneEntry& e : mTzEntries)
+        if (e.id == tzNow) { zone = e.display; break; }
+    struct Row { const char* label; std::string value; };
+    const Row rows[3] = {
+        {"Time Zone", zone},
+        {"Date Format", trDyn(kDateFmts[std::clamp(mPs3DateFormatIdx, 0, 2)])},
+        {"Time Format", trDyn(kTimeFmts[std::clamp(mPs3TimeFormatIdx, 0, 1)])},
+    };
+    const float rowFs = FS(22.0f), rowTop = innerTop + 280.0f, rowStep = 72.0f;
+    const float lx = XC(220.0f), rx = XC(VW - 220.0f);
+    for (int i = 0; i < 4; i++) {
+        const float by = rowTop + i * rowStep + (i == 3 ? 24.0f : 0.0f);
+        const bool sel = i == mSetupDtSel;
+        if (sel) drawQuad(XC(180.0f), Y(by - 42.0f), XC(VW - 180.0f) - XC(180.0f), DS(60.0f), 1, 1, 1, 0.14f * alpha);
+        const float a = alpha * (sel ? 1.0f : 0.8f);
+        if (i == 3) {
+            ps3DlgText("Continue", XC(VW * 0.5f), Y(by), rowFs, 1, 1, 1, a, 1);
+            continue;
+        }
+        ps3DlgText(rows[i].label, lx, Y(by), rowFs, 0.78f, 0.78f, 0.82f, a, 0);
+        std::string v = rows[i].value;
+        if (sel && i > 0) v = "< " + v + " >";
+        ps3DlgText(v.c_str(), rx, Y(by), rowFs, 1, 1, 1, a, 2);
+    }
+
+    const float hintY = Y(909.0f);
+    ps3DlgHint(XC(VW * 0.38f), true, mSetupDtSel == 0 ? "Change" : mSetupDtSel == 3 ? "OK" : "Select",
+               hintY, S, alpha);
+    ps3DlgHint(XC(VW * 0.62f), false, "Back", hintY, S, alpha);
+
+    mTextOutlineMode = savedMode;
+    mTextOutlineRatio = savedRatio;
+}
+
+void NanoMenu::renderSetupInstalling() {
+    float alpha = mSetupTransitionAlpha;
+    // PS3 fullscreen-dialog layout (1:1 with the Wireless / Bluetooth wizard):
+    // a left title with top/bottom dividers, the configuration log in the body,
+    // and a Start-Continue footer hint once the script finishes.
+    { ps3::LayoutParams lp; lp.panelW = mWidth; lp.panelH = mHeight;
+      lp.uiScale = mPs3UiScale; ps3::layoutCompute(lp); }
+    float ui = mPs3UiScale; if (ui < 0.5f) ui = 0.5f; if (ui > 2.0f) ui = 2.0f;
+    const float S = ps3::gScale / ui;
+    // Honor the wizard slide so this screen slides + cross-fades in like the
+    // other steps (it used absolute coords before, so it only faded -> abrupt).
+    const float offX = ps3::gFrameX + (ps3::gFrameW - S * ps3::XCF(ps3::VW)) * 0.5f
+                     + mSetupSlideOffset;
+    const float offY = ps3::gFrameY + ps3::gFrameH * 0.5f - S * (ps3::VH * 0.5f);
+    auto X  = [&](float vx) { return S * vx + offX; };
+    auto XC = [&](float vx) { return S * ps3::XCF(vx) + offX; };
+    auto Y  = [&](float vy) { return S * vy + offY; };
+    auto DS = [&](float v)  { return S * v; };
+    const float fb = ps3DlgFontBoost();
+    auto FS = [&](float px) { return S * px * fb / 16.0f; };
+    const float VW = ps3::VW;
+    const float innerTop = 199.0f, innerBot = 880.0f;
+
+    int   savedMode  = mTextOutlineMode;
+    float savedRatio = mTextOutlineRatio;
+    mTextOutlineMode = 1; mTextOutlineRatio = 0.5f;
+
+    // Header: title + dividers.
+    const char* title = mSetupScriptDone ? tr(STR_SETUP_INSTALL_DONE)
+                                         : tr(STR_SETUP_INSTALL_TITLE);
+    ps3DlgText(title, X(160.0f), Y(187.0f), FS(28.0f), 1, 1, 1, alpha, 0);
+    float divLw = fmaxf(1.0f, DS(1.0f));
+    drawQuad(ps3::gFrameX, Y(innerTop), ps3::gFrameW, divLw, 1, 1, 1, 0.55f * alpha);
+    drawQuad(ps3::gFrameX, Y(innerBot), ps3::gFrameW, divLw, 1, 1, 1, 0.55f * alpha);
+
+    // Body: the configuration log. Word-wrapping every frame over the full (and
+    // growing) log was O(total chars) of measureText per frame and tanked the FPS,
+    // which persisted after the script finished because the log stayed large. Wrap
+    // only the visible tail, cached, re-wrapping only when the log grows or the
+    // frame width changes - so steady state (and the finished screen) is free.
+    const float lfs = FS(17.0f);
+    const float logLeft = X(160.0f);
+    float maxLogW = X(ps3::VW - 160.0f) - logLeft;   // slide-invariant (offX cancels)
+    if (maxLogW < 40.0f) maxLogW = 40.0f;
+    const float logTopV = innerTop + 46.0f, logRowV = 28.0f;
+    float availV = (innerBot - 26.0f) - logTopV;
+    int visibleRows = (int)(availV / logRowV); if (visibleRows < 4) visibleRows = 4;
+    size_t curLines;
+    { std::lock_guard<std::mutex> lk(mSetupLogMutex); curLines = mSetupLogLines.size(); }
+    if ((int)curLines != mSetupLogRowsForLines || maxLogW != mSetupLogRowsForW) {
+        std::vector<std::string> tail;
+        {
+            std::lock_guard<std::mutex> lk(mSetupLogMutex);
+            int from = (int)mSetupLogLines.size() - (visibleRows + 6);
+            if (from < 0) from = 0;
+            for (int i = from; i < (int)mSetupLogLines.size(); i++) tail.push_back(mSetupLogLines[i]);
+        }
+        mSetupLogRows.clear();
+        for (const std::string& ln : tail) {
+            int kind = 0;
+            if (ln.find("Error") != std::string::npos ||
+                ln.find("error") != std::string::npos) kind = 2;
+            else if (ln.find("completed") != std::string::npos ||
+                     ln.find("successfully") != std::string::npos) kind = 3;
+            else if (ln.find("Installing") != std::string::npos ||
+                     ln.find("Extracting") != std::string::npos) kind = 1;
+            if (ln.empty()) { mSetupLogRows.push_back({"", kind}); continue; }
+            // Greedy wrap: break at the last space that fits; hard-break a single
+            // long token (a path) mid-token.
+            std::string cur;
+            for (size_t c = 0; c < ln.size(); c++) {
+                std::string trial = cur + ln[c];
+                if (!cur.empty() && measureText(trial.c_str(), lfs) > maxLogW) {
+                    size_t sp = cur.find_last_of(' ');
+                    if (sp != std::string::npos && sp > 0) {
+                        mSetupLogRows.push_back({cur.substr(0, sp), kind});
+                        cur = cur.substr(sp + 1) + ln[c];
+                    } else {
+                        mSetupLogRows.push_back({cur, kind});
+                        cur = std::string(1, ln[c]);
+                    }
+                } else cur = trial;
+            }
+            if (!cur.empty()) mSetupLogRows.push_back({cur, kind});
+        }
+        mSetupLogRowsForLines = (int)curLines;
+        mSetupLogRowsForW = maxLogW;
+    }
+    int totalRows = (int)mSetupLogRows.size();
+    int startR = (totalRows > visibleRows) ? totalRows - visibleRows : 0;
+    for (int i = startR; i < totalRows; i++) {
+        int kind = mSetupLogRows[i].second;
+        float r = 0.75f, g = 0.78f, b = 0.82f;
+        if (kind == 1)      { r = 0.45f; g = 0.9f;  b = 0.55f; }
+        else if (kind == 2) { r = 1.0f;  g = 0.45f; b = 0.45f; }
+        else if (kind == 3) { r = 0.4f;  g = 0.95f; b = 0.6f;  }
+        ps3DlgText(mSetupLogRows[i].first.c_str(), logLeft,
+                   Y(logTopV + (float)(i - startR) * logRowV),
+                   lfs, r, g, b, alpha * 0.92f, 0);
+    }
+
+    // Footer: Start-Continue once done, otherwise a centred "Please wait..." with a
+    // marching indeterminate progress bar underneath it (Windows-XP / Android-boot
+    // style: a small group of blocks that slides left -> right and loops), so the
+    // user can see setup is alive and not stalled.
+    float hintY = Y(909.0f);
+    if (mSetupScriptDone) {
+        ps3DlgHintG(XC(VW * 0.5f), 2, "Continue", hintY, S, alpha);
+        // Countdown to the automatic continue (see renderSetupWizard), so the screen says what
+        // happens next instead of waiting on a glyph the user may not recognise.
+        if (mSetupScriptDoneMs > 0) {
+            int left = (int)((10000 - (elapsedRealtime() - mSetupScriptDoneMs) + 999) / 1000);
+            if (left < 0) left = 0; if (left > 10) left = 10;
+            char buf[64]; snprintf(buf, sizeof(buf), tr(STR_SETUP_INSTALL_AUTO), left);
+            ps3DlgText(buf, XC(VW * 0.5f), Y(946.0f), FS(18.0f), 0.9f, 0.9f, 0.95f, 0.75f * alpha, 1);
+        }
+    } else {
+        ps3DlgText(tr(STR_SETUP_INSTALL_WAIT), XC(VW * 0.5f), Y(916.0f), FS(20.0f),
+                   0.9f, 0.9f, 0.95f, 0.9f * alpha, 1);
+        // Marching bar, centred under the "Please wait..." text.
+        const float barW = S * VW * 0.34f;
+        const float barX = XC(VW * 0.5f) - barW * 0.5f;
+        const float barY = Y(946.0f);
+        const float blkH = DS(9.0f);
+        drawQuad(barX, barY, barW, blkH, 1.0f, 1.0f, 1.0f, 0.10f * alpha);   // recessed trough
+        const int   grp    = 3;                                             // blocks in the group
+        const float blkW   = DS(11.0f);
+        const float blkGap = DS(7.0f);
+        const float grpW   = grp * blkW + (grp - 1) * blkGap;
+        const float ph     = fmodf((float)elapsedRealtime(), 1300.0f) / 1300.0f;  // ~1.3s per sweep
+        const float gx     = barX - grpW + ph * (barW + grpW);              // enter left, exit right, loop
+        for (int i = 0; i < grp; i++) {
+            float x  = gx + (float)i * (blkW + blkGap);
+            float xl = fmaxf(x, barX);
+            float xr = fminf(x + blkW, barX + barW);                        // clip to the trough
+            if (xr > xl) drawQuad(xl, barY, xr - xl, blkH, 0.35f, 0.75f, 1.0f, 0.95f * alpha);
+        }
+    }
+
+    mTextOutlineMode = savedMode;
+    mTextOutlineRatio = savedRatio;
+}
+
+void NanoMenu::renderSetupFinish() {
+    float sf = fminf((float)mWidth / 1080.0f, (float)mHeight / 720.0f);
+    if (sf < 0.5f) sf = 0.5f;
+    float alpha = mSetupTransitionAlpha;
+    float slideX = mSetupSlideOffset;
+
+    const char* title  = tr(STR_SETUP_FINISH_TITLE);
+    const char* sub    = tr(STR_SETUP_FINISH_SUB);
+    const char* prompt = tr(STR_SETUP_FINISH_PRESS_A);
+    const float titleScale  = 4.0f * sf;
+    const float subScale    = 2.0f * sf;
+    const float promptScale = 2.2f * sf;
+
+    // Center the whole title + subtitle + prompt block both horizontally (each line
+    // individually) and VERTICALLY (as one group), so the screen reads as centred
+    // instead of top-heavy.
+    const float titleH  = FONT_CHAR_H * titleScale;
+    const float subH    = FONT_CHAR_H * subScale;
+    const float promptH = FONT_CHAR_H * promptScale;
+    const float gapTitleSub = 20.0f * sf;   // title -> subtitle
+    const float gapSubPrompt = 70.0f * sf;  // subtitle -> prompt (kept airy)
+    const float blockH = titleH + gapTitleSub + subH + gapSubPrompt + promptH;
+    const float titleY  = ((float)mHeight - blockH) * 0.5f;
+    const float subY    = titleY + titleH + gapTitleSub;
+    const float promptY = subY + subH + gapSubPrompt;
+
+    // Title with a green tint
+    float titleX = ((float)mWidth - measureText(title, titleScale)) / 2.0f + slideX;
+    drawText(title, titleX, titleY, titleScale, 0.3f, 1.0f, 0.5f, alpha);
+
+    // Subtitle
+    float subX = ((float)mWidth - measureText(sub, subScale)) / 2.0f + slideX;
+    drawText(sub, subX, subY, subScale, 0.6f, 0.7f, 0.65f, alpha * 0.9f);
+
+    // Pulsing prompt
+    float pulse = 0.6f + 0.4f * sinf((float)elapsedRealtime() * 0.004f);
+    float promptX = ((float)mWidth - measureText(prompt, promptScale)) / 2.0f + slideX;
+    drawText(prompt, promptX, promptY, promptScale, 0.95f, 0.95f, 1.0f, alpha * pulse);
+}
+
+// ---------------------------------------------------------------------------
+// Language selection step
+// ---------------------------------------------------------------------------
+
+void NanoMenu::handleSetupLanguageSelect() {
+    nanoSetLocale((NanoLocale)mLangSelected);
+    nanoApplyLocaleToSystem();
+}
+
+void NanoMenu::renderSetupLanguage() {
+    // Live locale preview as the user scrolls, then the shared fullscreen language
+    // list (1:1 with the Settings -> System Language picker). renderLanguageList
+    // keeps the native names verbatim, so the English row stays "English".
+    nanoSetLocale((NanoLocale)mLangSelected);
+    renderLanguageList(tr(STR_SETUP_LANG_TITLE), mSetupTransitionAlpha);
+}
+
+} // namespace android

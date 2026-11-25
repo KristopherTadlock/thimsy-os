@@ -1,0 +1,135 @@
+{
+ "id": "rg_cube",
+ "name": "RG Cube",
+ "drawing": "",
+ "vendor": "484b",
+ "product": "1101",
+ "buttons": [
+  {
+   "phys": "south",
+   "label": "B",
+   "linux": 305,
+   "android": "BUTTON_A"
+  },
+  {
+   "phys": "east",
+   "label": "A",
+   "linux": 304,
+   "android": "BUTTON_B"
+  },
+  {
+   "phys": "north",
+   "label": "X",
+   "linux": 307,
+   "android": "BUTTON_Y"
+  },
+  {
+   "phys": "west",
+   "label": "Y",
+   "linux": 308,
+   "android": "BUTTON_X"
+  },
+  {
+   "phys": "l1",
+   "label": "L1",
+   "linux": 310,
+   "android": "BUTTON_L1"
+  },
+  {
+   "phys": "r1",
+   "label": "R1",
+   "linux": 311,
+   "android": "BUTTON_R1"
+  },
+  {
+   "phys": "l2",
+   "label": "L2",
+   "linux": 312,
+   "android": "BUTTON_L2"
+  },
+  {
+   "phys": "r2",
+   "label": "R2",
+   "linux": 313,
+   "android": "BUTTON_R2"
+  },
+  {
+   "phys": "l3",
+   "label": "L3",
+   "linux": 317,
+   "android": "BUTTON_THUMBL"
+  },
+  {
+   "phys": "r3",
+   "label": "R3",
+   "linux": 318,
+   "android": "BUTTON_THUMBR"
+  },
+  {
+   "phys": "select",
+   "label": "Select",
+   "linux": 314,
+   "android": "BUTTON_SELECT"
+  },
+  {
+   "phys": "start",
+   "label": "Start",
+   "linux": 315,
+   "android": "BUTTON_START"
+  },
+  {
+   "phys": "home",
+   "label": "Anbernic",
+   "linux": 316,
+   "android": "BUTTON_MODE"
+  }
+ ],
+ "axes": [
+  {
+   "neg": "dpad_left",
+   "pos": "dpad_right",
+   "linux": 16,
+   "android": "HAT_X"
+  },
+  {
+   "neg": "dpad_up",
+   "pos": "dpad_down",
+   "linux": 17,
+   "android": "HAT_Y"
+  },
+  {
+   "neg": "lstick_left",
+   "pos": "lstick_right",
+   "linux": 0,
+   "android": "X"
+  },
+  {
+   "neg": "lstick_up",
+   "pos": "lstick_down",
+   "linux": 1,
+   "android": "Y"
+  },
+  {
+   "neg": "rstick_left",
+   "pos": "rstick_right",
+   "linux": 3,
+   "android": "Z"
+  },
+  {
+   "neg": "rstick_up",
+   "pos": "rstick_down",
+   "linux": 4,
+   "android": "RZ"
+  },
+  {
+   "pos": "l2",
+   "linux": 2,
+   "android": "LTRIGGER"
+  },
+  {
+   "pos": "r2",
+   "linux": 5,
+   "android": "RTRIGGER"
+  }
+ ]
+}

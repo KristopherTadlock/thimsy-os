@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 654" width="1000" height="654">
+<g transform="scale(1.01963) translate(-9.6 6)">
+<rect id="btn-lt" x="130" y="10" width="250" height="100" rx="44" ry="44" fill="#EDEDED" stroke="#2E2E2E" stroke-width="8"/>
+<rect id="btn-rt" x="620" y="10" width="250" height="100" rx="44" ry="44" fill="#EDEDED" stroke="#2E2E2E" stroke-width="8"/>
+<rect x="160" y="70" width="680" height="400" rx="150" ry="150" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<ellipse cx="215" cy="370" rx="165" ry="250" transform="rotate(22 215 370)" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<ellipse cx="785" cy="370" rx="165" ry="250" transform="rotate(-22 785 370)" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<rect id="body" x="160" y="70" width="680" height="400" rx="150" ry="150" fill="#2E2E2E"/>
+<ellipse cx="215" cy="370" rx="165" ry="250" transform="rotate(22 215 370)" fill="#2E2E2E"/>
+<ellipse cx="785" cy="370" rx="165" ry="250" transform="rotate(-22 785 370)" fill="#2E2E2E"/>
+<circle cx="240" cy="215" r="82" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<circle id="stick-l" cx="240" cy="215" r="54.1" fill="#EDEDED"/>
+<polygon id="dpad" points="352.9,315 397.1,315 397.1,357.9 440,357.9 440,402.1 397.1,402.1 397.1,445 352.9,445 352.9,402.1 310,402.1 310,357.9 352.9,357.9" fill="#EDEDED"/>
+<circle cx="625" cy="380" r="70" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<circle id="stick-r" cx="625" cy="380" r="46.2" fill="#EDEDED"/>
+<circle id="btn-back" cx="445" cy="250" r="18" fill="#EDEDED"/>
+<circle id="btn-start" cx="555" cy="250" r="18" fill="#EDEDED"/>
+<circle id="btn-y" cx="745" cy="153" r="32" fill="#EDEDED"/>
+<circle id="btn-b" cx="807" cy="215" r="32" fill="#EDEDED"/>
+<circle id="btn-a" cx="745" cy="277" r="32" fill="#EDEDED"/>
+<circle id="btn-x" cx="683" cy="215" r="32" fill="#EDEDED"/>
+<circle id="btn-white" cx="850" cy="330" r="21" fill="#EDEDED"/>
+<circle id="btn-black" cx="800" cy="375" r="21" fill="#EDEDED"/>
+<circle cx="240" cy="215" r="29.5" fill="none" stroke="#2E2E2E" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon id="dpad-up" points="375,329.3 382.8,342.3 367.2,342.3" fill="#2E2E2E"/>
+<polygon id="dpad-down" points="375,430.7 367.2,417.7 382.8,417.7" fill="#2E2E2E"/>
+<polygon id="dpad-left" points="324.3,380 337.3,372.2 337.3,387.8" fill="#2E2E2E"/>
+<polygon id="dpad-right" points="425.7,380 412.7,387.8 412.7,372.2" fill="#2E2E2E"/>
+<circle cx="625" cy="380" r="25.2" fill="none" stroke="#2E2E2E" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</g></svg>

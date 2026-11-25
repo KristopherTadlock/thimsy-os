@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "note": "The browser controls of gammapad's BrowserMode (frameworks/native/services/gammapad/BrowserMode.cpp), by the gammapad code each control is (after the key layout, ABXY Swap and remap_btn). gammaos_nano_unit_tests checks every 'case BTN_*' of BrowserMode::onButton has a row here.",
+  "bookmarkCtrlB": "net.slions.fulguris.",
+  "rows": [
+    {"control": "BTN_A", "action": "Enter", "cursor": "Left click (hold to drag)"},
+    {"control": "BTN_B", "action": "Back"},
+    {"control": "BTN_X", "action": "Refresh", "cursor": "Right click"},
+    {"control": "BTN_Y", "action": "Bookmark this page"},
+    {"control": "BTN_TL", "action": "Previous tab"},
+    {"control": "BTN_TR", "action": "Next tab"},
+    {"control": "BTN_TR2", "action": "Left click (hold to drag)"},
+    {"control": "BTN_TL2", "action": "Right click (hold to drag)"},
+    {"control": "BTN_THUMBL", "action": "Close tab"},
+    {"control": "BTN_THUMBR", "action": "New tab"},
+    {"control": "LSTICK", "action": "Scroll"},
+    {"control": "RSTICK", "action": "Mouse cursor"},
+    {"control": "DPAD", "action": "Arrow keys", "cursor": "Move the cursor"},
+    {"control": "BTN_START", "action": "Address bar"},
+    {"control": "BTN_SELECT", "action": "Bookmarks"},
+    {"control": "BTN_SELECT+BTN_TL", "action": "Close tab"},
+    {"control": "BTN_SELECT+BTN_TR", "action": "New tab"},
+    {"control": "BTN_SELECT+DPAD", "action": "Scroll"},
+    {"control": "BTN_SELECT+BTN_A", "action": "Cursor mode on/off"},
+    {"control": "BTN_START+BTN_SELECT", "action": "Passes through to the system (hotkeys, hold to quit)"}
+  ]
+}

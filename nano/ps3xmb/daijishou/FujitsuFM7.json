@@ -1,0 +1,54 @@
+{
+  "databaseVersion": 14,
+  "revisionNumber": 1,
+  "platform": {
+    "name": "Fujitsu FM-7",
+    "uniqueId": "fm7",
+    "shortname": "fm7",
+    "description": null,
+    "acceptedFilenameRegex": "^(?!(?:\\._|\\.).*).*$",
+    "scraperSourceList": [
+      "LIBRETRO:Fujitsu - FM-7"
+    ],
+    "boxArtAspectRatioId": 2,
+    "useCustomBoxArtAspectRatio": false,
+    "customBoxArtAspectRatio": null,
+    "screenAspectRatioId": 0,
+    "useCustomScreenAspectRatio": false,
+    "customScreenAspectRatio": null,
+    "retroAchievementsConsoleIdList": [],
+    "extra": ""
+  },
+  "playerList": [
+    {
+      "name": "fm7 - MAME4droid 2024 (FM-7 Diskette)",
+      "uniqueId": "fm7.m4d2024.fm7diskette",
+      "description": "MAME driver fm7. Supported extensions: 1dd, cqi, cqm, d77, d88, dfi, dsk, hfe, imd, mfi, mfm, td0, zip, 7z.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:1dd|cqi|cqm|d77|d88|dfi|dsk|hfe|imd|mfi|mfm|td0|zip|7z)$",
+      "amStartArguments": "-n com.seleuco.mame4d2024/com.seleuco.mame4droid.MAME4droid\n -a android.intent.action.VIEW\n -d fm7\n -e cli_params \"-rompath '{file.storagedir};/storage/emulated/0/Android/data/com.seleuco.mame4d2024/files/roms' -flop1 '{file.storagepath}'\"\n --activity-clear-task\n --activity-clear-top",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    },
+    {
+      "name": "fm7 - MAME4droid 2024 (FM77AV Diskette)",
+      "uniqueId": "fm7.m4d2024.fm77avdiskette",
+      "description": "MAME driver fm77av. Supported extensions: 1dd, cqi, cqm, d77, d88, dfi, dsk, hfe, imd, mfi, mfm, td0, zip, 7z.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:1dd|cqi|cqm|d77|d88|dfi|dsk|hfe|imd|mfi|mfm|td0|zip|7z)$",
+      "amStartArguments": "-n com.seleuco.mame4d2024/com.seleuco.mame4droid.MAME4droid\n -a android.intent.action.VIEW\n -d fm77av\n -e cli_params \"-rompath '{file.storagedir};/storage/emulated/0/Android/data/com.seleuco.mame4d2024/files/roms' -flop1 '{file.storagepath}'\"\n --activity-clear-task\n --activity-clear-top",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    },
+    {
+      "name": "fm7 - MAME4droid 2024 (Tape)",
+      "uniqueId": "fm7.m4d2024.tape",
+      "description": "MAME driver fm7. Supported extensions: t77, wav, zip, 7z.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:t77|wav|zip|7z)$",
+      "amStartArguments": "-n com.seleuco.mame4d2024/com.seleuco.mame4droid.MAME4droid\n -a android.intent.action.VIEW\n -d fm7\n -e cli_params \"-rompath '{file.storagedir};/storage/emulated/0/Android/data/com.seleuco.mame4d2024/files/roms' -autoboot_delay '5' -autoboot_command 'load\\n\\n\\nrun\\n' -cass1 '{file.storagepath}'\"\n --activity-clear-task\n --activity-clear-top",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    }
+  ]
+}

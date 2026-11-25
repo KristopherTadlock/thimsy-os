@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 506" width="1000" height="506">
+<g transform="scale(0.95057) translate(26 66)">
+<rect id="btn-zl" x="40" y="-50" width="150" height="70" rx="35" ry="35" fill="#EDEDED" stroke="#2E2E2E" stroke-width="8"/>
+<rect id="btn-zr" x="810" y="-50" width="150" height="70" rx="35" ry="35" fill="#EDEDED" stroke="#2E2E2E" stroke-width="8"/>
+<rect id="btn-l" x="20" y="-15" width="170" height="70" rx="35" ry="35" fill="#EDEDED" stroke="#2E2E2E" stroke-width="8"/>
+<rect id="btn-r" x="810" y="-15" width="170" height="70" rx="35" ry="35" fill="#EDEDED" stroke="#2E2E2E" stroke-width="8"/>
+<rect x="0" y="0" width="1000" height="440" rx="100" ry="100" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<rect id="body" x="0" y="0" width="1000" height="440" rx="100" ry="100" fill="#2E2E2E"/>
+<line x1="175" y1="0" x2="175" y2="440" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<line x1="825" y1="0" x2="825" y2="440" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<rect id="touch" x="215" y="45" width="570" height="350" rx="12" ry="12" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="88" cy="120" r="58" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<circle id="stick-l" cx="88" cy="120" r="38.3" fill="#EDEDED"/>
+<circle id="dpad-up" cx="88" cy="231" r="21" fill="#EDEDED"/>
+<circle id="dpad-right" cx="132" cy="275" r="21" fill="#EDEDED"/>
+<circle id="dpad-down" cx="88" cy="319" r="21" fill="#EDEDED"/>
+<circle id="dpad-left" cx="44" cy="275" r="21" fill="#EDEDED"/>
+<rect id="btn-minus" x="123" y="36" width="34" height="12" rx="4" ry="4" fill="#EDEDED"/>
+<rect id="btn-capture" x="115" y="370" width="30" height="30" rx="6" ry="6" fill="#EDEDED"/>
+<circle id="btn-x" cx="912" cy="96" r="22" fill="#EDEDED"/>
+<circle id="btn-a" cx="956" cy="140" r="22" fill="#EDEDED"/>
+<circle id="btn-b" cx="912" cy="184" r="22" fill="#EDEDED"/>
+<circle id="btn-y" cx="868" cy="140" r="22" fill="#EDEDED"/>
+<circle cx="912" cy="300" r="58" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<circle id="stick-r" cx="912" cy="300" r="38.3" fill="#EDEDED"/>
+<circle id="btn-plus" cx="860" cy="42" r="16" fill="#EDEDED"/>
+<circle id="btn-home" cx="870" cy="390" r="20" fill="#EDEDED"/>
+<circle cx="88" cy="120" r="20.9" fill="none" stroke="#2E2E2E" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="912" cy="300" r="20.9" fill="none" stroke="#2E2E2E" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</g></svg>

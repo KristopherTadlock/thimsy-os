@@ -1,0 +1,32 @@
+{
+  "databaseVersion": 14,
+  "revisionNumber": 1,
+  "platform": {
+    "name": "OpenBOR",
+    "uniqueId": "openbor",
+    "shortname": "openbor",
+    "description": "The OpenBOR app plays the paks in its own Paks folder.",
+    "acceptedFilenameRegex": "^(?!(?:\\._|\\.).*).*$",
+    "scraperSourceList": [],
+    "boxArtAspectRatioId": 2,
+    "useCustomBoxArtAspectRatio": false,
+    "customBoxArtAspectRatio": null,
+    "screenAspectRatioId": 0,
+    "useCustomScreenAspectRatio": false,
+    "customScreenAspectRatio": null,
+    "retroAchievementsConsoleIdList": [],
+    "extra": ""
+  },
+  "playerList": [
+    {
+      "name": "openbor - OpenBOR",
+      "uniqueId": "openbor.org.openbor.engine",
+      "description": "Supported extensions: openbor.",
+      "acceptedFilenameRegex": "^(.*)\\.(?:openbor)$",
+      "amStartArguments": "-n org.openbor.engine/.GameActivity\n -a android.intent.action.MAIN",
+      "killPackageProcesses": false,
+      "killPackageProcessesWarning": true,
+      "extra": ""
+    }
+  ]
+}

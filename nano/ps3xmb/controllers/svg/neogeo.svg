@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 525" width="1000" height="525">
+<g transform="scale(0.95057) translate(26 26)">
+<rect x="0" y="0" width="1000" height="500" rx="36" ry="36" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<rect id="body" x="0" y="0" width="1000" height="500" rx="36" ry="36" fill="#2E2E2E"/>
+<circle cx="220" cy="280" r="120" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="220" cy="280" r="30" fill="none" stroke="#EDEDED" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+<circle id="stick-l" cx="220" cy="280" r="72" fill="#EDEDED"/>
+<circle id="btn-a" cx="510" cy="330" r="50" fill="#EDEDED"/>
+<circle id="btn-b" cx="625" cy="290" r="50" fill="#EDEDED"/>
+<circle id="btn-c" cx="740" cy="265" r="50" fill="#EDEDED"/>
+<circle id="btn-d" cx="855" cy="255" r="50" fill="#EDEDED"/>
+<rect id="btn-select" x="525" y="70" width="70" height="30" rx="15" ry="15" fill="#EDEDED"/>
+<rect id="btn-start" x="645" y="70" width="70" height="30" rx="15" ry="15" fill="#EDEDED"/>
+</g></svg>

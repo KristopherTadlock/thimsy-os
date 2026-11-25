@@ -1,0 +1,9909 @@
+{
+ "version": 1,
+ "units": "viewBox units; each drawing's longer side is 1000",
+ "colors": {
+  "ink": "#EDEDED",
+  "body": "#2E2E2E"
+ },
+ "labelBox": {
+  "width": 170,
+  "height": 44,
+  "gap": 44,
+  "spacingWestEast": 58,
+  "spacingNorthSouth": 180
+ },
+ "drawings": {
+  "nes": {
+   "file": "svg/nes.svg",
+   "title": "NES / Famicom style pad",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    458
+   ],
+   "aspect": 2.1834,
+   "body": [
+    11.4,
+    11.4,
+    988.6,
+    446.8
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.6,
+    0,
+    1202.6,
+    534.8
+   ],
+   "aspectWithLabels": 2.6275,
+   "anchors": [
+    {
+     "id": "dpad",
+     "name": "D-Pad",
+     "kind": "dpad",
+     "x": 205.3,
+     "y": 262.4,
+     "r": 95.1,
+     "side": "w",
+     "label": [
+      -32.6,
+      262.4
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 205.3,
+     "y": 199.6,
+     "r": 32.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      262.4
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 205.3,
+     "y": 325.1,
+     "r": 32.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      262.4
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 142.6,
+     "y": 262.4,
+     "r": 32.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      262.4
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 268.1,
+     "y": 262.4,
+     "r": 32.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      262.4
+     ]
+    },
+    {
+     "id": "btn-select",
+     "name": "Select",
+     "kind": "button",
+     "x": 433.5,
+     "y": 300.4,
+     "r": 49.4,
+     "side": "s",
+     "label": [
+      394.5,
+      490.8
+     ]
+    },
+    {
+     "id": "btn-start",
+     "name": "Start",
+     "kind": "button",
+     "x": 566.5,
+     "y": 300.4,
+     "r": 49.4,
+     "side": "s",
+     "label": [
+      574.5,
+      490.8
+     ]
+    },
+    {
+     "id": "btn-b",
+     "name": "B",
+     "kind": "button",
+     "x": 723.4,
+     "y": 271.9,
+     "r": 53.2,
+     "side": "s",
+     "label": [
+      754.5,
+      490.8
+     ]
+    },
+    {
+     "id": "btn-a",
+     "name": "A",
+     "kind": "button",
+     "x": 851.7,
+     "y": 271.9,
+     "r": 53.2,
+     "side": "e",
+     "label": [
+      1032.6,
+      271.9
+     ]
+    }
+   ]
+  },
+  "snes": {
+   "file": "svg/snes.svg",
+   "title": "SNES / Super Famicom style pad",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    560
+   ],
+   "aspect": 1.7857,
+   "body": [
+    11.9,
+    15.8,
+    988.1,
+    548.4
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.1,
+    0,
+    1202.1,
+    636.4
+   ],
+   "aspectWithLabels": 2.2065,
+   "anchors": [
+    {
+     "id": "btn-l",
+     "name": "L",
+     "kind": "shoulder",
+     "x": 233.2,
+     "y": 42.5,
+     "r": 44.5,
+     "side": "w",
+     "label": [
+      -32.1,
+      42.5
+     ]
+    },
+    {
+     "id": "btn-r",
+     "name": "R",
+     "kind": "shoulder",
+     "x": 766.8,
+     "y": 42.5,
+     "r": 44.5,
+     "side": "e",
+     "label": [
+      1032.1,
+      42.5
+     ]
+    },
+    {
+     "id": "dpad",
+     "name": "D-Pad",
+     "kind": "dpad",
+     "x": 257.9,
+     "y": 307.3,
+     "r": 98.8,
+     "side": "w",
+     "label": [
+      -32.1,
+      307.3
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 257.9,
+     "y": 242.1,
+     "r": 33.6,
+     "side": "w",
+     "label": [
+      -32.1,
+      307.3
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 257.9,
+     "y": 372.5,
+     "r": 33.6,
+     "side": "w",
+     "label": [
+      -32.1,
+      307.3
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 192.7,
+     "y": 307.3,
+     "r": 33.6,
+     "side": "w",
+     "label": [
+      -32.1,
+      307.3
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 323.1,
+     "y": 307.3,
+     "r": 33.6,
+     "side": "w",
+     "label": [
+      -32.1,
+      307.3
+     ]
+    },
+    {
+     "id": "btn-select",
+     "name": "Select",
+     "kind": "button",
+     "x": 440.7,
+     "y": 346.8,
+     "r": 48.5,
+     "side": "s",
+     "label": [
+      371.0,
+      592.4
+     ]
+    },
+    {
+     "id": "btn-start",
+     "name": "Start",
+     "kind": "button",
+     "x": 564.2,
+     "y": 346.8,
+     "r": 48.5,
+     "side": "s",
+     "label": [
+      551.0,
+      592.4
+     ]
+    },
+    {
+     "id": "btn-x",
+     "name": "X",
+     "kind": "button",
+     "x": 747.0,
+     "y": 205.5,
+     "r": 51.4,
+     "side": "e",
+     "label": [
+      1032.1,
+      205.5
+     ]
+    },
+    {
+     "id": "btn-a",
+     "name": "A",
+     "kind": "button",
+     "x": 845.8,
+     "y": 304.3,
+     "r": 51.4,
+     "side": "e",
+     "label": [
+      1032.1,
+      304.3
+     ]
+    },
+    {
+     "id": "btn-b",
+     "name": "B",
+     "kind": "button",
+     "x": 747.0,
+     "y": 403.2,
+     "r": 51.4,
+     "side": "e",
+     "label": [
+      1032.1,
+      403.2
+     ]
+    },
+    {
+     "id": "btn-y",
+     "name": "Y",
+     "kind": "button",
+     "x": 648.2,
+     "y": 304.3,
+     "r": 51.4,
+     "side": "s",
+     "label": [
+      731.0,
+      592.4
+     ]
+    }
+   ]
+  },
+  "n64": {
+   "file": "svg/n64.svg",
+   "title": "Nintendo 64 style three-grip pad",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    765
+   ],
+   "aspect": 1.3072,
+   "body": [
+    11.9,
+    15.8,
+    988.1,
+    752.7
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.1,
+    -72.2,
+    1202.1,
+    840.7
+   ],
+   "aspectWithLabels": 1.5382,
+   "anchors": [
+    {
+     "id": "btn-l",
+     "name": "L",
+     "kind": "shoulder",
+     "x": 197.9,
+     "y": 35.7,
+     "r": 39.6,
+     "side": "w",
+     "label": [
+      -32.1,
+      35.7
+     ]
+    },
+    {
+     "id": "btn-r",
+     "name": "R",
+     "kind": "shoulder",
+     "x": 802.1,
+     "y": 35.7,
+     "r": 39.6,
+     "side": "e",
+     "label": [
+      1032.1,
+      -14.6
+     ]
+    },
+    {
+     "id": "btn-z",
+     "name": "Z",
+     "kind": "trigger",
+     "x": 500.0,
+     "y": 600.1,
+     "r": 74.3,
+     "side": "s",
+     "label": [
+      410.0,
+      796.7
+     ]
+    },
+    {
+     "id": "dpad",
+     "name": "D-Pad",
+     "kind": "dpad",
+     "x": 197.9,
+     "y": 243.6,
+     "r": 84.2,
+     "side": "w",
+     "label": [
+      -32.1,
+      243.6
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 197.9,
+     "y": 188.1,
+     "r": 28.6,
+     "side": "w",
+     "label": [
+      -32.1,
+      243.6
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 197.9,
+     "y": 299.2,
+     "r": 28.6,
+     "side": "w",
+     "label": [
+      -32.1,
+      243.6
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 142.4,
+     "y": 243.6,
+     "r": 28.6,
+     "side": "w",
+     "label": [
+      -32.1,
+      243.6
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 253.5,
+     "y": 243.6,
+     "r": 28.6,
+     "side": "w",
+     "label": [
+      -32.1,
+      243.6
+     ]
+    },
+    {
+     "id": "stick-l",
+     "name": "Stick",
+     "kind": "stick",
+     "x": 500.0,
+     "y": 402.1,
+     "r": 52.3,
+     "side": "s",
+     "label": [
+      590.0,
+      796.7
+     ]
+    },
+    {
+     "id": "btn-start",
+     "name": "Start",
+     "kind": "button",
+     "x": 500.0,
+     "y": 218.9,
+     "r": 33.7,
+     "side": "n",
+     "label": [
+      500.0,
+      -28.2
+     ]
+    },
+    {
+     "id": "btn-b",
+     "name": "B",
+     "kind": "button",
+     "x": 663.4,
+     "y": 253.5,
+     "r": 43.6,
+     "side": "e",
+     "label": [
+      1032.1,
+      274.7
+     ]
+    },
+    {
+     "id": "btn-a",
+     "name": "A",
+     "kind": "button",
+     "x": 732.7,
+     "y": 332.8,
+     "r": 47.5,
+     "side": "e",
+     "label": [
+      1032.1,
+      390.7
+     ]
+    },
+    {
+     "id": "c-up",
+     "name": "C Up",
+     "kind": "button",
+     "x": 841.7,
+     "y": 149.5,
+     "r": 29.7,
+     "side": "e",
+     "label": [
+      1032.1,
+      99.2
+     ]
+    },
+    {
+     "id": "c-right",
+     "name": "C Right",
+     "kind": "button",
+     "x": 901.1,
+     "y": 209.0,
+     "r": 29.7,
+     "side": "e",
+     "label": [
+      1032.1,
+      158.7
+     ]
+    },
+    {
+     "id": "c-down",
+     "name": "C Down",
+     "kind": "button",
+     "x": 841.7,
+     "y": 268.4,
+     "r": 29.7,
+     "side": "e",
+     "label": [
+      1032.1,
+      332.7
+     ]
+    },
+    {
+     "id": "c-left",
+     "name": "C Left",
+     "kind": "button",
+     "x": 782.2,
+     "y": 209.0,
+     "r": 29.7,
+     "side": "e",
+     "label": [
+      1032.1,
+      216.7
+     ]
+    }
+   ]
+  },
+  "gamecube": {
+   "file": "svg/gamecube.svg",
+   "title": "GameCube style pad",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    644
+   ],
+   "aspect": 1.5528,
+   "body": [
+    12.8,
+    17.0,
+    987.2,
+    631.4
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -201.2,
+    -71.0,
+    1201.2,
+    719.4
+   ],
+   "aspectWithLabels": 1.7743,
+   "anchors": [
+    {
+     "id": "btn-l",
+     "name": "L",
+     "kind": "shoulder",
+     "x": 233.9,
+     "y": 43.6,
+     "r": 53.2,
+     "side": "w",
+     "label": [
+      -31.2,
+      43.6
+     ]
+    },
+    {
+     "id": "btn-r",
+     "name": "R",
+     "kind": "shoulder",
+     "x": 766.1,
+     "y": 43.6,
+     "r": 53.2,
+     "side": "e",
+     "label": [
+      1031.2,
+      32.4
+     ]
+    },
+    {
+     "id": "btn-z",
+     "name": "Z",
+     "kind": "shoulder",
+     "x": 771.5,
+     "y": 93.7,
+     "r": 34.1,
+     "side": "e",
+     "label": [
+      1031.2,
+      90.4
+     ]
+    },
+    {
+     "id": "stick-l",
+     "name": "Stick",
+     "kind": "stick",
+     "x": 228.5,
+     "y": 267.2,
+     "r": 64.6,
+     "side": "w",
+     "label": [
+      -31.2,
+      267.2
+     ]
+    },
+    {
+     "id": "dpad",
+     "name": "D-Pad",
+     "kind": "dpad",
+     "x": 366.9,
+     "y": 464.2,
+     "r": 69.2,
+     "side": "s",
+     "label": [
+      308.7,
+      675.4
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 366.9,
+     "y": 418.5,
+     "r": 23.5,
+     "side": "s",
+     "label": [
+      308.7,
+      675.4
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 366.9,
+     "y": 509.8,
+     "r": 23.5,
+     "side": "s",
+     "label": [
+      308.7,
+      675.4
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 321.3,
+     "y": 464.2,
+     "r": 23.5,
+     "side": "w",
+     "label": [
+      -31.2,
+      464.2
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 412.6,
+     "y": 464.2,
+     "r": 23.5,
+     "side": "s",
+     "label": [
+      308.7,
+      675.4
+     ]
+    },
+    {
+     "id": "btn-start",
+     "name": "Start",
+     "kind": "button",
+     "x": 500.0,
+     "y": 283.2,
+     "r": 27.7,
+     "side": "n",
+     "label": [
+      500.0,
+      -27.0
+     ]
+    },
+    {
+     "id": "stick-r",
+     "name": "C-Stick",
+     "kind": "stick",
+     "x": 638.4,
+     "y": 464.2,
+     "r": 49.2,
+     "side": "s",
+     "label": [
+      580.2,
+      675.4
+     ]
+    },
+    {
+     "id": "btn-a",
+     "name": "A",
+     "kind": "button",
+     "x": 750.2,
+     "y": 293.8,
+     "r": 68.1,
+     "side": "e",
+     "label": [
+      1031.2,
+      319.4
+     ]
+    },
+    {
+     "id": "btn-b",
+     "name": "B",
+     "kind": "button",
+     "x": 643.7,
+     "y": 357.7,
+     "r": 38.3,
+     "side": "s",
+     "label": [
+      760.2,
+      675.4
+     ]
+    },
+    {
+     "id": "btn-x",
+     "name": "X",
+     "kind": "button",
+     "x": 862.0,
+     "y": 272.5,
+     "r": 65.2,
+     "side": "e",
+     "label": [
+      1031.2,
+      261.4
+     ]
+    },
+    {
+     "id": "btn-y",
+     "name": "Y",
+     "kind": "button",
+     "x": 736.3,
+     "y": 192.7,
+     "r": 63.4,
+     "side": "n",
+     "label": [
+      736.3,
+      -27.0
+     ]
+    }
+   ]
+  },
+  "wii": {
+   "file": "svg/wii.svg",
+   "title": "Wii Remote and Nunchuk style",
+   "viewBox": [
+    0,
+    0,
+    758,
+    1000
+   ],
+   "aspect": 0.758,
+   "body": [
+    11.4,
+    11.4,
+    742.4,
+    988.6
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.6,
+    0,
+    956.4,
+    1000
+   ],
+   "aspectWithLabels": 1.159,
+   "anchors": [
+    {
+     "id": "btn-z",
+     "name": "Z",
+     "kind": "shoulder",
+     "x": 181.6,
+     "y": 219.6,
+     "r": 52.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      220.2
+     ]
+    },
+    {
+     "id": "btn-c",
+     "name": "C",
+     "kind": "shoulder",
+     "x": 181.6,
+     "y": 162.5,
+     "r": 38.0,
+     "side": "w",
+     "label": [
+      -32.6,
+      162.2
+     ]
+    },
+    {
+     "id": "stick-l",
+     "name": "Stick",
+     "kind": "stick",
+     "x": 181.6,
+     "y": 385.9,
+     "r": 56.5,
+     "side": "w",
+     "label": [
+      -32.6,
+      385.6
+     ]
+    },
+    {
+     "id": "btn-b",
+     "name": "B",
+     "kind": "shoulder",
+     "x": 723.4,
+     "y": 352.7,
+     "r": 33.3,
+     "side": "e",
+     "label": [
+      786.4,
+      323.7
+     ]
+    },
+    {
+     "id": "dpad",
+     "name": "D-Pad",
+     "kind": "dpad",
+     "x": 609.3,
+     "y": 186.3,
+     "r": 71.3,
+     "side": "e",
+     "label": [
+      786.4,
+      157.3
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 609.3,
+     "y": 139.3,
+     "r": 24.2,
+     "side": "e",
+     "label": [
+      786.4,
+      157.3
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 609.3,
+     "y": 233.4,
+     "r": 24.2,
+     "side": "e",
+     "label": [
+      786.4,
+      157.3
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 562.3,
+     "y": 186.3,
+     "r": 24.2,
+     "side": "e",
+     "label": [
+      786.4,
+      157.3
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 656.4,
+     "y": 186.3,
+     "r": 24.2,
+     "side": "e",
+     "label": [
+      786.4,
+      157.3
+     ]
+    },
+    {
+     "id": "btn-a",
+     "name": "A",
+     "kind": "button",
+     "x": 609.3,
+     "y": 352.7,
+     "r": 51.3,
+     "side": "e",
+     "label": [
+      786.4,
+      381.7
+     ]
+    },
+    {
+     "id": "btn-minus",
+     "name": "-",
+     "kind": "button",
+     "x": 547.5,
+     "y": 538.0,
+     "r": 20.9,
+     "side": "e",
+     "label": [
+      786.4,
+      509.0
+     ]
+    },
+    {
+     "id": "btn-home",
+     "name": "Home",
+     "kind": "button",
+     "x": 609.3,
+     "y": 538.0,
+     "r": 25.7,
+     "side": "e",
+     "label": [
+      786.4,
+      567.0
+     ]
+    },
+    {
+     "id": "btn-plus",
+     "name": "+",
+     "kind": "button",
+     "x": 671.1,
+     "y": 538.0,
+     "r": 20.9,
+     "side": "e",
+     "label": [
+      786.4,
+      625.0
+     ]
+    },
+    {
+     "id": "btn-1",
+     "name": "1",
+     "kind": "button",
+     "x": 609.3,
+     "y": 756.7,
+     "r": 36.1,
+     "side": "e",
+     "label": [
+      786.4,
+      727.7
+     ]
+    },
+    {
+     "id": "btn-2",
+     "name": "2",
+     "kind": "button",
+     "x": 609.3,
+     "y": 851.7,
+     "r": 36.1,
+     "side": "e",
+     "label": [
+      786.4,
+      822.7
+     ]
+    }
+   ]
+  },
+  "wiiu": {
+   "file": "svg/wiiu.svg",
+   "title": "Wii U style tablet pad",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    610
+   ],
+   "aspect": 1.6393,
+   "body": [
+    11.4,
+    15.2,
+    988.6,
+    598.9
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.6,
+    -4.9,
+    1202.6,
+    686.9
+   ],
+   "aspectWithLabels": 2.0312,
+   "anchors": [
+    {
+     "id": "btn-zl",
+     "name": "ZL",
+     "kind": "shoulder",
+     "x": 214.8,
+     "y": 38.0,
+     "r": 38.0,
+     "side": "w",
+     "label": [
+      -32.6,
+      33.2
+     ]
+    },
+    {
+     "id": "btn-zr",
+     "name": "ZR",
+     "kind": "shoulder",
+     "x": 785.2,
+     "y": 38.0,
+     "r": 38.0,
+     "side": "e",
+     "label": [
+      1032.6,
+      17.1
+     ]
+    },
+    {
+     "id": "btn-l",
+     "name": "L",
+     "kind": "shoulder",
+     "x": 181.6,
+     "y": 77.0,
+     "r": 38.0,
+     "side": "w",
+     "label": [
+      -32.6,
+      91.2
+     ]
+    },
+    {
+     "id": "btn-r",
+     "name": "R",
+     "kind": "shoulder",
+     "x": 818.4,
+     "y": 77.0,
+     "r": 38.0,
+     "side": "e",
+     "label": [
+      1032.6,
+      75.1
+     ]
+    },
+    {
+     "id": "touch",
+     "name": "Touch screen",
+     "kind": "touch",
+     "x": 500.0,
+     "y": 333.7,
+     "r": 175.9,
+     "side": "s",
+     "label": [
+      435.1,
+      642.9
+     ]
+    },
+    {
+     "id": "stick-l",
+     "name": "Left Stick",
+     "kind": "stick",
+     "x": 138.8,
+     "y": 229.1,
+     "r": 41.4,
+     "side": "w",
+     "label": [
+      -32.6,
+      224.3
+     ]
+    },
+    {
+     "id": "dpad",
+     "name": "D-Pad",
+     "kind": "dpad",
+     "x": 138.8,
+     "y": 414.4,
+     "r": 61.8,
+     "side": "w",
+     "label": [
+      -32.6,
+      409.6
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 138.8,
+     "y": 373.7,
+     "r": 21.0,
+     "side": "w",
+     "label": [
+      -32.6,
+      409.6
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 138.8,
+     "y": 455.2,
+     "r": 21.0,
+     "side": "w",
+     "label": [
+      -32.6,
+      409.6
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 98.0,
+     "y": 414.4,
+     "r": 21.0,
+     "side": "w",
+     "label": [
+      -32.6,
+      409.6
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 179.6,
+     "y": 414.4,
+     "r": 21.0,
+     "side": "w",
+     "label": [
+      -32.6,
+      409.6
+     ]
+    },
+    {
+     "id": "stick-r",
+     "name": "Right Stick",
+     "kind": "stick",
+     "x": 861.2,
+     "y": 229.1,
+     "r": 41.4,
+     "side": "e",
+     "label": [
+      1032.6,
+      208.2
+     ]
+    },
+    {
+     "id": "btn-x",
+     "name": "X",
+     "kind": "button",
+     "x": 861.2,
+     "y": 364.1,
+     "r": 28.5,
+     "side": "e",
+     "label": [
+      1032.6,
+      343.2
+     ]
+    },
+    {
+     "id": "btn-a",
+     "name": "A",
+     "kind": "button",
+     "x": 916.3,
+     "y": 419.2,
+     "r": 28.5,
+     "side": "e",
+     "label": [
+      1032.6,
+      401.2
+     ]
+    },
+    {
+     "id": "btn-b",
+     "name": "B",
+     "kind": "button",
+     "x": 861.2,
+     "y": 474.3,
+     "r": 28.5,
+     "side": "e",
+     "label": [
+      1032.6,
+      517.2
+     ]
+    },
+    {
+     "id": "btn-y",
+     "name": "Y",
+     "kind": "button",
+     "x": 806.1,
+     "y": 419.2,
+     "r": 28.5,
+     "side": "e",
+     "label": [
+      1032.6,
+      459.2
+     ]
+    },
+    {
+     "id": "btn-minus",
+     "name": "-",
+     "kind": "button",
+     "x": 219.6,
+     "y": 528.5,
+     "r": 17.1,
+     "side": "s",
+     "label": [
+      154.7,
+      642.9
+     ]
+    },
+    {
+     "id": "btn-home",
+     "name": "Home",
+     "kind": "button",
+     "x": 500.0,
+     "y": 549.4,
+     "r": 20.9,
+     "side": "s",
+     "label": [
+      615.1,
+      642.9
+     ]
+    },
+    {
+     "id": "btn-plus",
+     "name": "+",
+     "kind": "button",
+     "x": 780.4,
+     "y": 528.5,
+     "r": 17.1,
+     "side": "s",
+     "label": [
+      795.1,
+      642.9
+     ]
+    }
+   ],
+   "aliases": {
+    "btn-l3": "stick-l",
+    "btn-r3": "stick-r"
+   }
+  },
+  "switch": {
+   "file": "svg/switch.svg",
+   "title": "Switch style handheld (pads attached)",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    506
+   ],
+   "aspect": 1.9763,
+   "body": [
+    11.4,
+    15.2,
+    988.6,
+    494.3
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.6,
+    -58.6,
+    1202.6,
+    582.3
+   ],
+   "aspectWithLabels": 2.1925,
+   "anchors": [
+    {
+     "id": "btn-zl",
+     "name": "ZL",
+     "kind": "shoulder",
+     "x": 134.0,
+     "y": 35.2,
+     "r": 33.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      15.5
+     ]
+    },
+    {
+     "id": "btn-zr",
+     "name": "ZR",
+     "kind": "shoulder",
+     "x": 866.0,
+     "y": 35.2,
+     "r": 33.3,
+     "side": "e",
+     "label": [
+      1032.6,
+      -36.6
+     ]
+    },
+    {
+     "id": "btn-l",
+     "name": "L",
+     "kind": "shoulder",
+     "x": 124.5,
+     "y": 56.1,
+     "r": 33.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      73.5
+     ]
+    },
+    {
+     "id": "btn-r",
+     "name": "R",
+     "kind": "shoulder",
+     "x": 875.5,
+     "y": 56.1,
+     "r": 33.3,
+     "side": "e",
+     "label": [
+      1032.6,
+      21.4
+     ]
+    },
+    {
+     "id": "touch",
+     "name": "Touch screen",
+     "kind": "touch",
+     "x": 500.0,
+     "y": 271.9,
+     "r": 166.3,
+     "side": "s",
+     "label": [
+      500.0,
+      538.3
+     ]
+    },
+    {
+     "id": "stick-l",
+     "name": "Left Stick",
+     "kind": "stick",
+     "x": 108.4,
+     "y": 176.8,
+     "r": 36.4,
+     "side": "w",
+     "label": [
+      -32.6,
+      189.5
+     ]
+    },
+    {
+     "id": "dpad",
+     "name": "D-Pad",
+     "kind": "dpad",
+     "x": 108.4,
+     "y": 324.1,
+     "r": 62.7,
+     "side": "w",
+     "label": [
+      -32.6,
+      304.4
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "Up",
+     "kind": "dpad-dir",
+     "x": 108.4,
+     "y": 282.3,
+     "r": 20.0,
+     "side": "w",
+     "label": [
+      -32.6,
+      304.4
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "Right",
+     "kind": "dpad-dir",
+     "x": 150.2,
+     "y": 324.1,
+     "r": 20.0,
+     "side": "w",
+     "label": [
+      -32.6,
+      304.4
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "Down",
+     "kind": "dpad-dir",
+     "x": 108.4,
+     "y": 366.0,
+     "r": 20.0,
+     "side": "w",
+     "label": [
+      -32.6,
+      304.4
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "Left",
+     "kind": "dpad-dir",
+     "x": 66.5,
+     "y": 324.1,
+     "r": 20.0,
+     "side": "w",
+     "label": [
+      -32.6,
+      304.4
+     ]
+    },
+    {
+     "id": "btn-minus",
+     "name": "-",
+     "kind": "button",
+     "x": 157.8,
+     "y": 102.7,
+     "r": 16.2,
+     "side": "w",
+     "label": [
+      -32.6,
+      131.5
+     ]
+    },
+    {
+     "id": "btn-capture",
+     "name": "Capture",
+     "kind": "button",
+     "x": 148.3,
+     "y": 428.7,
+     "r": 14.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      409.0
+     ]
+    },
+    {
+     "id": "btn-x",
+     "name": "X",
+     "kind": "button",
+     "x": 891.6,
+     "y": 154.0,
+     "r": 20.9,
+     "side": "e",
+     "label": [
+      1032.6,
+      137.4
+     ]
+    },
+    {
+     "id": "btn-a",
+     "name": "A",
+     "kind": "button",
+     "x": 933.5,
+     "y": 195.8,
+     "r": 20.9,
+     "side": "e",
+     "label": [
+      1032.6,
+      195.4
+     ]
+    },
+    {
+     "id": "btn-b",
+     "name": "B",
+     "kind": "button",
+     "x": 891.6,
+     "y": 237.6,
+     "r": 20.9,
+     "side": "e",
+     "label": [
+      1032.6,
+      311.4
+     ]
+    },
+    {
+     "id": "btn-y",
+     "name": "Y",
+     "kind": "button",
+     "x": 849.8,
+     "y": 195.8,
+     "r": 20.9,
+     "side": "e",
+     "label": [
+      1032.6,
+      253.4
+     ]
+    },
+    {
+     "id": "stick-r",
+     "name": "Right Stick",
+     "kind": "stick",
+     "x": 891.6,
+     "y": 347.9,
+     "r": 36.4,
+     "side": "e",
+     "label": [
+      1032.6,
+      369.4
+     ]
+    },
+    {
+     "id": "btn-plus",
+     "name": "+",
+     "kind": "button",
+     "x": 842.2,
+     "y": 102.7,
+     "r": 15.2,
+     "side": "e",
+     "label": [
+      1032.6,
+      79.4
+     ]
+    },
+    {
+     "id": "btn-home",
+     "name": "Home",
+     "kind": "button",
+     "x": 851.7,
+     "y": 433.5,
+     "r": 19.0,
+     "side": "e",
+     "label": [
+      1032.6,
+      427.4
+     ]
+    }
+   ],
+   "aliases": {
+    "btn-l3": "stick-l",
+    "btn-r3": "stick-r"
+   }
+  },
+  "gameboy": {
+   "file": "svg/gameboy.svg",
+   "title": "Game Boy style handheld (portrait)",
+   "viewBox": [
+    0,
+    0,
+    620,
+    1000
+   ],
+   "aspect": 0.62,
+   "body": [
+    11.4,
+    11.4,
+    608.4,
+    988.6
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.6,
+    0,
+    822.4,
+    1076.6
+   ],
+   "aspectWithLabels": 0.9521,
+   "anchors": [
+    {
+     "id": "dpad",
+     "name": "D-Pad",
+     "kind": "dpad",
+     "x": 167.3,
+     "y": 642.6,
+     "r": 80.8,
+     "side": "w",
+     "label": [
+      -32.6,
+      642.6
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 167.3,
+     "y": 589.3,
+     "r": 27.5,
+     "side": "w",
+     "label": [
+      -32.6,
+      642.6
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 167.3,
+     "y": 695.9,
+     "r": 27.5,
+     "side": "w",
+     "label": [
+      -32.6,
+      642.6
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 114.0,
+     "y": 642.6,
+     "r": 27.5,
+     "side": "w",
+     "label": [
+      -32.6,
+      642.6
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 220.6,
+     "y": 642.6,
+     "r": 27.5,
+     "side": "s",
+     "label": [
+      220.6,
+      1032.6
+     ]
+    },
+    {
+     "id": "btn-b",
+     "name": "B",
+     "kind": "button",
+     "x": 409.7,
+     "y": 680.6,
+     "r": 45.6,
+     "side": "e",
+     "label": [
+      652.4,
+      680.6
+     ]
+    },
+    {
+     "id": "btn-a",
+     "name": "A",
+     "kind": "button",
+     "x": 509.5,
+     "y": 618.8,
+     "r": 45.6,
+     "side": "e",
+     "label": [
+      652.4,
+      618.8
+     ]
+    },
+    {
+     "id": "btn-select",
+     "name": "Select",
+     "kind": "button",
+     "x": 257.6,
+     "y": 827.9,
+     "r": 41.9,
+     "side": "s",
+     "label": [
+      217.5,
+      1032.6
+     ]
+    },
+    {
+     "id": "btn-start",
+     "name": "Start",
+     "kind": "button",
+     "x": 357.4,
+     "y": 827.9,
+     "r": 41.9,
+     "side": "s",
+     "label": [
+      397.5,
+      1032.6
+     ]
+    }
+   ]
+  },
+  "gba": {
+   "file": "svg/gba.svg",
+   "title": "Game Boy Advance style handheld",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    468
+   ],
+   "aspect": 2.1368,
+   "body": [
+    11.4,
+    15.2,
+    988.6,
+    456.3
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.6,
+    0,
+    1202.6,
+    468
+   ],
+   "aspectWithLabels": 3.0026,
+   "anchors": [
+    {
+     "id": "btn-l",
+     "name": "L",
+     "kind": "shoulder",
+     "x": 195.8,
+     "y": 38.0,
+     "r": 38.0,
+     "side": "w",
+     "label": [
+      -32.6,
+      35.4
+     ]
+    },
+    {
+     "id": "btn-r",
+     "name": "R",
+     "kind": "shoulder",
+     "x": 804.2,
+     "y": 38.0,
+     "r": 38.0,
+     "side": "e",
+     "label": [
+      1032.6,
+      37.7
+     ]
+    },
+    {
+     "id": "dpad",
+     "name": "D-Pad",
+     "kind": "dpad",
+     "x": 191.1,
+     "y": 219.6,
+     "r": 66.5,
+     "side": "w",
+     "label": [
+      -32.6,
+      217.0
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 191.1,
+     "y": 175.7,
+     "r": 22.6,
+     "side": "w",
+     "label": [
+      -32.6,
+      217.0
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 191.1,
+     "y": 263.5,
+     "r": 22.6,
+     "side": "w",
+     "label": [
+      -32.6,
+      217.0
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 147.1,
+     "y": 219.6,
+     "r": 22.6,
+     "side": "w",
+     "label": [
+      -32.6,
+      217.0
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 235.0,
+     "y": 219.6,
+     "r": 22.6,
+     "side": "w",
+     "label": [
+      -32.6,
+      217.0
+     ]
+    },
+    {
+     "id": "btn-a",
+     "name": "A",
+     "kind": "button",
+     "x": 851.7,
+     "y": 200.6,
+     "r": 39.9,
+     "side": "e",
+     "label": [
+      1032.6,
+      200.3
+     ]
+    },
+    {
+     "id": "btn-b",
+     "name": "B",
+     "kind": "button",
+     "x": 775.7,
+     "y": 257.6,
+     "r": 39.9,
+     "side": "e",
+     "label": [
+      1032.6,
+      258.3
+     ]
+    },
+    {
+     "id": "btn-start",
+     "name": "Start",
+     "kind": "button",
+     "x": 219.6,
+     "y": 366.9,
+     "r": 17.1,
+     "side": "w",
+     "label": [
+      -32.6,
+      364.3
+     ]
+    },
+    {
+     "id": "btn-select",
+     "name": "Select",
+     "kind": "button",
+     "x": 219.6,
+     "y": 414.4,
+     "r": 17.1,
+     "side": "w",
+     "label": [
+      -32.6,
+      422.3
+     ]
+    }
+   ]
+  },
+  "nds": {
+   "file": "svg/nds.svg",
+   "title": "Nintendo DS style clamshell",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    962
+   ],
+   "aspect": 1.0395,
+   "body": [
+    11.4,
+    11.4,
+    988.6,
+    950.6
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.6,
+    0,
+    1202.6,
+    1038.6
+   ],
+   "aspectWithLabels": 1.353,
+   "anchors": [
+    {
+     "id": "btn-l",
+     "name": "L",
+     "kind": "shoulder",
+     "x": 81.7,
+     "y": 457.2,
+     "r": 38.0,
+     "side": "w",
+     "label": [
+      -32.6,
+      457.2
+     ]
+    },
+    {
+     "id": "btn-r",
+     "name": "R",
+     "kind": "shoulder",
+     "x": 918.3,
+     "y": 457.2,
+     "r": 38.0,
+     "side": "e",
+     "label": [
+      1032.6,
+      436.5
+     ]
+    },
+    {
+     "id": "touch",
+     "name": "Touch screen",
+     "kind": "touch",
+     "x": 500.0,
+     "y": 704.4,
+     "r": 152.1,
+     "side": "s",
+     "label": [
+      500.0,
+      994.6
+     ]
+    },
+    {
+     "id": "dpad",
+     "name": "D-Pad",
+     "kind": "dpad",
+     "x": 167.3,
+     "y": 642.6,
+     "r": 71.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      642.6
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 167.3,
+     "y": 595.5,
+     "r": 24.2,
+     "side": "w",
+     "label": [
+      -32.6,
+      642.6
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 167.3,
+     "y": 689.6,
+     "r": 24.2,
+     "side": "w",
+     "label": [
+      -32.6,
+      642.6
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 120.2,
+     "y": 642.6,
+     "r": 24.2,
+     "side": "w",
+     "label": [
+      -32.6,
+      642.6
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 214.4,
+     "y": 642.6,
+     "r": 24.2,
+     "side": "w",
+     "label": [
+      -32.6,
+      642.6
+     ]
+    },
+    {
+     "id": "btn-x",
+     "name": "X",
+     "kind": "button",
+     "x": 842.2,
+     "y": 587.5,
+     "r": 28.5,
+     "side": "e",
+     "label": [
+      1032.6,
+      566.8
+     ]
+    },
+    {
+     "id": "btn-a",
+     "name": "A",
+     "kind": "button",
+     "x": 897.3,
+     "y": 642.6,
+     "r": 28.5,
+     "side": "e",
+     "label": [
+      1032.6,
+      624.8
+     ]
+    },
+    {
+     "id": "btn-b",
+     "name": "B",
+     "kind": "button",
+     "x": 842.2,
+     "y": 697.7,
+     "r": 28.5,
+     "side": "e",
+     "label": [
+      1032.6,
+      740.8
+     ]
+    },
+    {
+     "id": "btn-y",
+     "name": "Y",
+     "kind": "button",
+     "x": 787.1,
+     "y": 642.6,
+     "r": 28.5,
+     "side": "e",
+     "label": [
+      1032.6,
+      682.8
+     ]
+    },
+    {
+     "id": "btn-start",
+     "name": "Start",
+     "kind": "button",
+     "x": 842.2,
+     "y": 813.7,
+     "r": 16.2,
+     "side": "e",
+     "label": [
+      1032.6,
+      798.8
+     ]
+    },
+    {
+     "id": "btn-select",
+     "name": "Select",
+     "kind": "button",
+     "x": 842.2,
+     "y": 866.0,
+     "r": 16.2,
+     "side": "e",
+     "label": [
+      1032.6,
+      856.8
+     ]
+    }
+   ]
+  },
+  "n3ds": {
+   "file": "svg/n3ds.svg",
+   "title": "Nintendo 3DS style clamshell",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    981
+   ],
+   "aspect": 1.0194,
+   "body": [
+    11.4,
+    11.4,
+    988.6,
+    969.6
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.6,
+    0,
+    1202.6,
+    1057.6
+   ],
+   "aspectWithLabels": 1.3287,
+   "anchors": [
+    {
+     "id": "btn-zl",
+     "name": "ZL",
+     "kind": "shoulder",
+     "x": 205.3,
+     "y": 471.5,
+     "r": 33.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      511.4
+     ]
+    },
+    {
+     "id": "btn-zr",
+     "name": "ZR",
+     "kind": "shoulder",
+     "x": 794.7,
+     "y": 471.5,
+     "r": 33.3,
+     "side": "e",
+     "label": [
+      1032.6,
+      481.7
+     ]
+    },
+    {
+     "id": "btn-l",
+     "name": "L",
+     "kind": "shoulder",
+     "x": 72.2,
+     "y": 466.7,
+     "r": 42.8,
+     "side": "w",
+     "label": [
+      -32.6,
+      453.4
+     ]
+    },
+    {
+     "id": "btn-r",
+     "name": "R",
+     "kind": "shoulder",
+     "x": 927.8,
+     "y": 466.7,
+     "r": 42.8,
+     "side": "e",
+     "label": [
+      1032.6,
+      423.7
+     ]
+    },
+    {
+     "id": "touch",
+     "name": "Touch screen",
+     "kind": "touch",
+     "x": 500.0,
+     "y": 709.1,
+     "r": 147.3,
+     "side": "s",
+     "label": [
+      410.0,
+      1013.6
+     ]
+    },
+    {
+     "id": "stick-l",
+     "name": "Circle Pad",
+     "kind": "stick",
+     "x": 157.8,
+     "y": 604.6,
+     "r": 41.4,
+     "side": "w",
+     "label": [
+      -32.6,
+      591.3
+     ]
+    },
+    {
+     "id": "dpad",
+     "name": "D-Pad",
+     "kind": "dpad",
+     "x": 157.8,
+     "y": 794.7,
+     "r": 57.0,
+     "side": "w",
+     "label": [
+      -32.6,
+      781.4
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 157.8,
+     "y": 757.0,
+     "r": 19.4,
+     "side": "w",
+     "label": [
+      -32.6,
+      781.4
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 157.8,
+     "y": 832.3,
+     "r": 19.4,
+     "side": "w",
+     "label": [
+      -32.6,
+      781.4
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 120.2,
+     "y": 794.7,
+     "r": 19.4,
+     "side": "w",
+     "label": [
+      -32.6,
+      781.4
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 195.4,
+     "y": 794.7,
+     "r": 19.4,
+     "side": "w",
+     "label": [
+      -32.6,
+      781.4
+     ]
+    },
+    {
+     "id": "btn-x",
+     "name": "X",
+     "kind": "button",
+     "x": 842.2,
+     "y": 598.9,
+     "r": 26.6,
+     "side": "e",
+     "label": [
+      1032.6,
+      597.7
+     ]
+    },
+    {
+     "id": "btn-a",
+     "name": "A",
+     "kind": "button",
+     "x": 895.4,
+     "y": 652.1,
+     "r": 26.6,
+     "side": "e",
+     "label": [
+      1032.6,
+      655.7
+     ]
+    },
+    {
+     "id": "btn-b",
+     "name": "B",
+     "kind": "button",
+     "x": 842.2,
+     "y": 705.3,
+     "r": 26.6,
+     "side": "e",
+     "label": [
+      1032.6,
+      771.7
+     ]
+    },
+    {
+     "id": "btn-y",
+     "name": "Y",
+     "kind": "button",
+     "x": 789.0,
+     "y": 652.1,
+     "r": 26.6,
+     "side": "e",
+     "label": [
+      1032.6,
+      713.7
+     ]
+    },
+    {
+     "id": "stick-r",
+     "name": "C-Stick",
+     "kind": "stick",
+     "x": 747.1,
+     "y": 566.5,
+     "r": 17.1,
+     "side": "e",
+     "label": [
+      1032.6,
+      539.7
+     ]
+    },
+    {
+     "id": "btn-start",
+     "name": "Start",
+     "kind": "button",
+     "x": 842.2,
+     "y": 875.5,
+     "r": 25.7,
+     "side": "e",
+     "label": [
+      1032.6,
+      832.5
+     ]
+    },
+    {
+     "id": "btn-select",
+     "name": "Select",
+     "kind": "button",
+     "x": 842.2,
+     "y": 918.3,
+     "r": 25.7,
+     "side": "e",
+     "label": [
+      1032.6,
+      890.5
+     ]
+    },
+    {
+     "id": "btn-home",
+     "name": "Home",
+     "kind": "button",
+     "x": 500.0,
+     "y": 910.6,
+     "r": 30.4,
+     "side": "s",
+     "label": [
+      590.0,
+      1013.6
+     ]
+    }
+   ]
+  },
+  "virtualboy": {
+   "file": "svg/virtualboy.svg",
+   "title": "Virtual Boy style twin-pad controller",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    585
+   ],
+   "aspect": 1.7094,
+   "body": [
+    11.7,
+    15.6,
+    988.3,
+    573.3
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.3,
+    0,
+    1202.3,
+    585
+   ],
+   "aspectWithLabels": 2.401,
+   "anchors": [
+    {
+     "id": "btn-l",
+     "name": "L",
+     "kind": "shoulder",
+     "x": 226.2,
+     "y": 39.1,
+     "r": 39.1,
+     "side": "w",
+     "label": [
+      -32.3,
+      29.5
+     ]
+    },
+    {
+     "id": "btn-r",
+     "name": "R",
+     "kind": "shoulder",
+     "x": 773.8,
+     "y": 39.1,
+     "r": 39.1,
+     "side": "e",
+     "label": [
+      1032.3,
+      29.5
+     ]
+    },
+    {
+     "id": "dpad",
+     "name": "Left D-Pad",
+     "kind": "dpad",
+     "x": 206.6,
+     "y": 221.0,
+     "r": 73.3,
+     "side": "w",
+     "label": [
+      -32.3,
+      211.4
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "Left D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 206.6,
+     "y": 172.6,
+     "r": 24.9,
+     "side": "w",
+     "label": [
+      -32.3,
+      211.4
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "Left D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 206.6,
+     "y": 269.4,
+     "r": 24.9,
+     "side": "w",
+     "label": [
+      -32.3,
+      211.4
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "Left D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 158.2,
+     "y": 221.0,
+     "r": 24.9,
+     "side": "w",
+     "label": [
+      -32.3,
+      211.4
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "Left D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 255.0,
+     "y": 221.0,
+     "r": 24.9,
+     "side": "w",
+     "label": [
+      -32.3,
+      211.4
+     ]
+    },
+    {
+     "id": "rpad",
+     "name": "Right D-Pad",
+     "kind": "dpad",
+     "x": 793.4,
+     "y": 221.0,
+     "r": 73.3,
+     "side": "e",
+     "label": [
+      1032.3,
+      211.4
+     ]
+    },
+    {
+     "id": "rpad-up",
+     "name": "Right D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 793.4,
+     "y": 172.6,
+     "r": 24.9,
+     "side": "e",
+     "label": [
+      1032.3,
+      211.4
+     ]
+    },
+    {
+     "id": "rpad-down",
+     "name": "Right D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 793.4,
+     "y": 269.4,
+     "r": 24.9,
+     "side": "e",
+     "label": [
+      1032.3,
+      211.4
+     ]
+    },
+    {
+     "id": "rpad-left",
+     "name": "Right D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 745.0,
+     "y": 221.0,
+     "r": 24.9,
+     "side": "e",
+     "label": [
+      1032.3,
+      211.4
+     ]
+    },
+    {
+     "id": "rpad-right",
+     "name": "Right D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 841.8,
+     "y": 221.0,
+     "r": 24.9,
+     "side": "e",
+     "label": [
+      1032.3,
+      211.4
+     ]
+    },
+    {
+     "id": "btn-select",
+     "name": "Select",
+     "kind": "button",
+     "x": 157.7,
+     "y": 416.6,
+     "r": 29.3,
+     "side": "w",
+     "label": [
+      -32.3,
+      407.0
+     ]
+    },
+    {
+     "id": "btn-start",
+     "name": "Start",
+     "kind": "button",
+     "x": 245.7,
+     "y": 436.2,
+     "r": 29.3,
+     "side": "w",
+     "label": [
+      -32.3,
+      465.0
+     ]
+    },
+    {
+     "id": "btn-b",
+     "name": "B",
+     "kind": "button",
+     "x": 754.3,
+     "y": 436.2,
+     "r": 35.2,
+     "side": "e",
+     "label": [
+      1032.3,
+      465.0
+     ]
+    },
+    {
+     "id": "btn-a",
+     "name": "A",
+     "kind": "button",
+     "x": 842.3,
+     "y": 416.6,
+     "r": 35.2,
+     "side": "e",
+     "label": [
+      1032.3,
+      407.0
+     ]
+    }
+   ]
+  },
+  "pokemini": {
+   "file": "svg/pokemini.svg",
+   "title": "Pokemon mini style handheld",
+   "viewBox": [
+    0,
+    0,
+    791,
+    1000
+   ],
+   "aspect": 0.791,
+   "body": [
+    11.4,
+    11.4,
+    779.5,
+    988.6
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.6,
+    0,
+    993.5,
+    1076.6
+   ],
+   "aspectWithLabels": 1.111,
+   "anchors": [
+    {
+     "id": "dpad",
+     "name": "D-Pad",
+     "kind": "dpad",
+     "x": 233.8,
+     "y": 709.1,
+     "r": 90.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      709.1
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 233.8,
+     "y": 649.5,
+     "r": 30.7,
+     "side": "w",
+     "label": [
+      -32.6,
+      709.1
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 233.8,
+     "y": 768.7,
+     "r": 30.7,
+     "side": "w",
+     "label": [
+      -32.6,
+      709.1
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 174.2,
+     "y": 709.1,
+     "r": 30.7,
+     "side": "w",
+     "label": [
+      -32.6,
+      709.1
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 293.4,
+     "y": 709.1,
+     "r": 30.7,
+     "side": "s",
+     "label": [
+      293.4,
+      1032.6
+     ]
+    },
+    {
+     "id": "btn-c",
+     "name": "C",
+     "kind": "button",
+     "x": 642.6,
+     "y": 585.6,
+     "r": 34.2,
+     "side": "e",
+     "label": [
+      823.5,
+      585.6
+     ]
+    },
+    {
+     "id": "btn-a",
+     "name": "A",
+     "kind": "button",
+     "x": 633.1,
+     "y": 709.1,
+     "r": 45.6,
+     "side": "e",
+     "label": [
+      823.5,
+      709.1
+     ]
+    },
+    {
+     "id": "btn-b",
+     "name": "B",
+     "kind": "button",
+     "x": 538.0,
+     "y": 813.7,
+     "r": 45.6,
+     "side": "e",
+     "label": [
+      823.5,
+      813.7
+     ]
+    }
+   ]
+  },
+  "dualshock": {
+   "file": "svg/dualshock.svg",
+   "title": "PlayStation style twin-stick pad",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    786
+   ],
+   "aspect": 1.2723,
+   "body": [
+    12.4,
+    16.5,
+    987.6,
+    773.8
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -201.6,
+    -71.5,
+    1201.6,
+    861.8
+   ],
+   "aspectWithLabels": 1.5035,
+   "anchors": [
+    {
+     "id": "btn-l2",
+     "name": "L2",
+     "kind": "shoulder",
+     "x": 215.7,
+     "y": 45.5,
+     "r": 46.5,
+     "side": "w",
+     "label": [
+      -31.6,
+      45.5
+     ]
+    },
+    {
+     "id": "btn-r2",
+     "name": "R2",
+     "kind": "shoulder",
+     "x": 784.3,
+     "y": 45.5,
+     "r": 46.5,
+     "side": "e",
+     "label": [
+      1031.6,
+      29.6
+     ]
+    },
+    {
+     "id": "btn-l1",
+     "name": "L1",
+     "kind": "shoulder",
+     "x": 215.7,
+     "y": 104.4,
+     "r": 46.5,
+     "side": "w",
+     "label": [
+      -31.6,
+      104.4
+     ]
+    },
+    {
+     "id": "btn-r1",
+     "name": "R1",
+     "kind": "shoulder",
+     "x": 784.3,
+     "y": 104.4,
+     "r": 46.5,
+     "side": "e",
+     "label": [
+      1031.6,
+      88.5
+     ]
+    },
+    {
+     "id": "dpad",
+     "name": "D-Pad",
+     "kind": "dpad",
+     "x": 231.2,
+     "y": 326.7,
+     "r": 90.5,
+     "side": "w",
+     "label": [
+      -31.6,
+      326.7
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 231.2,
+     "y": 267.0,
+     "r": 30.8,
+     "side": "w",
+     "label": [
+      -31.6,
+      326.7
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 231.2,
+     "y": 386.4,
+     "r": 30.8,
+     "side": "w",
+     "label": [
+      -31.6,
+      326.7
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 171.5,
+     "y": 326.7,
+     "r": 30.8,
+     "side": "w",
+     "label": [
+      -31.6,
+      326.7
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 290.9,
+     "y": 326.7,
+     "r": 30.8,
+     "side": "w",
+     "label": [
+      -31.6,
+      326.7
+     ]
+    },
+    {
+     "id": "btn-select",
+     "name": "Select",
+     "kind": "button",
+     "x": 417.3,
+     "y": 321.5,
+     "r": 33.1,
+     "side": "n",
+     "label": [
+      410.0,
+      -27.5
+     ]
+    },
+    {
+     "id": "btn-start",
+     "name": "Start",
+     "kind": "button",
+     "x": 582.7,
+     "y": 321.5,
+     "r": 33.1,
+     "side": "n",
+     "label": [
+      590.0,
+      -27.5
+     ]
+    },
+    {
+     "id": "btn-triangle",
+     "name": "Triangle",
+     "kind": "button",
+     "x": 768.8,
+     "y": 248.1,
+     "r": 41.4,
+     "side": "e",
+     "label": [
+      1031.6,
+      232.2
+     ]
+    },
+    {
+     "id": "btn-circle",
+     "name": "Circle",
+     "kind": "button",
+     "x": 847.4,
+     "y": 326.7,
+     "r": 41.4,
+     "side": "e",
+     "label": [
+      1031.6,
+      310.8
+     ]
+    },
+    {
+     "id": "btn-cross",
+     "name": "Cross",
+     "kind": "button",
+     "x": 768.8,
+     "y": 405.3,
+     "r": 41.4,
+     "side": "e",
+     "label": [
+      1031.6,
+      426.8
+     ]
+    },
+    {
+     "id": "btn-square",
+     "name": "Square",
+     "kind": "button",
+     "x": 690.2,
+     "y": 326.7,
+     "r": 41.4,
+     "side": "e",
+     "label": [
+      1031.6,
+      368.8
+     ]
+    },
+    {
+     "id": "stick-l",
+     "name": "Left Stick",
+     "kind": "stick",
+     "x": 370.8,
+     "y": 481.8,
+     "r": 53.2,
+     "side": "s",
+     "label": [
+      320.0,
+      817.8
+     ]
+    },
+    {
+     "id": "stick-r",
+     "name": "Right Stick",
+     "kind": "stick",
+     "x": 629.2,
+     "y": 481.8,
+     "r": 53.2,
+     "side": "s",
+     "label": [
+      680.0,
+      817.8
+     ]
+    },
+    {
+     "id": "btn-home",
+     "name": "Home",
+     "kind": "button",
+     "x": 500.0,
+     "y": 430.1,
+     "r": 22.7,
+     "side": "s",
+     "label": [
+      500.0,
+      817.8
+     ]
+    }
+   ],
+   "aliases": {
+    "btn-l3": "stick-l",
+    "btn-r3": "stick-r"
+   }
+  },
+  "psp": {
+   "file": "svg/psp.svg",
+   "title": "PSP style handheld",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    477
+   ],
+   "aspect": 2.0964,
+   "body": [
+    11.4,
+    15.2,
+    988.6,
+    465.8
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.6,
+    -9.5,
+    1202.6,
+    553.8
+   ],
+   "aspectWithLabels": 2.4946,
+   "anchors": [
+    {
+     "id": "btn-l",
+     "name": "L",
+     "kind": "shoulder",
+     "x": 195.8,
+     "y": 38.0,
+     "r": 38.0,
+     "side": "w",
+     "label": [
+      -32.6,
+      38.0
+     ]
+    },
+    {
+     "id": "btn-r",
+     "name": "R",
+     "kind": "shoulder",
+     "x": 804.2,
+     "y": 38.0,
+     "r": 38.0,
+     "side": "e",
+     "label": [
+      1032.6,
+      12.5
+     ]
+    },
+    {
+     "id": "dpad",
+     "name": "D-Pad",
+     "kind": "dpad",
+     "x": 138.8,
+     "y": 205.3,
+     "r": 61.8,
+     "side": "w",
+     "label": [
+      -32.6,
+      205.3
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 138.8,
+     "y": 164.5,
+     "r": 21.0,
+     "side": "w",
+     "label": [
+      -32.6,
+      205.3
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 138.8,
+     "y": 246.1,
+     "r": 21.0,
+     "side": "w",
+     "label": [
+      -32.6,
+      205.3
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 98.0,
+     "y": 205.3,
+     "r": 21.0,
+     "side": "w",
+     "label": [
+      -32.6,
+      205.3
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 179.6,
+     "y": 205.3,
+     "r": 21.0,
+     "side": "w",
+     "label": [
+      -32.6,
+      205.3
+     ]
+    },
+    {
+     "id": "stick-l",
+     "name": "Analog nub",
+     "kind": "stick",
+     "x": 143.5,
+     "y": 352.7,
+     "r": 32.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      352.7
+     ]
+    },
+    {
+     "id": "btn-triangle",
+     "name": "Triangle",
+     "kind": "button",
+     "x": 861.2,
+     "y": 174.0,
+     "r": 26.6,
+     "side": "e",
+     "label": [
+      1032.6,
+      148.5
+     ]
+    },
+    {
+     "id": "btn-circle",
+     "name": "Circle",
+     "kind": "button",
+     "x": 916.3,
+     "y": 229.1,
+     "r": 26.6,
+     "side": "e",
+     "label": [
+      1032.6,
+      206.5
+     ]
+    },
+    {
+     "id": "btn-cross",
+     "name": "Cross",
+     "kind": "button",
+     "x": 861.2,
+     "y": 284.2,
+     "r": 26.6,
+     "side": "e",
+     "label": [
+      1032.6,
+      322.5
+     ]
+    },
+    {
+     "id": "btn-square",
+     "name": "Square",
+     "kind": "button",
+     "x": 806.1,
+     "y": 229.1,
+     "r": 26.6,
+     "side": "e",
+     "label": [
+      1032.6,
+      264.5
+     ]
+    },
+    {
+     "id": "btn-home",
+     "name": "Home",
+     "kind": "button",
+     "x": 309.9,
+     "y": 409.7,
+     "r": 30.4,
+     "side": "s",
+     "label": [
+      272.1,
+      509.8
+     ]
+    },
+    {
+     "id": "btn-select",
+     "name": "Select",
+     "kind": "button",
+     "x": 633.1,
+     "y": 409.7,
+     "r": 25.7,
+     "side": "s",
+     "label": [
+      595.3,
+      509.8
+     ]
+    },
+    {
+     "id": "btn-start",
+     "name": "Start",
+     "kind": "button",
+     "x": 699.6,
+     "y": 409.7,
+     "r": 25.7,
+     "side": "s",
+     "label": [
+      775.3,
+      509.8
+     ]
+    }
+   ]
+  },
+  "vita": {
+   "file": "svg/vita.svg",
+   "title": "PS Vita style handheld",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    506
+   ],
+   "aspect": 1.9763,
+   "body": [
+    11.4,
+    15.2,
+    988.6,
+    494.3
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.6,
+    -10.5,
+    1202.6,
+    582.3
+   ],
+   "aspectWithLabels": 2.3704,
+   "anchors": [
+    {
+     "id": "btn-l",
+     "name": "L",
+     "kind": "shoulder",
+     "x": 195.8,
+     "y": 38.0,
+     "r": 38.0,
+     "side": "w",
+     "label": [
+      -32.6,
+      38.0
+     ]
+    },
+    {
+     "id": "btn-r",
+     "name": "R",
+     "kind": "shoulder",
+     "x": 804.2,
+     "y": 38.0,
+     "r": 38.0,
+     "side": "e",
+     "label": [
+      1032.6,
+      11.5
+     ]
+    },
+    {
+     "id": "touch",
+     "name": "Touch screen",
+     "kind": "touch",
+     "x": 500.0,
+     "y": 251.0,
+     "r": 163.5,
+     "side": "s",
+     "label": [
+      500.0,
+      538.3
+     ]
+    },
+    {
+     "id": "dpad",
+     "name": "D-Pad",
+     "kind": "dpad",
+     "x": 127.4,
+     "y": 191.1,
+     "r": 57.0,
+     "side": "w",
+     "label": [
+      -32.6,
+      191.1
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 127.4,
+     "y": 153.4,
+     "r": 19.4,
+     "side": "w",
+     "label": [
+      -32.6,
+      191.1
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 127.4,
+     "y": 228.7,
+     "r": 19.4,
+     "side": "w",
+     "label": [
+      -32.6,
+      191.1
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 89.7,
+     "y": 191.1,
+     "r": 19.4,
+     "side": "w",
+     "label": [
+      -32.6,
+      191.1
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 165.0,
+     "y": 191.1,
+     "r": 19.4,
+     "side": "w",
+     "label": [
+      -32.6,
+      191.1
+     ]
+    },
+    {
+     "id": "stick-l",
+     "name": "Left Stick",
+     "kind": "stick",
+     "x": 131.2,
+     "y": 338.4,
+     "r": 32.6,
+     "side": "w",
+     "label": [
+      -32.6,
+      338.4
+     ]
+    },
+    {
+     "id": "btn-triangle",
+     "name": "Triangle",
+     "kind": "button",
+     "x": 872.6,
+     "y": 141.6,
+     "r": 24.7,
+     "side": "e",
+     "label": [
+      1032.6,
+      115.1
+     ]
+    },
+    {
+     "id": "btn-circle",
+     "name": "Circle",
+     "kind": "button",
+     "x": 922.1,
+     "y": 191.1,
+     "r": 24.7,
+     "side": "e",
+     "label": [
+      1032.6,
+      173.1
+     ]
+    },
+    {
+     "id": "btn-cross",
+     "name": "Cross",
+     "kind": "button",
+     "x": 872.6,
+     "y": 240.5,
+     "r": 24.7,
+     "side": "e",
+     "label": [
+      1032.6,
+      289.1
+     ]
+    },
+    {
+     "id": "btn-square",
+     "name": "Square",
+     "kind": "button",
+     "x": 823.2,
+     "y": 191.1,
+     "r": 24.7,
+     "side": "e",
+     "label": [
+      1032.6,
+      231.1
+     ]
+    },
+    {
+     "id": "stick-r",
+     "name": "Right Stick",
+     "kind": "stick",
+     "x": 868.8,
+     "y": 338.4,
+     "r": 32.6,
+     "side": "e",
+     "label": [
+      1032.6,
+      347.1
+     ]
+    },
+    {
+     "id": "btn-home",
+     "name": "Home",
+     "kind": "button",
+     "x": 129.3,
+     "y": 433.5,
+     "r": 17.1,
+     "side": "w",
+     "label": [
+      -32.6,
+      433.5
+     ]
+    },
+    {
+     "id": "btn-select",
+     "name": "Select",
+     "kind": "button",
+     "x": 775.7,
+     "y": 441.1,
+     "r": 20.9,
+     "side": "s",
+     "label": [
+      775.7,
+      538.3
+     ]
+    },
+    {
+     "id": "btn-start",
+     "name": "Start",
+     "kind": "button",
+     "x": 842.2,
+     "y": 441.1,
+     "r": 20.9,
+     "side": "e",
+     "label": [
+      1032.6,
+      414.6
+     ]
+    }
+   ]
+  },
+  "megadrive": {
+   "file": "svg/megadrive.svg",
+   "title": "Mega Drive / Genesis style six-button pad",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    506
+   ],
+   "aspect": 1.9763,
+   "body": [
+    11.5,
+    15.4,
+    988.5,
+    494.2
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.5,
+    -72.6,
+    1202.5,
+    582.2
+   ],
+   "aspectWithLabels": 2.1457,
+   "anchors": [
+    {
+     "id": "btn-mode",
+     "name": "Mode",
+     "kind": "shoulder",
+     "x": 797.5,
+     "y": 32.6,
+     "r": 28.8,
+     "side": "e",
+     "label": [
+      1032.5,
+      32.6
+     ]
+    },
+    {
+     "id": "dpad",
+     "name": "D-Pad",
+     "kind": "dpad",
+     "x": 245.7,
+     "y": 260.1,
+     "r": 96.0,
+     "side": "w",
+     "label": [
+      -32.5,
+      260.1
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 245.7,
+     "y": 196.7,
+     "r": 32.6,
+     "side": "w",
+     "label": [
+      -32.5,
+      260.1
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 245.7,
+     "y": 323.4,
+     "r": 32.6,
+     "side": "w",
+     "label": [
+      -32.5,
+      260.1
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 182.3,
+     "y": 260.1,
+     "r": 32.6,
+     "side": "w",
+     "label": [
+      -32.5,
+      260.1
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 309.0,
+     "y": 260.1,
+     "r": 32.6,
+     "side": "w",
+     "label": [
+      -32.5,
+      260.1
+     ]
+    },
+    {
+     "id": "btn-start",
+     "name": "Start",
+     "kind": "button",
+     "x": 500.0,
+     "y": 159.3,
+     "r": 40.3,
+     "side": "n",
+     "label": [
+      422.4,
+      -28.6
+     ]
+    },
+    {
+     "id": "btn-a",
+     "name": "A",
+     "kind": "button",
+     "x": 620.0,
+     "y": 327.3,
+     "r": 44.1,
+     "side": "s",
+     "label": [
+      582.8,
+      538.2
+     ]
+    },
+    {
+     "id": "btn-b",
+     "name": "B",
+     "kind": "button",
+     "x": 725.5,
+     "y": 303.3,
+     "r": 44.1,
+     "side": "s",
+     "label": [
+      762.8,
+      538.2
+     ]
+    },
+    {
+     "id": "btn-c",
+     "name": "C",
+     "kind": "button",
+     "x": 831.1,
+     "y": 274.5,
+     "r": 44.1,
+     "side": "e",
+     "label": [
+      1032.5,
+      274.5
+     ]
+    },
+    {
+     "id": "btn-x",
+     "name": "X",
+     "kind": "button",
+     "x": 605.6,
+     "y": 221.7,
+     "r": 32.6,
+     "side": "n",
+     "label": [
+      602.4,
+      -28.6
+     ]
+    },
+    {
+     "id": "btn-y",
+     "name": "Y",
+     "kind": "button",
+     "x": 701.5,
+     "y": 197.7,
+     "r": 32.6,
+     "side": "n",
+     "label": [
+      782.4,
+      -28.6
+     ]
+    },
+    {
+     "id": "btn-z",
+     "name": "Z",
+     "kind": "button",
+     "x": 797.5,
+     "y": 168.9,
+     "r": 32.6,
+     "side": "e",
+     "label": [
+      1032.5,
+      168.9
+     ]
+    }
+   ]
+  },
+  "mastersystem": {
+   "file": "svg/mastersystem.svg",
+   "title": "Master System / SG-1000 style pad",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    458
+   ],
+   "aspect": 2.1834,
+   "body": [
+    11.4,
+    11.4,
+    988.6,
+    446.8
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.6,
+    0,
+    1202.6,
+    534.8
+   ],
+   "aspectWithLabels": 2.6275,
+   "anchors": [
+    {
+     "id": "dpad",
+     "name": "D-Pad",
+     "kind": "dpad",
+     "x": 243.3,
+     "y": 233.8,
+     "r": 99.8,
+     "side": "w",
+     "label": [
+      -32.6,
+      233.8
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 243.3,
+     "y": 168.0,
+     "r": 33.9,
+     "side": "w",
+     "label": [
+      -32.6,
+      233.8
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 243.3,
+     "y": 299.7,
+     "r": 33.9,
+     "side": "w",
+     "label": [
+      -32.6,
+      233.8
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 177.5,
+     "y": 233.8,
+     "r": 33.9,
+     "side": "w",
+     "label": [
+      -32.6,
+      233.8
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 309.2,
+     "y": 233.8,
+     "r": 33.9,
+     "side": "w",
+     "label": [
+      -32.6,
+      233.8
+     ]
+    },
+    {
+     "id": "btn-1",
+     "name": "1",
+     "kind": "button",
+     "x": 680.6,
+     "y": 252.9,
+     "r": 57.0,
+     "side": "s",
+     "label": [
+      680.6,
+      490.8
+     ]
+    },
+    {
+     "id": "btn-2",
+     "name": "2",
+     "kind": "button",
+     "x": 832.7,
+     "y": 252.9,
+     "r": 57.0,
+     "side": "e",
+     "label": [
+      1032.6,
+      252.9
+     ]
+    }
+   ]
+  },
+  "gamegear": {
+   "file": "svg/gamegear.svg",
+   "title": "Game Gear style handheld",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    468
+   ],
+   "aspect": 2.1368,
+   "body": [
+    11.4,
+    11.4,
+    988.6,
+    456.3
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.6,
+    0,
+    1202.6,
+    468
+   ],
+   "aspectWithLabels": 3.0026,
+   "anchors": [
+    {
+     "id": "dpad",
+     "name": "D-Pad",
+     "kind": "dpad",
+     "x": 200.6,
+     "y": 233.8,
+     "r": 71.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      233.8
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 200.6,
+     "y": 186.8,
+     "r": 24.2,
+     "side": "w",
+     "label": [
+      -32.6,
+      233.8
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 200.6,
+     "y": 280.9,
+     "r": 24.2,
+     "side": "w",
+     "label": [
+      -32.6,
+      233.8
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 153.5,
+     "y": 233.8,
+     "r": 24.2,
+     "side": "w",
+     "label": [
+      -32.6,
+      233.8
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 247.6,
+     "y": 233.8,
+     "r": 24.2,
+     "side": "w",
+     "label": [
+      -32.6,
+      233.8
+     ]
+    },
+    {
+     "id": "btn-start",
+     "name": "Start",
+     "kind": "button",
+     "x": 851.7,
+     "y": 91.3,
+     "r": 19.0,
+     "side": "e",
+     "label": [
+      1032.6,
+      91.3
+     ]
+    },
+    {
+     "id": "btn-1",
+     "name": "1",
+     "kind": "button",
+     "x": 775.7,
+     "y": 271.9,
+     "r": 41.8,
+     "side": "e",
+     "label": [
+      1032.6,
+      271.9
+     ]
+    },
+    {
+     "id": "btn-2",
+     "name": "2",
+     "kind": "button",
+     "x": 866.0,
+     "y": 210.1,
+     "r": 41.8,
+     "side": "e",
+     "label": [
+      1032.6,
+      210.1
+     ]
+    }
+   ]
+  },
+  "saturn": {
+   "file": "svg/saturn.svg",
+   "title": "Saturn style six-button pad",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    551
+   ],
+   "aspect": 1.8149,
+   "body": [
+    12.0,
+    16.0,
+    988.0,
+    538.9
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.0,
+    -72.0,
+    1202.0,
+    626.9
+   ],
+   "aspectWithLabels": 2.0089,
+   "anchors": [
+    {
+     "id": "btn-l",
+     "name": "L",
+     "kind": "shoulder",
+     "x": 240.5,
+     "y": 42.9,
+     "r": 44.9,
+     "side": "w",
+     "label": [
+      -32.0,
+      42.9
+     ]
+    },
+    {
+     "id": "btn-r",
+     "name": "R",
+     "kind": "shoulder",
+     "x": 759.5,
+     "y": 42.9,
+     "r": 44.9,
+     "side": "e",
+     "label": [
+      1032.0,
+      29.2
+     ]
+    },
+    {
+     "id": "dpad",
+     "name": "D-Pad",
+     "kind": "dpad",
+     "x": 255.5,
+     "y": 305.4,
+     "r": 94.8,
+     "side": "w",
+     "label": [
+      -32.0,
+      305.4
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 255.5,
+     "y": 242.8,
+     "r": 32.2,
+     "side": "w",
+     "label": [
+      -32.0,
+      305.4
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 255.5,
+     "y": 368.0,
+     "r": 32.2,
+     "side": "w",
+     "label": [
+      -32.0,
+      305.4
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 192.9,
+     "y": 305.4,
+     "r": 32.2,
+     "side": "w",
+     "label": [
+      -32.0,
+      305.4
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 318.1,
+     "y": 305.4,
+     "r": 32.2,
+     "side": "w",
+     "label": [
+      -32.0,
+      305.4
+     ]
+    },
+    {
+     "id": "btn-start",
+     "name": "Start",
+     "kind": "button",
+     "x": 500.0,
+     "y": 365.3,
+     "r": 25.9,
+     "side": "s",
+     "label": [
+      472.4,
+      582.9
+     ]
+    },
+    {
+     "id": "btn-a",
+     "name": "A",
+     "kind": "button",
+     "x": 624.8,
+     "y": 370.3,
+     "r": 43.9,
+     "side": "s",
+     "label": [
+      652.4,
+      582.9
+     ]
+    },
+    {
+     "id": "btn-b",
+     "name": "B",
+     "kind": "button",
+     "x": 734.5,
+     "y": 345.3,
+     "r": 43.9,
+     "side": "e",
+     "label": [
+      1032.0,
+      365.9
+     ]
+    },
+    {
+     "id": "btn-c",
+     "name": "C",
+     "kind": "button",
+     "x": 844.3,
+     "y": 315.4,
+     "r": 43.9,
+     "side": "e",
+     "label": [
+      1032.0,
+      307.9
+     ]
+    },
+    {
+     "id": "btn-x",
+     "name": "X",
+     "kind": "button",
+     "x": 609.8,
+     "y": 260.5,
+     "r": 31.9,
+     "side": "n",
+     "label": [
+      609.8,
+      -28.0
+     ]
+    },
+    {
+     "id": "btn-y",
+     "name": "Y",
+     "kind": "button",
+     "x": 709.6,
+     "y": 235.5,
+     "r": 31.9,
+     "side": "e",
+     "label": [
+      1032.0,
+      249.9
+     ]
+    },
+    {
+     "id": "btn-z",
+     "name": "Z",
+     "kind": "button",
+     "x": 809.4,
+     "y": 205.6,
+     "r": 31.9,
+     "side": "e",
+     "label": [
+      1032.0,
+      191.9
+     ]
+    }
+   ]
+  },
+  "dreamcast": {
+   "file": "svg/dreamcast.svg",
+   "title": "Dreamcast style pad",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    815
+   ],
+   "aspect": 1.227,
+   "body": [
+    13.0,
+    17.3,
+    987.0,
+    802.2
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -201.0,
+    0,
+    1201.0,
+    890.2
+   ],
+   "aspectWithLabels": 1.5749,
+   "anchors": [
+    {
+     "id": "btn-l",
+     "name": "L",
+     "kind": "shoulder",
+     "x": 240.8,
+     "y": 44.3,
+     "r": 54.0,
+     "side": "w",
+     "label": [
+      -31.0,
+      44.3
+     ]
+    },
+    {
+     "id": "btn-r",
+     "name": "R",
+     "kind": "shoulder",
+     "x": 759.2,
+     "y": 44.3,
+     "r": 54.0,
+     "side": "e",
+     "label": [
+      1031.0,
+      23.8
+     ]
+    },
+    {
+     "id": "stick-l",
+     "name": "Stick",
+     "kind": "stick",
+     "x": 235.4,
+     "y": 260.3,
+     "r": 58.5,
+     "side": "w",
+     "label": [
+      -31.0,
+      260.3
+     ]
+    },
+    {
+     "id": "dpad",
+     "name": "D-Pad",
+     "kind": "dpad",
+     "x": 251.6,
+     "y": 503.3,
+     "r": 81.0,
+     "side": "w",
+     "label": [
+      -31.0,
+      503.3
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 251.6,
+     "y": 449.9,
+     "r": 27.5,
+     "side": "w",
+     "label": [
+      -31.0,
+      503.3
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 251.6,
+     "y": 556.8,
+     "r": 27.5,
+     "side": "w",
+     "label": [
+      -31.0,
+      503.3
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 198.1,
+     "y": 503.3,
+     "r": 27.5,
+     "side": "w",
+     "label": [
+      -31.0,
+      503.3
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 305.0,
+     "y": 503.3,
+     "r": 27.5,
+     "side": "w",
+     "label": [
+      -31.0,
+      503.3
+     ]
+    },
+    {
+     "id": "btn-start",
+     "name": "Start",
+     "kind": "button",
+     "x": 500.0,
+     "y": 481.7,
+     "r": 28.1,
+     "side": "s",
+     "label": [
+      500.0,
+      846.2
+     ]
+    },
+    {
+     "id": "btn-y",
+     "name": "Y",
+     "kind": "button",
+     "x": 759.2,
+     "y": 248.4,
+     "r": 38.9,
+     "side": "e",
+     "label": [
+      1031.0,
+      227.9
+     ]
+    },
+    {
+     "id": "btn-b",
+     "name": "B",
+     "kind": "button",
+     "x": 830.5,
+     "y": 319.7,
+     "r": 38.9,
+     "side": "e",
+     "label": [
+      1031.0,
+      299.2
+     ]
+    },
+    {
+     "id": "btn-a",
+     "name": "A",
+     "kind": "button",
+     "x": 759.2,
+     "y": 391.0,
+     "r": 38.9,
+     "side": "e",
+     "label": [
+      1031.0,
+      415.2
+     ]
+    },
+    {
+     "id": "btn-x",
+     "name": "X",
+     "kind": "button",
+     "x": 687.9,
+     "y": 319.7,
+     "r": 38.9,
+     "side": "e",
+     "label": [
+      1031.0,
+      357.2
+     ]
+    }
+   ]
+  },
+  "pcengine": {
+   "file": "svg/pcengine.svg",
+   "title": "PC Engine / TurboGrafx-16 style pad",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    458
+   ],
+   "aspect": 2.1834,
+   "body": [
+    11.4,
+    11.4,
+    988.6,
+    446.8
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.6,
+    0,
+    1202.6,
+    534.8
+   ],
+   "aspectWithLabels": 2.6275,
+   "anchors": [
+    {
+     "id": "dpad",
+     "name": "D-Pad",
+     "kind": "dpad",
+     "x": 229.1,
+     "y": 243.3,
+     "r": 95.1,
+     "side": "w",
+     "label": [
+      -32.6,
+      243.3
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 229.1,
+     "y": 180.6,
+     "r": 32.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      243.3
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 229.1,
+     "y": 306.1,
+     "r": 32.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      243.3
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 166.3,
+     "y": 243.3,
+     "r": 32.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      243.3
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 291.8,
+     "y": 243.3,
+     "r": 32.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      243.3
+     ]
+    },
+    {
+     "id": "btn-select",
+     "name": "Select",
+     "kind": "button",
+     "x": 433.5,
+     "y": 309.9,
+     "r": 43.7,
+     "side": "s",
+     "label": [
+      386.5,
+      490.8
+     ]
+    },
+    {
+     "id": "btn-run",
+     "name": "Run",
+     "kind": "button",
+     "x": 557.0,
+     "y": 309.9,
+     "r": 43.7,
+     "side": "s",
+     "label": [
+      566.5,
+      490.8
+     ]
+    },
+    {
+     "id": "btn-ii",
+     "name": "II",
+     "kind": "button",
+     "x": 709.1,
+     "y": 281.4,
+     "r": 55.1,
+     "side": "s",
+     "label": [
+      746.5,
+      490.8
+     ]
+    },
+    {
+     "id": "btn-i",
+     "name": "I",
+     "kind": "button",
+     "x": 842.2,
+     "y": 281.4,
+     "r": 55.1,
+     "side": "e",
+     "label": [
+      1032.6,
+      281.4
+     ]
+    }
+   ]
+  },
+  "pcfx": {
+   "file": "svg/pcfx.svg",
+   "title": "PC-FX style six-button pad",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    477
+   ],
+   "aspect": 2.0964,
+   "body": [
+    11.4,
+    11.4,
+    988.6,
+    465.8
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.6,
+    -76.6,
+    1202.6,
+    553.8
+   ],
+   "aspectWithLabels": 2.2291,
+   "anchors": [
+    {
+     "id": "dpad",
+     "name": "D-Pad",
+     "kind": "dpad",
+     "x": 214.8,
+     "y": 248.1,
+     "r": 90.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      248.1
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 214.8,
+     "y": 188.5,
+     "r": 30.7,
+     "side": "w",
+     "label": [
+      -32.6,
+      248.1
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 214.8,
+     "y": 307.7,
+     "r": 30.7,
+     "side": "w",
+     "label": [
+      -32.6,
+      248.1
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 155.2,
+     "y": 248.1,
+     "r": 30.7,
+     "side": "w",
+     "label": [
+      -32.6,
+      248.1
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 274.4,
+     "y": 248.1,
+     "r": 30.7,
+     "side": "w",
+     "label": [
+      -32.6,
+      248.1
+     ]
+    },
+    {
+     "id": "btn-select",
+     "name": "Select",
+     "kind": "button",
+     "x": 404.9,
+     "y": 338.4,
+     "r": 39.9,
+     "side": "s",
+     "label": [
+      313.2,
+      509.8
+     ]
+    },
+    {
+     "id": "btn-run",
+     "name": "Run",
+     "kind": "button",
+     "x": 519.0,
+     "y": 338.4,
+     "r": 39.9,
+     "side": "s",
+     "label": [
+      493.2,
+      509.8
+     ]
+    },
+    {
+     "id": "btn-iii",
+     "name": "III",
+     "kind": "button",
+     "x": 652.1,
+     "y": 186.3,
+     "r": 38.0,
+     "side": "n",
+     "label": [
+      614.4,
+      -32.6
+     ]
+    },
+    {
+     "id": "btn-ii",
+     "name": "II",
+     "kind": "button",
+     "x": 756.7,
+     "y": 176.8,
+     "r": 38.0,
+     "side": "n",
+     "label": [
+      794.4,
+      -32.6
+     ]
+    },
+    {
+     "id": "btn-i",
+     "name": "I",
+     "kind": "button",
+     "x": 861.2,
+     "y": 167.3,
+     "r": 38.0,
+     "side": "e",
+     "label": [
+      1032.6,
+      167.3
+     ]
+    },
+    {
+     "id": "btn-iv",
+     "name": "IV",
+     "kind": "button",
+     "x": 652.1,
+     "y": 300.4,
+     "r": 38.0,
+     "side": "s",
+     "label": [
+      673.2,
+      509.8
+     ]
+    },
+    {
+     "id": "btn-v",
+     "name": "V",
+     "kind": "button",
+     "x": 756.7,
+     "y": 290.9,
+     "r": 38.0,
+     "side": "s",
+     "label": [
+      853.2,
+      509.8
+     ]
+    },
+    {
+     "id": "btn-vi",
+     "name": "VI",
+     "kind": "button",
+     "x": 861.2,
+     "y": 281.4,
+     "r": 38.0,
+     "side": "e",
+     "label": [
+      1032.6,
+      281.4
+     ]
+    }
+   ]
+  },
+  "ngp": {
+   "file": "svg/ngp.svg",
+   "title": "Neo Geo Pocket style handheld",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    458
+   ],
+   "aspect": 2.1834,
+   "body": [
+    11.4,
+    11.4,
+    988.6,
+    446.8
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.6,
+    0,
+    1202.6,
+    458
+   ],
+   "aspectWithLabels": 3.0681,
+   "anchors": [
+    {
+     "id": "dpad",
+     "name": "Stick",
+     "kind": "dpad",
+     "x": 157.8,
+     "y": 229.1,
+     "r": 57.0,
+     "side": "w",
+     "label": [
+      -32.6,
+      229.1
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 157.8,
+     "y": 172.6,
+     "r": 29.1,
+     "side": "w",
+     "label": [
+      -32.6,
+      229.1
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 157.8,
+     "y": 285.6,
+     "r": 29.1,
+     "side": "w",
+     "label": [
+      -32.6,
+      229.1
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 101.3,
+     "y": 229.1,
+     "r": 29.1,
+     "side": "w",
+     "label": [
+      -32.6,
+      229.1
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 214.3,
+     "y": 229.1,
+     "r": 29.1,
+     "side": "w",
+     "label": [
+      -32.6,
+      229.1
+     ]
+    },
+    {
+     "id": "btn-a",
+     "name": "A",
+     "kind": "button",
+     "x": 794.7,
+     "y": 262.4,
+     "r": 41.8,
+     "side": "e",
+     "label": [
+      1032.6,
+      262.4
+     ]
+    },
+    {
+     "id": "btn-b",
+     "name": "B",
+     "kind": "button",
+     "x": 885.0,
+     "y": 191.1,
+     "r": 41.8,
+     "side": "e",
+     "label": [
+      1032.6,
+      191.1
+     ]
+    },
+    {
+     "id": "btn-option",
+     "name": "Option",
+     "kind": "button",
+     "x": 851.7,
+     "y": 376.4,
+     "r": 17.1,
+     "side": "e",
+     "label": [
+      1032.6,
+      376.4
+     ]
+    }
+   ]
+  },
+  "wonderswan": {
+   "file": "svg/wonderswan.svg",
+   "title": "WonderSwan style handheld (held sideways)",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    468
+   ],
+   "aspect": 2.1368,
+   "body": [
+    11.4,
+    11.4,
+    988.6,
+    456.3
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.6,
+    0,
+    1202.6,
+    468
+   ],
+   "aspectWithLabels": 3.0026,
+   "anchors": [
+    {
+     "id": "btn-y1",
+     "name": "Y1",
+     "kind": "button",
+     "x": 124.5,
+     "y": 99.8,
+     "r": 18.1,
+     "side": "w",
+     "label": [
+      -32.6,
+      26.1
+     ]
+    },
+    {
+     "id": "btn-y2",
+     "name": "Y2",
+     "kind": "button",
+     "x": 168.3,
+     "y": 143.5,
+     "r": 18.1,
+     "side": "w",
+     "label": [
+      -32.6,
+      84.1
+     ]
+    },
+    {
+     "id": "btn-y3",
+     "name": "Y3",
+     "kind": "button",
+     "x": 124.5,
+     "y": 187.3,
+     "r": 18.1,
+     "side": "w",
+     "label": [
+      -32.6,
+      200.1
+     ]
+    },
+    {
+     "id": "btn-y4",
+     "name": "Y4",
+     "kind": "button",
+     "x": 80.8,
+     "y": 143.5,
+     "r": 18.1,
+     "side": "w",
+     "label": [
+      -32.6,
+      142.1
+     ]
+    },
+    {
+     "id": "btn-x1",
+     "name": "X1",
+     "kind": "button",
+     "x": 124.5,
+     "y": 270.9,
+     "r": 18.1,
+     "side": "w",
+     "label": [
+      -32.6,
+      258.1
+     ]
+    },
+    {
+     "id": "btn-x2",
+     "name": "X2",
+     "kind": "button",
+     "x": 168.3,
+     "y": 314.6,
+     "r": 18.1,
+     "side": "w",
+     "label": [
+      -32.6,
+      316.1
+     ]
+    },
+    {
+     "id": "btn-x3",
+     "name": "X3",
+     "kind": "button",
+     "x": 124.5,
+     "y": 358.4,
+     "r": 18.1,
+     "side": "w",
+     "label": [
+      -32.6,
+      432.1
+     ]
+    },
+    {
+     "id": "btn-x4",
+     "name": "X4",
+     "kind": "button",
+     "x": 80.8,
+     "y": 314.6,
+     "r": 18.1,
+     "side": "w",
+     "label": [
+      -32.6,
+      374.1
+     ]
+    },
+    {
+     "id": "btn-b",
+     "name": "B",
+     "kind": "button",
+     "x": 813.7,
+     "y": 281.4,
+     "r": 34.2,
+     "side": "e",
+     "label": [
+      1032.6,
+      282.0
+     ]
+    },
+    {
+     "id": "btn-a",
+     "name": "A",
+     "kind": "button",
+     "x": 894.5,
+     "y": 224.3,
+     "r": 34.2,
+     "side": "e",
+     "label": [
+      1032.6,
+      224.0
+     ]
+    },
+    {
+     "id": "btn-start",
+     "name": "Start",
+     "kind": "button",
+     "x": 861.2,
+     "y": 395.4,
+     "r": 25.7,
+     "side": "e",
+     "label": [
+      1032.6,
+      395.1
+     ]
+    }
+   ]
+  },
+  "threedo": {
+   "file": "svg/threedo.svg",
+   "title": "3DO style pad",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    530
+   ],
+   "aspect": 1.8868,
+   "body": [
+    11.5,
+    15.4,
+    988.5,
+    518.2
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.5,
+    0,
+    1202.5,
+    606.2
+   ],
+   "aspectWithLabels": 2.3177,
+   "anchors": [
+    {
+     "id": "btn-l",
+     "name": "L",
+     "kind": "shoulder",
+     "x": 250.5,
+     "y": 41.3,
+     "r": 43.2,
+     "side": "w",
+     "label": [
+      -32.5,
+      41.3
+     ]
+    },
+    {
+     "id": "btn-r",
+     "name": "R",
+     "kind": "shoulder",
+     "x": 749.5,
+     "y": 41.3,
+     "r": 43.2,
+     "side": "e",
+     "label": [
+      1032.5,
+      33.2
+     ]
+    },
+    {
+     "id": "dpad",
+     "name": "D-Pad",
+     "kind": "dpad",
+     "x": 250.5,
+     "y": 288.9,
+     "r": 96.0,
+     "side": "w",
+     "label": [
+      -32.5,
+      288.9
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 250.5,
+     "y": 225.5,
+     "r": 32.6,
+     "side": "w",
+     "label": [
+      -32.5,
+      288.9
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 250.5,
+     "y": 352.2,
+     "r": 32.6,
+     "side": "w",
+     "label": [
+      -32.5,
+      288.9
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 187.1,
+     "y": 288.9,
+     "r": 32.6,
+     "side": "w",
+     "label": [
+      -32.5,
+      288.9
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 313.8,
+     "y": 288.9,
+     "r": 32.6,
+     "side": "w",
+     "label": [
+      -32.5,
+      288.9
+     ]
+    },
+    {
+     "id": "btn-a",
+     "name": "A",
+     "kind": "button",
+     "x": 644.0,
+     "y": 322.5,
+     "r": 42.2,
+     "side": "s",
+     "label": [
+      731.2,
+      562.2
+     ]
+    },
+    {
+     "id": "btn-b",
+     "name": "B",
+     "kind": "button",
+     "x": 744.7,
+     "y": 293.7,
+     "r": 42.2,
+     "side": "e",
+     "label": [
+      1032.5,
+      310.0
+     ]
+    },
+    {
+     "id": "btn-c",
+     "name": "C",
+     "kind": "button",
+     "x": 845.5,
+     "y": 260.1,
+     "r": 42.2,
+     "side": "e",
+     "label": [
+      1032.5,
+      252.0
+     ]
+    },
+    {
+     "id": "btn-x",
+     "name": "X (Stop)",
+     "kind": "button",
+     "x": 452.0,
+     "y": 389.6,
+     "r": 33.6,
+     "side": "s",
+     "label": [
+      371.2,
+      562.2
+     ]
+    },
+    {
+     "id": "btn-p",
+     "name": "P (Play)",
+     "kind": "button",
+     "x": 557.6,
+     "y": 389.6,
+     "r": 33.6,
+     "side": "s",
+     "label": [
+      551.2,
+      562.2
+     ]
+    }
+   ]
+  },
+  "lynx": {
+   "file": "svg/lynx.svg",
+   "title": "Lynx style handheld",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    458
+   ],
+   "aspect": 2.1834,
+   "body": [
+    11.4,
+    11.4,
+    988.6,
+    446.8
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.6,
+    0,
+    1202.6,
+    534.8
+   ],
+   "aspectWithLabels": 2.6275,
+   "anchors": [
+    {
+     "id": "dpad",
+     "name": "D-Pad",
+     "kind": "dpad",
+     "x": 143.5,
+     "y": 224.3,
+     "r": 71.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      224.3
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 143.5,
+     "y": 177.3,
+     "r": 24.2,
+     "side": "w",
+     "label": [
+      -32.6,
+      224.3
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 143.5,
+     "y": 271.4,
+     "r": 24.2,
+     "side": "w",
+     "label": [
+      -32.6,
+      224.3
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 96.5,
+     "y": 224.3,
+     "r": 24.2,
+     "side": "w",
+     "label": [
+      -32.6,
+      224.3
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 190.6,
+     "y": 224.3,
+     "r": 24.2,
+     "side": "w",
+     "label": [
+      -32.6,
+      224.3
+     ]
+    },
+    {
+     "id": "btn-b",
+     "name": "B",
+     "kind": "button",
+     "x": 823.2,
+     "y": 271.9,
+     "r": 36.1,
+     "side": "e",
+     "label": [
+      1032.6,
+      266.9
+     ]
+    },
+    {
+     "id": "btn-a",
+     "name": "A",
+     "kind": "button",
+     "x": 889.7,
+     "y": 186.3,
+     "r": 36.1,
+     "side": "e",
+     "label": [
+      1032.6,
+      181.3
+     ]
+    },
+    {
+     "id": "btn-opt1",
+     "name": "Option 1",
+     "kind": "button",
+     "x": 804.2,
+     "y": 385.9,
+     "r": 23.8,
+     "side": "s",
+     "label": [
+      804.2,
+      490.8
+     ]
+    },
+    {
+     "id": "btn-pause",
+     "name": "Pause",
+     "kind": "button",
+     "x": 861.2,
+     "y": 385.9,
+     "r": 23.8,
+     "side": "e",
+     "label": [
+      1032.6,
+      400.9
+     ]
+    },
+    {
+     "id": "btn-opt2",
+     "name": "Option 2",
+     "kind": "button",
+     "x": 918.3,
+     "y": 347.9,
+     "r": 23.8,
+     "side": "e",
+     "label": [
+      1032.6,
+      342.9
+     ]
+    }
+   ]
+  },
+  "joystick": {
+   "file": "svg/joystick.svg",
+   "title": "One-button joystick (Atari 2600 style)",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    819
+   ],
+   "aspect": 1.221,
+   "body": [
+    11.4,
+    11.4,
+    988.6,
+    808.0
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.6,
+    0,
+    1202.6,
+    819
+   ],
+   "aspectWithLabels": 1.7158,
+   "anchors": [
+    {
+     "id": "btn-1",
+     "name": "Fire",
+     "kind": "shoulder",
+     "x": 224.3,
+     "y": 438.2,
+     "r": 42.8,
+     "side": "w",
+     "label": [
+      -32.6,
+      438.2
+     ]
+    },
+    {
+     "id": "stick-l",
+     "name": "Stick",
+     "kind": "stick",
+     "x": 500.0,
+     "y": 138.8,
+     "r": 85.6,
+     "side": "e",
+     "label": [
+      1032.6,
+      138.8
+     ]
+    }
+   ]
+  },
+  "joystick2": {
+   "file": "svg/joystick2.svg",
+   "title": "Two-button joystick (Atari 7800 style)",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    914
+   ],
+   "aspect": 1.0941,
+   "body": [
+    11.4,
+    11.4,
+    988.6,
+    903.0
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.6,
+    -76.6,
+    1202.6,
+    914
+   ],
+   "aspectWithLabels": 1.4185,
+   "anchors": [
+    {
+     "id": "stick-l",
+     "name": "Stick",
+     "kind": "stick",
+     "x": 500.0,
+     "y": 233.8,
+     "r": 133.1,
+     "side": "n",
+     "label": [
+      500.0,
+      -32.6
+     ]
+    },
+    {
+     "id": "btn-1",
+     "name": "Left button",
+     "kind": "button",
+     "x": 433.5,
+     "y": 129.3,
+     "r": 41.8,
+     "side": "w",
+     "label": [
+      -32.6,
+      129.3
+     ]
+    },
+    {
+     "id": "btn-2",
+     "name": "Right button",
+     "kind": "button",
+     "x": 566.5,
+     "y": 129.3,
+     "r": 41.8,
+     "side": "e",
+     "label": [
+      1032.6,
+      129.3
+     ]
+    }
+   ]
+  },
+  "keypad": {
+   "file": "svg/keypad.svg",
+   "title": "Keypad controller (ColecoVision / Atari 5200 / Intellivision style)",
+   "viewBox": [
+    0,
+    0,
+    658,
+    1000
+   ],
+   "aspect": 0.658,
+   "body": [
+    15.2,
+    11.4,
+    642.6,
+    988.6
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -198.8,
+    -76.6,
+    856.6,
+    1076.6
+   ],
+   "aspectWithLabels": 0.9152,
+   "anchors": [
+    {
+     "id": "btn-1",
+     "name": "Upper left",
+     "kind": "side",
+     "x": 34.2,
+     "y": 248.1,
+     "r": 42.8,
+     "side": "w",
+     "label": [
+      -28.8,
+      222.1
+     ]
+    },
+    {
+     "id": "btn-2",
+     "name": "Upper right",
+     "kind": "side",
+     "x": 623.6,
+     "y": 248.1,
+     "r": 42.8,
+     "side": "e",
+     "label": [
+      686.6,
+      225.7
+     ]
+    },
+    {
+     "id": "btn-3",
+     "name": "Lower left",
+     "kind": "side",
+     "x": 34.2,
+     "y": 438.2,
+     "r": 42.8,
+     "side": "w",
+     "label": [
+      -28.8,
+      465.5
+     ]
+    },
+    {
+     "id": "btn-4",
+     "name": "Lower right",
+     "kind": "side",
+     "x": 623.6,
+     "y": 438.2,
+     "r": 42.8,
+     "side": "e",
+     "label": [
+      686.6,
+      469.1
+     ]
+    },
+    {
+     "id": "stick-l",
+     "name": "Stick / disc",
+     "kind": "stick",
+     "x": 328.9,
+     "y": 233.8,
+     "r": 87.8,
+     "side": "n",
+     "label": [
+      328.9,
+      -32.6
+     ]
+    },
+    {
+     "id": "btn-start",
+     "name": "Start",
+     "kind": "button",
+     "x": 205.3,
+     "y": 433.5,
+     "r": 42.8,
+     "side": "w",
+     "label": [
+      -28.8,
+      407.5
+     ]
+    },
+    {
+     "id": "btn-pause",
+     "name": "Pause",
+     "kind": "button",
+     "x": 328.9,
+     "y": 433.5,
+     "r": 42.8,
+     "side": "s",
+     "label": [
+      328.9,
+      1032.6
+     ]
+    },
+    {
+     "id": "btn-reset",
+     "name": "Reset",
+     "kind": "button",
+     "x": 452.5,
+     "y": 433.5,
+     "r": 42.8,
+     "side": "e",
+     "label": [
+      686.6,
+      411.1
+     ]
+    },
+    {
+     "id": "key-1",
+     "name": "1",
+     "kind": "key",
+     "x": 186.3,
+     "y": 557.0,
+     "r": 57.0,
+     "side": "w",
+     "label": [
+      -28.8,
+      531.0
+     ]
+    },
+    {
+     "id": "key-2",
+     "name": "2",
+     "kind": "key",
+     "x": 328.9,
+     "y": 557.0,
+     "r": 57.0,
+     "side": "w",
+     "label": [
+      -28.8,
+      589.0
+     ]
+    },
+    {
+     "id": "key-3",
+     "name": "3",
+     "kind": "key",
+     "x": 471.5,
+     "y": 557.0,
+     "r": 57.0,
+     "side": "e",
+     "label": [
+      686.6,
+      534.6
+     ]
+    },
+    {
+     "id": "key-4",
+     "name": "4",
+     "kind": "key",
+     "x": 186.3,
+     "y": 656.8,
+     "r": 57.0,
+     "side": "w",
+     "label": [
+      -28.8,
+      647.0
+     ]
+    },
+    {
+     "id": "key-5",
+     "name": "5",
+     "kind": "key",
+     "x": 328.9,
+     "y": 656.8,
+     "r": 57.0,
+     "side": "w",
+     "label": [
+      -28.8,
+      705.0
+     ]
+    },
+    {
+     "id": "key-6",
+     "name": "6",
+     "kind": "key",
+     "x": 471.5,
+     "y": 656.8,
+     "r": 57.0,
+     "side": "e",
+     "label": [
+      686.6,
+      634.4
+     ]
+    },
+    {
+     "id": "key-7",
+     "name": "7",
+     "kind": "key",
+     "x": 186.3,
+     "y": 756.7,
+     "r": 57.0,
+     "side": "w",
+     "label": [
+      -28.8,
+      763.0
+     ]
+    },
+    {
+     "id": "key-8",
+     "name": "8",
+     "kind": "key",
+     "x": 328.9,
+     "y": 756.7,
+     "r": 57.0,
+     "side": "e",
+     "label": [
+      686.6,
+      734.3
+     ]
+    },
+    {
+     "id": "key-9",
+     "name": "9",
+     "kind": "key",
+     "x": 471.5,
+     "y": 756.7,
+     "r": 57.0,
+     "side": "e",
+     "label": [
+      686.6,
+      792.3
+     ]
+    },
+    {
+     "id": "key-star",
+     "name": "*",
+     "kind": "key",
+     "x": 186.3,
+     "y": 856.5,
+     "r": 57.0,
+     "side": "w",
+     "label": [
+      -28.8,
+      830.5
+     ]
+    },
+    {
+     "id": "key-0",
+     "name": "0",
+     "kind": "key",
+     "x": 328.9,
+     "y": 856.5,
+     "r": 57.0,
+     "side": "e",
+     "label": [
+      686.6,
+      850.3
+     ]
+    },
+    {
+     "id": "key-hash",
+     "name": "#",
+     "kind": "key",
+     "x": 471.5,
+     "y": 856.5,
+     "r": 57.0,
+     "side": "e",
+     "label": [
+      686.6,
+      908.3
+     ]
+    }
+   ]
+  },
+  "jaguar": {
+   "file": "svg/jaguar.svg",
+   "title": "Jaguar style pad with keypad",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    668
+   ],
+   "aspect": 1.497,
+   "body": [
+    11.6,
+    11.6,
+    988.4,
+    656.8
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.4,
+    -76.4,
+    1202.4,
+    668
+   ],
+   "aspectWithLabels": 1.8872,
+   "anchors": [
+    {
+     "id": "dpad",
+     "name": "D-Pad",
+     "kind": "dpad",
+     "x": 210.3,
+     "y": 247.2,
+     "r": 91.8,
+     "side": "w",
+     "label": [
+      -32.4,
+      261.5
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 210.3,
+     "y": 186.7,
+     "r": 31.2,
+     "side": "w",
+     "label": [
+      -32.4,
+      261.5
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 210.3,
+     "y": 307.8,
+     "r": 31.2,
+     "side": "w",
+     "label": [
+      -32.4,
+      261.5
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 149.7,
+     "y": 247.2,
+     "r": 31.2,
+     "side": "w",
+     "label": [
+      -32.4,
+      261.5
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 270.8,
+     "y": 247.2,
+     "r": 31.2,
+     "side": "w",
+     "label": [
+      -32.4,
+      261.5
+     ]
+    },
+    {
+     "id": "btn-pause",
+     "name": "Pause",
+     "kind": "button",
+     "x": 422.7,
+     "y": 102.4,
+     "r": 33.8,
+     "side": "n",
+     "label": [
+      410.0,
+      -32.4
+     ]
+    },
+    {
+     "id": "btn-option",
+     "name": "Option",
+     "kind": "button",
+     "x": 577.3,
+     "y": 102.4,
+     "r": 33.8,
+     "side": "n",
+     "label": [
+      590.0,
+      -32.4
+     ]
+    },
+    {
+     "id": "btn-c",
+     "name": "C",
+     "kind": "button",
+     "x": 722.1,
+     "y": 314.9,
+     "r": 40.6,
+     "side": "e",
+     "label": [
+      1032.4,
+      289.8
+     ]
+    },
+    {
+     "id": "btn-b",
+     "name": "B",
+     "kind": "button",
+     "x": 813.9,
+     "y": 261.7,
+     "r": 40.6,
+     "side": "e",
+     "label": [
+      1032.4,
+      231.8
+     ]
+    },
+    {
+     "id": "btn-a",
+     "name": "A",
+     "kind": "button",
+     "x": 900.8,
+     "y": 208.6,
+     "r": 40.6,
+     "side": "e",
+     "label": [
+      1032.4,
+      115.8
+     ]
+    },
+    {
+     "id": "key-1",
+     "name": "1",
+     "kind": "key",
+     "x": 403.4,
+     "y": 227.9,
+     "r": 40.6,
+     "side": "w",
+     "label": [
+      -32.4,
+      145.5
+     ]
+    },
+    {
+     "id": "key-2",
+     "name": "2",
+     "kind": "key",
+     "x": 500.0,
+     "y": 227.9,
+     "r": 40.6,
+     "side": "w",
+     "label": [
+      -32.4,
+      203.5
+     ]
+    },
+    {
+     "id": "key-3",
+     "name": "3",
+     "kind": "key",
+     "x": 596.6,
+     "y": 227.9,
+     "r": 40.6,
+     "side": "e",
+     "label": [
+      1032.4,
+      173.8
+     ]
+    },
+    {
+     "id": "key-4",
+     "name": "4",
+     "kind": "key",
+     "x": 403.4,
+     "y": 316.8,
+     "r": 40.6,
+     "side": "w",
+     "label": [
+      -32.4,
+      319.5
+     ]
+    },
+    {
+     "id": "key-5",
+     "name": "5",
+     "kind": "key",
+     "x": 500.0,
+     "y": 316.8,
+     "r": 40.6,
+     "side": "w",
+     "label": [
+      -32.4,
+      377.5
+     ]
+    },
+    {
+     "id": "key-6",
+     "name": "6",
+     "kind": "key",
+     "x": 596.6,
+     "y": 316.8,
+     "r": 40.6,
+     "side": "e",
+     "label": [
+      1032.4,
+      347.8
+     ]
+    },
+    {
+     "id": "key-7",
+     "name": "7",
+     "kind": "key",
+     "x": 403.4,
+     "y": 405.6,
+     "r": 40.6,
+     "side": "w",
+     "label": [
+      -32.4,
+      435.5
+     ]
+    },
+    {
+     "id": "key-8",
+     "name": "8",
+     "kind": "key",
+     "x": 500.0,
+     "y": 405.6,
+     "r": 40.6,
+     "side": "e",
+     "label": [
+      1032.4,
+      405.8
+     ]
+    },
+    {
+     "id": "key-9",
+     "name": "9",
+     "kind": "key",
+     "x": 596.6,
+     "y": 405.6,
+     "r": 40.6,
+     "side": "e",
+     "label": [
+      1032.4,
+      463.8
+     ]
+    },
+    {
+     "id": "key-star",
+     "name": "*",
+     "kind": "key",
+     "x": 403.4,
+     "y": 494.5,
+     "r": 40.6,
+     "side": "w",
+     "label": [
+      -32.4,
+      493.5
+     ]
+    },
+    {
+     "id": "key-0",
+     "name": "0",
+     "kind": "key",
+     "x": 500.0,
+     "y": 494.5,
+     "r": 40.6,
+     "side": "e",
+     "label": [
+      1032.4,
+      521.8
+     ]
+    },
+    {
+     "id": "key-hash",
+     "name": "#",
+     "kind": "key",
+     "x": 596.6,
+     "y": 494.5,
+     "r": 40.6,
+     "side": "e",
+     "label": [
+      1032.4,
+      579.8
+     ]
+    }
+   ]
+  },
+  "xbox": {
+   "file": "svg/xbox.svg",
+   "title": "Original Xbox style pad",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    654
+   ],
+   "aspect": 1.5291,
+   "body": [
+    12.2,
+    16.3,
+    987.8,
+    642.3
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -201.8,
+    -71.7,
+    1201.8,
+    730.3
+   ],
+   "aspectWithLabels": 1.7501,
+   "anchors": [
+    {
+     "id": "btn-lt",
+     "name": "L",
+     "kind": "trigger",
+     "x": 250.2,
+     "y": 41.8,
+     "r": 51.0,
+     "side": "w",
+     "label": [
+      -31.8,
+      41.8
+     ]
+    },
+    {
+     "id": "btn-rt",
+     "name": "R",
+     "kind": "trigger",
+     "x": 749.8,
+     "y": 41.8,
+     "r": 51.0,
+     "side": "e",
+     "label": [
+      1031.8,
+      8.1
+     ]
+    },
+    {
+     "id": "stick-l",
+     "name": "Left Stick",
+     "kind": "stick",
+     "x": 234.9,
+     "y": 225.3,
+     "r": 55.2,
+     "side": "w",
+     "label": [
+      -31.8,
+      225.3
+     ]
+    },
+    {
+     "id": "dpad",
+     "name": "D-Pad",
+     "kind": "dpad",
+     "x": 372.5,
+     "y": 393.6,
+     "r": 66.3,
+     "side": "s",
+     "label": [
+      372.5,
+      686.3
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 372.5,
+     "y": 349.8,
+     "r": 22.5,
+     "side": "s",
+     "label": [
+      372.5,
+      686.3
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 372.5,
+     "y": 437.3,
+     "r": 22.5,
+     "side": "s",
+     "label": [
+      372.5,
+      686.3
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 328.8,
+     "y": 393.6,
+     "r": 22.5,
+     "side": "w",
+     "label": [
+      -31.8,
+      393.6
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 416.3,
+     "y": 393.6,
+     "r": 22.5,
+     "side": "s",
+     "label": [
+      372.5,
+      686.3
+     ]
+    },
+    {
+     "id": "stick-r",
+     "name": "Right Stick",
+     "kind": "stick",
+     "x": 627.5,
+     "y": 393.6,
+     "r": 47.1,
+     "side": "s",
+     "label": [
+      627.5,
+      686.3
+     ]
+    },
+    {
+     "id": "btn-back",
+     "name": "Back",
+     "kind": "button",
+     "x": 443.9,
+     "y": 261.0,
+     "r": 18.4,
+     "side": "n",
+     "label": [
+      410.0,
+      -27.7
+     ]
+    },
+    {
+     "id": "btn-start",
+     "name": "Start",
+     "kind": "button",
+     "x": 556.1,
+     "y": 261.0,
+     "r": 18.4,
+     "side": "n",
+     "label": [
+      590.0,
+      -27.7
+     ]
+    },
+    {
+     "id": "btn-y",
+     "name": "Y",
+     "kind": "button",
+     "x": 749.8,
+     "y": 162.1,
+     "r": 32.6,
+     "side": "e",
+     "label": [
+      1031.8,
+      128.4
+     ]
+    },
+    {
+     "id": "btn-b",
+     "name": "B",
+     "kind": "button",
+     "x": 813.0,
+     "y": 225.3,
+     "r": 32.6,
+     "side": "e",
+     "label": [
+      1031.8,
+      191.6
+     ]
+    },
+    {
+     "id": "btn-a",
+     "name": "A",
+     "kind": "button",
+     "x": 749.8,
+     "y": 288.6,
+     "r": 32.6,
+     "side": "e",
+     "label": [
+      1031.8,
+      307.6
+     ]
+    },
+    {
+     "id": "btn-x",
+     "name": "X",
+     "kind": "button",
+     "x": 686.6,
+     "y": 225.3,
+     "r": 32.6,
+     "side": "e",
+     "label": [
+      1031.8,
+      249.6
+     ]
+    },
+    {
+     "id": "btn-white",
+     "name": "White",
+     "kind": "button",
+     "x": 856.9,
+     "y": 342.6,
+     "r": 21.4,
+     "side": "e",
+     "label": [
+      1031.8,
+      365.6
+     ]
+    },
+    {
+     "id": "btn-black",
+     "name": "Black",
+     "kind": "button",
+     "x": 805.9,
+     "y": 388.5,
+     "r": 21.4,
+     "side": "e",
+     "label": [
+      1031.8,
+      423.6
+     ]
+    }
+   ],
+   "aliases": {
+    "btn-l3": "stick-l",
+    "btn-r3": "stick-r"
+   }
+  },
+  "modern": {
+   "file": "svg/modern.svg",
+   "title": "Generic modern twin-stick pad (RetroPad)",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    708
+   ],
+   "aspect": 1.4124,
+   "body": [
+    12.4,
+    16.5,
+    987.6,
+    695.2
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -201.6,
+    -71.5,
+    1201.6,
+    783.2
+   ],
+   "aspectWithLabels": 1.6417,
+   "anchors": [
+    {
+     "id": "btn-lt",
+     "name": "LT",
+     "kind": "trigger",
+     "x": 252.8,
+     "y": 42.2,
+     "r": 46.3,
+     "side": "w",
+     "label": [
+      -31.6,
+      41.8
+     ]
+    },
+    {
+     "id": "btn-rt",
+     "name": "RT",
+     "kind": "trigger",
+     "x": 747.2,
+     "y": 42.2,
+     "r": 46.3,
+     "side": "e",
+     "label": [
+      1031.6,
+      23.6
+     ]
+    },
+    {
+     "id": "btn-lb",
+     "name": "LB",
+     "kind": "shoulder",
+     "x": 247.7,
+     "y": 98.9,
+     "r": 41.2,
+     "side": "w",
+     "label": [
+      -31.6,
+      99.8
+     ]
+    },
+    {
+     "id": "btn-rb",
+     "name": "RB",
+     "kind": "shoulder",
+     "x": 752.3,
+     "y": 98.9,
+     "r": 41.2,
+     "side": "e",
+     "label": [
+      1031.6,
+      81.6
+     ]
+    },
+    {
+     "id": "stick-l",
+     "name": "Left Stick",
+     "kind": "stick",
+     "x": 237.4,
+     "y": 284.3,
+     "r": 53.0,
+     "side": "w",
+     "label": [
+      -31.6,
+      283.9
+     ]
+    },
+    {
+     "id": "dpad",
+     "name": "D-Pad",
+     "kind": "dpad",
+     "x": 376.4,
+     "y": 449.1,
+     "r": 66.9,
+     "side": "s",
+     "label": [
+      376.4,
+      739.2
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 376.4,
+     "y": 404.9,
+     "r": 22.8,
+     "side": "s",
+     "label": [
+      376.4,
+      739.2
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 376.4,
+     "y": 493.3,
+     "r": 22.8,
+     "side": "s",
+     "label": [
+      376.4,
+      739.2
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 332.2,
+     "y": 449.1,
+     "r": 22.8,
+     "side": "w",
+     "label": [
+      -31.6,
+      449.1
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 420.6,
+     "y": 449.1,
+     "r": 22.8,
+     "side": "s",
+     "label": [
+      376.4,
+      739.2
+     ]
+    },
+    {
+     "id": "stick-r",
+     "name": "Right Stick",
+     "kind": "stick",
+     "x": 623.6,
+     "y": 449.1,
+     "r": 47.6,
+     "side": "s",
+     "label": [
+      623.6,
+      739.2
+     ]
+    },
+    {
+     "id": "btn-back",
+     "name": "Select",
+     "kind": "button",
+     "x": 427.9,
+     "y": 289.4,
+     "r": 25.7,
+     "side": "n",
+     "label": [
+      320.0,
+      -27.5
+     ]
+    },
+    {
+     "id": "btn-start",
+     "name": "Start",
+     "kind": "button",
+     "x": 572.1,
+     "y": 289.4,
+     "r": 25.7,
+     "side": "n",
+     "label": [
+      680.0,
+      -27.5
+     ]
+    },
+    {
+     "id": "btn-home",
+     "name": "Home",
+     "kind": "button",
+     "x": 500.0,
+     "y": 212.2,
+     "r": 28.8,
+     "side": "n",
+     "label": [
+      500.0,
+      -27.5
+     ]
+    },
+    {
+     "id": "btn-y",
+     "name": "Y",
+     "kind": "button",
+     "x": 757.5,
+     "y": 225.6,
+     "r": 33.0,
+     "side": "e",
+     "label": [
+      1031.6,
+      207.0
+     ]
+    },
+    {
+     "id": "btn-b",
+     "name": "B",
+     "kind": "button",
+     "x": 821.4,
+     "y": 289.4,
+     "r": 33.0,
+     "side": "e",
+     "label": [
+      1031.6,
+      270.8
+     ]
+    },
+    {
+     "id": "btn-a",
+     "name": "A",
+     "kind": "button",
+     "x": 757.5,
+     "y": 353.3,
+     "r": 33.0,
+     "side": "e",
+     "label": [
+      1031.6,
+      386.8
+     ]
+    },
+    {
+     "id": "btn-x",
+     "name": "X",
+     "kind": "button",
+     "x": 693.6,
+     "y": 289.4,
+     "r": 33.0,
+     "side": "e",
+     "label": [
+      1031.6,
+      328.8
+     ]
+    }
+   ],
+   "aliases": {
+    "btn-l3": "stick-l",
+    "btn-r3": "stick-r"
+   }
+  },
+  "minipad": {
+   "file": "svg/minipad.svg",
+   "title": "Generic two-button pad",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    487
+   ],
+   "aspect": 2.0534,
+   "body": [
+    11.4,
+    11.4,
+    988.6,
+    475.3
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.6,
+    0,
+    1202.6,
+    563.3
+   ],
+   "aspectWithLabels": 2.4946,
+   "anchors": [
+    {
+     "id": "dpad",
+     "name": "D-Pad",
+     "kind": "dpad",
+     "x": 252.9,
+     "y": 243.3,
+     "r": 95.1,
+     "side": "w",
+     "label": [
+      -32.6,
+      243.3
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 252.9,
+     "y": 180.6,
+     "r": 32.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      243.3
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 252.9,
+     "y": 306.1,
+     "r": 32.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      243.3
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 190.1,
+     "y": 243.3,
+     "r": 32.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      243.3
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 315.6,
+     "y": 243.3,
+     "r": 32.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      243.3
+     ]
+    },
+    {
+     "id": "btn-select",
+     "name": "Select",
+     "kind": "button",
+     "x": 443.0,
+     "y": 328.9,
+     "r": 38.0,
+     "side": "s",
+     "label": [
+      389.7,
+      519.3
+     ]
+    },
+    {
+     "id": "btn-start",
+     "name": "Start",
+     "kind": "button",
+     "x": 557.0,
+     "y": 328.9,
+     "r": 38.0,
+     "side": "s",
+     "label": [
+      569.7,
+      519.3
+     ]
+    },
+    {
+     "id": "btn-b",
+     "name": "B",
+     "kind": "button",
+     "x": 709.1,
+     "y": 281.4,
+     "r": 53.2,
+     "side": "s",
+     "label": [
+      749.7,
+      519.3
+     ]
+    },
+    {
+     "id": "btn-a",
+     "name": "A",
+     "kind": "button",
+     "x": 832.7,
+     "y": 214.8,
+     "r": 53.2,
+     "side": "e",
+     "label": [
+      1032.6,
+      214.8
+     ]
+    }
+   ]
+  },
+  "pico8": {
+   "file": "svg/pico8.svg",
+   "title": "PICO-8 style pad (O and X)",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    487
+   ],
+   "aspect": 2.0534,
+   "body": [
+    11.4,
+    11.4,
+    988.6,
+    475.3
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.6,
+    0,
+    1202.6,
+    563.3
+   ],
+   "aspectWithLabels": 2.4946,
+   "anchors": [
+    {
+     "id": "dpad",
+     "name": "D-Pad",
+     "kind": "dpad",
+     "x": 252.9,
+     "y": 243.3,
+     "r": 95.1,
+     "side": "w",
+     "label": [
+      -32.6,
+      243.3
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 252.9,
+     "y": 180.6,
+     "r": 32.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      243.3
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 252.9,
+     "y": 306.1,
+     "r": 32.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      243.3
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 190.1,
+     "y": 243.3,
+     "r": 32.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      243.3
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 315.6,
+     "y": 243.3,
+     "r": 32.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      243.3
+     ]
+    },
+    {
+     "id": "btn-start",
+     "name": "Pause",
+     "kind": "button",
+     "x": 500.0,
+     "y": 328.9,
+     "r": 42.8,
+     "side": "s",
+     "label": [
+      500.0,
+      519.3
+     ]
+    },
+    {
+     "id": "btn-o",
+     "name": "O",
+     "kind": "button",
+     "x": 709.1,
+     "y": 281.4,
+     "r": 53.2,
+     "side": "s",
+     "label": [
+      709.1,
+      519.3
+     ]
+    },
+    {
+     "id": "btn-x",
+     "name": "X",
+     "kind": "button",
+     "x": 832.7,
+     "y": 214.8,
+     "r": 53.2,
+     "side": "e",
+     "label": [
+      1032.6,
+      214.8
+     ]
+    }
+   ]
+  },
+  "phone": {
+   "file": "svg/phone.svg",
+   "title": "Keypad phone (Java ME / N-Gage style)",
+   "viewBox": [
+    0,
+    0,
+    525,
+    1000
+   ],
+   "aspect": 0.525,
+   "body": [
+    11.4,
+    11.4,
+    513.3,
+    988.6
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.6,
+    0,
+    727.3,
+    1000
+   ],
+   "aspectWithLabels": 0.9299,
+   "anchors": [
+    {
+     "id": "btn-soft-l",
+     "name": "Left soft key",
+     "kind": "button",
+     "x": 129.3,
+     "y": 433.5,
+     "r": 42.8,
+     "side": "w",
+     "label": [
+      -32.6,
+      397.1
+     ]
+    },
+    {
+     "id": "btn-soft-r",
+     "name": "Right soft key",
+     "kind": "button",
+     "x": 395.4,
+     "y": 433.5,
+     "r": 42.8,
+     "side": "e",
+     "label": [
+      557.3,
+      408.9
+     ]
+    },
+    {
+     "id": "dpad",
+     "name": "D-Pad",
+     "kind": "dpad",
+     "x": 262.4,
+     "y": 471.5,
+     "r": 61.8,
+     "side": "w",
+     "label": [
+      -32.6,
+      455.1
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "D-Pad Up",
+     "kind": "dpad-dir",
+     "x": 262.4,
+     "y": 430.7,
+     "r": 21.0,
+     "side": "w",
+     "label": [
+      -32.6,
+      455.1
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "D-Pad Down",
+     "kind": "dpad-dir",
+     "x": 262.4,
+     "y": 512.3,
+     "r": 21.0,
+     "side": "w",
+     "label": [
+      -32.6,
+      455.1
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "D-Pad Left",
+     "kind": "dpad-dir",
+     "x": 221.6,
+     "y": 471.5,
+     "r": 21.0,
+     "side": "w",
+     "label": [
+      -32.6,
+      455.1
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "D-Pad Right",
+     "kind": "dpad-dir",
+     "x": 303.1,
+     "y": 471.5,
+     "r": 21.0,
+     "side": "w",
+     "label": [
+      -32.6,
+      455.1
+     ]
+    },
+    {
+     "id": "btn-fire",
+     "name": "Select (centre)",
+     "kind": "button",
+     "x": 262.4,
+     "y": 471.5,
+     "r": 19.0,
+     "side": "e",
+     "label": [
+      557.3,
+      466.9
+     ]
+    },
+    {
+     "id": "key-1",
+     "name": "1",
+     "kind": "key",
+     "x": 119.8,
+     "y": 633.1,
+     "r": 52.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      596.7
+     ]
+    },
+    {
+     "id": "key-2",
+     "name": "2",
+     "kind": "key",
+     "x": 262.4,
+     "y": 633.1,
+     "r": 52.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      654.7
+     ]
+    },
+    {
+     "id": "key-3",
+     "name": "3",
+     "kind": "key",
+     "x": 404.9,
+     "y": 633.1,
+     "r": 52.3,
+     "side": "e",
+     "label": [
+      557.3,
+      608.5
+     ]
+    },
+    {
+     "id": "key-4",
+     "name": "4",
+     "kind": "key",
+     "x": 119.8,
+     "y": 718.6,
+     "r": 52.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      712.7
+     ]
+    },
+    {
+     "id": "key-5",
+     "name": "5",
+     "kind": "key",
+     "x": 262.4,
+     "y": 718.6,
+     "r": 52.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      770.7
+     ]
+    },
+    {
+     "id": "key-6",
+     "name": "6",
+     "kind": "key",
+     "x": 404.9,
+     "y": 718.6,
+     "r": 52.3,
+     "side": "e",
+     "label": [
+      557.3,
+      694.0
+     ]
+    },
+    {
+     "id": "key-7",
+     "name": "7",
+     "kind": "key",
+     "x": 119.8,
+     "y": 804.2,
+     "r": 52.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      828.7
+     ]
+    },
+    {
+     "id": "key-8",
+     "name": "8",
+     "kind": "key",
+     "x": 262.4,
+     "y": 804.2,
+     "r": 52.3,
+     "side": "e",
+     "label": [
+      557.3,
+      779.6
+     ]
+    },
+    {
+     "id": "key-9",
+     "name": "9",
+     "kind": "key",
+     "x": 404.9,
+     "y": 804.2,
+     "r": 52.3,
+     "side": "e",
+     "label": [
+      557.3,
+      837.6
+     ]
+    },
+    {
+     "id": "key-star",
+     "name": "*",
+     "kind": "key",
+     "x": 119.8,
+     "y": 889.7,
+     "r": 52.3,
+     "side": "w",
+     "label": [
+      -32.6,
+      886.7
+     ]
+    },
+    {
+     "id": "key-0",
+     "name": "0",
+     "kind": "key",
+     "x": 262.4,
+     "y": 889.7,
+     "r": 52.3,
+     "side": "e",
+     "label": [
+      557.3,
+      895.6
+     ]
+    },
+    {
+     "id": "key-hash",
+     "name": "#",
+     "kind": "key",
+     "x": 404.9,
+     "y": 889.7,
+     "r": 52.3,
+     "side": "e",
+     "label": [
+      557.3,
+      953.6
+     ]
+    }
+   ]
+  },
+  "arcade6": {
+   "file": "svg/arcade6.svg",
+   "title": "Arcade panel: stick and six buttons",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    525
+   ],
+   "aspect": 1.9048,
+   "body": [
+    11.4,
+    11.4,
+    988.6,
+    513.3
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.6,
+    -76.6,
+    1202.6,
+    601.3
+   ],
+   "aspectWithLabels": 2.0729,
+   "anchors": [
+    {
+     "id": "stick-l",
+     "name": "Stick",
+     "kind": "stick",
+     "x": 233.8,
+     "y": 281.4,
+     "r": 68.4,
+     "side": "w",
+     "label": [
+      -32.6,
+      281.4
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "Stick Up",
+     "kind": "dpad-dir",
+     "x": 233.8,
+     "y": 206.1,
+     "r": 38.8,
+     "side": "w",
+     "label": [
+      -32.6,
+      206.1
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "Stick Down",
+     "kind": "dpad-dir",
+     "x": 233.8,
+     "y": 356.7,
+     "r": 38.8,
+     "side": "w",
+     "label": [
+      -32.6,
+      356.7
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "Stick Left",
+     "kind": "dpad-dir",
+     "x": 158.6,
+     "y": 281.4,
+     "r": 38.8,
+     "side": "w",
+     "label": [
+      -32.6,
+      281.4
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "Stick Right",
+     "kind": "dpad-dir",
+     "x": 309.1,
+     "y": 281.4,
+     "r": 38.8,
+     "side": "w",
+     "label": [
+      -32.6,
+      281.4
+     ]
+    },
+    {
+     "id": "btn-1",
+     "name": "1",
+     "kind": "button",
+     "x": 519.0,
+     "y": 243.3,
+     "r": 45.6,
+     "side": "n",
+     "label": [
+      408.2,
+      -32.6
+     ]
+    },
+    {
+     "id": "btn-2",
+     "name": "2",
+     "kind": "button",
+     "x": 642.6,
+     "y": 214.8,
+     "r": 45.6,
+     "side": "n",
+     "label": [
+      588.2,
+      -32.6
+     ]
+    },
+    {
+     "id": "btn-3",
+     "name": "3",
+     "kind": "button",
+     "x": 766.2,
+     "y": 214.8,
+     "r": 45.6,
+     "side": "n",
+     "label": [
+      768.2,
+      -32.6
+     ]
+    },
+    {
+     "id": "btn-4",
+     "name": "4",
+     "kind": "button",
+     "x": 519.0,
+     "y": 366.9,
+     "r": 45.6,
+     "side": "s",
+     "label": [
+      462.6,
+      557.3
+     ]
+    },
+    {
+     "id": "btn-5",
+     "name": "5",
+     "kind": "button",
+     "x": 642.6,
+     "y": 338.4,
+     "r": 45.6,
+     "side": "s",
+     "label": [
+      642.6,
+      557.3
+     ]
+    },
+    {
+     "id": "btn-6",
+     "name": "6",
+     "kind": "button",
+     "x": 766.2,
+     "y": 338.4,
+     "r": 45.6,
+     "side": "s",
+     "label": [
+      822.6,
+      557.3
+     ]
+    },
+    {
+     "id": "btn-coin",
+     "name": "Coin",
+     "kind": "button",
+     "x": 785.2,
+     "y": 91.3,
+     "r": 33.3,
+     "side": "n",
+     "label": [
+      948.2,
+      -32.6
+     ]
+    },
+    {
+     "id": "btn-start",
+     "name": "Start",
+     "kind": "button",
+     "x": 889.7,
+     "y": 96.0,
+     "r": 24.7,
+     "side": "e",
+     "label": [
+      1032.6,
+      96.0
+     ]
+    }
+   ]
+  },
+  "neogeo": {
+   "file": "svg/neogeo.svg",
+   "title": "Neo Geo style stick and four buttons",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    525
+   ],
+   "aspect": 1.9048,
+   "body": [
+    11.4,
+    11.4,
+    988.6,
+    513.3
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.6,
+    -76.6,
+    1202.6,
+    601.3
+   ],
+   "aspectWithLabels": 2.0729,
+   "anchors": [
+    {
+     "id": "stick-l",
+     "name": "Stick",
+     "kind": "stick",
+     "x": 233.8,
+     "y": 290.9,
+     "r": 68.4,
+     "side": "w",
+     "label": [
+      -32.6,
+      290.9
+     ]
+    },
+    {
+     "id": "dpad-up",
+     "name": "Stick Up",
+     "kind": "dpad-dir",
+     "x": 233.8,
+     "y": 215.6,
+     "r": 38.8,
+     "side": "w",
+     "label": [
+      -32.6,
+      215.6
+     ]
+    },
+    {
+     "id": "dpad-down",
+     "name": "Stick Down",
+     "kind": "dpad-dir",
+     "x": 233.8,
+     "y": 366.2,
+     "r": 38.8,
+     "side": "w",
+     "label": [
+      -32.6,
+      366.2
+     ]
+    },
+    {
+     "id": "dpad-left",
+     "name": "Stick Left",
+     "kind": "dpad-dir",
+     "x": 158.6,
+     "y": 290.9,
+     "r": 38.8,
+     "side": "w",
+     "label": [
+      -32.6,
+      290.9
+     ]
+    },
+    {
+     "id": "dpad-right",
+     "name": "Stick Right",
+     "kind": "dpad-dir",
+     "x": 309.1,
+     "y": 290.9,
+     "r": 38.8,
+     "side": "w",
+     "label": [
+      -32.6,
+      290.9
+     ]
+    },
+    {
+     "id": "btn-a",
+     "name": "A",
+     "kind": "button",
+     "x": 509.5,
+     "y": 338.4,
+     "r": 47.5,
+     "side": "s",
+     "label": [
+      438.8,
+      557.3
+     ]
+    },
+    {
+     "id": "btn-b",
+     "name": "B",
+     "kind": "button",
+     "x": 618.8,
+     "y": 300.4,
+     "r": 47.5,
+     "side": "s",
+     "label": [
+      618.8,
+      557.3
+     ]
+    },
+    {
+     "id": "btn-c",
+     "name": "C",
+     "kind": "button",
+     "x": 728.1,
+     "y": 276.6,
+     "r": 47.5,
+     "side": "s",
+     "label": [
+      798.8,
+      557.3
+     ]
+    },
+    {
+     "id": "btn-d",
+     "name": "D",
+     "kind": "button",
+     "x": 837.5,
+     "y": 267.1,
+     "r": 47.5,
+     "side": "e",
+     "label": [
+      1032.6,
+      267.1
+     ]
+    },
+    {
+     "id": "btn-select",
+     "name": "Select",
+     "kind": "button",
+     "x": 557.0,
+     "y": 105.5,
+     "r": 33.3,
+     "side": "n",
+     "label": [
+      524.0,
+      -32.6
+     ]
+    },
+    {
+     "id": "btn-start",
+     "name": "Start",
+     "kind": "button",
+     "x": 671.1,
+     "y": 105.5,
+     "r": 33.3,
+     "side": "n",
+     "label": [
+      704.0,
+      -32.6
+     ]
+    }
+   ]
+  },
+  "vectrex": {
+   "file": "svg/vectrex.svg",
+   "title": "Vectrex style stick and four buttons",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    411
+   ],
+   "aspect": 2.4331,
+   "body": [
+    11.4,
+    11.4,
+    988.6,
+    399.2
+   ],
+   "labelMode": "fixed",
+   "labelBounds": [
+    -202.6,
+    0,
+    1202.6,
+    487.2
+   ],
+   "aspectWithLabels": 2.8842,
+   "anchors": [
+    {
+     "id": "stick-l",
+     "name": "Stick",
+     "kind": "stick",
+     "x": 195.8,
+     "y": 205.3,
+     "r": 60.8,
+     "side": "w",
+     "label": [
+      -32.6,
+      205.3
+     ]
+    },
+    {
+     "id": "btn-1",
+     "name": "1",
+     "kind": "button",
+     "x": 471.5,
+     "y": 224.3,
+     "r": 45.6,
+     "side": "s",
+     "label": [
+      415.1,
+      443.2
+     ]
+    },
+    {
+     "id": "btn-2",
+     "name": "2",
+     "kind": "button",
+     "x": 595.1,
+     "y": 224.3,
+     "r": 45.6,
+     "side": "s",
+     "label": [
+      595.1,
+      443.2
+     ]
+    },
+    {
+     "id": "btn-3",
+     "name": "3",
+     "kind": "button",
+     "x": 718.6,
+     "y": 224.3,
+     "r": 45.6,
+     "side": "s",
+     "label": [
+      775.1,
+      443.2
+     ]
+    },
+    {
+     "id": "btn-4",
+     "name": "4",
+     "kind": "button",
+     "x": 842.2,
+     "y": 224.3,
+     "r": 45.6,
+     "side": "e",
+     "label": [
+      1032.6,
+      224.3
+     ]
+    }
+   ]
+  },
+  "keyboard": {
+   "file": "svg/keyboard.svg",
+   "title": "Computer keyboard",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    449
+   ],
+   "aspect": 2.2272,
+   "body": [
+    11.5,
+    11.5,
+    988.5,
+    437.4
+   ],
+   "labelMode": "dynamic",
+   "anchors": [
+    {
+     "id": "key-esc",
+     "name": "Esc",
+     "kind": "key",
+     "x": 78.8,
+     "y": 68.0,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-f1",
+     "name": "F1",
+     "kind": "key",
+     "x": 169.1,
+     "y": 68.0,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-f2",
+     "name": "F2",
+     "kind": "key",
+     "x": 229.2,
+     "y": 68.0,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-f3",
+     "name": "F3",
+     "kind": "key",
+     "x": 289.4,
+     "y": 68.0,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-f4",
+     "name": "F4",
+     "kind": "key",
+     "x": 349.6,
+     "y": 68.0,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-f5",
+     "name": "F5",
+     "kind": "key",
+     "x": 439.8,
+     "y": 68.0,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-f6",
+     "name": "F6",
+     "kind": "key",
+     "x": 500.0,
+     "y": 68.0,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-f7",
+     "name": "F7",
+     "kind": "key",
+     "x": 560.2,
+     "y": 68.0,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-f8",
+     "name": "F8",
+     "kind": "key",
+     "x": 620.3,
+     "y": 68.0,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-f9",
+     "name": "F9",
+     "kind": "key",
+     "x": 710.6,
+     "y": 68.0,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-f10",
+     "name": "F10",
+     "kind": "key",
+     "x": 770.8,
+     "y": 68.0,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-grave",
+     "name": "`",
+     "kind": "key",
+     "x": 78.8,
+     "y": 131.2,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-1",
+     "name": "1",
+     "kind": "key",
+     "x": 139.0,
+     "y": 131.2,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-2",
+     "name": "2",
+     "kind": "key",
+     "x": 199.1,
+     "y": 131.2,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-3",
+     "name": "3",
+     "kind": "key",
+     "x": 259.3,
+     "y": 131.2,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-4",
+     "name": "4",
+     "kind": "key",
+     "x": 319.5,
+     "y": 131.2,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-5",
+     "name": "5",
+     "kind": "key",
+     "x": 379.7,
+     "y": 131.2,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-6",
+     "name": "6",
+     "kind": "key",
+     "x": 439.8,
+     "y": 131.2,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-7",
+     "name": "7",
+     "kind": "key",
+     "x": 500.0,
+     "y": 131.2,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-8",
+     "name": "8",
+     "kind": "key",
+     "x": 560.2,
+     "y": 131.2,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-9",
+     "name": "9",
+     "kind": "key",
+     "x": 620.3,
+     "y": 131.2,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-0",
+     "name": "0",
+     "kind": "key",
+     "x": 680.5,
+     "y": 131.2,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-minus",
+     "name": "-",
+     "kind": "key",
+     "x": 740.7,
+     "y": 131.2,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-equals",
+     "name": "=",
+     "kind": "key",
+     "x": 800.9,
+     "y": 131.2,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-backspace",
+     "name": "Backspace",
+     "kind": "key",
+     "x": 891.1,
+     "y": 131.2,
+     "r": 55.4,
+     "side": "n"
+    },
+    {
+     "id": "key-tab",
+     "name": "Tab",
+     "kind": "key",
+     "x": 93.8,
+     "y": 191.4,
+     "r": 40.4,
+     "side": "n"
+    },
+    {
+     "id": "key-q",
+     "name": "Q",
+     "kind": "key",
+     "x": 169.1,
+     "y": 191.4,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-w",
+     "name": "W",
+     "kind": "key",
+     "x": 229.2,
+     "y": 191.4,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-e",
+     "name": "E",
+     "kind": "key",
+     "x": 289.4,
+     "y": 191.4,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-r",
+     "name": "R",
+     "kind": "key",
+     "x": 349.6,
+     "y": 191.4,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-t",
+     "name": "T",
+     "kind": "key",
+     "x": 409.7,
+     "y": 191.4,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-y",
+     "name": "Y",
+     "kind": "key",
+     "x": 469.9,
+     "y": 191.4,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-u",
+     "name": "U",
+     "kind": "key",
+     "x": 530.1,
+     "y": 191.4,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-i",
+     "name": "I",
+     "kind": "key",
+     "x": 590.3,
+     "y": 191.4,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-o",
+     "name": "O",
+     "kind": "key",
+     "x": 650.4,
+     "y": 191.4,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-p",
+     "name": "P",
+     "kind": "key",
+     "x": 710.6,
+     "y": 191.4,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-lbracket",
+     "name": "[",
+     "kind": "key",
+     "x": 770.8,
+     "y": 191.4,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-rbracket",
+     "name": "]",
+     "kind": "key",
+     "x": 830.9,
+     "y": 191.4,
+     "r": 25.3,
+     "side": "n"
+    },
+    {
+     "id": "key-backslash",
+     "name": "\\",
+     "kind": "key",
+     "x": 906.2,
+     "y": 191.4,
+     "r": 40.4,
+     "side": "n"
+    },
+    {
+     "id": "key-caps",
+     "name": "Caps Lock",
+     "kind": "key",
+     "x": 101.4,
+     "y": 251.5,
+     "r": 47.9,
+     "side": "s"
+    },
+    {
+     "id": "key-a",
+     "name": "A",
+     "kind": "key",
+     "x": 184.1,
+     "y": 251.5,
+     "r": 25.3,
+     "side": "s"
+    },
+    {
+     "id": "key-s",
+     "name": "S",
+     "kind": "key",
+     "x": 244.3,
+     "y": 251.5,
+     "r": 25.3,
+     "side": "s"
+    },
+    {
+     "id": "key-d",
+     "name": "D",
+     "kind": "key",
+     "x": 304.4,
+     "y": 251.5,
+     "r": 25.3,
+     "side": "s"
+    },
+    {
+     "id": "key-f",
+     "name": "F",
+     "kind": "key",
+     "x": 364.6,
+     "y": 251.5,
+     "r": 25.3,
+     "side": "s"
+    },
+    {
+     "id": "key-g",
+     "name": "G",
+     "kind": "key",
+     "x": 424.8,
+     "y": 251.5,
+     "r": 25.3,
+     "side": "s"
+    },
+    {
+     "id": "key-h",
+     "name": "H",
+     "kind": "key",
+     "x": 485.0,
+     "y": 251.5,
+     "r": 25.3,
+     "side": "s"
+    },
+    {
+     "id": "key-j",
+     "name": "J",
+     "kind": "key",
+     "x": 545.1,
+     "y": 251.5,
+     "r": 25.3,
+     "side": "s"
+    },
+    {
+     "id": "key-k",
+     "name": "K",
+     "kind": "key",
+     "x": 605.3,
+     "y": 251.5,
+     "r": 25.3,
+     "side": "s"
+    },
+    {
+     "id": "key-l",
+     "name": "L",
+     "kind": "key",
+     "x": 665.5,
+     "y": 251.5,
+     "r": 25.3,
+     "side": "s"
+    },
+    {
+     "id": "key-semicolon",
+     "name": ";",
+     "kind": "key",
+     "x": 725.6,
+     "y": 251.5,
+     "r": 25.3,
+     "side": "s"
+    },
+    {
+     "id": "key-quote",
+     "name": "'",
+     "kind": "key",
+     "x": 785.8,
+     "y": 251.5,
+     "r": 25.3,
+     "side": "s"
+    },
+    {
+     "id": "key-enter",
+     "name": "Enter",
+     "kind": "key",
+     "x": 883.6,
+     "y": 251.5,
+     "r": 62.9,
+     "side": "s"
+    },
+    {
+     "id": "key-shift",
+     "name": "Shift",
+     "kind": "key",
+     "x": 116.4,
+     "y": 311.7,
+     "r": 62.9,
+     "side": "s"
+    },
+    {
+     "id": "key-z",
+     "name": "Z",
+     "kind": "key",
+     "x": 214.2,
+     "y": 311.7,
+     "r": 25.3,
+     "side": "s"
+    },
+    {
+     "id": "key-x",
+     "name": "X",
+     "kind": "key",
+     "x": 274.4,
+     "y": 311.7,
+     "r": 25.3,
+     "side": "s"
+    },
+    {
+     "id": "key-c",
+     "name": "C",
+     "kind": "key",
+     "x": 334.5,
+     "y": 311.7,
+     "r": 25.3,
+     "side": "s"
+    },
+    {
+     "id": "key-v",
+     "name": "V",
+     "kind": "key",
+     "x": 394.7,
+     "y": 311.7,
+     "r": 25.3,
+     "side": "s"
+    },
+    {
+     "id": "key-b",
+     "name": "B",
+     "kind": "key",
+     "x": 454.9,
+     "y": 311.7,
+     "r": 25.3,
+     "side": "s"
+    },
+    {
+     "id": "key-n",
+     "name": "N",
+     "kind": "key",
+     "x": 515.0,
+     "y": 311.7,
+     "r": 25.3,
+     "side": "s"
+    },
+    {
+     "id": "key-m",
+     "name": "M",
+     "kind": "key",
+     "x": 575.2,
+     "y": 311.7,
+     "r": 25.3,
+     "side": "s"
+    },
+    {
+     "id": "key-comma",
+     "name": ",",
+     "kind": "key",
+     "x": 635.4,
+     "y": 311.7,
+     "r": 25.3,
+     "side": "s"
+    },
+    {
+     "id": "key-period",
+     "name": ".",
+     "kind": "key",
+     "x": 695.6,
+     "y": 311.7,
+     "r": 25.3,
+     "side": "s"
+    },
+    {
+     "id": "key-slash",
+     "name": "/",
+     "kind": "key",
+     "x": 755.7,
+     "y": 311.7,
+     "r": 25.3,
+     "side": "s"
+    },
+    {
+     "id": "key-rshift",
+     "name": "Right Shift",
+     "kind": "key",
+     "x": 838.5,
+     "y": 311.7,
+     "r": 47.9,
+     "side": "s"
+    },
+    {
+     "id": "key-up",
+     "name": "Up",
+     "kind": "key",
+     "x": 921.2,
+     "y": 311.7,
+     "r": 25.3,
+     "side": "s"
+    },
+    {
+     "id": "key-ctrl",
+     "name": "Ctrl",
+     "kind": "key",
+     "x": 93.8,
+     "y": 371.9,
+     "r": 40.4,
+     "side": "s"
+    },
+    {
+     "id": "key-alt",
+     "name": "Alt",
+     "kind": "key",
+     "x": 184.1,
+     "y": 371.9,
+     "r": 40.4,
+     "side": "s"
+    },
+    {
+     "id": "key-space",
+     "name": "Space",
+     "kind": "key",
+     "x": 469.9,
+     "y": 371.9,
+     "r": 235.9,
+     "side": "s"
+    },
+    {
+     "id": "key-ralt",
+     "name": "Right Alt",
+     "kind": "key",
+     "x": 740.7,
+     "y": 371.9,
+     "r": 25.3,
+     "side": "s"
+    },
+    {
+     "id": "key-left",
+     "name": "Left",
+     "kind": "key",
+     "x": 800.9,
+     "y": 371.9,
+     "r": 25.3,
+     "side": "s"
+    },
+    {
+     "id": "key-down",
+     "name": "Down",
+     "kind": "key",
+     "x": 861.0,
+     "y": 371.9,
+     "r": 25.3,
+     "side": "s"
+    },
+    {
+     "id": "key-right",
+     "name": "Right",
+     "kind": "key",
+     "x": 921.2,
+     "y": 371.9,
+     "r": 25.3,
+     "side": "s"
+    }
+   ]
+  },
+  "keyboard_mouse": {
+   "file": "svg/keyboard_mouse.svg",
+   "title": "Computer keyboard and mouse",
+   "viewBox": [
+    0,
+    0,
+    1000,
+    364
+   ],
+   "aspect": 2.7473,
+   "body": [
+    11.0,
+    11.0,
+    989.0,
+    353.5
+   ],
+   "labelMode": "dynamic",
+   "anchors": [
+    {
+     "id": "key-esc",
+     "name": "Esc",
+     "kind": "key",
+     "x": 65.9,
+     "y": 58.4,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-f1",
+     "name": "F1",
+     "kind": "key",
+     "x": 137.4,
+     "y": 58.4,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-f2",
+     "name": "F2",
+     "kind": "key",
+     "x": 185.0,
+     "y": 58.4,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-f3",
+     "name": "F3",
+     "kind": "key",
+     "x": 232.6,
+     "y": 58.4,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-f4",
+     "name": "F4",
+     "kind": "key",
+     "x": 280.2,
+     "y": 58.4,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-f5",
+     "name": "F5",
+     "kind": "key",
+     "x": 351.6,
+     "y": 58.4,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-f6",
+     "name": "F6",
+     "kind": "key",
+     "x": 399.3,
+     "y": 58.4,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-f7",
+     "name": "F7",
+     "kind": "key",
+     "x": 446.9,
+     "y": 58.4,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-f8",
+     "name": "F8",
+     "kind": "key",
+     "x": 494.5,
+     "y": 58.4,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-f9",
+     "name": "F9",
+     "kind": "key",
+     "x": 565.9,
+     "y": 58.4,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-f10",
+     "name": "F10",
+     "kind": "key",
+     "x": 613.6,
+     "y": 58.4,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-grave",
+     "name": "`",
+     "kind": "key",
+     "x": 65.9,
+     "y": 108.4,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-1",
+     "name": "1",
+     "kind": "key",
+     "x": 113.6,
+     "y": 108.4,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-2",
+     "name": "2",
+     "kind": "key",
+     "x": 161.2,
+     "y": 108.4,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-3",
+     "name": "3",
+     "kind": "key",
+     "x": 208.8,
+     "y": 108.4,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-4",
+     "name": "4",
+     "kind": "key",
+     "x": 256.4,
+     "y": 108.4,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-5",
+     "name": "5",
+     "kind": "key",
+     "x": 304.0,
+     "y": 108.4,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-6",
+     "name": "6",
+     "kind": "key",
+     "x": 351.6,
+     "y": 108.4,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-7",
+     "name": "7",
+     "kind": "key",
+     "x": 399.3,
+     "y": 108.4,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-8",
+     "name": "8",
+     "kind": "key",
+     "x": 446.9,
+     "y": 108.4,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-9",
+     "name": "9",
+     "kind": "key",
+     "x": 494.5,
+     "y": 108.4,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-0",
+     "name": "0",
+     "kind": "key",
+     "x": 542.1,
+     "y": 108.4,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-minus",
+     "name": "-",
+     "kind": "key",
+     "x": 589.7,
+     "y": 108.4,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-equals",
+     "name": "=",
+     "kind": "key",
+     "x": 637.4,
+     "y": 108.4,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-backspace",
+     "name": "Backspace",
+     "kind": "key",
+     "x": 708.8,
+     "y": 108.4,
+     "r": 43.5,
+     "side": "n"
+    },
+    {
+     "id": "key-tab",
+     "name": "Tab",
+     "kind": "key",
+     "x": 77.8,
+     "y": 156.0,
+     "r": 31.6,
+     "side": "n"
+    },
+    {
+     "id": "key-q",
+     "name": "Q",
+     "kind": "key",
+     "x": 137.4,
+     "y": 156.0,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-w",
+     "name": "W",
+     "kind": "key",
+     "x": 185.0,
+     "y": 156.0,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-e",
+     "name": "E",
+     "kind": "key",
+     "x": 232.6,
+     "y": 156.0,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-r",
+     "name": "R",
+     "kind": "key",
+     "x": 280.2,
+     "y": 156.0,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-t",
+     "name": "T",
+     "kind": "key",
+     "x": 327.8,
+     "y": 156.0,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-y",
+     "name": "Y",
+     "kind": "key",
+     "x": 375.5,
+     "y": 156.0,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-u",
+     "name": "U",
+     "kind": "key",
+     "x": 423.1,
+     "y": 156.0,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-i",
+     "name": "I",
+     "kind": "key",
+     "x": 470.7,
+     "y": 156.0,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-o",
+     "name": "O",
+     "kind": "key",
+     "x": 518.3,
+     "y": 156.0,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-p",
+     "name": "P",
+     "kind": "key",
+     "x": 565.9,
+     "y": 156.0,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-lbracket",
+     "name": "[",
+     "kind": "key",
+     "x": 613.6,
+     "y": 156.0,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-rbracket",
+     "name": "]",
+     "kind": "key",
+     "x": 661.2,
+     "y": 156.0,
+     "r": 19.7,
+     "side": "n"
+    },
+    {
+     "id": "key-backslash",
+     "name": "\\",
+     "kind": "key",
+     "x": 720.7,
+     "y": 156.0,
+     "r": 31.6,
+     "side": "n"
+    },
+    {
+     "id": "key-caps",
+     "name": "Caps Lock",
+     "kind": "key",
+     "x": 83.8,
+     "y": 203.7,
+     "r": 37.5,
+     "side": "s"
+    },
+    {
+     "id": "key-a",
+     "name": "A",
+     "kind": "key",
+     "x": 149.3,
+     "y": 203.7,
+     "r": 19.7,
+     "side": "s"
+    },
+    {
+     "id": "key-s",
+     "name": "S",
+     "kind": "key",
+     "x": 196.9,
+     "y": 203.7,
+     "r": 19.7,
+     "side": "s"
+    },
+    {
+     "id": "key-d",
+     "name": "D",
+     "kind": "key",
+     "x": 244.5,
+     "y": 203.7,
+     "r": 19.7,
+     "side": "s"
+    },
+    {
+     "id": "key-f",
+     "name": "F",
+     "kind": "key",
+     "x": 292.1,
+     "y": 203.7,
+     "r": 19.7,
+     "side": "s"
+    },
+    {
+     "id": "key-g",
+     "name": "G",
+     "kind": "key",
+     "x": 339.7,
+     "y": 203.7,
+     "r": 19.7,
+     "side": "s"
+    },
+    {
+     "id": "key-h",
+     "name": "H",
+     "kind": "key",
+     "x": 387.4,
+     "y": 203.7,
+     "r": 19.7,
+     "side": "s"
+    },
+    {
+     "id": "key-j",
+     "name": "J",
+     "kind": "key",
+     "x": 435.0,
+     "y": 203.7,
+     "r": 19.7,
+     "side": "s"
+    },
+    {
+     "id": "key-k",
+     "name": "K",
+     "kind": "key",
+     "x": 482.6,
+     "y": 203.7,
+     "r": 19.7,
+     "side": "s"
+    },
+    {
+     "id": "key-l",
+     "name": "L",
+     "kind": "key",
+     "x": 530.2,
+     "y": 203.7,
+     "r": 19.7,
+     "side": "s"
+    },
+    {
+     "id": "key-semicolon",
+     "name": ";",
+     "kind": "key",
+     "x": 577.8,
+     "y": 203.7,
+     "r": 19.7,
+     "side": "s"
+    },
+    {
+     "id": "key-quote",
+     "name": "'",
+     "kind": "key",
+     "x": 625.5,
+     "y": 203.7,
+     "r": 19.7,
+     "side": "s"
+    },
+    {
+     "id": "key-enter",
+     "name": "Enter",
+     "kind": "key",
+     "x": 702.8,
+     "y": 203.7,
+     "r": 49.5,
+     "side": "s"
+    },
+    {
+     "id": "key-shift",
+     "name": "Shift",
+     "kind": "key",
+     "x": 95.7,
+     "y": 251.3,
+     "r": 49.5,
+     "side": "s"
+    },
+    {
+     "id": "key-z",
+     "name": "Z",
+     "kind": "key",
+     "x": 173.1,
+     "y": 251.3,
+     "r": 19.7,
+     "side": "s"
+    },
+    {
+     "id": "key-x",
+     "name": "X",
+     "kind": "key",
+     "x": 220.7,
+     "y": 251.3,
+     "r": 19.7,
+     "side": "s"
+    },
+    {
+     "id": "key-c",
+     "name": "C",
+     "kind": "key",
+     "x": 268.3,
+     "y": 251.3,
+     "r": 19.7,
+     "side": "s"
+    },
+    {
+     "id": "key-v",
+     "name": "V",
+     "kind": "key",
+     "x": 315.9,
+     "y": 251.3,
+     "r": 19.7,
+     "side": "s"
+    },
+    {
+     "id": "key-b",
+     "name": "B",
+     "kind": "key",
+     "x": 363.6,
+     "y": 251.3,
+     "r": 19.7,
+     "side": "s"
+    },
+    {
+     "id": "key-n",
+     "name": "N",
+     "kind": "key",
+     "x": 411.2,
+     "y": 251.3,
+     "r": 19.7,
+     "side": "s"
+    },
+    {
+     "id": "key-m",
+     "name": "M",
+     "kind": "key",
+     "x": 458.8,
+     "y": 251.3,
+     "r": 19.7,
+     "side": "s"
+    },
+    {
+     "id": "key-comma",
+     "name": ",",
+     "kind": "key",
+     "x": 506.4,
+     "y": 251.3,
+     "r": 19.7,
+     "side": "s"
+    },
+    {
+     "id": "key-period",
+     "name": ".",
+     "kind": "key",
+     "x": 554.0,
+     "y": 251.3,
+     "r": 19.7,
+     "side": "s"
+    },
+    {
+     "id": "key-slash",
+     "name": "/",
+     "kind": "key",
+     "x": 601.6,
+     "y": 251.3,
+     "r": 19.7,
+     "side": "s"
+    },
+    {
+     "id": "key-rshift",
+     "name": "Right Shift",
+     "kind": "key",
+     "x": 667.1,
+     "y": 251.3,
+     "r": 37.5,
+     "side": "s"
+    },
+    {
+     "id": "key-up",
+     "name": "Up",
+     "kind": "key",
+     "x": 732.6,
+     "y": 251.3,
+     "r": 19.7,
+     "side": "s"
+    },
+    {
+     "id": "key-ctrl",
+     "name": "Ctrl",
+     "kind": "key",
+     "x": 77.8,
+     "y": 298.9,
+     "r": 31.6,
+     "side": "s"
+    },
+    {
+     "id": "key-alt",
+     "name": "Alt",
+     "kind": "key",
+     "x": 149.3,
+     "y": 298.9,
+     "r": 31.6,
+     "side": "s"
+    },
+    {
+     "id": "key-space",
+     "name": "Space",
+     "kind": "key",
+     "x": 375.5,
+     "y": 298.9,
+     "r": 186.4,
+     "side": "s"
+    },
+    {
+     "id": "key-ralt",
+     "name": "Right Alt",
+     "kind": "key",
+     "x": 589.7,
+     "y": 298.9,
+     "r": 19.7,
+     "side": "s"
+    },
+    {
+     "id": "key-left",
+     "name": "Left",
+     "kind": "key",
+     "x": 637.4,
+     "y": 298.9,
+     "r": 19.7,
+     "side": "s"
+    },
+    {
+     "id": "key-down",
+     "name": "Down",
+     "kind": "key",
+     "x": 685.0,
+     "y": 298.9,
+     "r": 19.7,
+     "side": "s"
+    },
+    {
+     "id": "key-right",
+     "name": "Right",
+     "kind": "key",
+     "x": 732.6,
+     "y": 298.9,
+     "r": 19.7,
+     "side": "s"
+    },
+    {
+     "id": "mouse-l",
+     "name": "Left click",
+     "kind": "mouse",
+     "x": 863.6,
+     "y": 125.5,
+     "r": 50.4,
+     "side": "n"
+    },
+    {
+     "id": "mouse-r",
+     "name": "Right click",
+     "kind": "mouse",
+     "x": 933.2,
+     "y": 125.5,
+     "r": 50.4,
+     "side": "e"
+    },
+    {
+     "id": "mouse-wheel",
+     "name": "Wheel / middle",
+     "kind": "mouse",
+     "x": 898.4,
+     "y": 129.1,
+     "r": 20.1,
+     "side": "n"
+    },
+    {
+     "id": "mouse-move",
+     "name": "Pointer",
+     "kind": "mouse",
+     "x": 898.4,
+     "y": 261.9,
+     "r": 54.9,
+     "side": "s"
+    }
+   ]
+  }
+ },
+ "systems": {
+  "nes": {
+   "name": "NES",
+   "drawing": "nes"
+  },
+  "snes": {
+   "name": "SNES",
+   "drawing": "snes"
+  },
+  "gb": {
+   "name": "Game Boy",
+   "drawing": "gameboy"
+  },
+  "gbc": {
+   "name": "Game Boy Color",
+   "drawing": "gameboy"
+  },
+  "gba": {
+   "name": "Game Boy Advance",
+   "drawing": "gba"
+  },
+  "n64": {
+   "name": "Nintendo 64",
+   "drawing": "n64"
+  },
+  "nds": {
+   "name": "Nintendo DS",
+   "drawing": "nds"
+  },
+  "genesis": {
+   "name": "Genesis",
+   "drawing": "megadrive",
+   "note": "Three-button games use A, B, C and Start only."
+  },
+  "mastersystem": {
+   "name": "Master System",
+   "drawing": "mastersystem"
+  },
+  "gamegear": {
+   "name": "Game Gear",
+   "drawing": "gamegear"
+  },
+  "psx": {
+   "name": "PlayStation",
+   "drawing": "dualshock",
+   "note": "Digital-pad games use no sticks; Home is unused."
+  },
+  "psp": {
+   "name": "PSP",
+   "drawing": "psp"
+  },
+  "dreamcast": {
+   "name": "Dreamcast",
+   "drawing": "dreamcast"
+  },
+  "ngpc": {
+   "name": "Neo Geo Pocket",
+   "drawing": "ngp"
+  },
+  "pico8": {
+   "name": "PICO-8",
+   "drawing": "pico8"
+  },
+  "gc": {
+   "name": "GameCube",
+   "drawing": "gamecube"
+  },
+  "wii": {
+   "name": "Wii",
+   "drawing": "wii",
+   "alt": "modern",
+   "note": "alt: Classic Controller games, drawn as the generic pad."
+  },
+  "n3ds": {
+   "name": "Nintendo 3DS",
+   "drawing": "n3ds",
+   "note": "C-Stick, ZL and ZR exist on the New 3DS only."
+  },
+  "xbox": {
+   "name": "Xbox",
+   "drawing": "xbox"
+  },
+  "ps2": {
+   "name": "PlayStation 2",
+   "drawing": "dualshock"
+  },
+  "saturn": {
+   "name": "Saturn",
+   "drawing": "saturn"
+  },
+  "segacd": {
+   "name": "Sega CD",
+   "drawing": "megadrive"
+  },
+  "sega32x": {
+   "name": "32X",
+   "drawing": "megadrive"
+  },
+  "pcengine": {
+   "name": "TurboGrafx-16",
+   "drawing": "pcengine"
+  },
+  "pcenginecd": {
+   "name": "TurboGrafx-CD",
+   "drawing": "pcengine"
+  },
+  "virtualboy": {
+   "name": "Virtual Boy",
+   "drawing": "virtualboy"
+  },
+  "atari2600": {
+   "name": "Atari 2600",
+   "drawing": "joystick"
+  },
+  "atari5200": {
+   "name": "Atari 5200",
+   "drawing": "keypad",
+   "names": {
+    "btn-1": "Upper fire",
+    "btn-2": "Upper fire",
+    "btn-3": "Lower fire",
+    "btn-4": "Lower fire"
+   }
+  },
+  "atari7800": {
+   "name": "Atari 7800",
+   "drawing": "joystick2"
+  },
+  "atarilynx": {
+   "name": "Atari Lynx",
+   "drawing": "lynx"
+  },
+  "colecovision": {
+   "name": "ColecoVision",
+   "drawing": "keypad",
+   "names": {
+    "btn-1": "Left fire",
+    "btn-2": "Right fire",
+    "btn-3": "Left fire",
+    "btn-4": "Right fire"
+   },
+   "note": "No Start, Pause or Reset on the real pad; leave them unlabelled."
+  },
+  "msx": {
+   "name": "MSX",
+   "drawing": "keyboard",
+   "alt": "joystick2"
+  },
+  "wonderswan": {
+   "name": "WonderSwan",
+   "drawing": "wonderswan"
+  },
+  "wonderswancolor": {
+   "name": "WonderSwan Color",
+   "drawing": "wonderswan"
+  },
+  "fds": {
+   "name": "Famicom Disk System",
+   "drawing": "nes"
+  },
+  "3do": {
+   "name": "3DO",
+   "drawing": "threedo"
+  },
+  "scummvm": {
+   "name": "ScummVM",
+   "drawing": "keyboard_mouse"
+  },
+  "arcade": {
+   "name": "Arcade",
+   "drawing": "arcade6"
+  },
+  "fbneo": {
+   "name": "FinalBurn Neo",
+   "drawing": "arcade6"
+  },
+  "neogeo": {
+   "name": "Neo Geo",
+   "drawing": "neogeo"
+  },
+  "androidgames": {
+   "name": "Android Games",
+   "drawing": "modern",
+   "note": "Generic: each game maps its own controls."
+  }
+ },
+ "platforms": {
+  "3do": {
+   "name": "3DO",
+   "drawing": "threedo"
+  },
+  "archimedes": {
+   "name": "Acorn Archimedes",
+   "drawing": "keyboard_mouse"
+  },
+  "atom": {
+   "name": "Acorn Atom",
+   "drawing": "keyboard"
+  },
+  "electron": {
+   "name": "Acorn Electron",
+   "drawing": "keyboard"
+  },
+  "ags": {
+   "name": "Adventure Game Studio",
+   "drawing": "keyboard_mouse"
+  },
+  "cpc": {
+   "name": "Amstrad CPC",
+   "drawing": "keyboard",
+   "alt": "joystick2"
+  },
+  "gx4000": {
+   "name": "Amstrad GX4000",
+   "drawing": "minipad"
+  },
+  "apf": {
+   "name": "APF M-1000",
+   "drawing": "keypad"
+  },
+  "appleii": {
+   "name": "Apple II",
+   "drawing": "keyboard",
+   "alt": "joystick2"
+  },
+  "apple2gs": {
+   "name": "Apple IIGS",
+   "drawing": "keyboard_mouse",
+   "alt": "joystick2"
+  },
+  "macintosh": {
+   "name": "Apple Macintosh",
+   "drawing": "keyboard_mouse"
+  },
+  "fbneo": {
+   "name": "Arcade (FinalBurn Neo)",
+   "drawing": "arcade6"
+  },
+  "mame": {
+   "name": "Arcade (MAME)",
+   "drawing": "arcade6"
+  },
+  "namcops2": {
+   "name": "Arcade (Namco 246/256)",
+   "drawing": "dualshock",
+   "note": "ARMSX2 plays the boards through the PS2 pad."
+  },
+  "varcade": {
+   "name": "Arcade (Vertical)",
+   "drawing": "arcade6"
+  },
+  "arcadia": {
+   "name": "Arcadia 2001",
+   "drawing": "keypad"
+  },
+  "arduboy": {
+   "name": "Arduboy",
+   "drawing": "minipad"
+  },
+  "atari2600": {
+   "name": "Atari 2600",
+   "drawing": "joystick"
+  },
+  "atari5200": {
+   "name": "Atari 5200",
+   "drawing": "keypad",
+   "names": {
+    "btn-1": "Upper fire",
+    "btn-2": "Upper fire",
+    "btn-3": "Lower fire",
+    "btn-4": "Lower fire"
+   }
+  },
+  "atari7800": {
+   "name": "Atari 7800",
+   "drawing": "joystick2"
+  },
+  "atari800": {
+   "name": "Atari 8-bit",
+   "drawing": "joystick",
+   "alt": "keyboard"
+  },
+  "jaguar": {
+   "name": "Atari Jaguar",
+   "drawing": "jaguar"
+  },
+  "jaguarcd": {
+   "name": "Atari Jaguar CD",
+   "drawing": "jaguar"
+  },
+  "lynx": {
+   "name": "Atari Lynx",
+   "drawing": "lynx"
+  },
+  "atarist": {
+   "name": "Atari ST",
+   "drawing": "keyboard_mouse",
+   "alt": "joystick"
+  },
+  "atomiswave": {
+   "name": "Atomiswave",
+   "drawing": "arcade6"
+  },
+  "bbcmicro": {
+   "name": "Acorn Computers BBC Micro",
+   "drawing": "keyboard"
+  },
+  "astrocade": {
+   "name": "Bally Astrocade",
+   "drawing": "joystick",
+   "note": "No good match: the real controller is a pistol grip with a trigger and a knob; the one-button joystick stands in."
+  },
+  "gamate": {
+   "name": "Bit Corporation Gamate",
+   "drawing": "gameboy"
+  },
+  "ebook": {
+   "name": "Book Reader",
+   "drawing": null,
+   "note": "Not a game system: no controller drawing."
+  },
+  "pv1000": {
+   "name": "Casio PV-1000",
+   "drawing": "joystick2"
+  },
+  "adam": {
+   "name": "Coleco Adam",
+   "drawing": "keyboard",
+   "alt": "keypad"
+  },
+  "cps1": {
+   "name": "CP System I",
+   "drawing": "arcade6"
+  },
+  "cps2": {
+   "name": "CP System II",
+   "drawing": "arcade6"
+  },
+  "cps3": {
+   "name": "CP System III",
+   "drawing": "arcade6"
+  },
+  "cannonball": {
+   "name": "Cannonball OutRun Engine",
+   "drawing": "modern"
+  },
+  "cavestory": {
+   "name": "Cave Story Game Engine",
+   "drawing": "modern"
+  },
+  "chailove": {
+   "name": "ChaiLove",
+   "drawing": "modern"
+  },
+  "chip8": {
+   "name": "CHIP-8",
+   "drawing": "keyboard",
+   "note": "Its 16-key hex pad is played from the keyboard drawing."
+  },
+  "coleco": {
+   "name": "ColecoVision",
+   "drawing": "keypad",
+   "names": {
+    "btn-1": "Left fire",
+    "btn-2": "Right fire",
+    "btn-3": "Left fire",
+    "btn-4": "Right fire"
+   }
+  },
+  "c128": {
+   "name": "Commodore 128",
+   "drawing": "keyboard",
+   "alt": "joystick"
+  },
+  "c64": {
+   "name": "Commodore 64",
+   "drawing": "keyboard",
+   "alt": "joystick"
+  },
+  "amiga": {
+   "name": "Commodore Amiga",
+   "drawing": "keyboard_mouse",
+   "alt": "joystick"
+  },
+  "amigacd32": {
+   "name": "Commodore Amiga CD32",
+   "drawing": "modern",
+   "note": "The CD32 pad: d-pad, four face buttons, two shoulders and Play."
+  },
+  "cdtv": {
+   "name": "Commodore CDTV",
+   "drawing": "joystick",
+   "alt": "keyboard_mouse"
+  },
+  "pet": {
+   "name": "Commodore - PET",
+   "drawing": "keyboard"
+  },
+  "plus4": {
+   "name": "Commodore - PLUS/4",
+   "drawing": "keyboard",
+   "alt": "joystick"
+  },
+  "doom": {
+   "name": "DOOM Game Engine",
+   "drawing": "modern"
+  },
+  "dos": {
+   "name": "DOS",
+   "drawing": "keyboard_mouse"
+  },
+  "dragon32": {
+   "name": "Dragon 32/64",
+   "drawing": "keyboard",
+   "alt": "joystick"
+  },
+  "dreamcast": {
+   "name": "Dreamcast",
+   "drawing": "dreamcast"
+  },
+  "elektor": {
+   "name": "Elektor TV Games Computer",
+   "drawing": "keypad"
+  },
+  "advision": {
+   "name": "Entex Adventure Vision",
+   "drawing": "joystick2"
+  },
+  "scv": {
+   "name": "Epoch Super Cassette Vision",
+   "drawing": "joystick2"
+  },
+  "channelf": {
+   "name": "Fairchild Channel F",
+   "drawing": "joystick",
+   "note": "No good match: the real controller is a twist-and-plunge knob; the one-button joystick stands in."
+  },
+  "fds": {
+   "name": "Famicom Disk System",
+   "drawing": "nes"
+  },
+  "flash": {
+   "name": "Flash Player",
+   "drawing": "keyboard_mouse"
+  },
+  "flashback": {
+   "name": "Flashback Game Engine",
+   "drawing": "modern"
+  },
+  "fmtowns": {
+   "name": "Fujitsu FM Towns",
+   "drawing": "keyboard_mouse",
+   "alt": "minipad"
+  },
+  "fm7": {
+   "name": "Fujitsu FM-7",
+   "drawing": "keyboard",
+   "alt": "joystick2"
+  },
+  "supracan": {
+   "name": "Funtech Super A'Can",
+   "drawing": "snes"
+  },
+  "gmaster": {
+   "name": "Hartung Game Master",
+   "drawing": "gameboy"
+  },
+  "idtech": {
+   "name": "idTech4A++",
+   "drawing": "modern"
+  },
+  "zmachine": {
+   "name": "Infocom Z-machine",
+   "drawing": "keyboard"
+  },
+  "intellivision": {
+   "name": "Intellivision",
+   "drawing": "keypad"
+  },
+  "vc4000": {
+   "name": "Interton VC 4000",
+   "drawing": "keypad"
+  },
+  "j2me": {
+   "name": "Java Me",
+   "drawing": "phone"
+  },
+  "laserdisc": {
+   "name": "LaserDisc",
+   "drawing": "joystick"
+  },
+  "lowresnx": {
+   "name": "LowRes NX",
+   "drawing": "minipad"
+  },
+  "lutro": {
+   "name": "Lutro",
+   "drawing": "modern"
+  },
+  "samcoupe": {
+   "name": "MGT SAM Coupé",
+   "drawing": "keyboard",
+   "alt": "joystick"
+  },
+  "microvision": {
+   "name": "Milton Bradley Microvision",
+   "drawing": "keypad"
+  },
+  "msx": {
+   "name": "MSX",
+   "drawing": "keyboard",
+   "alt": "joystick2"
+  },
+  "msxturbor": {
+   "name": "MSX turbo R",
+   "drawing": "keyboard",
+   "alt": "joystick2"
+  },
+  "odyssey2": {
+   "name": "Magnavox Odyssey 2",
+   "drawing": "joystick",
+   "alt": "keyboard"
+  },
+  "megaduck": {
+   "name": "Mega Duck",
+   "drawing": "gameboy"
+  },
+  "xbox": {
+   "name": "Microsoft - Xbox",
+   "drawing": "xbox"
+  },
+  "xbox360": {
+   "name": "Microsoft - XBox 360",
+   "drawing": "modern"
+  },
+  "moonlight": {
+   "name": "Moonlight Streaming",
+   "drawing": "modern"
+  },
+  "pc88": {
+   "name": "NEC PC-88",
+   "drawing": "keyboard"
+  },
+  "pc98": {
+   "name": "NEC PC-98",
+   "drawing": "keyboard_mouse"
+  },
+  "pcfx": {
+   "name": "NEC PC-FX",
+   "drawing": "pcfx"
+  },
+  "neogeo": {
+   "name": "Neo Geo",
+   "drawing": "neogeo"
+  },
+  "neogeocd": {
+   "name": "Neo Geo CD",
+   "drawing": "neogeo"
+  },
+  "ngp": {
+   "name": "NeoGeo Pocket",
+   "drawing": "ngp"
+  },
+  "ngpc": {
+   "name": "NeoGeo Pocket Color",
+   "drawing": "ngp"
+  },
+  "ngage": {
+   "name": "Nokia N-Gage",
+   "drawing": "phone"
+  },
+  "3ds": {
+   "name": "Nintendo 3DS",
+   "drawing": "n3ds"
+  },
+  "n64": {
+   "name": "Nintendo 64",
+   "drawing": "n64"
+  },
+  "n64dd": {
+   "name": "Nintendo 64DD",
+   "drawing": "n64"
+  },
+  "nds": {
+   "name": "Nintendo DS",
+   "drawing": "nds"
+  },
+  "ndsi": {
+   "name": "Nintendo DSi",
+   "drawing": "nds"
+  },
+  "nes": {
+   "name": "Nintendo Entertainment System",
+   "drawing": "nes"
+  },
+  "gb": {
+   "name": "Nintendo - Game Boy",
+   "drawing": "gameboy"
+  },
+  "gba": {
+   "name": "Nintendo - Game Boy Advance",
+   "drawing": "gba"
+  },
+  "gbc": {
+   "name": "Nintendo - Game Boy Color",
+   "drawing": "gameboy"
+  },
+  "gc": {
+   "name": "Nintendo - GameCube",
+   "drawing": "gamecube"
+  },
+  "gw": {
+   "name": "Nintendo - Game & Watch",
+   "drawing": "minipad",
+   "note": "Game & Watch units vary; the generic two-button pad stands in."
+  },
+  "satellaview": {
+   "name": "Nintendo Satellaview",
+   "drawing": "snes"
+  },
+  "sgb": {
+   "name": "Nintendo Super Game Boy",
+   "drawing": "gameboy"
+  },
+  "switch": {
+   "name": "Nintendo Switch",
+   "drawing": "switch"
+  },
+  "wii": {
+   "name": "Nintendo Wii",
+   "drawing": "wii",
+   "alt": "modern"
+  },
+  "wiiu": {
+   "name": "Nintendo Wii U",
+   "drawing": "wiiu"
+  },
+  "wiiware": {
+   "name": "Nintendo WiiWare",
+   "drawing": "wii",
+   "alt": "modern"
+  },
+  "openbor": {
+   "name": "OpenBOR",
+   "drawing": "modern"
+  },
+  "pico8": {
+   "name": "PICO-8",
+   "drawing": "pico8"
+  },
+  "palm": {
+   "name": "Palm OS",
+   "drawing": null,
+   "note": "Touch-only: no controller drawing."
+  },
+  "cdi": {
+   "name": "Philips CD-i",
+   "drawing": "minipad",
+   "note": "Thumbpad: d-pad and buttons 1/2 drawn as the generic pad."
+  },
+  "g7400": {
+   "name": "Philips Videopac+ G7400",
+   "drawing": "joystick",
+   "alt": "keyboard"
+  },
+  "psp": {
+   "name": "PlayStation Portable",
+   "drawing": "psp"
+  },
+  "pspminis": {
+   "name": "PlayStation Portable Minis",
+   "drawing": "psp"
+  },
+  "pokemini": {
+   "name": "Pokemon Mini",
+   "drawing": "pokemini"
+  },
+  "ports": {
+   "name": "Ports",
+   "drawing": "modern"
+  },
+  "quake": {
+   "name": "Quake Game Engine",
+   "drawing": "modern"
+  },
+  "quake2": {
+   "name": "Quake II Game Engine",
+   "drawing": "modern"
+  },
+  "studio2": {
+   "name": "RCA Studio II",
+   "drawing": "keypad"
+  },
+  "rpgmaker": {
+   "name": "RPG Maker",
+   "drawing": "modern"
+  },
+  "scummvm": {
+   "name": "ScummVM",
+   "drawing": "keyboard_mouse"
+  },
+  "sega32x": {
+   "name": "Sega 32X",
+   "drawing": "megadrive"
+  },
+  "segacd": {
+   "name": "Sega CD",
+   "drawing": "megadrive"
+  },
+  "segacd32x": {
+   "name": "Sega CD 32X",
+   "drawing": "megadrive"
+  },
+  "gamegear": {
+   "name": "Sega Game Gear",
+   "drawing": "gamegear"
+  },
+  "genesis": {
+   "name": "Sega Genesis",
+   "drawing": "megadrive"
+  },
+  "genesismsu": {
+   "name": "Sega Genesis - MSU",
+   "drawing": "megadrive"
+  },
+  "master": {
+   "name": "Sega Master System",
+   "drawing": "mastersystem"
+  },
+  "model2": {
+   "name": "Sega Model 2",
+   "drawing": "arcade6"
+  },
+  "model3": {
+   "name": "Sega Model 3",
+   "drawing": "arcade6"
+  },
+  "naomi": {
+   "name": "Sega Naomi",
+   "drawing": "arcade6"
+  },
+  "naomi2": {
+   "name": "Sega Naomi 2",
+   "drawing": "arcade6"
+  },
+  "pico": {
+   "name": "Sega Pico",
+   "drawing": "minipad",
+   "note": "The Pico is a pen tablet; the generic pad stands in for its buttons."
+  },
+  "sg1000": {
+   "name": "Sega SG-1000",
+   "drawing": "mastersystem"
+  },
+  "saturn": {
+   "name": "Sega Saturn",
+   "drawing": "saturn"
+  },
+  "stv": {
+   "name": "Sega Titan Video",
+   "drawing": "arcade6"
+  },
+  "x1": {
+   "name": "Sharp X1",
+   "drawing": "keyboard"
+  },
+  "x68000": {
+   "name": "Sharp X68000",
+   "drawing": "keyboard_mouse"
+  },
+  "vita": {
+   "name": "Sony PS Vita",
+   "drawing": "vita"
+  },
+  "psx": {
+   "name": "Sony PlayStation",
+   "drawing": "dualshock"
+  },
+  "ps2": {
+   "name": "Sony PlayStation 2",
+   "drawing": "dualshock"
+  },
+  "ps3": {
+   "name": "Sony PlayStation 3",
+   "drawing": "dualshock"
+  },
+  "spectravideo": {
+   "name": "Spectravideo",
+   "drawing": "keyboard",
+   "alt": "joystick"
+  },
+  "steam": {
+   "name": "Steam",
+   "drawing": "modern"
+  },
+  "sufami": {
+   "name": "Bandai Sufami Turbo",
+   "drawing": "snes"
+  },
+  "supergrafx": {
+   "name": "SuperGrafx",
+   "drawing": "pcengine"
+  },
+  "snes": {
+   "name": "Super Nintendo Entertainment System",
+   "drawing": "snes"
+  },
+  "snesmsu1": {
+   "name": "Super Nintendo Entertainment System - MSU-1",
+   "drawing": "snes"
+  },
+  "symbian": {
+   "name": "Symbian",
+   "drawing": "phone"
+  },
+  "coco": {
+   "name": "Tandy Color Computer",
+   "drawing": "keyboard",
+   "alt": "joystick"
+  },
+  "trs-80": {
+   "name": "Tandy TRS-80",
+   "drawing": "keyboard"
+  },
+  "oric": {
+   "name": "Tangerine Oric",
+   "drawing": "keyboard"
+  },
+  "ti99": {
+   "name": "Texas Instruments TI-99/4A",
+   "drawing": "keyboard",
+   "alt": "joystick"
+  },
+  "tic80": {
+   "name": "TIC-80",
+   "drawing": "snes"
+  },
+  "moto": {
+   "name": "Thomson MO/TO",
+   "drawing": "keyboard",
+   "alt": "joystick"
+  },
+  "gamecom": {
+   "name": "Tiger Game.com",
+   "drawing": "gameboy"
+  },
+  "triforce": {
+   "name": "Triforce",
+   "drawing": "gamecube",
+   "note": "Dolphin maps Triforce games to the GameCube pad."
+  },
+  "tg16": {
+   "name": "TurboGrafx-16",
+   "drawing": "pcengine"
+  },
+  "tgcd": {
+   "name": "TurboGrafx-CD",
+   "drawing": "pcengine"
+  },
+  "uzebox": {
+   "name": "Uzebox",
+   "drawing": "snes"
+  },
+  "vic20": {
+   "name": "VIC-20",
+   "drawing": "keyboard",
+   "alt": "joystick"
+  },
+  "crvision": {
+   "name": "VTech CreatiVision",
+   "drawing": "joystick2",
+   "alt": "keyboard"
+  },
+  "vectrex": {
+   "name": "Vectrex",
+   "drawing": "vectrex"
+  },
+  "videos": {
+   "name": "Video Player",
+   "drawing": null,
+   "note": "Not a game system: no controller drawing."
+  },
+  "vircon32": {
+   "name": "Vircon32",
+   "drawing": "snes"
+  },
+  "virtualboy": {
+   "name": "Virtual Boy",
+   "drawing": "virtualboy"
+  },
+  "vpinball": {
+   "name": "Visual Pinball",
+   "drawing": "modern",
+   "note": "Flippers and nudges on the shoulders, as Visual Pinball maps them."
+  },
+  "vsmile": {
+   "name": "VTech V.Smile",
+   "drawing": "joystick2"
+  },
+  "wasm4": {
+   "name": "WASM-4",
+   "drawing": "minipad",
+   "names": {
+    "btn-a": "X",
+    "btn-b": "Z"
+   }
+  },
+  "supervision": {
+   "name": "Watara Supervision",
+   "drawing": "gameboy",
+   "note": "Landscape on the real unit; same buttons as the Game Boy drawing."
+  },
+  "windows": {
+   "name": "Windows",
+   "drawing": "keyboard_mouse",
+   "alt": "modern"
+  },
+  "windows3x": {
+   "name": "Microsoft Windows 3.x",
+   "drawing": "keyboard_mouse"
+  },
+  "windows9x": {
+   "name": "Microsoft Windows 9x",
+   "drawing": "keyboard_mouse"
+  },
+  "ws": {
+   "name": "WonderSwan",
+   "drawing": "wonderswan"
+  },
+  "wsc": {
+   "name": "WonderSwan Color",
+   "drawing": "wonderswan"
+  },
+  "xcloud": {
+   "name": "XBox Game Pass",
+   "drawing": "modern"
+  },
+  "zx81": {
+   "name": "ZX 81",
+   "drawing": "keyboard"
+  },
+  "zxspectrum": {
+   "name": "ZX Spectrum",
+   "drawing": "keyboard",
+   "alt": "joystick"
+  }
+ }
+}

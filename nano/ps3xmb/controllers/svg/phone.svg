@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 525 1000" width="525" height="1000">
+<g transform="scale(0.95057) translate(26 26)">
+<rect x="0" y="0" width="500" height="1000" rx="90" ry="90" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<rect id="body" x="0" y="0" width="500" height="1000" rx="90" ry="90" fill="#2E2E2E"/>
+<rect id="screen" x="60" y="70" width="380" height="300" rx="12" ry="12" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<rect id="btn-soft-l" x="65" y="415" width="90" height="30" rx="15" ry="15" fill="#EDEDED"/>
+<rect id="btn-soft-r" x="345" y="415" width="90" height="30" rx="15" ry="15" fill="#EDEDED"/>
+<circle cx="250" cy="470" r="83.2" fill="none" stroke="#EDEDED" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon id="dpad" points="227.9,405 272.1,405 272.1,447.9 315,447.9 315,492.1 272.1,492.1 272.1,535 227.9,535 227.9,492.1 185,492.1 185,447.9 227.9,447.9" fill="#EDEDED"/>
+<rect id="key-1" x="45" y="608" width="110" height="64" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-2" x="195" y="608" width="110" height="64" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-3" x="345" y="608" width="110" height="64" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-4" x="45" y="698" width="110" height="64" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-5" x="195" y="698" width="110" height="64" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-6" x="345" y="698" width="110" height="64" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-7" x="45" y="788" width="110" height="64" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-8" x="195" y="788" width="110" height="64" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-9" x="345" y="788" width="110" height="64" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-star" x="45" y="878" width="110" height="64" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-0" x="195" y="878" width="110" height="64" rx="14" ry="14" fill="#EDEDED"/>
+<rect id="key-hash" x="345" y="878" width="110" height="64" rx="14" ry="14" fill="#EDEDED"/>
+<polygon id="dpad-up" points="250,419.3 257.8,432.3 242.2,432.3" fill="#2E2E2E"/>
+<polygon id="dpad-down" points="250,520.7 242.2,507.7 257.8,507.7" fill="#2E2E2E"/>
+<polygon id="dpad-left" points="199.3,470 212.3,462.2 212.3,477.8" fill="#2E2E2E"/>
+<polygon id="dpad-right" points="300.7,470 287.7,477.8 287.7,462.2" fill="#2E2E2E"/>
+</g></svg>

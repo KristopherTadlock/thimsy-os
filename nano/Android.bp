@@ -1,0 +1,1111 @@
+package {
+    default_applicable_licenses: ["frameworks_base_license"],
+}
+
+cc_binary {
+    name: "gammaos-nano",
+
+    cflags: [
+        "-DGL_GLEXT_PROTOTYPES",
+        "-DEGL_EGLEXT_PROTOTYPES",
+        "-Wall",
+        "-Werror",
+        "-Wunused",
+        "-Wunreachable-code",
+        "-Wno-deprecated-declarations",
+        // GammaOS: aggressive optimization for Nano render hot path.
+        // NanoMenu has no IEEE float correctness requirements and the blit
+        // loops benefit from vectorization/unrolling.
+        "-O3",
+        "-ffast-math",
+        "-fno-math-errno",
+        "-fno-trapping-math",
+    ],
+
+    arch: {
+        arm64: {
+            cflags: [
+                // Tune pipeline scheduling for Cortex-A55 (RG DS / RK3568 and
+                // most handheld targets). This does NOT change the target
+                // architecture baseline (still ARMv8-A); it only hints at
+                // A55's in-order 2-wide issue to help instruction scheduling.
+                // The binary remains compatible with any ARMv8-A device.
+                "-mtune=cortex-a55",
+            ],
+        },
+    },
+
+    // ThinLTO: cross-translation-unit inlining and dead-code stripping across the
+    // ~40 nano source files. Shrinks .text (clean/file-backed, but still image
+    // weight and faulted-in pages) and tightens the render hot path. No behaviour
+    // change; -ffast-math semantics are unchanged under LTO.
+    lto: {
+        thin: true,
+    },
+
+    srcs: [
+        "main.cpp",
+        "NanoMenu.cpp",
+        "NanoMenuDrm.cpp",
+        "NanoMenuRgbFollow.cpp",
+        "NanoMenuXmb.cpp",
+        "NanoMenuShaders.cpp",
+        "NanoMenuEffects.cpp",
+        "NanoMenuInput.cpp",
+        "NanoMenuState.cpp",
+        "NanoMenuSystem.cpp",
+        "NanoMenuNet.cpp",
+        "NanoMenuSettings.cpp",
+        "NanoMenuSettingsTree.cpp",
+        "NanoScreenCal.cpp",
+        "NanoMenuSettingsRender.cpp",
+        "NanoMenuRender.cpp",
+        "NanoMenuOverlay.cpp",
+        "NanoMenuPS3Layout.cpp",
+        "NanoMenuPS3Bg.cpp",
+        "NanoMenuPS3Particles.cpp",
+        "NanoMenuPS3Icons.cpp",
+        "NanoMenuPS3IconGrid.cpp",
+        "NanoMenuPS3EmuCatalog.cpp",
+        "NanoMenuPS3Folder.cpp",
+        "NanoMenuFileExplorer.cpp",
+        "NanoArchive.cpp",
+        "NanoMenuShares.cpp",
+        "NanoSyncthing.cpp",        // Syncthing REST client + model
+        "NanoMenuSyncthing.cpp",    // Syncthing screens (Settings > Syncthing)
+        "NanoMenuPS3Menu.cpp",
+        "NanoMenuMinima.cpp",
+        "NanoEsdeTheme.cpp",
+        "NanoEsdeSystemName.cpp",   // ES-DE system names (host-tested)
+        "NanoThemeEngine.cpp",
+        "NanoMenuEsdeMenu.cpp",
+        "NanoMenuPdf.cpp",
+        "NanoMenuPS3Clock.cpp",
+        "NanoControlCenter.cpp",
+        "NanoMenuPS3Globe.cpp",
+        "NanoMenuPS3Boot.cpp",
+        "NanoBootScreen.cpp",
+        "NanoTouch.cpp",
+        "bootscreen/NanoBootArt.cpp",
+        "NanoBootChime.cpp",
+        "NanoOtaCheck.cpp",
+        "NanoMenuOta.cpp",
+        "NanoMenuDrasticPark.cpp",
+        "NanoDisplayTarget.cpp",   // the display Nano draws on: one screen at a time (host-tested)
+        "NanoMonitorMode.cpp",     // a monitor's output modes as the framework reports them (host-tested)
+        "NanoMenuMonitorMode.cpp", // External Display > Output Resolution, Refresh Rate, Forget Monitor Resolutions
+        "NanoMenuSetupWizard.cpp",
+        "NanoMenuStrings.cpp",
+        "NanoBtStable.cpp",
+        "NanoAudio.cpp",
+        "NanoMenuAudioBands.cpp",
+        "NanoMenuMusic.cpp",
+        "NanoMenuMedia.cpp",
+        "NanoMenuMusicCanyon.cpp",
+        "NanoMenuMusicGlobe.cpp",
+        "NanoMenuPhotos.cpp",
+        "NanoVideo.cpp",
+        "NanoDvbSub.cpp",
+        "NanoTsDescramble.cpp",
+        "NanoTsDemux.cpp",
+        "NanoAviDemux.cpp",
+        "NanoMenuVideo.cpp",
+        "NanoMenuIptv.cpp",
+        "NanoMenuRadio.cpp",
+        "NanoHls.cpp",
+        "NanoIcyDemux.cpp",
+        "NanoMenuSearch.cpp",
+        "NanoAc3.cpp",
+        "NanoAacDec.cpp",
+        "NanoCea608.cpp",
+        "NanoScraper.cpp",
+        "NanoScrapeQueue.cpp",
+        "NanoMenuScraper.cpp",
+        "NanoEsdeStore.cpp",
+        "NanoSdMove.cpp",
+        "NanoAppFiles.cpp",      // emulator settings parsers + microSD move source allowlist
+        "NanoHakuxSetup.cpp",    // hakuX's games folder, set up for it (host-tested)
+        "NanoScummvmList.cpp",   // ScummVM's games, as its own game list has them (host-tested)
+        "NanoMenuHakux.cpp",
+        "NanoRaConfig.cpp",      // RetroArch folders + config rewrite (host-tested)
+        "NanoFileJob.cpp",       // copy engine (folder copies, microSD moves, File Explorer)
+        "NanoBiosUi.cpp",
+        "NanoBiosCatalog.cpp",   // BIOS catalogue + matchers
+        "NanoBiosInstall.cpp",   // BIOS installer (menu side)
+        "NanoBiosUtil.cpp",      // BIOS installer path/ownership/settings-file helpers
+        "NanoBiosWorker.cpp",    // BIOS installer worker
+        "NanoMenuMtp.cpp",
+        "NanoTypec.cpp",         // the USB-C port's power role for a monitor (host-tested)
+        "NanoEmuSync.cpp",       // emulator settings in app folders kept in step with the card (host-tested)
+        "NanoMenuNdsBanner.cpp",
+        "NanoNdsBanner.cpp",
+        "NanoJson.cpp",
+        "NanoLaunch.cpp",   // launch intents, shell quoting, recents format (host-tested)
+        "NanoSystemsHeal.cpp",   // fallback game systems, repair of a config saved with them (host-tested)
+        "NanoHotkeys.cpp",
+        "NanoDeviceKeys.cpp",   // the device's function and Back buttons (host-tested)
+        "NanoButtonMap.cpp",          // button map: pad model, context, art catalogue (host-tested)
+        "NanoButtonMapReaders.cpp",   // button map: each emulator's binding files (host-tested)
+        "NanoButtonMapNav.cpp",       // button map: D-pad, stick and touch navigation (host-tested)
+        "NanoButtonMapArt.cpp",       // button map: the panel's layout and CPU drawing (host-tested)
+        "NanoMenuButtonMap.cpp",      // button map: the chords, the context, the panel over any theme
+        "NanoI18n.cpp",
+        "NanoBidi.cpp",
+        "NanoOsk.cpp",
+        "NanoUtf8Case.cpp",
+        "LibretroRunner.cpp",
+        "FakeJNI.cpp",
+        "DrasticRunner.cpp",
+        "DrasticGpu3d.cpp",
+        "DrasticSettings.cpp",
+    ],
+
+    // Vendored liba52 public header (a52.h) for NanoAc3.cpp; nanosvg headers for the
+    // ES-DE theme engine's SVG logo rasterization.
+    local_include_dirs: ["liba52/include", "nanosvg"],
+
+    static_libs: [
+        "liba52_nano",   // AC-3 decoder (no AC-3 codec on the device)
+        "libtinyxml2",   // XML DOM parser for the ES-DE theme engine (NanoEsdeTheme)
+        "libnanosvg_nano",   // SVG rasterizer for ES-DE theme logos (NanoThemeEngine)
+        "libcurl",           // scraper HTTP, reusing connections (NanoScraper)
+        // Share storage + credential encoding, shared with the gammaos-sharefs daemon so a share
+        // added in the menu is written exactly as the daemon expects to read it.
+        "libgammaos_sharecfg",
+    ],
+
+    header_libs: [
+        "libdrm_headers",
+        "jni_headers",
+        "native_headers",   // <android/imagedecoder.h> + <android/bitmap.h> (photo viewer decode)
+        "libgammargb_process_headers",   // shared GammaRGB colour pipeline (parity with SF sampler)
+    ],
+
+    shared_libs: [
+        "libbase",
+        "libbinder",
+        "libcrypto",   // share password keystream, via libgammaos_sharecfg
+        "libssl",      // libcurl's TLS
+        "libbinder_ndk",
+        "libcutils",
+        "liblog",
+        "libutils",
+        "libui",
+        "libgui",
+        "libEGL",
+        "libGLESv2",
+        "libGLESv3",
+        "libft2",
+        "libpng",
+        "libz",
+        "android.hardware.health-V2-ndk",
+        "android.hardware.health@2.0",
+        "android.hardware.light-V2-ndk",
+        "android.hardware.light@2.0",
+        "libhidlbase",
+        "libnativewindow",
+        "libandroid",   // APerformanceHint (ADPF render-thread hint session)
+        "libaaudio",    // GammaEQ audio preview + music player output (AAudio)
+        "libmediandk",  // music player decode: AMediaExtractor + AMediaCodec -> PCM
+        "libtinyalsa",  // early menu audio: direct ALSA PCM write, bypasses AudioFlinger (NanoBootChime)
+        "libjnigraphics",  // photo viewer: AImageDecoder scaled-on-decode (JPEG/PNG/...)
+        "libpdfium",       // game manuals (NanoMenuPdf)
+        "libziparchive",   // File Explorer: zip browse / extract / Compress to Zip (NanoArchive)
+        "liblzma",         // File Explorer: 7z browse / extract (LZMA SDK decoder)
+    ],
+
+    init_rc: ["gammaos-nano.rc"],
+    host_required: ["nano-bootlogo"],   // the bootloader's picture of the boot screen (scripts/bootlogo.py)
+    required: [
+        "gammaos-nano-scrape",
+        "nano_bootscreen",
+        "nano-ce-unlock.sh",
+        "nano-pmdown.sh",
+        "nano-seedrng",
+        "nano-powerwatch",
+        "thimsy-dexopt.sh",
+        "nano-typec-guard.sh",
+        "joypad_uevent_fixup.sh",
+        "nano_xmb_fonts",
+        "nano_xmb_wave",
+        "nano_xmb_gradients",
+        "nano_xmb_icons",
+        "nano_xmb_normalmaps",
+        "nano_xmb_glass",
+        "nano_xmb_textures",
+        "nano_xmb_globe",
+        "nano_xmb_icons_retroarch",
+        "nano_xmb_icons_ui",
+        "nano_xmb_nds",
+        "nano_xmb_daijishou",
+        "nano_xmb_i18n",
+        "nano_xmb_audio",
+        "nano_xmb_audioplayer",
+        "nano_xmb_videoplayer",
+        "nano_xmb_canyon",
+        "nano_xmb_photoviewer",
+        "nano_xmb_backgrounds",
+        "nano_xmb_systemstatus",
+        "nano_esde_help_icons",
+        "nano_esde_controller_icons",
+        "nano_esde_badge_icons",
+        "nano_xmb_buttonmap",
+        "nano_xmb_controllers",
+        "nano_xmb_controllers_svg",
+    ],
+}
+
+// The background scrape service (NanoScrapeWorker.cpp, started by gammaos-nano.rc): only the
+// scraper, so a scrape running next to a game costs a few MB rather than a second copy of Nano.
+cc_binary {
+    name: "gammaos-nano-scrape",
+    cflags: [
+        "-Wall",
+        "-Werror",
+        "-Wunused",
+        "-Wunreachable-code",
+    ],
+    srcs: [
+        "NanoScrapeWorker.cpp",
+        "NanoScrapeQueue.cpp",
+        "NanoScraper.cpp",
+        "NanoJson.cpp",
+        "NanoI18n.cpp",
+        "NanoScummvmList.cpp",
+    ],
+    static_libs: ["libcurl"],
+    shared_libs: [
+        "libcrypto",
+        "libssl",
+        "libcutils",
+        "liblog",
+        "libutils",
+        "libz",
+    ],
+}
+
+// The boot screen's picture (bootscreen/NanoBootArt.cpp), drawn on the host for the bootloader's
+// logo partition (scripts/bootlogo.py in thimsy-os) exactly as Nano draws it.
+cc_binary_host {
+    name: "nano-bootlogo",
+    srcs: [
+        "bootscreen/NanoBootArt.cpp",
+        "bootscreen/nano_bootlogo.cpp",
+    ],
+    cflags: ["-Wall", "-Werror"],
+    static_libs: ["libnanosvg_nano", "libft2.nodep"],
+}
+
+// The boot screen's logo (NanoBootScreen.cpp; the bootloader picture is drawn from it too).
+prebuilt_etc {
+    name: "nano_bootscreen",
+    src: "bootscreen/thimsy.svg",
+    sub_dir: "nano_xmb/boot",
+    filename: "logo.svg",
+}
+
+// Vendored liba52 (a52dec 0.7.4, GPL-2) - AC-3 decoder. The device has no hardware
+// or software AC-3 codec, so NanoAc3 uses this to decode AC-3 audio in .ts / MKV / VOB.
+// Pure-C generic path (no SIMD / djbfft / memalign); -w because the 2002-era source
+// is not -Werror clean. config.h lives in liba52/include.
+cc_library_static {
+    name: "liba52_nano",
+    srcs: [
+        "liba52/liba52/bit_allocate.c",
+        "liba52/liba52/bitstream.c",
+        "liba52/liba52/downmix.c",
+        "liba52/liba52/imdct.c",
+        "liba52/liba52/parse.c",
+    ],
+    local_include_dirs: [
+        "liba52/include",
+        "liba52/liba52",
+    ],
+    export_include_dirs: ["liba52/include"],
+    cflags: [
+        "-Wno-error",
+        "-Wno-unused-parameter",
+        "-Wno-unused-variable",
+        "-Wno-unused-function",
+        "-Wno-sign-compare",
+        "-Wno-implicit-fallthrough",
+        "-Wno-missing-field-initializers",
+        "-Wno-constant-conversion",
+        "-Wno-shift-negative-value",
+        "-Wno-self-assign",
+    ],
+}
+
+// Vendored nanosvg (github.com/memononen/nanosvg, zlib license) - header-only SVG
+// parser + rasterizer. The ES-DE theme engine rasterizes theme logo/console SVGs to
+// RGBA and uploads them as GL textures. Built -w because the upstream single-header
+// source is not clean under Soong's warning set (same treatment as liba52_nano).
+cc_library_static {
+    name: "libnanosvg_nano",
+    host_supported: true,
+    srcs: ["nanosvg/nanosvg_impl.c"],
+    local_include_dirs: ["nanosvg"],
+    export_include_dirs: ["nanosvg"],
+    cflags: [
+        "-DNANOSVG_ALL_COLOR_KEYWORDS",
+        "-Wno-error",
+        "-Wno-unused-parameter",
+        "-Wno-unused-variable",
+        "-Wno-unused-function",
+        "-Wno-unused-but-set-variable",
+        "-Wno-sign-compare",
+        "-Wno-implicit-fallthrough",
+        "-Wno-missing-field-initializers",
+        "-Wno-constant-conversion",
+    ],
+}
+
+// Vendored rcheevos (RetroAchievements official C library, v12.3.0, MIT - see
+// rcheevos/LICENSE). Provides rc_client (the recommended high-level achievement
+// client that owns the runtime, server protocol, hardcore policy, session/ping
+// and unlock queueing), the rc_api server request builders + JSON parsers, and
+// the canonical ROM hashers (rc_hash). drastic-nano links this to evaluate DS
+// achievements against the emulator's Main RAM and talk to retroachievements.org.
+//
+// File set follows the upstream Package.swift: everything under src, src/rcheevos,
+// src/rapi and src/rhash, minus rc_libretro.c, rc_client_external.c and the
+// Windows-only rc_client_raintegration.c (already pruned from the vendored tree).
+// RC_DISABLE_LUA drops the Lua dependency (DS achievement logic never uses Lua);
+// RC_CLIENT_SUPPORTS_HASH enables rc_client_begin_identify_and_load_game's hashing.
+// Built -Wno-error because upstream C is not clean under Soong's warning set (same
+// treatment as liba52_nano above).
+cc_library_static {
+    name: "librcheevos_nano",
+    srcs: [
+        "rcheevos/src/*.c",
+        "rcheevos/src/rcheevos/*.c",
+        "rcheevos/src/rapi/*.c",
+        "rcheevos/src/rhash/*.c",
+    ],
+    local_include_dirs: [
+        "rcheevos/include",
+        "rcheevos/src",
+        "rcheevos/src/rcheevos",
+    ],
+    export_include_dirs: ["rcheevos/include"],
+    shared_libs: ["libz"],
+    cflags: [
+        "-DRC_DISABLE_LUA",
+        "-DRC_CLIENT_SUPPORTS_HASH",
+        "-std=gnu11",
+        "-Wno-error",
+        "-Wno-unused-parameter",
+        "-Wno-unused-variable",
+        "-Wno-unused-function",
+        "-Wno-sign-compare",
+        "-Wno-implicit-fallthrough",
+        "-Wno-missing-field-initializers",
+        "-Wno-constant-conversion",
+        "-Wno-shift-negative-value",
+        "-Wno-self-assign",
+        "-Wno-pointer-sign",
+    ],
+}
+
+sh_binary {
+    name: "nano-ce-unlock.sh",
+    src: "nano-ce-unlock.sh",
+}
+
+sh_binary {
+    name: "nano-pmdown.sh",
+    src: "nano-pmdown.sh",
+}
+
+// Carries the kernel's random generator across boots (seedrng/nano_seedrng.cpp).
+cc_binary {
+    name: "nano-seedrng",
+    srcs: ["seedrng/nano_seedrng.cpp"],
+    cflags: ["-Wall", "-Werror"],
+}
+
+// Shuts the console down on a long power-button hold when Android or Nano is stuck
+// (powerwatch/nano_powerwatch.cpp).
+cc_binary {
+    name: "nano-powerwatch",
+    srcs: ["powerwatch/nano_powerwatch.cpp"],
+    shared_libs: ["libbase", "liblog"],
+    cflags: ["-Wall", "-Werror"],
+}
+
+sh_binary {
+    name: "joypad_uevent_fixup.sh",
+    src: "joypad_uevent_fixup.sh",
+}
+
+sh_binary {
+    name: "thimsy-dexopt.sh",
+    src: "thimsy-dexopt.sh",
+}
+
+sh_binary {
+    name: "nano-typec-guard.sh",
+    src: "nano-typec-guard.sh",
+}
+
+// GammaOS Nano XMB assets. Ported from the PS3 XMB recreation: the captured
+// cloth-wave geometry, per-month gradient textures, normal-map / glass icon
+// material and Rodin fonts. Installed read-only to
+// /system/etc/nano_xmb/<sub_dir>/; the renderer also checks
+// /data/system/nano_xmb/ first so assets can be pushed during development
+// without rebuilding the system image.
+prebuilt_etc {
+    name: "nano_xmb_fonts",
+    srcs: ["ps3xmb/fonts/*.ttf"],
+    sub_dir: "nano_xmb/fonts",
+}
+
+// ES-DE built-in asset SVGs the theme engine falls back to when a theme does not
+// ship its own: the helpsystem button glyphs (the legend icons at the bottom of
+// every view), the per-controller badge icons, and the metadata badge icons.
+// Installed to /system/etc/nano_esde_assets/<sub>/; the engine checks a
+// /data/system/nano_esde_assets/<sub>/ dev-override first, then this path
+// (esdeAssetPath in NanoThemeEngine.cpp). Sourced from ES-DE resources/graphics.
+prebuilt_etc {
+    name: "nano_esde_help_icons",
+    srcs: ["nano_esde_assets/help/*.svg"],
+    sub_dir: "nano_esde_assets/help",
+}
+
+prebuilt_etc {
+    name: "nano_esde_controller_icons",
+    srcs: ["nano_esde_assets/controllers/*.svg"],
+    sub_dir: "nano_esde_assets/controllers",
+}
+
+prebuilt_etc {
+    name: "nano_esde_badge_icons",
+    srcs: ["nano_esde_assets/badges/*.svg"],
+    sub_dir: "nano_esde_assets/badges",
+}
+
+prebuilt_etc {
+    name: "nano_xmb_wave",
+    srcs: ["ps3xmb/wave/*.bin"],
+    sub_dir: "nano_xmb/wave",
+}
+
+prebuilt_etc {
+    name: "nano_xmb_gradients",
+    srcs: ["ps3xmb/gradients/*.png"],
+    sub_dir: "nano_xmb/gradients",
+}
+
+prebuilt_etc {
+    name: "nano_xmb_icons",
+    srcs: ["ps3xmb/icons/*.png"],
+    sub_dir: "nano_xmb/icons",
+}
+
+prebuilt_etc {
+    name: "nano_xmb_normalmaps",
+    srcs: ["ps3xmb/normalmaps/*.png"],
+    sub_dir: "nano_xmb/normalmaps",
+}
+
+prebuilt_etc {
+    name: "nano_xmb_glass",
+    srcs: ["ps3xmb/assets/*.png"],
+    sub_dir: "nano_xmb/assets",
+}
+
+prebuilt_etc {
+    name: "nano_xmb_textures",
+    srcs: ["ps3xmb/textures/*.png"],
+    sub_dir: "nano_xmb/textures",
+}
+
+// GammaEQ audio preview clip: a short 48kHz/16-bit/stereo PCM WAV looped by the
+// nano (AAudio) so the equalizer is audible while you adjust it. Loaded from
+// /data/system/nano_xmb/audio/ first (dev override), else this install path.
+prebuilt_etc {
+    name: "nano_xmb_audio",
+    // Listed, not globbed: the folder also holds upstream boot-intro sounds Nano no longer plays.
+    srcs: [
+        "ps3xmb/audio/SE02_Cursor.wav",
+        "ps3xmb/audio/SE03_Normal_OK.wav",
+        "ps3xmb/audio/SE04_Back.wav",
+        "ps3xmb/audio/SE05_Category_OK.wav",
+        "ps3xmb/audio/SE08_Option.wav",
+        "ps3xmb/audio/SE09_Error.wav",
+        "ps3xmb/audio/app_launch.wav",
+        "ps3xmb/audio/menu_ambiance.wav",
+        "ps3xmb/audio/minima_back.wav",
+        "ps3xmb/audio/minima_cursor.wav",
+        "ps3xmb/audio/minima_drill.wav",
+        "ps3xmb/audio/minima_error.wav",
+        "ps3xmb/audio/minima_ok.wav",
+        "ps3xmb/audio/nav_blip.wav",
+        "ps3xmb/audio/preview.wav",
+        "ps3xmb/audio/settings_back.wav",
+        "ps3xmb/audio/settings_enter.wav",
+        "ps3xmb/audio/settings_nav.wav",
+    ],
+    sub_dir: "nano_xmb/audio",
+}
+
+// Music player control-panel + status + codec-badge icons (the web app's
+// images/audioplayer set). Loaded lazily on first Now-Playing entry. Dev override
+// /data/system/nano_xmb/audioplayer/ is checked first.
+prebuilt_etc {
+    name: "nano_xmb_audioplayer",
+    srcs: ["ps3xmb/audioplayer/*.png"],
+    sub_dir: "nano_xmb/audioplayer",
+}
+
+// Video player control-panel icons (scene / go-to / audio / subtitle / transport
+// etc), decoded full-colour. Loaded lazily on first video-player entry. Dev
+// override /data/system/nano_xmb/videoplayer/ is checked first.
+prebuilt_etc {
+    name: "nano_xmb_videoplayer",
+    srcs: ["ps3xmb/videoplayer/*.png"],
+    sub_dir: "nano_xmb/videoplayer",
+}
+
+// Canyon music visualizer assets: the 128x128 tangent-space normal/height map the
+// terrain flythrough displaces from (CPU-precomputed height). Dev override
+// /data/system/nano_xmb/canyon/ is checked first.
+prebuilt_etc {
+    name: "nano_xmb_canyon",
+    srcs: ["ps3xmb/canyon/*.png"],
+    sub_dir: "nano_xmb/canyon",
+}
+
+// Photo viewer control-panel icons (rotate / zoom / slideshow / display etc),
+// decoded full-colour. Dev override /data/system/nano_xmb/photoviewer/ first.
+prebuilt_etc {
+    name: "nano_xmb_photoviewer",
+    srcs: ["ps3xmb/photoviewer/*.png"],
+    sub_dir: "nano_xmb/photoviewer",
+}
+
+prebuilt_etc {
+    name: "nano_xmb_backgrounds",
+    srcs: ["ps3xmb/backgrounds/*.jpg"],
+    sub_dir: "nano_xmb/backgrounds",
+}
+
+// ES-DE's built-in system-status icons (bluetooth / wifi / cellular / battery levels), the exact
+// SVGs upstream ES-DE ships in resources/graphics/systemstatus. The theme engine's systemstatus
+// element falls back to these when a theme defines the element but no customIcons, so the status
+// cluster matches real ES-DE instead of showing a bare battery percentage. Dev override
+// /data/system/nano_xmb/systemstatus/ is checked first.
+prebuilt_etc {
+    name: "nano_xmb_systemstatus",
+    srcs: ["ps3xmb/systemstatus/*.svg"],
+    sub_dir: "nano_xmb/systemstatus",
+}
+
+// 3D Earth maps for the Time Zone globe selector (web tzglobe screen). Day /
+// night / clouds equirectangular maps, resized to 1024x512 power-of-two PNG so
+// GLES2 can use GL_REPEAT longitude wrap + mipmaps (the source JPGs cannot ship:
+// the nano decoder is libpng-only).
+prebuilt_etc {
+    name: "nano_xmb_globe",
+    srcs: ["ps3xmb/globe/*.png"],
+    sub_dir: "nano_xmb/globe",
+}
+
+// Per-language UI translation resources (English-keyed JSON objects). Loaded at
+// runtime by NanoI18n (trDyn) from /system/etc/gammaos-nano/i18n/<code>.json
+// when the user picks a non-English locale. "en" is passthrough, so no en.json.
+// Editable/over-ridable via /data/system/nano_i18n/<code>.json without a rebuild.
+prebuilt_etc {
+    name: "nano_xmb_i18n",
+    srcs: [
+        "ps3xmb/i18n/es.json",
+        "ps3xmb/i18n/fr.json",
+        "ps3xmb/i18n/de.json",
+        "ps3xmb/i18n/it.json",
+        "ps3xmb/i18n/pt.json",
+        "ps3xmb/i18n/nl.json",
+        "ps3xmb/i18n/ru.json",
+        "ps3xmb/i18n/ja.json",
+        "ps3xmb/i18n/ko.json",
+        "ps3xmb/i18n/zh-cn.json",
+        "ps3xmb/i18n/zh-tw.json",
+        "ps3xmb/i18n/ar.json",
+        "ps3xmb/i18n/tr.json",
+        "ps3xmb/i18n/pl.json",
+        "ps3xmb/i18n/el.json",
+        "ps3xmb/i18n/he.json",
+        "ps3xmb/i18n/th.json",
+        "ps3xmb/i18n/da.json",
+        "ps3xmb/i18n/fi.json",
+        "ps3xmb/i18n/sv.json",
+        "ps3xmb/i18n/nb.json",
+    ],
+    sub_dir: "gammaos-nano/i18n",
+}
+
+// The full RetroArch monochrome XMB icon set (849 white-on-transparent system
+// silhouettes, LibretroDB names). Asset-only: never textured en masse; read on
+// demand by the icon grid picker (thumbnails) and per-system icon resolution
+// (one full icon per assigned system, glass-relit via bevelFromRGBA). The dev
+// override /data/system/nano_xmb/icons_retroarch/ is checked first.
+prebuilt_etc {
+    name: "nano_xmb_icons_retroarch",
+    srcs: ["ps3xmb/icons_retroarch/*.png"],
+    sub_dir: "nano_xmb/icons_retroarch",
+}
+
+// Framework/SystemUI vector icons rasterised to mono-white silhouettes for the
+// generic UI menu rows (Screen Orientation, Notifications, Security, Brightness,
+// System Settings, Memory Card, Accessories ...). Glass-relit at runtime via
+// bevelFromRGBA, the same path as the console icons, so they share the look.
+// nmapForIcon maps the UI icon index range to these by name.
+prebuilt_etc {
+    name: "nano_xmb_icons_ui",
+    srcs: ["ps3xmb/icons_ui/*.png"],
+    sub_dir: "nano_xmb/icons_ui",
+}
+
+// DSi System Menu theme (persist.gammaos.nano.ndstheme) 4x assets: the DSVec vector
+// fonts (dsvec.ttf letters / dsvecnum.ttf digits) and the SVG-rasterised sprites
+// (cell_00 selection frame, tile_white). Installed to /system/etc/nano_xmb/nds so the
+// theme works after a factory reset (the runtime dev-override under /data is checked
+// first, this is the bundled fallback).
+prebuilt_etc {
+    name: "nano_xmb_nds",
+    // Not the boot notice's hs_triangle.png (no boot intro).
+    srcs: [
+        "ps3xmb/nds/dsvecnum.ttf",   // not dsvec.ttf (Mirsany, no licence)
+        "ps3xmb/nds/nds_*",
+        "ps3xmb/nds/dialog_box_blue.png",
+    ],
+    sub_dir: "nano_xmb/nds",
+}
+
+// Daijishou community platform configs (119 platforms, ~917 players covering
+// RetroArch cores AND standalone emulators - AetherSX2, Dolphin, azahar, etc.).
+// Parsed at runtime by the Game Systems editor's Emulator chooser to auto-fill
+// launch type / package / intent / extensions. The dev override
+// /data/system/nano_xmb/daijishou/ is checked first.
+prebuilt_etc {
+    name: "nano_xmb_daijishou",
+    srcs: ["ps3xmb/daijishou/*.json"],
+    sub_dir: "nano_xmb/daijishou",
+}
+
+// The button map's data (NanoButtonMap.cpp): the RetroArch cores' RetroPad -> console tables and the
+// browser controls list. Dev override /data/system/nano_xmb/buttonmap/ first.
+prebuilt_etc {
+    name: "nano_xmb_buttonmap",
+    srcs: ["ps3xmb/buttonmap/*.json"],
+    sub_dir: "nano_xmb/buttonmap",
+}
+
+// The controller drawings the button map labels (original art by the Thimsy OS project, CC BY-NC
+// 4.0, ps3xmb/controllers/LICENSE): controllers.json (anchors, label points, the system map) and the
+// SVGs. Dev override /data/system/nano_xmb/controllers/ first.
+prebuilt_etc {
+    name: "nano_xmb_controllers",
+    srcs: [
+        "ps3xmb/controllers/controllers.json",
+        "ps3xmb/controllers/LICENSE",
+    ],
+    sub_dir: "nano_xmb/controllers",
+}
+
+prebuilt_etc {
+    name: "nano_xmb_controllers_svg",
+    srcs: ["ps3xmb/controllers/svg/*.svg"],
+    sub_dir: "nano_xmb/controllers/svg",
+}
+
+// Source files shared with the drastic-nano binary. drastic-nano
+// reuses the DRM rendering stack, DrasticRunner lifecycle, and
+// FakeJNI shim from gammaos-nano; wrapping them in a filegroup lets
+// Soong compile them into drastic-nano without moving the files out
+// of their canonical location here.
+filegroup {
+    name: "drastic_nano_shared_srcs",
+    srcs: [
+        "NanoMenuDrm.cpp",
+        "DrasticRunner.cpp",
+        "DrasticGpu3d.cpp",
+        "DrasticSettings.cpp",
+        "FakeJNI.cpp",
+        "NanoJson.cpp",
+        "NanoI18n.cpp",
+        "NanoBidi.cpp",
+        "NanoDeviceKeys.cpp",
+        // The button map over a DS game (drastic-nano/DnButtonMap.cpp), with what its readers use.
+        "NanoButtonMap.cpp",
+        "NanoButtonMapReaders.cpp",
+        "NanoButtonMapNav.cpp",
+        "NanoButtonMapArt.cpp",
+        "NanoAppFiles.cpp",
+        "NanoBiosUtil.cpp",
+        "NanoBiosCatalog.cpp",
+        "NanoSystemsHeal.cpp",
+        "NanoEsdeSystemName.cpp",
+        "NanoDisplayTarget.cpp",
+    ],
+}
+
+// ---- Host tests (test/README.md): `m <module>`, then `atest --host <module>` or run the binary
+// under out/host/linux-x86/nativetest64/<module>/. Data globs never reach the scraper credentials.
+
+cc_defaults {
+    name: "gammaos_nano_test_defaults",
+    compile_multilib: "64",
+    cflags: [
+        "-Wall",
+        "-Werror",
+    ],
+    sanitize: {
+        address: true,
+        undefined: true,
+    },
+    static_libs: ["libgmock"],
+    test_suites: ["general-tests"],
+    test_options: {
+        unit_test: true,
+    },
+}
+
+// Nano's pure helpers and parsers.
+cc_test_host {
+    name: "gammaos_nano_unit_tests",
+    defaults: ["gammaos_nano_test_defaults"],
+    srcs: [
+        "test/unit/*_test.cpp",
+        "NanoTouch.cpp",
+        "NanoBidi.cpp",
+        "NanoUtf8Case.cpp",
+        "NanoJson.cpp",
+        "NanoI18n.cpp",
+        "NanoNdsBanner.cpp",
+        "NanoBiosCatalog.cpp",
+        "NanoEsdeTheme.cpp",
+        "NanoEsdeSystemName.cpp",
+        "NanoLaunch.cpp",
+        "NanoAppFiles.cpp",
+        "NanoBiosUtil.cpp",
+        "NanoDeviceKeys.cpp",
+        "NanoButtonMap.cpp",
+        "NanoButtonMapReaders.cpp",
+        "NanoRaConfig.cpp",
+        "NanoHotkeys.cpp",
+        "NanoSystemsHeal.cpp",
+        "NanoHakuxSetup.cpp",
+        "NanoScummvmList.cpp",
+        "NanoDisplayTarget.cpp",
+        "NanoTypec.cpp",
+        "NanoMonitorMode.cpp",
+        "NanoEmuSync.cpp",
+        ":drastic_nano_layout_srcs",
+    ],
+    include_dirs: ["frameworks/base/cmds/drastic-nano"],   // DsScreenLayout.h
+    header_libs: [
+        "libcutils_headers",   // private/android_filesystem_config.h (NanoBiosUtil)
+        "libutils_headers",    // NanoMenuUtils.h
+    ],
+    data: [
+        "test/fixtures/**/*",
+        // NanoButtonMap_test loads the art catalogue and the RetroArch tables.
+        "ps3xmb/buttonmap/*.json",
+        "ps3xmb/controllers/controllers.json",
+        // NanoLaunch_test runs every bundled launch template through the old and new builders.
+        "ps3xmb/daijishou/*.json",
+        // NanoEsdeTheme_test checks the bundled theme still parses exactly as before.
+        "nano_esde_themes/slate-es-de.zip",
+    ],
+    static_libs: [
+        "libtinyxml2",
+        "libziparchive",
+    ],
+    shared_libs: [
+        "libbase",
+        "libcrypto",
+        "libcutils",   // NanoHotkeys reads its settings
+        "liblog",
+        "libz",
+    ],
+}
+
+// NanoJson as gammaos-nano builds it: under -ffast-math a std::isnan/isfinite check can fold away.
+cc_test_host {
+    name: "gammaos_nano_json_fastmath_tests",
+    defaults: ["gammaos_nano_test_defaults"],
+    srcs: [
+        "test/unit/NanoJson_test.cpp",
+        "NanoJson.cpp",
+    ],
+    cflags: [
+        "-O2",
+        "-ffast-math",
+    ],
+}
+
+// NanoArchive (File Explorer zip/7z): round trips and hostile archives.
+cc_test_host {
+    name: "gammaos_nano_archive_tests",
+    defaults: ["gammaos_nano_test_defaults"],
+    srcs: [
+        "test/archive/NanoArchive_test.cpp",
+        "NanoArchive.cpp",
+    ],
+    data: ["test/fixtures/archive/*"],
+    static_libs: [
+        "libziparchive",
+        "liblzma",
+    ],
+    shared_libs: [
+        "libbase",
+        "liblog",
+        "libz",
+    ],
+}
+
+// The copy engine (folder copies, microSD moves, File Explorer copy/move/delete) end to end on a
+// scratch tree: never overwrites, rolls back, never follows a link, keeps a source whose copy is short.
+cc_test_host {
+    name: "gammaos_nano_filejob_tests",
+    defaults: ["gammaos_nano_test_defaults"],
+    srcs: [
+        "test/e2e/NanoFileJob_e2e_test.cpp",
+        "NanoFileJob.cpp",
+        "NanoAppFiles.cpp",
+        "NanoBiosUtil.cpp",
+        "NanoBiosCatalog.cpp",
+        "NanoI18n.cpp",
+        "NanoJson.cpp",
+    ],
+    local_include_dirs: ["test/unit"],
+    header_libs: ["libcutils_headers"],
+    shared_libs: [
+        "libcrypto",
+        "liblog",
+        "libz",
+    ],
+}
+
+// The BIOS installer's worker end to end on a fixture /data and card (Env.root).
+cc_test_host {
+    name: "gammaos_nano_bios_e2e_tests",
+    defaults: ["gammaos_nano_test_defaults"],
+    srcs: [
+        "test/e2e/NanoBiosWorker_e2e_test.cpp",
+        "NanoBiosWorker.cpp",
+        "NanoAppFiles.cpp",
+        "NanoBiosUtil.cpp",
+        "NanoBiosCatalog.cpp",
+        "NanoI18n.cpp",
+        "NanoJson.cpp",
+    ],
+    local_include_dirs: ["test/unit"],
+    header_libs: ["libcutils_headers"],
+    shared_libs: [
+        "libcrypto",
+        "liblog",
+        "libz",
+    ],
+}
+
+// Every shipped translation has every key, the same placeholders as its English key, and no
+// duplicates.
+python_test_host {
+    name: "gammaos_nano_i18n_check",
+    main: "test/i18n_check.py",
+    srcs: ["test/i18n_check.py"],
+    data: ["ps3xmb/i18n/*.json"],
+    test_suites: ["general-tests"],
+    test_options: {
+        unit_test: true,
+    },
+}
+
+// The boot screen (and so the bootloader logo) still draws exactly today's shipped picture.
+sh_test_host {
+    name: "nano_bootlogo_golden_test",
+    src: "test/bootlogo/bootlogo_golden_test.sh",
+    data: [
+        "bootscreen/thimsy.svg",
+        "test/bootlogo/*.sha256",
+        ":recovery_roboto-fonts_dep",
+    ],
+    data_bins: ["nano-bootlogo"],
+    data_libs: ["libc++"],
+    test_suites: ["general-tests"],
+    test_options: {
+        unit_test: true,
+    },
+}
+
+// The button map panel's layout at every screen size and its navigation (test/buttonmap), with the
+// real font and controller art.
+cc_test_host {
+    name: "gammaos_nano_buttonmap_tests",
+    defaults: ["gammaos_nano_test_defaults"],
+    srcs: [
+        "test/buttonmap/NanoButtonMapLayout_test.cpp",
+        "NanoButtonMap.cpp",
+        "NanoButtonMapReaders.cpp",
+        "NanoButtonMapNav.cpp",
+        "NanoButtonMapArt.cpp",
+        "NanoBidi.cpp",
+        "NanoJson.cpp",
+        "NanoAppFiles.cpp",
+        "NanoBiosUtil.cpp",
+        "NanoBiosCatalog.cpp",
+        "NanoSystemsHeal.cpp",
+        "NanoEsdeSystemName.cpp",
+    ],
+    header_libs: ["libcutils_headers"],
+    data: [
+        "test/buttonmap/scenes/*.json",
+        "test/fixtures/buttonmap/pads/*.json",
+        "ps3xmb/buttonmap/*.json",
+        "ps3xmb/controllers/controllers.json",
+        "ps3xmb/controllers/svg/*.svg",
+        ":recovery_roboto-fonts_dep",
+        ":recovery_noto-fonts_dep",   // Noto Sans Hebrew, for the right-to-left scene
+    ],
+    static_libs: [
+        "libnanosvg_nano",
+        "libft2.nodep",
+    ],
+    shared_libs: [
+        "libcrypto",
+        "liblog",
+        "libz",
+    ],
+}
+
+// The button map panel as Nano draws it (NanoButtonMapArt), for the golden test and for looking at
+// the layout at any size: nano-buttonmap SCENE.json FONT ARTDIR W H OUT.rgba.
+cc_binary_host {
+    name: "nano-buttonmap",
+    srcs: [
+        "tools/nano_buttonmap.cpp",
+        "NanoButtonMap.cpp",
+        "NanoButtonMapReaders.cpp",
+        "NanoButtonMapNav.cpp",
+        "NanoButtonMapArt.cpp",
+        "NanoI18n.cpp",   // --i18n: the panel in another language
+        "NanoBidi.cpp",
+        "NanoJson.cpp",
+        "NanoAppFiles.cpp",
+        "NanoBiosUtil.cpp",
+        "NanoBiosCatalog.cpp",
+        "NanoSystemsHeal.cpp",
+        "NanoEsdeSystemName.cpp",
+        "NanoDeviceKeys.cpp",   // the chords' function button (RG Cube's on the host: no device table)
+    ],
+    cflags: ["-Wall", "-Werror"],
+    header_libs: ["libcutils_headers"],
+    static_libs: ["libnanosvg_nano", "libft2.nodep", "libbase"],
+    shared_libs: [
+        "libcrypto",
+        "liblog",
+        "libz",
+    ],
+}
+
+// The button map panel still draws exactly the blessed frames (test/buttonmap/goldens.sha256).
+sh_test_host {
+    name: "nano_buttonmap_golden_test",
+    src: "test/buttonmap/buttonmap_golden_test.sh",
+    data: [
+        "test/buttonmap/scenes/*.json",
+        "test/buttonmap/goldens.sha256",
+        "test/buttonmap/rgba2png.py",
+        "ps3xmb/controllers/controllers.json",
+        "ps3xmb/controllers/svg/*.svg",
+        ":recovery_roboto-fonts_dep",
+        ":recovery_noto-fonts_dep",
+    ],
+    data_bins: ["nano-buttonmap"],
+    data_libs: [
+        "libc++",
+        "libcrypto",
+        "liblog",
+        "libz",
+    ],
+    test_suites: ["general-tests"],
+    test_options: {
+        unit_test: true,
+    },
+}
+
+cc_defaults {
+    name: "gammaos_nano_fuzz_defaults",
+    host_supported: true,
+    cflags: [
+        "-Wall",
+        "-Werror",
+    ],
+}
+
+cc_fuzz {
+    name: "gammaos_nano_json_fuzzer",
+    defaults: ["gammaos_nano_fuzz_defaults"],
+    srcs: [
+        "test/fuzz/json_fuzzer.cpp",
+        "NanoJson.cpp",
+    ],
+    corpus: ["ps3xmb/i18n/*.json"],
+}
+
+cc_fuzz {
+    name: "gammaos_nano_nds_banner_fuzzer",
+    defaults: ["gammaos_nano_fuzz_defaults"],
+    srcs: [
+        "test/fuzz/nds_banner_fuzzer.cpp",
+        "NanoNdsBanner.cpp",
+    ],
+    shared_libs: [
+        "liblog",
+        "libz",
+    ],
+}
+
+cc_fuzz {
+    name: "gammaos_nano_bios_zip_fuzzer",
+    defaults: ["gammaos_nano_fuzz_defaults"],
+    srcs: [
+        "test/fuzz/bios_zip_fuzzer.cpp",
+        "NanoBiosCatalog.cpp",
+    ],
+    shared_libs: [
+        "libcrypto",
+        "libz",
+    ],
+}
+
+cc_fuzz {
+    name: "gammaos_nano_esde_theme_fuzzer",
+    defaults: ["gammaos_nano_fuzz_defaults"],
+    srcs: [
+        "test/fuzz/esde_theme_fuzzer.cpp",
+        "NanoEsdeTheme.cpp",
+    ],
+    static_libs: ["libtinyxml2"],
+    shared_libs: ["liblog"],
+}
+
+cc_fuzz {
+    name: "gammaos_nano_archive_fuzzer",
+    defaults: ["gammaos_nano_fuzz_defaults"],
+    srcs: [
+        "test/fuzz/archive_fuzzer.cpp",
+        "NanoArchive.cpp",
+    ],
+    corpus: ["test/fixtures/archive/*"],
+    static_libs: [
+        "libziparchive",
+        "liblzma",
+    ],
+    shared_libs: [
+        "libbase",
+        "liblog",
+        "libz",
+    ],
+}

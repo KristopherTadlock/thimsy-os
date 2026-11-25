@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 364" width="1000" height="364">
+<g transform="scale(0.91575) translate(26 26)">
+<rect x="0" y="0" width="820" height="346" rx="20" ry="20" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<rect x="870" y="40" width="170" height="290" rx="85" ry="85" fill="#EDEDED" stroke="#EDEDED" stroke-width="28" stroke-linejoin="round"/>
+<rect id="body" x="0" y="0" width="820" height="346" rx="20" ry="20" fill="#2E2E2E"/>
+<rect x="870" y="40" width="170" height="290" rx="85" ry="85" fill="#2E2E2E"/>
+<rect id="key-esc" x="24.5" y="21.5" width="43" height="32.6" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-f1" x="102.5" y="21.5" width="43" height="32.6" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-f2" x="154.5" y="21.5" width="43" height="32.6" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-f3" x="206.5" y="21.5" width="43" height="32.6" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-f4" x="258.5" y="21.5" width="43" height="32.6" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-f5" x="336.5" y="21.5" width="43" height="32.6" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-f6" x="388.5" y="21.5" width="43" height="32.6" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-f7" x="440.5" y="21.5" width="43" height="32.6" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-f8" x="492.5" y="21.5" width="43" height="32.6" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-f9" x="570.5" y="21.5" width="43" height="32.6" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-f10" x="622.5" y="21.5" width="43" height="32.6" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-grave" x="24.5" y="70.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-1" x="76.5" y="70.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-2" x="128.5" y="70.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-3" x="180.5" y="70.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-4" x="232.5" y="70.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-5" x="284.5" y="70.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-6" x="336.5" y="70.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-7" x="388.5" y="70.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-8" x="440.5" y="70.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-9" x="492.5" y="70.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-0" x="544.5" y="70.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-minus" x="596.5" y="70.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-equals" x="648.5" y="70.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-backspace" x="700.5" y="70.9" width="95" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-tab" x="24.5" y="122.9" width="69" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-q" x="102.5" y="122.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-w" x="154.5" y="122.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-e" x="206.5" y="122.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-r" x="258.5" y="122.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-t" x="310.5" y="122.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-y" x="362.5" y="122.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-u" x="414.5" y="122.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-i" x="466.5" y="122.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-o" x="518.5" y="122.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-p" x="570.5" y="122.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-lbracket" x="622.5" y="122.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-rbracket" x="674.5" y="122.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-backslash" x="726.5" y="122.9" width="69" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-caps" x="24.5" y="174.9" width="82" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-a" x="115.5" y="174.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-s" x="167.5" y="174.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-d" x="219.5" y="174.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-f" x="271.5" y="174.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-g" x="323.5" y="174.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-h" x="375.5" y="174.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-j" x="427.5" y="174.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-k" x="479.5" y="174.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-l" x="531.5" y="174.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-semicolon" x="583.5" y="174.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-quote" x="635.5" y="174.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-enter" x="687.5" y="174.9" width="108" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-shift" x="24.5" y="226.9" width="108" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-z" x="141.5" y="226.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-x" x="193.5" y="226.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-c" x="245.5" y="226.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-v" x="297.5" y="226.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-b" x="349.5" y="226.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-n" x="401.5" y="226.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-m" x="453.5" y="226.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-comma" x="505.5" y="226.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-period" x="557.5" y="226.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-slash" x="609.5" y="226.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-rshift" x="661.5" y="226.9" width="82" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-up" x="752.5" y="226.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-ctrl" x="24.5" y="278.9" width="69" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-alt" x="102.5" y="278.9" width="69" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-space" x="180.5" y="278.9" width="407" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-ralt" x="596.5" y="278.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-left" x="648.5" y="278.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-down" x="700.5" y="278.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<rect id="key-right" x="752.5" y="278.9" width="43" height="43" rx="7.2" ry="7.2" fill="#EDEDED"/>
+<path id="mouse-l" d="M956 56H942A6 6 0 0 1 948 62V160A6 6 0 0 1 942 166H892A6 6 0 0 1 886 160V126A70 70 0 0 1 956 56Z" fill="#EDEDED"/>
+<path id="mouse-r" d="M968 56H954A70 70 0 0 1 1024 126V160A6 6 0 0 1 1018 166H968A6 6 0 0 1 962 160V62A6 6 0 0 1 968 56Z" fill="#EDEDED"/>
+<rect id="mouse-wheel" x="948" y="93" width="14" height="44" rx="7" ry="7" fill="#EDEDED"/>
+</g></svg>

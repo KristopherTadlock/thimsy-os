@@ -1,0 +1,31 @@
+{
+  "title": "GameCube",
+  "subtitle": "Dolphin · RG Cube",
+  "badge": "Not mapped in Dolphin",
+  "hint": "Dolphin > Settings > GameCube Input",
+  "drawing": "gamecube",
+  "rows": [],
+  "hotkeys": [
+    {
+      "keys": "Anbernic + R1",
+      "action": "Save state"
+    },
+    {
+      "keys": "Anbernic + L1",
+      "action": "Load state"
+    },
+    {
+      "keys": "Anbernic + R2",
+      "action": "Fast forward"
+    },
+    {
+      "keys": "Hold Anbernic for 3 s",
+      "action": "Quit game"
+    }
+  ],
+  "footer": [
+    "B Close",
+    "Y Table"
+  ],
+  "pageHint": "L1/R1 Page"
+}
