@@ -1,0 +1,30 @@
+#!/bin/sh
+# S03modules: the family's out-of-tree modules and its boot hook.
+# SPDX-License-Identifier: MIT
+#
+# ro.thimsy.modules (from device.json's "modules", a space-separated list)
+# names modules the kernel does not load by itself; none on RK3566. Then the
+# family's hook runs with THIMSY_HOOK=boot (sourced: no fork), for example to
+# hold the CPU at full clock until Nano's first frame.
+. "${THIMSY_ROOT:-}/usr/share/thimsy/init/lib.sh"
+
+TAG=S03modules
+
+case ${1:-start} in
+start)
+	mods=
+	if [ -r "$R/run/thimsy/props/ro/ro.thimsy.modules" ]; then
+		read -r mods < "$R/run/thimsy/props/ro/ro.thimsy.modules" || :
+	fi
+	for m in $mods; do
+		"$MODPROBE" "$m" || thimsy_warn $TAG "modprobe $m failed"
+	done
+	thimsy_family_hook boot
+	thimsy_mark s03-done
+	;;
+stop) ;;
+*)
+	echo "usage: $0 start" >&2
+	exit 2
+	;;
+esac

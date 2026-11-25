@@ -1,0 +1,52 @@
+#!/bin/sh
+# The RK3566 family's hook (docs/init.md, "Family hooks").
+# SPDX-License-Identifier: MIT
+#
+# Sourced by the init scripts with THIMSY_HOOK set (no fork on the boot
+# path), or run by thimsy-session as "hook ACTION". Must not call exit.
+#   boot            (S03modules)  CPU and GPU at full clock until the menu is up
+#   deferred        (D05family)   back to the everyday governors
+#   sound-defaults  (D20sound)    the mixer on a first boot, with no saved state
+#   sleep-pre, sleep-post         (thimsy-session) around mem sleep
+#
+# Facts (all mainline RK3566): one cpufreq policy for the four A55 cores;
+# devfreq for the Mali GPU (fde60000.gpu) and the DDR controller (dmc, when
+# its driver is enabled); the RK817 codec, whose output is chosen by the
+# "Playback Path" control. Notes: linux/board/rk3566/common/README.md.
+
+rk3566_governors() {
+	for g in "${THIMSY_ROOT:-}"/sys/devices/system/cpu/cpufreq/policy*/scaling_governor; do
+		[ -w "$g" ] && { echo "$1" > "$g"; } 2>/dev/null
+	done
+	for g in "${THIMSY_ROOT:-}"/sys/class/devfreq/*/governor; do
+		[ -w "$g" ] && { echo "$2" > "$g"; } 2>/dev/null
+	done
+}
+
+rk3566_hook() {
+	case $1 in
+	boot)
+		rk3566_governors performance performance
+		;;
+	deferred)
+		rk3566_governors schedutil simple_ondemand
+		;;
+	sound-defaults)
+		# Speaker, and the headphones when plugged; the jack switches
+		# between them in the codec driver. Level from Android's default.
+		"${AMIXER:-amixer}" -q -c 0 cset name='Playback Path' SPK_HP > /dev/null 2>&1 ||
+			"${AMIXER:-amixer}" -q -c 0 cset name='Playback Path' SPK > /dev/null 2>&1
+		;;
+	sleep-pre)
+		# Deep sleep needs the vendor BL31's suspend mode (decision 18);
+		# "deep" is offered only when it is there.
+		if [ -w "${THIMSY_ROOT:-}/sys/power/mem_sleep" ]; then
+			{ echo deep > "${THIMSY_ROOT:-}/sys/power/mem_sleep"; } 2>/dev/null
+		fi
+		;;
+	sleep-post)
+		;;
+	esac
+}
+
+rk3566_hook "${THIMSY_HOOK:-$1}"

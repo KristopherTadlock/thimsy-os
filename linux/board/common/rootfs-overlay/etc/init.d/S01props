@@ -1,0 +1,35 @@
+#!/bin/sh
+# S01props: the read-only properties, then the device family.
+# SPDX-License-Identifier: MIT
+#
+# "thimsy-prop boot" writes /run/thimsy/props/ro/<key> from
+# /usr/share/thimsy/device.json, /storage/thimsy/install.json and
+# /usr/share/thimsy/build.props (IMPLEMENTATION B.3). The family it names
+# (ro.thimsy.family) picks the hooks under /usr/share/thimsy/family/.
+. "${THIMSY_ROOT:-}/usr/share/thimsy/init/lib.sh"
+
+TAG=S01props
+
+case ${1:-start} in
+start)
+	if command -v "$PROP" > /dev/null 2>&1; then
+		"$PROP" boot || thimsy_warn $TAG "thimsy-prop boot failed ($?)"
+	else
+		thimsy_warn $TAG "thimsy-prop is missing: no ro.* properties"
+	fi
+	# Detect afresh: an empty file makes thimsy_family look further.
+	: > "$R/run/thimsy/family"
+	if thimsy_family; then
+		printf '%s\n' "$FAMILY" > "$R/run/thimsy/family"
+		thimsy_log $TAG "family $FAMILY"
+	else
+		thimsy_warn $TAG "device family unknown: no family hooks"
+	fi
+	thimsy_mark s01-done
+	;;
+stop) ;;
+*)
+	echo "usage: $0 start" >&2
+	exit 2
+	;;
+esac

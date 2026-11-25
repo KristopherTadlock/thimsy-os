@@ -1,0 +1,17 @@
+#!/bin/sh
+# rcS: BusyBox init's sysinit. Runs /etc/init.d/S[0-9][0-9]* in order.
+# SPDX-License-Identifier: MIT
+#
+# Synchronous: Nano starts only when this returns, so everything here is on
+# the path to the first frame. The budget is about 0.1 s (docs/init.md).
+# check_rcs.py keeps services, waits, scans and disk checks out of it.
+. "${THIMSY_ROOT:-}/usr/share/thimsy/init/lib.sh"
+
+for s in "$R"/etc/init.d/S[0-9][0-9]*; do
+	[ -x "$s" ] || continue
+	"$s" start || thimsy_warn rcS "${s##*/} failed ($?)"
+done
+
+thimsy_mark rcs-done
+thimsy_log rcS done
+thimsy_kmsg "rcS done"

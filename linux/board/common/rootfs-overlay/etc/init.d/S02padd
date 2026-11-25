@@ -1,0 +1,26 @@
+#!/bin/sh
+# S02padd: the pad daemon, in the background.
+# SPDX-License-Identifier: MIT
+#
+# thimsy-padd merges the device's input nodes into one "Thimsy Gamepad"
+# (IMPLEMENTATION F.2). Nano opens the pad when it appears, so nothing waits
+# for it here.
+. "${THIMSY_ROOT:-}/usr/share/thimsy/init/lib.sh"
+
+TAG=S02padd
+
+case ${1:-start} in
+start)
+	if command -v "$PADD" > /dev/null 2>&1; then
+		"$PADD" < /dev/null >> "$R/run/thimsy/log/padd.log" 2>&1 &
+		printf '%s\n' "$!" > "$R/run/thimsy/padd.pid"
+	else
+		thimsy_warn $TAG "thimsy-padd is missing: no gamepad"
+	fi
+	;;
+stop) ;;
+*)
+	echo "usage: $0 start" >&2
+	exit 2
+	;;
+esac

@@ -1,0 +1,35 @@
+#!/bin/sh
+# rcD: the deferred services, /etc/init.d/deferred/D[0-9][0-9]*, in order.
+# SPDX-License-Identifier: MIT
+#
+# thimsy-session runs "rcD start" in the background once Nano has drawn its
+# first frame (sys.thimsy.nano.first_frame=1); rcK runs "rcD stop", which
+# stops them in reverse order. A failing script does not stop the others.
+. "${THIMSY_ROOT:-}/usr/share/thimsy/init/lib.sh"
+
+action=${1:-start}
+case $action in
+start)
+	thimsy_mark deferred-start
+	for s in "$R"/etc/init.d/deferred/D[0-9][0-9]*; do
+		[ -x "$s" ] || continue
+		"$s" start || thimsy_warn rcD "${s##*/} start failed ($?)"
+	done
+	thimsy_mark deferred-done
+	thimsy_log rcD "deferred services started"
+	;;
+stop)
+	list=
+	for s in "$R"/etc/init.d/deferred/D[0-9][0-9]*; do
+		[ -x "$s" ] || continue
+		list="$s $list"
+	done
+	for s in $list; do
+		"$s" stop || thimsy_log rcD "${s##*/} stop failed ($?)"
+	done
+	;;
+*)
+	echo "usage: $0 start|stop" >&2
+	exit 2
+	;;
+esac

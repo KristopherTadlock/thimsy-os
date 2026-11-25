@@ -1,0 +1,53 @@
+#!/bin/sh
+# D50ssh: dropbear.
+# SPDX-License-Identifier: MIT
+#
+# Dev images (ro.thimsy.build.type=dev) start it by default. Release images
+# start it only when the user turned SSH on (persist.thimsy.ssh.enabled=1),
+# and then key-only: no password logins (decision I37). The host key lives
+# on the data partition, so it survives updates.
+. "${THIMSY_ROOT:-}/usr/share/thimsy/init/lib.sh"
+
+TAG=D50ssh
+KEY=$THIMSY_CONFIG/ssh/dropbear_ed25519_host_key
+PIDFILE=$R/run/dropbear.pid
+
+case ${1:-start} in
+start)
+	command -v "$DROPBEAR" > /dev/null 2>&1 || exit 0
+	thimsy_build_prop ro.thimsy.build.type release
+	type=$BUILD_PROP_OUT
+	if [ "$type" = dev ]; then
+		thimsy_persist persist.thimsy.ssh.enabled 1
+	else
+		thimsy_persist persist.thimsy.ssh.enabled 0
+	fi
+	[ "$PERSIST_OUT" = 1 ] || exit 0
+	if [ ! -s "$KEY" ]; then
+		mkdir -p "${KEY%/*}"
+		"$DROPBEARKEY" -t ed25519 -f "$KEY" > /dev/null 2>&1 || {
+			thimsy_warn $TAG "no host key"
+			exit 1
+		}
+	fi
+	opts=
+	[ "$type" = dev ] || opts=-s
+	# shellcheck disable=SC2086
+	"$DROPBEAR" -r "$KEY" -P "$PIDFILE" $opts || thimsy_warn $TAG "dropbear failed"
+	thimsy_log $TAG "dropbear started ($type${opts:+, keys only})"
+	;;
+stop)
+	[ -r "$PIDFILE" ] || exit 0
+	pid=
+	read -r pid < "$PIDFILE" || :
+	case $pid in
+	'' | *[!0-9]*) ;;
+	*) kill "$pid" 2>/dev/null ;;
+	esac
+	rm -f "$PIDFILE"
+	;;
+*)
+	echo "usage: $0 start|stop" >&2
+	exit 2
+	;;
+esac

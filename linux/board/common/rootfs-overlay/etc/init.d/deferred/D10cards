@@ -1,0 +1,43 @@
+#!/bin/sh
+# D10cards: the coldplug of drives that were there at boot.
+# SPDX-License-Identifier: MIT
+#
+# thimsy-session already listens for block uevents and owns the policy
+# (which partitions are drives, fsck, the mount at /storage/<VOLID>,
+# volumes.json; IMPLEMENTATION F.1). Drives present before it started sent
+# their "add" before anyone listened, so this asks the kernel to send it
+# again, as "mdev -s" or "udevadm trigger" would. The eMMC is skipped here as
+# well as in the session's policy (decision I40).
+. "${THIMSY_ROOT:-}/usr/share/thimsy/init/lib.sh"
+
+TAG=D10cards
+
+case ${1:-start} in
+start)
+	n=0
+	for d in "$R"/sys/class/block/*; do
+		name=${d##*/}
+		case $name in
+		loop* | ram* | zram* | dm-* | md* | nbd* | mtdblock*) continue ;;
+		esac
+		disk=$name
+		if [ -e "$d/partition" ]; then
+			for p in "$R"/sys/class/block/*; do
+				if [ -d "$p/$name" ]; then
+					disk=${p##*/}
+					break
+				fi
+			done
+		fi
+		thimsy_is_emmc "$disk" && continue
+		[ -w "$d/uevent" ] || continue
+		echo add > "$d/uevent" && n=$((n + 1))
+	done
+	thimsy_log $TAG "re-sent add for $n block devices"
+	;;
+stop) ;;
+*)
+	echo "usage: $0 start|stop" >&2
+	exit 2
+	;;
+esac
