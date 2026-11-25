@@ -84,76 +84,196 @@ pub fn is_source_file(src: Option<&Source>, p: &Path) -> bool {
             .any(|a| name.as_deref() == Some(a.file.as_str()) || len == Some(a.size))
 }
 
-/// N of a `name.NNN` part.
+/// Whether a file is the official firmware or one of its download parts by
+/// name alone (see [`is_source_file`], which also goes by size).
+fn is_source_name(src: Option<&Source>, p: &Path) -> bool {
+    let Some(src) = src else {
+        return false;
+    };
+    let name = file_name(p);
+    name == src.contains || src.parts.iter().any(|a| name == a.file)
+}
+
+/// N of a `name.NNN` part (parts count from 001).
 fn part_number(p: &Path) -> Option<u32> {
     let ext = p.extension()?.to_str()?;
     (ext.len() >= 3 && ext.bytes().all(|b| b.is_ascii_digit()))
         .then(|| ext.parse().ok())
         .flatten()
+        .filter(|&n| n > 0)
 }
 
+/// A file's name without its `.NNN` part number (`x.tar` for `x.tar.001`).
+fn part_stem(p: &Path) -> String {
+    p.file_stem()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string()
+}
+
+fn file_name(p: &Path) -> String {
+    p.file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string()
+}
+
+/// The name of the part after the last of `parts` (`x.tar.004` after
+/// `x.tar.003`) when they're all numbered parts: the one to name when they
+/// turn out to be cut short.
+pub fn next_part(parts: &[PathBuf]) -> Option<String> {
+    let last = parts.last()?;
+    if !parts.iter().all(|p| part_number(p).is_some()) {
+        return None;
+    }
+    let n = part_number(last)? + 1;
+    let width = last.extension().map_or(3, |e| e.len());
+    Some(format!("{}.{n:0width$}", part_stem(last)))
+}
+
+/// How many missing part names an error lists before "and N more".
+const MISSING_LISTED: usize = 5;
+
 /// The Thimsy package among the picked files: every picked file that isn't
-/// the official firmware (see [`is_source_file`]). One file is the package,
-/// under any name; several are its parts, in the order of their `.NNN`
-/// numbers when they all have one (which must then run from 001 with none
-/// missing), otherwise in the order given. Empty when no picked file is a
-/// package. Whether it really is one is for [`crate::package`] to say.
+/// the official firmware (see [`is_source_file`]; a numbered part with the
+/// name of a picked package part is the firmware only by its name). One
+/// file without a part number is the package, under any name; several such
+/// files are its parts in the order given. When the picked files are all
+/// numbered parts (`name.001`, `name.002`, ...), they're put in number
+/// order, and the parts after the highest one, of its name in the picked
+/// parts' folders, are added while the next number is there: picking only
+/// the first part (as for a split 7-Zip archive), or the first few, finds
+/// the rest next to them. Parts missing below the highest one picked are
+/// looked for next to the picked ones too; the picked ones must then have
+/// one name, and parts still missing fail with `bad_input` naming them.
+/// Empty when no picked file is a package. Whether it really is one (and
+/// isn't cut short) is for [`crate::package`] to say.
 pub fn picked_package(src: Option<&Source>, imports: &[PathBuf]) -> Result<Vec<PathBuf>> {
-    let files: Vec<PathBuf> = picked_files(imports)
+    let picked = picked_files(imports);
+    // Names of picked parts that are surely package parts: other parts of
+    // those names are the firmware only by name, whatever their size.
+    let package_stems: std::collections::BTreeSet<String> = picked
+        .iter()
+        .filter(|p| part_number(p).is_some() && !is_source_file(src, p))
+        .map(|p| part_stem(p))
+        .collect();
+    let is_firmware = |p: &Path| {
+        if part_number(p).is_some() && package_stems.contains(&part_stem(p)) {
+            is_source_name(src, p)
+        } else {
+            is_source_file(src, p)
+        }
+    };
+    let files: Vec<PathBuf> = picked
         .into_iter()
-        .filter(|p| !is_source_file(src, p))
+        .filter(|p| !is_firmware(p))
         .cloned()
         .collect();
-    if files.len() < 2 {
-        return Ok(files);
-    }
     let Some(nums) = files
         .iter()
         .map(|p| part_number(p))
         .collect::<Option<Vec<u32>>>()
+        .filter(|n| !n.is_empty())
     else {
         return Ok(files);
     };
-    let mut parts: Vec<(u32, PathBuf)> = nums.into_iter().zip(files).collect();
-    parts.sort_by_key(|(n, _)| *n);
-    let stem = parts[0]
-        .1
-        .file_stem()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .to_string();
-    let last = parts.last().map_or(0, |(n, _)| *n);
-    let missing: Vec<String> = (1..=last)
-        .filter(|n| !parts.iter().any(|(m, _)| m == n))
-        .map(|n| format!("{stem}.{n:03}"))
-        .collect();
-    let repeated = parts.windows(2).any(|w| w[0].0 == w[1].0);
-    if !missing.is_empty() || repeated {
-        let names: Vec<String> = parts
-            .iter()
-            .map(|(_, p)| {
-                p.file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .to_string()
-            })
-            .collect();
-        let what = if repeated {
-            "two of them have the same part number".to_string()
-        } else {
-            format!("missing: {}", missing.join(", "))
-        };
-        return Err(EngineError::new(
+    let bad = |what: String| -> EngineError {
+        let names: Vec<String> = files.iter().map(|p| file_name(p)).collect();
+        EngineError::new(
             Code::BadInput,
             format!(
-                "the files you chose ({}) look like parts of a Thimsy package, but not all of them; {what}",
+                "the files you chose ({}) look like parts of a Thimsy package, but {what}",
                 names.join(", ")
             ),
         )
-        .hint("Choose every part of the Thimsy package together, then try again.")
-        .into());
+    };
+    let mut parts: std::collections::BTreeMap<u32, PathBuf> = Default::default();
+    for (n, p) in nums.into_iter().zip(&files) {
+        match parts.get(&n) {
+            Some(q) if q != p => {
+                return Err(bad("two of them have the same part number".into())
+                    .hint("Choose every part of the Thimsy package together, then try again.")
+                    .into())
+            }
+            _ => {
+                parts.insert(n, p.clone());
+            }
+        }
     }
-    Ok(parts.into_iter().map(|(_, p)| p).collect())
+    // The parts of a name in the picked parts' folders, by number.
+    let dirs: std::collections::BTreeSet<PathBuf> = files
+        .iter()
+        .map(|p| match p.parent() {
+            Some(d) if !d.as_os_str().is_empty() => d.to_path_buf(),
+            _ => PathBuf::from("."),
+        })
+        .collect();
+    let next_to = |stem: &str| {
+        let mut found = std::collections::BTreeMap::new();
+        for dir in &dirs {
+            for e in fs::read_dir(dir).into_iter().flatten().flatten() {
+                let path = e.path();
+                let Some(n) = part_number(&path) else {
+                    continue;
+                };
+                if part_stem(&path) == stem && path.is_file() && !is_source_name(src, &path) {
+                    found.entry(n).or_insert(path);
+                }
+            }
+        }
+        found
+    };
+    let last = parts.keys().next_back().copied().unwrap_or(0);
+    // Parts missing below the highest one picked: found next to the picked
+    // ones, or named.
+    if parts.len() < last as usize {
+        let stem = part_stem(&files[0]);
+        if let Some(other) = files.iter().find(|p| part_stem(p) != stem) {
+            return Err(bad(format!(
+                "{} and {} are parts of different files",
+                file_name(&files[0]),
+                file_name(other)
+            ))
+            .hint("Choose every part of the Thimsy package together, then try again.")
+            .into());
+        }
+        for (n, p) in next_to(&stem) {
+            if n < last {
+                parts.entry(n).or_insert(p);
+            }
+        }
+        let gaps = last as usize - parts.len();
+        if gaps > 0 {
+            let missing: Vec<String> = (1..last)
+                .filter(|n| !parts.contains_key(n))
+                .take(MISSING_LISTED)
+                .map(|n| format!("{stem}.{n:03}"))
+                .collect();
+            let more = gaps.saturating_sub(missing.len());
+            let more = if more > 0 {
+                format!(" and {more} more")
+            } else {
+                String::new()
+            };
+            return Err(bad(format!(
+                "not all of them are there; missing: {}{more}",
+                missing.join(", ")
+            ))
+            .hint(
+                "Put every part of the Thimsy package in the same folder, then choose them again.",
+            )
+            .into());
+        }
+    }
+    // The parts after the highest one picked, while the next one is there.
+    // Anything past a gap isn't used: a package missing a part is cut short,
+    // and the missing part is named then (see [`next_part`]).
+    let found = next_to(&part_stem(&parts[&last]));
+    for n in last.saturating_add(1)..=u32::MAX {
+        let Some(p) = found.get(&n) else { break };
+        parts.insert(n, p.clone());
+    }
+    Ok(parts.into_values().collect())
 }
 
 /// Whether `name` is a package for `device` and `profile` as Thimsy names
@@ -715,21 +835,162 @@ mod tests {
     #[test]
     fn picked_package_parts_are_ordered_and_must_be_complete() {
         let d = tempfile::tempdir().unwrap();
-        let touch = |name: &str| {
-            let p = d.path().join(name);
+        let touch_in = |dir: &Path, name: &str| {
+            std::fs::create_dir_all(dir).unwrap();
+            let p = dir.join(name);
             std::fs::write(&p, name.as_bytes()).unwrap();
             p
         };
+        let touch = |name: &str| touch_in(d.path(), name);
         let (p1, p2, p3) = (
             touch("pack.tar.001"),
             touch("pack.tar.002"),
             touch("pack.tar.003"),
         );
+        // Other numbered files next to them aren't parts of this package.
+        touch("fw.7z.001");
+        touch("pack.tar.000");
+        let all = [p1.clone(), p2.clone(), p3.clone()];
+        // Chosen in any order: put in order.
         let got = picked_package(None, &[p3.clone(), p1.clone(), p2.clone()]).unwrap();
-        assert_eq!(got, [p1.clone(), p2.clone(), p3.clone()]);
-        let err = picked_package(None, &[p1.clone(), p3.clone()]).unwrap_err();
+        assert_eq!(got, all);
+        // Only some chosen, or the same one twice: the rest are found next
+        // to them.
+        for pick in [
+            vec![p1.clone()],
+            vec![p2.clone()],
+            vec![p3.clone()],
+            vec![p1.clone(), p3.clone()],
+            vec![p1.clone(), p1.clone()],
+        ] {
+            assert_eq!(picked_package(None, &pick).unwrap(), all, "{pick:?}");
+        }
+
+        // A gap below the highest part chosen: bad_input naming what's
+        // missing.
+        let gap = d.path().join("gap");
+        let g1 = touch_in(&gap, "pack.tar.001");
+        let g3 = touch_in(&gap, "pack.tar.003");
+        let err = picked_package(None, &[g1.clone(), g3]).unwrap_err();
         assert_eq!(crate::error::code_of(&err).0, Code::BadInput);
-        assert!(err.to_string().contains("pack.tar.002"), "{err}");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("missing: pack.tar.002") && !msg.contains("more"),
+            "{msg}"
+        );
+        // A gap after the highest part chosen: the parts up to it, and the
+        // part after them is the one to name if they're cut short (so are
+        // a part still downloading, and a stray part past a gap).
+        touch_in(&gap, "pack.tar.004.crdownload");
+        touch_in(&gap, "pack.tar.005");
+        let got = picked_package(None, std::slice::from_ref(&g1)).unwrap();
+        assert_eq!(got, std::slice::from_ref(&g1));
+        assert_eq!(next_part(&got).as_deref(), Some("pack.tar.002"));
+        // The first part missing.
+        let late = d.path().join("late");
+        let l2 = touch_in(&late, "pack.tar.002");
+        let err = picked_package(None, std::slice::from_ref(&l2)).unwrap_err();
+        assert!(err.to_string().contains("missing: pack.tar.001"), "{err}");
+        // Many missing: the first few are named.
+        let far = d.path().join("far");
+        let f1 = touch_in(&far, "pack.tar.001");
+        let f10 = touch_in(&far, "pack.tar.010");
+        let msg = picked_package(None, &[f1, f10]).unwrap_err().to_string();
+        assert!(
+            msg.contains(
+                "pack.tar.002, pack.tar.003, pack.tar.004, pack.tar.005, pack.tar.006 and 3 more"
+            ),
+            "{msg}"
+        );
+        // A part number that doesn't fit is no part number.
+        let huge = d.path().join("huge");
+        let h1 = touch_in(&huge, "pack.tar.001");
+        touch_in(&huge, "pack.tar.99999999999");
+        assert_eq!(
+            picked_package(None, std::slice::from_ref(&h1)).unwrap(),
+            [h1]
+        );
+
+        // Parts in two folders: each folder's parts count.
+        let x = d.path().join("x");
+        let y = d.path().join("y");
+        let x1 = touch_in(&x, "pack.tar.001");
+        let y2 = touch_in(&y, "pack.tar.002");
+        let y3 = touch_in(&y, "pack.tar.003");
+        assert_eq!(
+            picked_package(None, &[x1.clone(), y2.clone()]).unwrap(),
+            [x1.clone(), y2, y3]
+        );
+        // The same part twice from different folders: bad_input.
+        let y1 = touch_in(&y, "pack.tar.001");
+        let err = picked_package(None, &[x1.clone(), y1]).unwrap_err();
+        assert_eq!(crate::error::code_of(&err).0, Code::BadInput);
+        assert!(err.to_string().contains("same part number"), "{err}");
+        // Parts of two different names with one missing: bad_input.
+        let other = touch_in(&x, "other.tar.003");
+        let err = picked_package(None, &[x1, other]).unwrap_err();
+        assert_eq!(crate::error::code_of(&err).0, Code::BadInput);
+        assert!(err.to_string().contains("different files"), "{err}");
+
+        // Every part chosen, renamed by a browser downloading them again
+        // (so of two names), next to a stray part past a gap: those parts,
+        // in order.
+        let again = d.path().join("again");
+        let r1 = touch_in(&again, "pack.tar (1).001");
+        let r2 = touch_in(&again, "pack.tar (1).002");
+        let r3 = touch_in(&again, "pack.tar.003");
+        touch_in(&again, "pack.tar.005");
+        touch_in(&again, "pack.tar (1).004.part");
+        let mixed = [r1.clone(), r2.clone(), r3.clone()];
+        assert_eq!(
+            picked_package(None, &[r3.clone(), r2.clone(), r1.clone()]).unwrap(),
+            mixed
+        );
+        assert_eq!(next_part(&mixed).as_deref(), Some("pack.tar.004"));
+        // The first two chosen: the rest of their name found next to them.
+        assert_eq!(
+            picked_package(None, std::slice::from_ref(&r1)).unwrap(),
+            [r1, r2]
+        );
+
+        // Package parts the size of the official firmware's parts: the
+        // firmware only by name once a part of their name is a package's.
+        let src: Source = serde_json::from_value(serde_json::json!({
+            "id": "fw", "name": "fw", "kind": "archive7z",
+            "parts": [{"id": "fw-001", "file": "fw.7z.001", "size": 4, "sha256": "x"}],
+            "contains": "fw.pac",
+            "container": {"format": "pac", "size": 99, "sha256": "x"},
+        }))
+        .unwrap();
+        let sized = d.path().join("sized");
+        let write = |name: &str, len: usize| {
+            let p = sized.join(name);
+            std::fs::create_dir_all(&sized).unwrap();
+            std::fs::write(&p, vec![0u8; len]).unwrap();
+            p
+        };
+        let s1 = write("big.tar.001", 4);
+        let s2 = write("big.tar.002", 4);
+        let s3 = write("big.tar.003", 2);
+        let fw = write("fw.7z.001", 4);
+        let fw_renamed = write("fw (1).7z.001", 4);
+        let whole = [s1.clone(), s2.clone(), s3.clone()];
+        for pick in [
+            vec![s1.clone(), s2.clone(), s3.clone(), fw.clone()],
+            vec![s3.clone(), fw.clone()],
+            vec![s2.clone(), s3.clone()],
+        ] {
+            assert_eq!(
+                picked_package(Some(&src), &pick).unwrap(),
+                whole,
+                "{pick:?}"
+            );
+        }
+        // Firmware parts alone, under their name or another: no package.
+        assert!(picked_package(Some(&src), &[fw, fw_renamed])
+            .unwrap()
+            .is_empty());
+
         // Renamed copies: in the order chosen. One file: the package.
         let (a, b) = (touch("download (1).bin"), touch("download (2).bin"));
         assert_eq!(
@@ -737,6 +998,12 @@ mod tests {
             [a.clone(), b]
         );
         assert_eq!(picked_package(None, std::slice::from_ref(&a)).unwrap(), [a]);
+        // A lone numbered file with nothing next to it: the package.
+        let lone = touch_in(&d.path().join("lone"), "renamed.001");
+        assert_eq!(
+            picked_package(None, std::slice::from_ref(&lone)).unwrap(),
+            [lone]
+        );
         // Folders aren't picked files.
         assert!(picked_package(None, &[d.path().to_path_buf()])
             .unwrap()

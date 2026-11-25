@@ -135,6 +135,7 @@
 "Point-and-click adventures": "הרפתקאות הצבע-והקלק"
 "Preparing partitions": "מכינים מחיצות"
 "Preparing the partitions": "מכינים את המחיצות"
+"Put every part of the Thimsy package in the same folder, then choose them again.": "יש להעביר את כל החלקים של חבילת Thimsy לאותה תיקייה, ולבחור אותם שוב."
 "Put the card in the {device} and turn it on. Thimsy runs from the card and leaves the {device}'s internal storage untouched: to go back to the original system, turn it off and take the card out.": "יש להכניס את הכרטיס ל-{device} ולהדליק אותו. Thimsy פועל מהכרטיס ולא נוגע באחסון הפנימי של {device}: כדי לחזור למערכת המקורית, יש לכבות אותו ולהוציא את הכרטיס."
 "Reading {partition}": "קוראים את {partition}"
 "Reinstall Thimsy Installer: its flashing tool isn't the version it expects.": "יש להתקין מחדש את Thimsy Installer: כלי הצריבה שלו אינו הגרסה שהוא מצפה לה."

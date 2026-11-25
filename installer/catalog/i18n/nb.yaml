@@ -135,6 +135,7 @@
 "Point-and-click adventures": "Pek-og-klikk-eventyr"
 "Preparing partitions": "Klargjør partisjoner"
 "Preparing the partitions": "Klargjør partisjonene"
+"Put every part of the Thimsy package in the same folder, then choose them again.": "Legg alle delene av Thimsy-pakken i samme mappe, og velg dem på nytt."
 "Put the card in the {device} and turn it on. Thimsy runs from the card and leaves the {device}'s internal storage untouched: to go back to the original system, turn it off and take the card out.": "Sett kortet i {device} og slå den på. Thimsy kjører fra kortet og lar den interne lagringen på {device} være urørt: for å gå tilbake til det opprinnelige systemet slår du den av og tar ut kortet."
 "Reading {partition}": "Leser {partition}"
 "Reinstall Thimsy Installer: its flashing tool isn't the version it expects.": "Installer Thimsy Installer på nytt: flashverktøyet er ikke versjonen det forventer."

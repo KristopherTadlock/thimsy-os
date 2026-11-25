@@ -541,8 +541,12 @@ pub fn build(cat: &Catalog, opts: &BuildOptions, rep: &Reporter) -> Result<JobRe
         };
     let mut opened = None;
     if let (Some(paths), From::Picked | From::Folder) = (&local, from) {
-        let what = describe_package(paths, from);
-        opened = Some((open(paths, &what)?, what));
+        let what = describe_package(paths, from, &opts.imports);
+        let p = open(paths, &what).map_err(|e| match from {
+            From::Picked => name_next_part(e, paths),
+            _ => e,
+        })?;
+        opened = Some((p, what));
     }
     let dir = job_dir(&opts.workspace, &d.id, &opts.profile);
     let work = dir.join("work");
@@ -587,7 +591,7 @@ pub fn build(cat: &Catalog, opts: &BuildOptions, rep: &Reporter) -> Result<JobRe
                 Some(p) => p,
                 None => cache.download_package(pkg, rep)?,
             };
-            let what = describe_package(&paths, from);
+            let what = describe_package(&paths, from, &[]);
             open(&paths, &what)
                 .and_then(|p| p.verify(&what, true, rep).map(|()| (p, what)))
                 .inspect_err(|_| cache.forget_package(pkg))
@@ -774,9 +778,27 @@ enum From {
     Download,
 }
 
+/// A picked package of numbered parts that is cut short: the part after the
+/// last one is named, as it may be missing or still downloading.
+fn name_next_part(mut e: anyhow::Error, paths: &[PathBuf]) -> anyhow::Error {
+    if let (Some(next), Some(ee)) = (
+        crate::fetch::next_part(paths),
+        e.downcast_mut::<EngineError>(),
+    ) {
+        if ee.code == Code::BadPackage && ee.message.contains("cut short") {
+            ee.message
+                .push_str(&format!("; {next} may be missing or still downloading"));
+        }
+    }
+    e
+}
+
 /// The package's files for messages: "X.tar (the file you chose)", "the
-/// downloaded X.tar", "X.tar.001 and 2 more parts (in FOLDER)".
-fn describe_package(paths: &[PathBuf], from: From) -> String {
+/// downloaded X.tar", "X.tar.001 and 2 more parts (in FOLDER)", and for
+/// picked parts with others found next to them (not in `chosen`),
+/// "X.tar.001 and 2 more parts (the file you chose and 2 parts next to it
+/// in FOLDER)".
+fn describe_package(paths: &[PathBuf], from: From, chosen: &[PathBuf]) -> String {
     let first = paths
         .first()
         .and_then(|p| p.file_name())
@@ -788,7 +810,20 @@ fn describe_package(paths: &[PathBuf], from: From) -> String {
         n => format!("{first} and {} more parts", n - 1),
     };
     match from {
-        From::Picked => format!("{name} (the file you chose)"),
+        From::Picked => {
+            let found: Vec<&PathBuf> = paths.iter().filter(|p| !chosen.contains(p)).collect();
+            match found.first() {
+                None => format!("{name} (the file you chose)"),
+                Some(f) => format!(
+                    "{name} (the file you chose and {} next to it in {})",
+                    match found.len() {
+                        1 => "1 part".to_string(),
+                        n => format!("{n} parts"),
+                    },
+                    f.parent().unwrap_or(Path::new("")).display()
+                ),
+            }
+        }
         From::Folder => {
             let dir = paths
                 .first()

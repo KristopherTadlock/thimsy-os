@@ -1517,7 +1517,7 @@ fn space_counts_picked_files_and_refuses_fat32_and_unknown_drives() {
 }
 
 #[test]
-fn picked_package_parts_are_used_in_order_and_missing_ones_named() {
+fn picked_package_parts_are_used_in_order_found_next_to_each_other_and_missing_ones_named() {
     let fx = good_fixture();
     let d = fx.dir.path().to_path_buf();
     let bytes = std::fs::read(&fx.package).unwrap();
@@ -1557,18 +1557,78 @@ fn picked_package_parts_are_used_in_order_and_missing_ones_named() {
         job::build(&fx.catalog, &o, &rep).unwrap().sha256,
         fx.expected_sha
     );
-    // A part missing: bad_input naming it, and nothing downloaded.
+    // Only the first part chosen (as for a split 7-Zip archive): the rest
+    // are found next to it, counted by the space check and used.
+    let sc = job::check_space(
+        &fx.catalog,
+        "testdev",
+        "heavy",
+        &d.join("ws2"),
+        &numbered[..1],
+        false,
+    )
+    .unwrap();
+    assert_eq!(sc.imported, bytes.len() as u64);
+    for pick in [
+        vec![numbered[0].clone()],
+        vec![numbered[0].clone(), numbered[2].clone()],
+    ] {
+        let mut o = opts(&d.join("ws2"), false);
+        o.imports = pick;
+        assert_eq!(
+            job::build(&fx.catalog, &o, &rep).unwrap().sha256,
+            fx.expected_sha
+        );
+    }
+    // A part missing below the highest one chosen: bad_input naming it, and
+    // nothing downloaded.
+    let aside = d.join("aside");
+    std::fs::create_dir(&aside).unwrap();
+    std::fs::rename(&numbered[1], aside.join("pack.tar.002")).unwrap();
     let mut o = opts(&d.join("ws3"), false);
     o.imports = vec![numbered[0].clone(), numbered[2].clone()];
     let err = job::build(&fx.catalog, &o, &rep).unwrap_err();
     assert_eq!(crate::error::code_of(&err).0, Code::BadInput, "{err:#}");
     assert!(err.to_string().contains("pack.tar.002"), "{err}");
-    // The last part missing: the package is cut short.
+    // Missing after the parts chosen: the package is cut short, and the
+    // missing part is named.
+    let mut o = opts(&d.join("ws3"), false);
+    o.imports = vec![numbered[0].clone()];
+    let err = job::build(&fx.catalog, &o, &rep).unwrap_err();
+    assert_eq!(crate::error::code_of(&err).0, Code::BadPackage, "{err:#}");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("pack.tar.001 (the file you chose) isn't")
+            && msg.contains("cut short")
+            && msg.contains("; pack.tar.002 may be missing or still downloading"),
+        "{msg}"
+    );
+    // The last part still downloading: named too, and the parts used that
+    // weren't chosen are said to be next to the chosen one.
+    std::fs::rename(aside.join("pack.tar.002"), &numbered[1]).unwrap();
+    std::fs::rename(&numbered[2], d.join("pack.tar.003.crdownload")).unwrap();
+    let mut o = opts(&d.join("ws3"), false);
+    o.imports = vec![numbered[0].clone()];
+    let err = job::build(&fx.catalog, &o, &rep).unwrap_err();
+    assert_eq!(crate::error::code_of(&err).0, Code::BadPackage, "{err:#}");
+    let msg = err.to_string();
+    assert!(
+        msg.contains(&format!(
+            "pack.tar.001 and 1 more part (the file you chose and 1 part next to it in {})",
+            d.display()
+        )) && msg.contains("; pack.tar.003 may be missing or still downloading"),
+        "{msg}"
+    );
+    // Both chosen: cut short, as they say.
     let mut o = opts(&d.join("ws3"), false);
     o.imports = vec![numbered[0].clone(), numbered[1].clone()];
     let err = job::build(&fx.catalog, &o, &rep).unwrap_err();
     assert_eq!(crate::error::code_of(&err).0, Code::BadPackage, "{err:#}");
-    assert!(err.to_string().contains("cut short"), "{err}");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("(the file you chose)") && msg.contains("pack.tar.003 may be missing"),
+        "{msg}"
+    );
     assert!(!d.join("ws3/cache/fw.7z.001").exists());
     assert!(!d.join("ws3/cache").join(PACKAGE).exists());
     assert!(!d

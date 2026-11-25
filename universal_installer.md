@@ -1005,8 +1005,9 @@ recipes, and per device and profile where the latest package is published
 space check, a note). No build steps, member hashes or expected output.
 
 **Use a file I already downloaded.** The user picks the package's `.tar`,
-under any name, or all of its `.tar.001`, `.tar.002`, ... parts. That's
-all they need to pick: the official firmware is then downloaded from its
+under any name, or its `.tar.001`, `.tar.002`, ... parts; picking one
+part is enough when the others are in the same folder (a missing part is
+named). That's all they need to pick: the official firmware is then downloaded from its
 upstream release (or taken from the cache, or from the unpacked `.pac` or
 its 7z parts if those are picked too). Every picked file that isn't the
 official firmware is taken for the package, and a package that was picked
@@ -1299,8 +1300,10 @@ Code lives in `installer/` (see `installer/README.md`).
   it becomes a separate GitHub release.
 - **One file per package:** the system image, the device's patches and
   `pack.json` ship as one tar archive per device and profile, read in place
-  by byte range. Level-19 zstd keeps the RG Cube's at 2.08 GB, under
-  GitHub's 2 GiB asset limit; larger packages split into 1 GB parts. Once
+  by byte range. Level-19 zstd first kept the RG Cube's at 2.08 GB, under
+  GitHub's 2 GiB asset limit; larger packages split into 1 GB parts, as the
+  RG Cube's heavy one has since (about 2.2 GB in test 40, shipped as
+  `.tar.001` to `.tar.003`). Once
   releases are public, the installer downloads the latest release's package
   itself (catalog `packages:`); picking a downloaded package is the second
   option.

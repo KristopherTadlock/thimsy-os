@@ -135,6 +135,7 @@
 "Point-and-click adventures": "ポイントアンドクリック アドベンチャー"
 "Preparing partitions": "パーティションを準備しています"
 "Preparing the partitions": "パーティションを準備しています"
+"Put every part of the Thimsy package in the same folder, then choose them again.": "Thimsy パッケージのすべてのパーツを同じフォルダーに置いてから、もう一度選択してください。"
 "Put the card in the {device} and turn it on. Thimsy runs from the card and leaves the {device}'s internal storage untouched: to go back to the original system, turn it off and take the card out.": "カードを {device} に入れて電源を入れます。Thimsy はカードから動作し、{device} の内部ストレージには手を加えません。元のシステムに戻すには、電源を切ってカードを取り出してください。"
 "Reading {partition}": "{partition} を読み取っています"
 "Reinstall Thimsy Installer: its flashing tool isn't the version it expects.": "Thimsy Installer を再インストールしてください。書き込みツールが想定されたバージョンではありません。"

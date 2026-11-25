@@ -74,7 +74,8 @@ stops unless the result is byte-identical. The package is **one archive**,
 `pack.json`, the system image (zstd level 19) and the device's `.bsdiff`
 patches, so 7-Zip or `tar` can open it. It's split into 1 GB `.tar.001`,
 `.002`, ... parts only when it's over GitHub's 2 GiB asset limit (the RG
-Cube's is 2.08 GB, so it's one file). The engine reads the system image
+Cube's heavy package is about 2.2 GB, so it ships as `.tar.001` to
+`.tar.003`). The engine reads the system image
 straight out of the archive (no unpacking to disk).
 
 `pack.json` is the package's manifest: `format` (1), `device`, `profile`,

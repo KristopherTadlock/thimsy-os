@@ -207,7 +207,9 @@ Future<AppState> toBuild(
   await s.loadCatalog();
   await s.selectDevice(device);
   expect(s.deviceNext(), DeviceNext.proceeded);
-  await settle();
+  // The profile's plan resolves in the background; a slow machine can
+  // take longer than one settle().
+  await until(() => s.canProceed(WizardStep.profile));
   s.next(); // profile → journey
   s.selectJourney('first_time');
   s.next();
@@ -883,7 +885,7 @@ void main() {
     await s.loadCatalog();
     await s.selectDevice(cube);
     s.deviceNext();
-    await settle();
+    await until(() => s.plans.length == 3);
     expect(s.plans, hasLength(3));
     expect(s.profileId, 'medium');
 

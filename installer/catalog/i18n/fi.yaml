@@ -135,6 +135,7 @@
 "Point-and-click adventures": "Osoita ja klikkaa -seikkailut"
 "Preparing partitions": "Valmistellaan osioita"
 "Preparing the partitions": "Valmistellaan osioita"
+"Put every part of the Thimsy package in the same folder, then choose them again.": "Siirrä kaikki Thimsy-paketin osat samaan kansioon ja valitse ne sitten uudelleen."
 "Put the card in the {device} and turn it on. Thimsy runs from the card and leaves the {device}'s internal storage untouched: to go back to the original system, turn it off and take the card out.": "Laita kortti {device}-laitteeseen ja käynnistä se. Thimsy toimii kortilta eikä koske {device}-laitteen sisäiseen tallennustilaan: palaa alkuperäiseen järjestelmään sammuttamalla laite ja poistamalla kortti."
 "Reading {partition}": "Luetaan: {partition}"
 "Reinstall Thimsy Installer: its flashing tool isn't the version it expects.": "Asenna Thimsy Installer uudelleen: sen flash-työkalu ei ole odotettu versio."

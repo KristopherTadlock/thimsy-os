@@ -135,6 +135,7 @@
 "Point-and-click adventures": "Przygodówki typu wskaż i kliknij"
 "Preparing partitions": "Przygotowywanie partycji"
 "Preparing the partitions": "Przygotowywanie partycji"
+"Put every part of the Thimsy package in the same folder, then choose them again.": "Umieść wszystkie części pakietu Thimsy w tym samym folderze, a następnie wybierz je ponownie."
 "Put the card in the {device} and turn it on. Thimsy runs from the card and leaves the {device}'s internal storage untouched: to go back to the original system, turn it off and take the card out.": "Włóż kartę do urządzenia {device} i włącz je. Thimsy działa z karty i nie narusza pamięci wewnętrznej urządzenia {device}: aby wrócić do oryginalnego systemu, wyłącz je i wyjmij kartę."
 "Reading {partition}": "Odczytywanie partycji {partition}"
 "Reinstall Thimsy Installer: its flashing tool isn't the version it expects.": "Zainstaluj ponownie Thimsy Installer: jego narzędzie do flashowania nie jest w oczekiwanej wersji."

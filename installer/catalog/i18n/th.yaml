@@ -135,6 +135,7 @@
 "Point-and-click adventures": "เกมผจญภัยแบบชี้และคลิก"
 "Preparing partitions": "กำลังเตรียมพาร์ติชัน"
 "Preparing the partitions": "กำลังเตรียมพาร์ติชัน"
+"Put every part of the Thimsy package in the same folder, then choose them again.": "ย้ายทุกส่วนของแพ็กเกจ Thimsy ไว้ในโฟลเดอร์เดียวกัน แล้วเลือกอีกครั้ง"
 "Put the card in the {device} and turn it on. Thimsy runs from the card and leaves the {device}'s internal storage untouched: to go back to the original system, turn it off and take the card out.": "ใส่การ์ดใน {device} แล้วเปิดเครื่อง Thimsy จะทำงานจากการ์ดและไม่แตะต้องพื้นที่จัดเก็บภายในของ {device} หากต้องการกลับไปใช้ระบบเดิม ให้ปิดเครื่องแล้วถอดการ์ดออก"
 "Reading {partition}": "กำลังอ่าน {partition}"
 "Reinstall Thimsy Installer: its flashing tool isn't the version it expects.": "ติดตั้ง Thimsy Installer ใหม่ เครื่องมือแฟลชของโปรแกรมไม่ใช่เวอร์ชันที่ต้องการ"

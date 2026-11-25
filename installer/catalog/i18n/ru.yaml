@@ -135,6 +135,7 @@
 "Point-and-click adventures": "Графические квесты"
 "Preparing partitions": "Подготовка разделов"
 "Preparing the partitions": "Подготовка разделов"
+"Put every part of the Thimsy package in the same folder, then choose them again.": "Поместите все части пакета Thimsy в одну папку, затем выберите их снова."
 "Put the card in the {device} and turn it on. Thimsy runs from the card and leaves the {device}'s internal storage untouched: to go back to the original system, turn it off and take the card out.": "Вставьте карту в {device} и включите его. Thimsy работает с карты и не затрагивает внутреннюю память {device}: чтобы вернуться к исходной системе, выключите устройство и извлеките карту."
 "Reading {partition}": "Чтение {partition}"
 "Reinstall Thimsy Installer: its flashing tool isn't the version it expects.": "Переустановите Thimsy Installer: его инструмент прошивки не той версии, которая ожидается."

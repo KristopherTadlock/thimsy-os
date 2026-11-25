@@ -85,7 +85,7 @@ the real catalog.
 ### `catalog --json`
 One line:
 ```json
-{"type":"catalog","version":"0.1.0-test20","release":"Thimsy 1.0a","engine":"0.1.0","host":"linux",
+{"type":"catalog","version":"0.1.0-test21","release":"Thimsy 1.0a","engine":"0.1.0","host":"linux",
  "devices":[{
   "id":"anbernic-rg-cube","name":"Anbernic RG Cube","maker":"Anbernic",
   "soc":"Unisoc T820","display":"720×720","status":"testing",
@@ -238,9 +238,21 @@ Final:
 - `--import FILE` (files the user picked): the unpacked official firmware
   (by name, or its size under any name) and its download parts (by name or
   size) are the firmware; **every other picked file is the package**: one
-  file under any name, or its parts, ordered by their `.001`, `.002`, ...
-  numbers when they all have one (a gap fails with `bad_input` naming the
-  missing part), otherwise in the order given. Once a picked file is taken
+  file under any name, or its parts. When the picked files are all
+  numbered parts (`.001`, `.002`, ...), they're the package's parts in
+  number order, followed by the parts after the highest one picked that
+  have its name and are in the picked parts' folders, for as long as the
+  next number is there: picking only the first part finds the rest next to
+  it. A part missing below the highest one picked is looked for next to the
+  picked ones too (the picked parts must then have one name); still
+  missing, or two different files with the same number, fail with
+  `bad_input` (naming the missing parts). A part missing after the ones
+  found makes the package cut short (`bad_package`), and the error names
+  the part after the last one found as maybe missing or still downloading.
+  A numbered part with the name of a picked package part is the firmware
+  only by its name, not its size. Otherwise (any picked file without a part
+  number), the picked files are the package's parts in the order given,
+  and nothing else is looked for. Once a picked file is taken
   for the package, the package never comes from anywhere else: a file that
   isn't a usable package fails the build (below) and nothing is downloaded
   instead. Picking only the package's `.tar` is the usual case: the official

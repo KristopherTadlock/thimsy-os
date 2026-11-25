@@ -135,6 +135,7 @@
 "Point-and-click adventures": "点击式冒险游戏"
 "Preparing partitions": "正在准备分区"
 "Preparing the partitions": "正在准备分区"
+"Put every part of the Thimsy package in the same folder, then choose them again.": "请将 Thimsy 软件包的所有部分放在同一个文件夹中，然后重新选择。"
 "Put the card in the {device} and turn it on. Thimsy runs from the card and leaves the {device}'s internal storage untouched: to go back to the original system, turn it off and take the card out.": "将存储卡插入 {device} 并开机。Thimsy 从存储卡运行，不会改动 {device} 的内部存储：要回到原来的系统，关机并取出存储卡即可。"
 "Reading {partition}": "正在读取 {partition}"
 "Reinstall Thimsy Installer: its flashing tool isn't the version it expects.": "请重新安装 Thimsy Installer：它的刷机工具不是预期的版本。"

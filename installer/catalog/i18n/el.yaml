@@ -135,6 +135,7 @@
 "Point-and-click adventures": "Περιπέτειες κατάδειξης και κλικ"
 "Preparing partitions": "Προετοιμασία διαμερισμάτων"
 "Preparing the partitions": "Προετοιμασία των διαμερισμάτων"
+"Put every part of the Thimsy package in the same folder, then choose them again.": "Τοποθετήστε όλα τα μέρη του πακέτου Thimsy στον ίδιο φάκελο και επιλέξτε τα ξανά."
 "Put the card in the {device} and turn it on. Thimsy runs from the card and leaves the {device}'s internal storage untouched: to go back to the original system, turn it off and take the card out.": "Τοποθετήστε την κάρτα στο {device} και ενεργοποιήστε το. Το Thimsy εκτελείται από την κάρτα και αφήνει ανέγγιχτο τον εσωτερικό χώρο αποθήκευσης του {device}: για να επιστρέψετε στο αρχικό σύστημα, απενεργοποιήστε το και αφαιρέστε την κάρτα."
 "Reading {partition}": "Ανάγνωση {partition}"
 "Reinstall Thimsy Installer: its flashing tool isn't the version it expects.": "Εγκαταστήστε ξανά το Thimsy Installer: το εργαλείο εγγραφής του δεν είναι η έκδοση που αναμένει."

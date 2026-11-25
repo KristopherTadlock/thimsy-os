@@ -135,6 +135,7 @@
 "Point-and-click adventures": "Peg-og-klik-eventyr"
 "Preparing partitions": "Forbereder partitioner"
 "Preparing the partitions": "Forbereder partitionerne"
+"Put every part of the Thimsy package in the same folder, then choose them again.": "Læg alle dele af Thimsy-pakken i samme mappe, og vælg dem igen."
 "Put the card in the {device} and turn it on. Thimsy runs from the card and leaves the {device}'s internal storage untouched: to go back to the original system, turn it off and take the card out.": "Sæt kortet i {device}, og tænd den. Thimsy kører fra kortet og lader det interne lager i {device} være urørt: Sluk den, og tag kortet ud for at vende tilbage til det originale system."
 "Reading {partition}": "Læser {partition}"
 "Reinstall Thimsy Installer: its flashing tool isn't the version it expects.": "Geninstaller Thimsy Installer: dets flashværktøj er ikke den version, det forventer."

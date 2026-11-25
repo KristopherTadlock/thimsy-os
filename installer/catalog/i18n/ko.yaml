@@ -135,6 +135,7 @@
 "Point-and-click adventures": "포인트 앤 클릭 어드벤처"
 "Preparing partitions": "파티션 준비 중"
 "Preparing the partitions": "파티션 준비 중"
+"Put every part of the Thimsy package in the same folder, then choose them again.": "Thimsy 패키지의 모든 부분을 같은 폴더에 넣은 다음 다시 선택하세요."
 "Put the card in the {device} and turn it on. Thimsy runs from the card and leaves the {device}'s internal storage untouched: to go back to the original system, turn it off and take the card out.": "카드를 {device}에 넣고 전원을 켜세요. Thimsy는 카드에서 실행되며 {device}의 내부 저장소는 건드리지 않습니다. 원래 시스템으로 돌아가려면 전원을 끄고 카드를 빼세요."
 "Reading {partition}": "{partition} 읽는 중"
 "Reinstall Thimsy Installer: its flashing tool isn't the version it expects.": "Thimsy Installer를 다시 설치하세요. 플래시 도구가 예상한 버전이 아닙니다."

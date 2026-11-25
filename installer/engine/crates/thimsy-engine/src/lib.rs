@@ -43,4 +43,4 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// This installer's version as packages' `min_installer` names it: the
 /// engine version, with `-testN` for test N of it (see
 /// [`package::parse_version`]). Raised with every test release.
-pub const INSTALLER_VERSION: &str = "0.1.0-test20";
+pub const INSTALLER_VERSION: &str = "0.1.0-test21";
