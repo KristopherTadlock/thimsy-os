@@ -7,3 +7,9 @@
 *.zip binary
 # Third-party license texts stay byte for byte as published.
 mods/rom-licenses/** -text
+# Nano's source (docs/linux/IMPLEMENTATION.md A.2): bytes kept exactly as the patch has them, so
+# the patch's Nano block regenerates byte for byte. Diff still treats text as text.
+/nano/** -text
+# The patch's Nano block is generated from nano/ (tools/nano-tree/nano_tree.py regen); merges run
+# the nanopatch driver (nano_tree.py install-driver), and reviews read nano/, not the patch.
+patches/thimsy/0001-thimsy.patch merge=nanopatch -diff linguist-generated

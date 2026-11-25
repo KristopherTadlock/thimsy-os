@@ -1,8 +1,14 @@
 # Firmware downloads and build outputs are multi-GB and never committed.
 /work/
+# The GammaOS base cache of tools/nano-tree (inside /work/, named for clarity).
+/work/nano-base/
+/work/nano-assets/
 /out/
 *.7z
 *.7z.[0-9][0-9][0-9]
+# Nano's archive test fixtures are source (docs/linux/IMPLEMENTATION.md A.2).
+!/nano/**/*.7z
+!/nano/**/*.7z.[0-9][0-9][0-9]
 *.img
 *.pac
 __pycache__/

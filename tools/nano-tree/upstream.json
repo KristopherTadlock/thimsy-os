@@ -1,0 +1,28 @@
+{
+  "repo": "https://github.com/TheGammaSqueeze/GammaOSNextDistribution-14.git",
+  "base": "0bc531e2d64698316f28cedc8992ffa0e44f1a76",
+  "path": "frameworks/base/cmds/gammaos-nano",
+  "assets": [
+    "ps3xmb/**",
+    "nano_esde_themes/**",
+    "nano_esde_assets/**"
+  ],
+  "abbrev": 11,
+  "deleted": [],
+  "fork_only": [
+    "platform/linux/**",
+    "platform/host/**",
+    "test/host/**",
+    "compat/stubs/**",
+    "build/**",
+    "CMakeLists.txt",
+    "cmake/**",
+    "third_party/wpa_ctrl/**"
+  ],
+  "siblings": [
+    "frameworks/base/cmds/drastic-nano/DsScreenLayout.cpp",
+    "frameworks/base/cmds/drastic-nano/DsScreenLayout.h",
+    "frameworks/base/cmds/gammaos-sharefs/share_config.h",
+    "frameworks/native/services/surfaceflinger/gammargb/GammaRgbProcess.h"
+  ]
+}
