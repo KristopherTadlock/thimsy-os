@@ -5,7 +5,6 @@ ignored; the scraper credentials stay ignored; the index's executable bits are t
 from __future__ import annotations
 
 import os
-import subprocess
 import sys
 import unittest
 
@@ -20,11 +19,6 @@ from nanotree.patchfile import Patch  # noqa: E402
 
 NANO = os.path.join(ROOT, "nano")
 CREDENTIALS = ("screenscraper_dev.local.txt", "NanoScraperDevCreds.gen.h")
-
-
-def git(*args, input=None):
-    return subprocess.run(["git"] + list(args), cwd=ROOT, input=input, stdout=subprocess.PIPE,
-                          stderr=subprocess.PIPE)
 
 
 @unittest.skipUnless(os.path.isdir(NANO), "no nano/ in this checkout")
@@ -58,10 +52,7 @@ class NanoFiles(unittest.TestCase):
 
     def test_block_paths_not_ignored(self):
         paths = ["nano/" + self.rel(s) for s in self.block if not s.deleted]
-        proc = git("check-ignore", "--no-index", "-z", "--stdin",
-                   input=b"\0".join(p.encode("utf-8", "surrogateescape") for p in paths) + b"\0")
-        self.assertIn(proc.returncode, (0, 1), proc.stderr)
-        ignored = [p for p in proc.stdout.decode("utf-8", "replace").split("\0") if p]
+        ignored = self.fork.ignored(paths)
         self.assertEqual(ignored, [], "paths of the patch that git would ignore under nano/")
 
     def test_archive_fixtures_tracked(self):
@@ -69,9 +60,9 @@ class NanoFiles(unittest.TestCase):
         self.assertEqual(len(sevens), 6, sevens)
 
     def test_credentials_ignored(self):
+        paths = ["nano/" + name for name in CREDENTIALS]
+        self.assertEqual(sorted(self.fork.ignored(paths)), sorted(paths))
         for name in CREDENTIALS:
-            proc = git("check-ignore", "--no-index", "-q", "nano/" + name)
-            self.assertEqual(proc.returncode, 0, "nano/%s is not ignored" % name)
             self.assertNotIn(name, self.tracked)
 
     def test_modes_are_the_patchs(self):

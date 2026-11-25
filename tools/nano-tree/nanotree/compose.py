@@ -86,7 +86,7 @@ def composed_entries(cfg: Upstream, base_tree: Entries, nano: Entries) -> Entrie
     return result
 
 
-def _write(path: str, data: bytes, mode: str) -> None:
+def write_file(path: str, data: bytes, mode: str) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "wb") as f:
         f.write(data)
@@ -120,10 +120,10 @@ def compose(layout: Layout, cfg: Upstream, fork: Fork, cache: Cache, out: str,
     from_base = {rel: ent for rel, ent in want.items() if rel not in nano}
     blobs = cache.cat_blobs([sha for _m, sha in from_base.values()])
     for rel, (mode, sha) in sorted(from_base.items()):
-        _write(os.path.join(out, *rel.split("/")), blobs[sha], mode)
+        write_file(os.path.join(out, *rel.split("/")), blobs[sha], mode)
     for rel, (mode, _sha) in sorted(nano.items()):
         with open(os.path.join(layout.nano, *rel.split("/")), "rb") as f:
-            _write(os.path.join(out, *rel.split("/")), f.read(), mode)
+            write_file(os.path.join(out, *rel.split("/")), f.read(), mode)
     missing: List[str] = []
     if with_siblings and cfg.siblings:
         missing = export_siblings(layout, cfg, cache, os.path.join(out, "_siblings"))
@@ -169,7 +169,7 @@ def export_siblings(layout: Layout, cfg: Upstream, cache: Cache, out: str) -> Li
             if path not in ent:
                 continue  # deleted by the patch
             mode, sha = ent[path]
-            _write(os.path.join(out, *path.split("/")), cache.cat_blobs([sha])[sha], mode)
+            write_file(os.path.join(out, *path.split("/")), cache.cat_blobs([sha])[sha], mode)
         finally:
             cache.cleanup()
     return missing

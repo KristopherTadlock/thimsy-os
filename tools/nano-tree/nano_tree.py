@@ -83,19 +83,34 @@ def fetch_network(cache: Cache, cfg: Upstream, base: str, offline: bool = False)
     NANO_TREE_OFFLINE=1) never downloads and only reports what is missing."""
     init_cache(cache.path)
     g = cache.git
+    # The cache is a partial clone only while fetching (the -c settings below). Left in its config,
+    # a missing blob would make later reads try a download, and git 2.25's cat-file dies when that
+    # download is refused, so the settings a filtered fetch records are removed again.
+    promisor = ["-c", "remote.origin.promisor=true", "-c", "remote.origin.partialclonefilter=blob:none"]
     if not offline:
         if cache.git_rc("config", "remote.origin.url")[0] != 0:
             g("remote", "add", "origin", cfg.repo)
         else:
             g("config", "remote.origin.url", cfg.repo)
-        g("config", "core.repositoryformatversion", "1")
-        g("config", "extensions.partialclone", "origin")
-        g("config", "remote.origin.promisor", "true")
-        g("config", "remote.origin.partialclonefilter", "blob:none")
-    if not cache.has_commit(base):
-        if offline:
-            raise NanoTreeError("the cache lacks %s and NANO_TREE_OFFLINE is set" % base)
-        g("fetch", "-q", "--depth", "1", "--filter=blob:none", "--no-tags", "origin", base, network=True)
+    try:
+        if not cache.has_commit(base):
+            if offline:
+                raise NanoTreeError("the cache lacks %s and NANO_TREE_OFFLINE is set" % base)
+            g(*(promisor + ["fetch", "-q", "--depth", "1", "--filter=blob:none", "--no-tags", "origin",
+                            base]), network=True)
+            _not_partial(cache)
+        _fetch_blobs(cache, cfg, base, offline, promisor)
+    finally:
+        _not_partial(cache)
+
+
+def _not_partial(cache: Cache) -> None:
+    for key in ("remote.origin.promisor", "remote.origin.partialclonefilter", "extensions.partialclone"):
+        cache.git_rc("config", "--unset-all", key)
+
+
+def _fetch_blobs(cache: Cache, cfg: Upstream, base: str, offline: bool, promisor: list) -> None:
+    g = cache.git
     want = sorted({e[1] for e in cache.ls_tree("%s:%s" % (base, cfg.path)).values()})
     for sib in cfg.siblings:
         code, out, _ = cache.git_rc("ls-tree", "-z", base, "--", sib)
@@ -105,8 +120,8 @@ def fetch_network(cache: Cache, cfg: Upstream, base: str, offline: bool = False)
     if missing and offline:
         print("fetch: %d blob(s) missing; not downloaded (offline)" % len(missing), file=sys.stderr)
     elif missing:
-        base_args = ["-c", "fetch.negotiationAlgorithm=noop", "fetch", "-q", "origin", "--no-tags",
-                     "--recurse-submodules=no", "--filter=blob:none"]
+        base_args = promisor + ["-c", "fetch.negotiationAlgorithm=noop", "fetch", "-q", "origin",
+                                "--no-tags", "--recurse-submodules=no", "--filter=blob:none"]
         if git_version() >= (2, 29):
             g(*(base_args + ["--no-write-fetch-head", "--stdin"]), input=("\n".join(missing) + "\n").encode(),
               network=True)

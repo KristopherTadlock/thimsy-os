@@ -62,7 +62,8 @@ def run_git(args: List[str], cwd: Optional[str] = None, env: Optional[Dict[str, 
     proc = subprocess.run(["git"] + list(args), cwd=cwd, env=env, input=input,
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if check and proc.returncode not in tuple(ok_codes):
-        raise NanoTreeError("git %s failed (%d): %s" % (" ".join(args[:4]), proc.returncode,
+        shown = [a for i, a in enumerate(args) if a != "-c" and (i == 0 or args[i - 1] != "-c")]
+        raise NanoTreeError("git %s failed (%d): %s" % (" ".join(shown[:4]), proc.returncode,
                                                          proc.stderr.decode("utf-8", "replace").strip()))
     return proc.returncode, proc.stdout, proc.stderr
 
@@ -117,6 +118,21 @@ class Fork:
         code, out, _ = run_git(["cat-file", "blob", "%s:%s" % (rev, path)], cwd=self.root,
                                env=dict(os.environ, GIT_ALLOW_PROTOCOL="none"), check=False)
         return out if code == 0 else None
+
+    def ignored(self, paths: List[str]) -> List[str]:
+        """The PATHS (relative to the root) that git's ignore rules exclude, tracked or not. Read
+        through --verbose, because git before 2.27 also printed paths a `!` pattern re-includes."""
+        if not paths:
+            return []
+        out = self.git("check-ignore", "--no-index", "--verbose", "-z", "--stdin", ok_codes=(0, 1),
+                       input=b"\0".join(p.encode("utf-8", "surrogateescape") for p in paths) + b"\0")
+        fields = out.split(b"\0")
+        result = []
+        for i in range(0, len(fields) - 3, 4):
+            pattern, path = fields[i + 2], fields[i + 3]
+            if pattern and not pattern.startswith(b"!"):
+                result.append(path.decode("utf-8", "surrogateescape"))
+        return result
 
     def rev_parse(self, rev: str) -> Optional[str]:
         code, out, _ = run_git(["rev-parse", "--verify", "-q", rev + "^{commit}"], cwd=self.root,
@@ -248,7 +264,7 @@ class Cache:
 
     def index_tree(self, index: str, prefix: str) -> Dict[str, Tuple[str, str]]:
         """{path relative to PREFIX: (mode, blob)} of the index's entries under PREFIX."""
-        out = self.git("ls-files", "-s", "-z", "--", prefix, index=index)
+        out = self.git("ls-files", "-s", "-z", *(["--", prefix] if prefix else []), index=index)
         result = {}
         for rec in out.split(b"\0"):
             if not rec:

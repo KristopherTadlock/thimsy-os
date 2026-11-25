@@ -8,7 +8,8 @@ import sys
 import tempfile
 from typing import Dict, List, Optional, Tuple
 
-from .compose import MARKER, Entries, composed_entries, files_problems, tracked_entries, worktree_entries
+from .compose import (MARKER, Entries, composed_entries, files_problems,
+                      tracked_entries, worktree_entries, write_file)
 from .config import PATCH_REL, Layout, NanoTreeError, Upstream, base_from_fetch_script
 from .gitcache import Cache, Fork, posix
 from .patchfile import Patch, sha256
@@ -150,9 +151,7 @@ def apply_plan(layout: Layout, cfg: Upstream, plan: Plan, base_tree: Entries, na
                     os.remove(dest)
                     touched.append(rel)
                 continue
-        os.makedirs(os.path.dirname(dest), exist_ok=True)
-        with open(dest, "wb") as f:
-            f.write(data)
+        write_file(dest, data, mode)
         touched.append(rel)
         modes[rel] = mode
     for rel in plan.delete:
@@ -235,12 +234,7 @@ def import_tree(layout: Layout, cfg: Upstream, fork: Fork, cache: Cache, src: st
                 continue
             files.append(rel)
     files.sort()
-    ignored = set()
-    if files:
-        out = fork.git("check-ignore", "--no-index", "-z", "--stdin",
-                       input=b"\0".join(("nano/" + r).encode("utf-8", "surrogateescape") for r in files) + b"\0",
-                       ok_codes=(0, 1))
-        ignored = {p.decode("utf-8", "surrogateescape")[len("nano/"):] for p in out.split(b"\0") if p}
+    ignored = {p[len("nano/"):] for p in fork.ignored(["nano/" + r for r in files])}
     for r in sorted(ignored):
         log("import-tree: skipped (ignored): %s" % r)
     files = [r for r in files if r not in ignored]
@@ -265,10 +259,6 @@ def import_tree(layout: Layout, cfg: Upstream, fork: Fork, cache: Cache, src: st
         if os.path.isfile(dp):
             with open(dp, "rb") as f:
                 old = f.read()
-        if old != data:
-            os.makedirs(os.path.dirname(dp), exist_ok=True)
-            with open(dp, "wb") as f:
-                f.write(data)
         touched.append(rel)
         if os.name == "posix":
             modes[rel] = "100755" if os.stat(sp).st_mode & 0o111 else "100644"
@@ -280,6 +270,8 @@ def import_tree(layout: Layout, cfg: Upstream, fork: Fork, cache: Cache, src: st
             modes[rel] = base_tree[rel][0]
         else:
             modes[rel] = "100644"
+        if old != data or os.name == "posix":
+            write_file(dp, data, modes[rel])
     keep_set = set(keep)
     for rel in sorted(tracked):
         if rel in keep_set or cfg.is_fork_only(rel):

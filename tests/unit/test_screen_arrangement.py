@@ -3,7 +3,8 @@ mode), or shows the panel's display 0 (mirror mode); unplugged, the panel is dis
 (GammaosScreenArrangement, applied by LogicalDisplayMapper), and the old external display modes are
 cleared once. A monitor runs at Auto, its stored mode or a trial (monitorMode; the store and what
 gammaos-monitor-mode try refuses). Runs GammaosScreenArrangementCheck on the host: from the AOSP
-tree, or without one from the files patches/thimsy/0001-thimsy.patch creates.
+tree, or without one from the files patches/thimsy/0001-thimsy.patch creates (the check itself from
+nano/ first, where the fork's linux branch keeps Nano's source as files).
 """
 import os
 import shutil
@@ -15,6 +16,8 @@ REL_DISPLAY = "frameworks/base/services/core/java/com/android/server/display"
 REL_CHECK = "frameworks/base/cmds/gammaos-nano/test/java/GammaosScreenArrangementCheck.java"
 DISPLAY = os.path.join(util.AOSP, REL_DISPLAY)
 CHECK = os.path.join(util.AOSP, REL_CHECK)
+# Nano's source as files (the fork's linux branch); absent on nano-144.
+NANO_CHECK = os.path.join(util.ROOT, "nano", "test", "java", "GammaosScreenArrangementCheck.java")
 PATCH = os.path.join(util.ROOT, "patches", "thimsy", "0001-thimsy.patch")
 SOURCES = (REL_DISPLAY + "/GammaosScreenArrangement.java", REL_CHECK)
 
@@ -44,11 +47,15 @@ class ScreenArrangement(util.TestCase):
         work = tempfile.mkdtemp(prefix="thimsy-screens-")
         try:
             if os.path.isfile(CHECK):
-                sources = [os.path.join(DISPLAY, "GammaosScreenArrangement.java"), CHECK]
+                sources = [os.path.join(DISPLAY, "GammaosScreenArrangement.java"),
+                           NANO_CHECK if os.path.isfile(NANO_CHECK) else CHECK]
             else:
                 patch = util.slurp(PATCH, text=True)
                 sources = []
                 for rel in SOURCES:
+                    if rel == REL_CHECK and os.path.isfile(NANO_CHECK):
+                        sources.append(NANO_CHECK)
+                        continue
                     text = new_file(patch, rel)
                     self.assertIsNotNone(text, f"the patch doesn't create {rel}")
                     sources.append(os.path.join(work, os.path.basename(rel)))

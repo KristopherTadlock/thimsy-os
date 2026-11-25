@@ -1,7 +1,8 @@
 """Nano's USB-C role helper (NanoTypec) and its monitor mode helper (NanoMonitorMode), with their
 AOSP unit tests (test/unit/*_test.cpp), built with g++ and run on the host against a small stand-in
 for GoogleTest (tests/fixtures/nano_gtest). The sources come from the AOSP tree, or without one from
-the files patches/thimsy/0001-thimsy.patch creates. And nothing in the patch or the mods touches the
+the files patches/thimsy/0001-thimsy.patch creates; on the fork's linux branch, from nano/ first
+(Nano's source as files, docs/linux/IMPLEMENTATION.md A). And nothing in the patch or the mods touches the
 USB controller's mode file in debugfs.
 """
 import os
@@ -13,6 +14,8 @@ from tests import util
 from tests.unit import test_screen_arrangement as arrangement
 
 NANO = "frameworks/base/cmds/gammaos-nano"
+# Nano's source as files (the fork's linux branch); absent on nano-144.
+NANO_FILES = os.path.join(util.ROOT, "nano")
 PATCH = arrangement.PATCH
 GTEST = os.path.join(util.TESTS, "fixtures", "nano_gtest")
 # Each program: the helper's sources and its test.
@@ -25,12 +28,22 @@ PROGRAMS = {
 DWC3_DEBUGFS = re.compile(r"kernel/debug/[^\s\"']*dwc3")
 
 
-def nano_sources(rels, patch_text):
-    """The texts of Nano's files RELS: all from the AOSP tree when it has them all, else as the patch
-    creates them (None for a file it doesn't)."""
+def read_utf8(path):
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def nano_sources(rels, patch_text=None):
+    """The texts of Nano's files RELS: all from nano/ when it has them all, else all from the AOSP
+    tree when it has them all, else as the patch creates them (None for a file it doesn't)."""
+    paths = [os.path.join(NANO_FILES, rel) for rel in rels]
+    if all(os.path.isfile(p) for p in paths):
+        return [read_utf8(p) for p in paths]
     paths = [os.path.join(util.AOSP, NANO, rel) for rel in rels]
     if all(os.path.isfile(p) for p in paths):
         return [util.slurp(p, text=True) for p in paths]
+    if patch_text is None:
+        patch_text = util.slurp(PATCH, text=True)
     return [arrangement.new_file(patch_text, f"{NANO}/{rel}") for rel in rels]
 
 
@@ -39,12 +52,11 @@ class HostTests(util.TestCase):
         gxx = shutil.which("g++")
         if not gxx:
             self.skipTest("g++ isn't on PATH")
-        patch = util.slurp(PATCH, text=True)
         work = tempfile.mkdtemp(prefix="thimsy-nano-")
         try:
             files = []
-            for rel, text in zip(PROGRAMS[name], nano_sources(PROGRAMS[name], patch)):
-                self.assertIsNotNone(text, f"neither the AOSP tree nor the patch has {rel}")
+            for rel, text in zip(PROGRAMS[name], nano_sources(PROGRAMS[name])):
+                self.assertIsNotNone(text, f"neither nano/, the AOSP tree nor the patch has {rel}")
                 dest = os.path.join(work, rel)
                 os.makedirs(os.path.dirname(dest), exist_ok=True)
                 with open(dest, "w", encoding="utf-8") as f:
@@ -123,7 +135,7 @@ class MonitorModeDialogs(util.TestCase):
         """Output Resolution, Refresh Rate and Keep This Resolution? clear the Dual-Screen App prompt's
         flag: a prompt closed without an answer leaves it set, and X on the new dialog would then answer
         the prompt (adding its app to the run-on-primary list) instead of choosing a mode."""
-        text, = nano_sources(["NanoMenuMonitorMode.cpp"], util.slurp(PATCH, text=True))
+        text, = nano_sources(["NanoMenuMonitorMode.cpp"])
         self.assertIsNotNone(text)
         for name in ("monitorModeChooser", "monitorModeAsk"):
             start = text.index(f"void NanoMenu::{name}(")
@@ -136,9 +148,11 @@ class MonitorModeDialogs(util.TestCase):
         the Quick Menu, Game Settings). X and O drop a flag left set unless the open dialog is the
         prompt, before they would answer it: else X on Performance Mode's Normal would put the
         prompt's app on the run-on-primary list instead of choosing Normal."""
-        path = os.path.join(util.AOSP, NANO, "NanoMenuPS3Menu.cpp")
+        path = os.path.join(NANO_FILES, "NanoMenuPS3Menu.cpp")
+        if not os.path.isfile(path):
+            path = os.path.join(util.AOSP, NANO, "NanoMenuPS3Menu.cpp")
         if os.path.isfile(path):
-            text = util.slurp(path, text=True)
+            text = read_utf8(path)
         else:
             text = section_new_side(util.slurp(PATCH, text=True), f"{NANO}/NanoMenuPS3Menu.cpp")
         title = '"Dual-Screen App"'

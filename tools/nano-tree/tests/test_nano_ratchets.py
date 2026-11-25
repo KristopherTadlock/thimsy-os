@@ -1,5 +1,5 @@
 """Ratchets on nano/'s shared files (docs/linux/IMPLEMENTATION.md H.4). Fork-only checks: they live
-outside tests/, so they never gate an Android release build. Run with tests/run.sh nano, or:
+outside tests/, so they never gate an Android release build. Run them with
 
   python3 -m unittest discover -s tools/nano-tree/tests -t tools/nano-tree/tests
 
