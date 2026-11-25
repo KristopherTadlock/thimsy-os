@@ -12,7 +12,6 @@
     "FIRMWARE": "extra-firmware",
     "GRAPHIC_DRIVERS": "mali panfrost",
     "HW_CPU": "Rockchip RK3566",
-    "KERNEL_MAKE_EXTRACMD": " $(get_kernel_make_extracmd)",
     "KERNEL_TARGET": "Image",
     "MALI_FAMILY": "bifrost-g52",
     "OPENGLES": "mesa",

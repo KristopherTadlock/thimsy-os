@@ -62,7 +62,7 @@ class Options:
 
     def to_json(self) -> dict:
         return {
-            "values": OrderedDict((k, self.values[k]) for k in sorted(self.values)),
+            "values": OrderedDict((k, self.values[k]) for k in sorted(self.values) if k not in self.dynamic),
             "dynamic": sorted(self.dynamic),
             "sources": list(self.sources),
         }

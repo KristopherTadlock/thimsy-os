@@ -35,7 +35,8 @@ _UNKNOWN_LICENCE = re.compile(r"unknown|not redistributable|no licen[cs]e", re.I
 
 
 def parse_whence(text: str) -> "dict[str, str]":
-    """linux-firmware WHENCE: File:/RawFile:/Link: entries take the block's Licence: line."""
+    """linux-firmware WHENCE: File:/RawFile:/Link: entries take the block's Licence: line;
+    an entry whose block has no usable licence maps to ""."""
     out: "dict[str, str]" = {}
     pending: list = []
     licence = None
@@ -45,7 +46,7 @@ def parse_whence(text: str) -> "dict[str, str]":
             if licence and not _UNKNOWN_LICENCE.search(licence):
                 out[f] = licence
             else:
-                out.setdefault(f, "")
+                out.setdefault(f, "")   # listed, with no usable licence
     for line in text.splitlines():
         if line.startswith("----------"):
             flush()
@@ -66,7 +67,7 @@ def parse_whence(text: str) -> "dict[str, str]":
         if m and licence is None:
             licence = m.group(1)
     flush()
-    return {k: v for k, v in out.items() if v}
+    return out
 
 
 def parse_dat(text: str) -> list:
@@ -155,8 +156,8 @@ def _licence_for(path: str, whence: "dict[str, str] | None"):
     if any(c in path for c in "*?["):
         hits = sorted(f for f in whence if fnmatch.fnmatchcase(f, path))
         lic = sorted(set(whence[f] for f in hits))
-        return lic[0] if len(lic) == 1 and hits else None
-    return whence.get(path)
+        return lic[0] if len(lic) == 1 and hits and lic[0] else None
+    return whence.get(path) or None
 
 
 def apply_policy(entries: list, whence: "dict[str, str] | None") -> None:

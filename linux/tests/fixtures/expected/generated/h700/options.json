@@ -12,7 +12,6 @@
     "FIRMWARE": "",
     "GRAPHIC_DRIVERS": "panfrost",
     "HW_CPU": "Allwinner H700",
-    "KERNEL_MAKE_EXTRACMD": " $(get_kernel_make_extracmd)",
     "KERNEL_TARGET": "Image",
     "MALI_FAMILY": "g31",
     "OPENGLES": "mesa",

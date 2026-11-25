@@ -364,6 +364,8 @@ def unpack_patch_block(text: str | None, path: str):
     except StopIteration:
         raise ImportError_("%s: no PATCH_DIRS_PKG block" % path)
     b = a
+    while b < len(lines) and not lines[b].strip().startswith("for i in ${PKG_DIR}/patches/*.patch"):
+        b += 1
     while b < len(lines) and not lines[b].rstrip().endswith("; do"):
         b += 1
     if b == len(lines):
