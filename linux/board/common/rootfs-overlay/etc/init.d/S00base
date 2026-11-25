@@ -1,0 +1,126 @@
+#!/bin/sh
+# S00base: the base mounts, the boot disk, /storage and the first-boot tree.
+# SPDX-License-Identifier: MIT
+#
+# Synchronous (rcS). The boot disk is the disk the root came from; the data
+# partition is the partition named "data" on that disk only, and never on an
+# eMMC (device/type MMC): a second card or the internal storage may carry a
+# partition of the same name (decision I40). docs/init.md has the details.
+. "${THIMSY_ROOT:-}/usr/share/thimsy/init/lib.sh"
+
+TAG=S00base
+MOUNTED=
+
+read_mounts() {
+	MOUNTED=' '
+	[ -r "$R/proc/mounts" ] || return 0
+	while read -r _dev _mnt _rest; do
+		MOUNTED="$MOUNTED$_mnt "
+	done < "$R/proc/mounts"
+}
+
+is_mounted() {
+	case $MOUNTED in
+	*" $1 "*) return 0 ;;
+	esac
+	return 1
+}
+
+mount_base() {
+	read_mounts
+	if [ ! -r "$R/proc/mounts" ]; then
+		"$MOUNT" -t proc -o nodev,noexec,nosuid proc "$R/proc"
+		read_mounts
+	fi
+	is_mounted /sys || [ -d "$R/sys/class" ] ||
+		"$MOUNT" -t sysfs -o nodev,noexec,nosuid sysfs "$R/sys"
+	is_mounted /dev || [ -e "$R/dev/null" ] ||
+		"$MOUNT" -t devtmpfs -o nosuid,mode=0755 devtmpfs "$R/dev"
+	is_mounted /run ||
+		"$MOUNT" -t tmpfs -o nosuid,nodev,mode=0755 tmpfs "$R/run"
+	is_mounted /tmp ||
+		"$MOUNT" -t tmpfs -o nosuid,nodev,mode=1777 tmpfs "$R/tmp"
+	mkdir -p "$R/dev/pts" "$R/dev/shm" \
+		"$R/run/thimsy/props/ro" "$R/run/thimsy/log" "$R/run/thimsy/boot"
+	is_mounted /dev/shm ||
+		"$MOUNT" -t tmpfs -o nosuid,nodev,mode=1777 tmpfs "$R/dev/shm"
+	is_mounted /dev/pts ||
+		"$MOUNT" -t devpts -o nosuid,noexec,gid=5,mode=0620,ptmxmode=0666 devpts "$R/dev/pts"
+}
+
+mount_data() {
+	"$MOUNT" -t ext4 -o "$THIMSY_DATA_MOUNT_OPTS" "$R/dev/$DATA_PART" "$R/storage"
+}
+
+mount_storage() {
+	DATA_PART=
+	BOOT_EMMC=0
+	STORAGE_VOLATILE=0
+	if ! thimsy_resolve_boot_disk; then
+		thimsy_warn $TAG "boot disk not found"
+	elif thimsy_is_emmc "$BOOT_DISK"; then
+		BOOT_EMMC=1
+		thimsy_warn $TAG "boot disk $BOOT_DISK is an eMMC: its partitions are not used"
+	elif ! thimsy_find_part "$BOOT_DISK" data; then
+		thimsy_warn $TAG "no partition named data on $BOOT_DISK"
+	else
+		DATA_PART=$FOUND_PART
+	fi
+	thimsy_save_bootdisk
+	thimsy_log $TAG "boot disk ${BOOT_DISK:-none} (root ${ROOT_PART:-none} by ${BOOT_HOW:-nothing}), data ${DATA_PART:-none}"
+
+	is_mounted /storage && return 0
+	if [ -n "$DATA_PART" ]; then
+		if mount_data; then
+			return 0
+		fi
+		thimsy_warn $TAG "mounting $DATA_PART failed; checking it"
+		"$FSCK_EXT4" -p "$R/dev/$DATA_PART" > /dev/null 2>&1 # rcs-allow: FSCK_EXT4 (only after a failed mount)
+		if mount_data; then
+			return 0
+		fi
+	fi
+	STORAGE_VOLATILE=1
+	thimsy_warn $TAG "/storage is a tmpfs: nothing is kept this boot"
+	"$MOUNT" -t tmpfs -o nosuid,nodev,mode=0755 tmpfs "$R/storage"
+}
+
+# The tree /data and the Android paths point into (IMPLEMENTATION B.5).
+# Made once; the stamp is written last, so a power cut repeats it all, and
+# every step may be repeated.
+first_boot_tree() {
+	stamp=$THIMSY_CONFIG/.tree-v1
+	[ -e "$stamp" ] && return 0
+	thimsy_log $TAG "first boot: making the /storage tree"
+	d=$THIMSY_CONFIG/data
+	mkdir -p "$d/system" "$d/local/tmp" "$d/data" "$d/user" "$d/misc" \
+		"$d/gammaos_ota" "$d/media" \
+		"$THIMSY_CONFIG/ssh" "$THIMSY_CONFIG/home/root/.ssh" \
+		"$R/storage/.config/retroarch" "$R/storage/thimsy" \
+		"$R/storage/emulated/0" "$R/storage/self" || return 1
+	# Android: /data/user/0 is /data/data.
+	ln -sfn ../data "$d/user/0"
+	ln -sfn /storage/emulated/0 "$d/media/0"
+	ln -sfn /storage/emulated/0 "$R/storage/self/primary"
+	if [ ! -e "$THIMSY_CONFIG/localtime" ] && [ ! -L "$THIMSY_CONFIG/localtime" ]; then
+		ln -s /usr/share/zoneinfo/Etc/UTC "$THIMSY_CONFIG/localtime"
+	fi
+	chmod 0700 "$THIMSY_CONFIG/ssh" "$THIMSY_CONFIG/home/root" "$THIMSY_CONFIG/home/root/.ssh"
+	chmod 1777 "$d/local/tmp"
+	: > "$stamp"
+}
+
+case ${1:-start} in
+start)
+	mount_base
+	thimsy_mark s00-mounts
+	mount_storage
+	first_boot_tree || thimsy_warn $TAG "the /storage tree is incomplete"
+	thimsy_mark s00-done
+	;;
+stop) ;;
+*)
+	echo "usage: $0 start" >&2
+	exit 2
+	;;
+esac

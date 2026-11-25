@@ -1,0 +1,205 @@
+#!/bin/sh
+# D60firstboot: the games partition (GPT entry 5) on the boot disk.
+# SPDX-License-Identifier: MIT
+#
+# The written image has entries 1 to 4 only (IMPLEMENTATION E.6, decision
+# I39). On the first boot this script, on the boot disk only and never on an
+# eMMC (decision I40):
+#   0. moves the backup GPT to the end of the card if the image left it at
+#      the image's end (sfdisk --relocate gpt-bak-std);
+#   1. creates entry 5 over the free space after the last entry, typed Linux
+#      reserved and named "games";
+#   2. makes exFAT on it (label THIMSY);
+#   3. retypes it Microsoft basic data.
+# At no moment is there a basic-data entry without a filesystem: Android's
+# vold would offer to format the card, and Windows would offer to format the
+# partition. Each step is safe to repeat after a power cut: the state is
+# read from the GPT on every run, and an entry 5 that is still Linux reserved
+# and named games is ours and still empty, so it is formatted (again).
+#
+# An entry 5 of any other type or name is the user's and is left alone.
+. "${THIMSY_ROOT:-}/usr/share/thimsy/init/lib.sh"
+
+TAG=D60firstboot
+RESERVED=8da63339-0007-60c0-c436-083ac8230908
+BASICDATA=ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+LOG=$R/run/thimsy/log/firstboot.log
+LOCK=$R/run/thimsy/firstboot.lock
+
+# parse_entry LINE: one partition line of "sfdisk --dump".
+#   /dev/mmcblk1p4 : start=  1114112, size=  524288, type=933AC7E1-..., name="data"
+parse_entry() {
+	_node=${1%% : *}
+	_rest=${1#* : }
+	_n=${_node##*[!0-9]}
+	_start= _size= _type= _name=
+	_oldifs=$IFS
+	IFS=,
+	set -f
+	for _f in $_rest; do
+		while :; do
+			case $_f in
+			' '*) _f=${_f# } ;;
+			*) break ;;
+			esac
+		done
+		case $_f in
+		start=*) _start=${_f#start=} ;;
+		size=*) _size=${_f#size=} ;;
+		type=*) _type=${_f#type=} ;;
+		name=*)
+			_name=${_f#name=}
+			_name=${_name#\"}
+			_name=${_name%\"}
+			;;
+		esac
+	done
+	set +f
+	IFS=$_oldifs
+	_start=${_start##* }
+	_size=${_size##* }
+	case $_start$_size in
+	'' | *[!0-9]*) return 0 ;;
+	esac
+	_end=$((_start + _size))
+	if [ "$_end" -gt "$MAX_END" ]; then
+		MAX_END=$_end
+	fi
+	if [ "$_n" = 5 ]; then
+		thimsy_lower_hex "$_type"
+		P5=1
+		P5_TYPE=$LOWER_OUT
+		P5_NAME=$_name
+	fi
+}
+
+# read_table: LABEL, LAST_LBA, SSZ, MAX_END and entry 5 from the disk.
+read_table() {
+	LABEL= LAST_LBA= SSZ=512 MAX_END=0 P5= P5_TYPE= P5_NAME=
+	_dump=$("$SFDISK" --dump "$DISK_DEV" 2>> "$LOG") || return 1
+	while IFS= read -r _l; do
+		case $_l in
+		'label: '*) LABEL=${_l#label: } ;;
+		'last-lba: '*) LAST_LBA=${_l#last-lba: } ;;
+		'sector-size: '*) SSZ=${_l#sector-size: } ;;
+		*' : '*) parse_entry "$_l" ;;
+		esac
+	done <<EOF
+$_dump
+EOF
+	[ "$LABEL" = gpt ] && [ -n "$LAST_LBA" ]
+}
+
+# Steps 0 and 1. Returns 0 when entry 5 exists afterwards, 1 on an error,
+# 2 when there is no room for it.
+create_entry() {
+	align=$((1048576 / SSZ))
+	total=0
+	if [ -r "$R/sys/class/block/$BOOT_DISK/size" ]; then
+		read -r total < "$R/sys/class/block/$BOOT_DISK/size" || total=0
+	fi
+	total=$((total * 512 / SSZ))
+	if [ "$total" -gt 0 ] && [ $((total - LAST_LBA)) -gt "$align" ]; then
+		thimsy_log $TAG "moving the backup GPT to the end of $BOOT_DISK"
+		"$SFDISK" --relocate gpt-bak-std "$DISK_DEV" >> "$LOG" 2>&1 || return 1
+		read_table || return 1
+	fi
+	start=$(((MAX_END + align - 1) / align * align))
+	free_mib=$(((LAST_LBA + 1 - start) / align))
+	if [ "$free_mib" -lt "$THIMSY_GAMES_MIN_MIB" ]; then
+		thimsy_warn $TAG "only $free_mib MiB free on $BOOT_DISK: no games partition"
+		return 2
+	fi
+	thimsy_log $TAG "creating entry 5 at sector $start ($free_mib MiB), Linux reserved"
+	# --force: the disk is in use (root and /storage are mounted), which
+	# sfdisk refuses otherwise; it still tells the kernel about the new entry.
+	printf 'start=%s, type=%s, name="%s"\n' "$start" "$RESERVED" "$THIMSY_GAMES_NAME" |
+		"$SFDISK" --force -N 5 "$DISK_DEV" >> "$LOG" 2>&1 || return 1
+	"$SYNC"
+	read_table || return 1
+	[ -n "$P5" ]
+}
+
+# Steps 2 and 3.
+format_and_retype() {
+	thimsy_partname "$BOOT_DISK" 5
+	part=$PARTNAME_OUT
+	i=0
+	while [ ! -e "$R/dev/$part" ]; do
+		if [ "$i" -ge 5 ]; then
+			thimsy_warn $TAG "no /dev/$part yet; finishing at the next boot"
+			return 0
+		fi
+		sleep 1
+		i=$((i + 1))
+	done
+	thimsy_log $TAG "making exFAT $THIMSY_GAMES_LABEL on $part"
+	"$MKFS_EXFAT" -L "$THIMSY_GAMES_LABEL" "$R/dev/$part" >> "$LOG" 2>&1 || {
+		thimsy_warn $TAG "mkfs.exfat failed on $part"
+		return 1
+	}
+	"$SYNC" || return 1
+	thimsy_log $TAG "retyping entry 5 basic data"
+	"$SFDISK" --part-type "$DISK_DEV" 5 "$BASICDATA" >> "$LOG" 2>&1 || {
+		thimsy_warn $TAG "retyping entry 5 failed"
+		return 1
+	}
+	"$SYNC" || return 1
+	# The kernel sent "add" when the entry appeared, before it had a
+	# filesystem; ask it to announce the partition again for thimsy-session.
+	{ echo change > "$R/sys/class/block/$part/uevent"; } 2>/dev/null || :
+	thimsy_warn $TAG "games partition $part ready"
+}
+
+firstboot() {
+	if ! thimsy_load_bootdisk && ! thimsy_resolve_boot_disk; then
+		thimsy_log $TAG "boot disk unknown: nothing done"
+		return 0
+	fi
+	if thimsy_is_emmc "$BOOT_DISK"; then
+		thimsy_log $TAG "boot disk $BOOT_DISK is an eMMC: nothing done"
+		return 0
+	fi
+	DISK_DEV=$R/dev/$BOOT_DISK
+	if ! read_table; then
+		thimsy_warn $TAG "no GPT readable on $BOOT_DISK"
+		return 1
+	fi
+	if [ -z "$P5" ]; then
+		create_entry
+		rc=$?
+		[ "$rc" -eq 2 ] && return 0
+		[ "$rc" -eq 0 ] || {
+			thimsy_warn $TAG "creating entry 5 failed"
+			return 1
+		}
+	fi
+	if [ "$P5_TYPE" = "$BASICDATA" ]; then
+		thimsy_log $TAG "entry 5 is basic data: nothing to do"
+		return 0
+	fi
+	if [ "$P5_TYPE" != "$RESERVED" ] || [ "$P5_NAME" != "$THIMSY_GAMES_NAME" ]; then
+		thimsy_log $TAG "entry 5 is not Thimsy's ($P5_TYPE, \"$P5_NAME\"): left alone"
+		return 0
+	fi
+	format_and_retype
+}
+
+case ${1:-start} in
+start)
+	mkdir -p "$R/run/thimsy/log"
+	if ! mkdir "$LOCK" 2>/dev/null; then
+		thimsy_log $TAG "already running"
+		exit 0
+	fi
+	firstboot
+	rc=$?
+	rmdir "$LOCK" 2>/dev/null
+	exit $rc
+	;;
+stop) ;;
+*)
+	echo "usage: $0 start|stop" >&2
+	exit 2
+	;;
+esac

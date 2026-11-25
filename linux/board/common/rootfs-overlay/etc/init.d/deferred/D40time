@@ -1,0 +1,40 @@
+#!/bin/sh
+# D40time: BusyBox ntpd. The kernel has already set the clock from the RTC.
+# SPDX-License-Identifier: MIT
+#
+# ntpd keeps retrying until the network is up, so it does not wait for
+# D30net. persist.thimsy.time.ntp=0 turns it off.
+. "${THIMSY_ROOT:-}/usr/share/thimsy/init/lib.sh"
+
+TAG=D40time
+PIDFILE=$R/run/ntpd.pid
+
+case ${1:-start} in
+start)
+	thimsy_persist persist.thimsy.time.ntp 1
+	[ "$PERSIST_OUT" = 0 ] && exit 0
+	command -v "$NTPD" > /dev/null 2>&1 || exit 0
+	peers=
+	for s in $THIMSY_NTP_SERVERS; do
+		peers="$peers -p $s"
+	done
+	# shellcheck disable=SC2086
+	"$NTPD" -n $peers > /dev/null 2>&1 &
+	printf '%s\n' "$!" > "$PIDFILE"
+	thimsy_log $TAG "ntpd started"
+	;;
+stop)
+	[ -r "$PIDFILE" ] || exit 0
+	pid=
+	read -r pid < "$PIDFILE" || :
+	case $pid in
+	'' | *[!0-9]*) ;;
+	*) kill "$pid" 2>/dev/null ;;
+	esac
+	rm -f "$PIDFILE"
+	;;
+*)
+	echo "usage: $0 start|stop" >&2
+	exit 2
+	;;
+esac

@@ -1,0 +1,14 @@
+#!/bin/sh
+# D05family: the family's hook after the first frame (THIMSY_HOOK=deferred),
+# for example the CPU governor back from "performance" to its everyday one.
+# SPDX-License-Identifier: MIT
+. "${THIMSY_ROOT:-}/usr/share/thimsy/init/lib.sh"
+
+case ${1:-start} in
+start) thimsy_family_hook deferred ;;
+stop) ;;
+*)
+	echo "usage: $0 start|stop" >&2
+	exit 2
+	;;
+esac

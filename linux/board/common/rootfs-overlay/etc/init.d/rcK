@@ -1,0 +1,83 @@
+#!/bin/sh
+# rcK: BusyBox init's shutdown action, before it signals everything left,
+# syncs and reboots or powers off.
+# SPDX-License-Identifier: MIT
+#
+# 1. the game's process group (TERM, 3 s, KILL);
+# 2. the deferred services, in reverse order (rcD stop: sound state saved);
+# 3. every other process (TERM, at most 5 s, KILL), so /storage is not busy;
+# 4. sync; unmount the drives under /storage, then /storage itself; a mount
+#    that will not go is remounted read-only.
+. "${THIMSY_ROOT:-}/usr/share/thimsy/init/lib.sh"
+
+thimsy_log rcK "shutdown"
+
+# kill_group PGID: TERM the group, wait up to 3 s, then KILL it.
+kill_group() {
+	kill -TERM "-$1" 2>/dev/null || return 0
+	i=0
+	while kill -0 "-$1" 2>/dev/null && [ "$i" -lt 30 ]; do
+		sleep 0.1 2>/dev/null || sleep 1
+		i=$((i + 1))
+	done
+	kill -KILL "-$1" 2>/dev/null || :
+}
+
+# user_processes_left: true while a process other than init, the kernel's
+# threads and this script remains.
+user_processes_left() {
+	for p in /proc/[0-9]*; do
+		n=${p#/proc/}
+		[ "$n" = 1 ] || [ "$n" = 2 ] || [ "$n" = "$$" ] && continue
+		[ -r "$p/stat" ] || continue
+		read -r _pid _comm _state _ppid _rest < "$p/stat" 2>/dev/null || continue
+		[ "$_ppid" = 2 ] && continue
+		[ "$_ppid" = "$$" ] && continue
+		return 0
+	done
+	return 1
+}
+
+# 1. The game. Signals are never sent from a test root (THIMSY_ROOT set).
+if [ -z "$R" ] && [ -r "$R/run/thimsy/props/sys.thimsy.game.pid" ]; then
+	game=
+	read -r game < "$R/run/thimsy/props/sys.thimsy.game.pid" || :
+	case $game in
+	'' | *[!0-9]* | 0 | 1) ;;
+	*) kill_group "$game" ;;
+	esac
+fi
+
+# 2. The deferred services.
+if [ -x "$R/etc/init.d/rcD" ]; then
+	"$R/etc/init.d/rcD" stop
+fi
+
+# 3. Everyone else. Never in a test root: that would signal the host.
+if [ -z "$R" ]; then
+	kill -TERM -1 2>/dev/null
+	i=0
+	while user_processes_left && [ "$i" -lt 50 ]; do
+		sleep 0.1 2>/dev/null || sleep 1
+		i=$((i + 1))
+	done
+	kill -KILL -1 2>/dev/null
+fi
+
+# 4. Disks.
+"$SYNC"
+mounts=
+if [ -r "$R/proc/mounts" ]; then
+	while read -r _dev mnt _rest; do
+		case $mnt in
+		/storage/*) mounts="$mnt $mounts" ;;
+		esac
+	done < "$R/proc/mounts"
+fi
+for mnt in $mounts /storage; do
+	"$UMOUNT" "$R$mnt" 2>/dev/null ||
+		"$MOUNT" -o remount,ro "$R$mnt" 2>/dev/null ||
+		thimsy_kmsg "rcK: $mnt stays mounted"
+done
+"$SYNC"
+thimsy_kmsg "rcK done"

@@ -1,0 +1,15 @@
+# /etc/inittab: BusyBox init (docs/init.md).
+# SPDX-License-Identifier: MIT
+#
+# /init (FlipBase's, taken at the merge) mounts what it needs, starts the
+# splash and execs BusyBox init, which reads this file.
+#
+# rcS runs the synchronous S* scripts and must stay short: everything slow
+# waits for Nano's first frame, after which thimsy-session runs
+# /etc/init.d/rcD (the deferred D* scripts) in the background.
+::sysinit:/etc/init.d/rcS
+::respawn:/usr/libexec/thimsy/session
+::shutdown:/etc/init.d/rcK
+::ctrlaltdel:/sbin/reboot
+# Dev images get a serial getty here from post-build.d/30-permissions.sh;
+# release images get none (decision I37).
