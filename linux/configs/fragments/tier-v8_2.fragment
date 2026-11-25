@@ -1,0 +1,4 @@
+# The ARMv8.2 tier (Cortex-A55 and newer: RK3566, RK3576, RK3588 and the
+# Qualcomm families).
+BR2_cortex_a55=y
+BR2_ROOTFS_POST_SCRIPT_ARGS="tier v8_2"

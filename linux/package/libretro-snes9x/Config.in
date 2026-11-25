@@ -1,0 +1,16 @@
+config BR2_PACKAGE_LIBRETRO_SNES9X
+	bool "libretro-snes9x"
+	depends on BR2_PACKAGE_RETROARCH
+	depends on BR2_INSTALL_LIBSTDCPP
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	help
+	  The snes9x core for RetroArch: Super Nintendo.
+
+	  Set: alpha (IMPLEMENTATION.md E.3). Licence: Snes9x licence
+	  (non-commercial).
+
+	  https://github.com/libretro/snes9x
+
+comment "libretro-snes9x needs a toolchain w/ C++, threads"
+	depends on BR2_PACKAGE_RETROARCH
+	depends on !BR2_INSTALL_LIBSTDCPP || !BR2_TOOLCHAIN_HAS_THREADS

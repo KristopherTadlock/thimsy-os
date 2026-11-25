@@ -1,0 +1,25 @@
+config BR2_PACKAGE_THIMSY_GPU_PACK
+	bool "thimsy-gpu-pack"
+	depends on BR2_PACKAGE_MESA3D
+	select BR2_PACKAGE_HOST_EROFS_UTILS
+	help
+	  Packs the driver files of this tree's Mesa build into one
+	  EROFS image per driver set, gpu-<driver>.erofs, mounted
+	  over the tier root at boot (decision D25).
+
+if BR2_PACKAGE_THIMSY_GPU_PACK
+
+config BR2_PACKAGE_THIMSY_GPU_PACK_PANFROST
+	bool "gpu-panfrost"
+	depends on BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_PANFROST
+	help
+	  Panfrost (Mali Midgard, Bifrost and Valhall), OpenGL ES.
+
+config BR2_PACKAGE_THIMSY_GPU_PACK_SWRAST
+	bool "gpu-swrast"
+	depends on BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SWRAST
+	help
+	  Software rendering (softpipe, no LLVM), for QEMU's
+	  virtio-gpu without virgl (decision I8).
+
+endif

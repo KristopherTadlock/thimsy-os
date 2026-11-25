@@ -1,0 +1,15 @@
+config BR2_PACKAGE_THIMSY_PADD
+	bool "thimsy-padd"
+	depends on BR2_INSTALL_LIBSTDCPP
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	depends on BR2_TOOLCHAIN_GCC_AT_LEAST_7 # C++17
+	select BR2_PACKAGE_LIBTHIMSY
+	help
+	  Reads the device's input nodes and presents one virtual
+	  gamepad, "Thimsy Gamepad", through uinput (decisions D23
+	  and I13; IMPLEMENTATION.md F.2). The kernel needs
+	  CONFIG_INPUT_UINPUT. MIT.
+
+comment "thimsy-padd needs a toolchain w/ C++, threads, gcc >= 7"
+	depends on !BR2_INSTALL_LIBSTDCPP || !BR2_TOOLCHAIN_HAS_THREADS || \
+		!BR2_TOOLCHAIN_GCC_AT_LEAST_7

@@ -1,0 +1,35 @@
+# The RK3566 hardware pack (wave 0: the RG ARC-D and ARC-S). The kernel version,
+# DTB list and firmware come from generated/rk3566/defconfig.fragment, written
+# by hand in Phase 2a and by thimsy-import later (plan 3.2).
+BR2_ROOTFS_POST_SCRIPT_ARGS="hw rk3566"
+
+# Kernel: ROCKNIX's RK3566 config and patches (gpl/generated/rk3566/), then
+# FlipBase's RK3566-generic patches and Thimsy's (gpl/board/rk3566/), then
+# Thimsy's fragment on top.
+BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG=y
+BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="$(BR2_EXTERNAL_THIMSY_PATH)/gpl/generated/rk3566/linux/config"
+BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_THIMSY_PATH)/board/rk3566/linux.fragment"
+BR2_LINUX_KERNEL_PATCH="$(BR2_EXTERNAL_THIMSY_PATH)/gpl/generated/rk3566/linux/patches $(BR2_EXTERNAL_THIMSY_PATH)/gpl/board/rk3566/linux/patches"
+BR2_LINUX_KERNEL_DTS_SUPPORT=y
+
+# U-Boot: mainline's rgxx3 board with FlipBase's 2026.10 series and the
+# RG353PS fork's two fixes (plan 3.2); rkbin's DDR blob as TPL. BL31: rkbin's
+# for now, the redistributable choice; decision D18 and Phase 0's sleep test
+# settle it (rkbin file names: guess).
+BR2_TARGET_UBOOT=y
+BR2_TARGET_UBOOT_BUILD_SYSTEM_KCONFIG=y
+BR2_TARGET_UBOOT_CUSTOM_VERSION=y
+BR2_TARGET_UBOOT_CUSTOM_VERSION_VALUE="2026.10"
+BR2_TARGET_UBOOT_BOARD_DEFCONFIG="anbernic-rgxx3-rk3566"
+BR2_TARGET_UBOOT_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_THIMSY_PATH)/board/rk3566/uboot/uboot.fragment"
+BR2_TARGET_UBOOT_PATCH="$(BR2_EXTERNAL_THIMSY_PATH)/gpl/board/rk3566/uboot/patches"
+BR2_TARGET_UBOOT_NEEDS_DTC=y
+BR2_TARGET_UBOOT_NEEDS_PYLIBFDT=y
+BR2_TARGET_UBOOT_NEEDS_PYELFTOOLS=y
+BR2_TARGET_UBOOT_NEEDS_OPENSSL=y
+BR2_TARGET_UBOOT_NEEDS_ROCKCHIP_RKBIN=y
+BR2_PACKAGE_ROCKCHIP_RKBIN=y
+BR2_PACKAGE_ROCKCHIP_RKBIN_TPL_FILENAME="bin/rk35/rk3568_ddr_1560MHz_v1.26.bin"
+BR2_PACKAGE_ROCKCHIP_RKBIN_BL31_FILENAME="bin/rk35/rk3568_bl31_v1.44.elf"
+BR2_TARGET_UBOOT_FORMAT_CUSTOM=y
+BR2_TARGET_UBOOT_FORMAT_CUSTOM_NAME="u-boot-rockchip.bin"

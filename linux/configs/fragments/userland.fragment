@@ -1,0 +1,42 @@
+# The userland every tier carries (IMPLEMENTATION.md E.4's tier row): Nano and
+# its services, sound, Wi-Fi, SSH and the filesystems' tools. Kept apart from
+# the tier fragments, which differ only in CPU tuning, so the list is written
+# once (principle 5).
+BR2_PACKAGE_LIBTHIMSY=y
+BR2_PACKAGE_THIMSY_NANO=y
+BR2_PACKAGE_THIMSY_NANO_SCRAPE=y
+BR2_PACKAGE_THIMSY_DATA=y
+BR2_PACKAGE_THIMSY_SESSION=y
+BR2_PACKAGE_THIMSY_PADD=y
+BR2_PACKAGE_THIMSY_FONTS=y
+
+# Network: the scraper and RetroAchievements over HTTPS.
+BR2_PACKAGE_LIBCURL=y
+BR2_PACKAGE_LIBCURL_OPENSSL=y
+# BR2_PACKAGE_LIBCURL_CURL is not set
+BR2_PACKAGE_CA_CERTIFICATES=y
+BR2_PACKAGE_WPA_SUPPLICANT=y
+BR2_PACKAGE_WPA_SUPPLICANT_NL80211=y
+BR2_PACKAGE_WPA_SUPPLICANT_CTRL_IFACE=y
+BR2_PACKAGE_WPA_SUPPLICANT_WPA3=y
+BR2_PACKAGE_WIRELESS_REGDB=y
+# SSH: present, started by thimsy-session's D50ssh only when the user turns it
+# on (or at boot on dev images), key-only unless dev.fragment allows passwords.
+BR2_PACKAGE_DROPBEAR=y
+BR2_PACKAGE_DROPBEAR_DISABLE_REVERSEDNS=y
+# BR2_PACKAGE_DROPBEAR_CLIENT is not set
+
+# Sound: alsactl restores the mixer in D20sound.
+BR2_PACKAGE_ALSA_UTILS=y
+BR2_PACKAGE_ALSA_UTILS_ALSACTL=y
+BR2_PACKAGE_ALSA_UTILS_AMIXER=y
+# BR2_PACKAGE_ALSA_UTILS_ALSAMIXER is not set
+
+# Filesystems: the ext4 data partition, exFAT and FAT32 game drives (D10cards,
+# D60firstboot).
+BR2_PACKAGE_E2FSPROGS=y
+BR2_PACKAGE_EXFATPROGS=y
+BR2_PACKAGE_DOSFSTOOLS=y
+BR2_PACKAGE_DOSFSTOOLS_FSCK_FAT=y
+
+BR2_TARGET_TZ_INFO=y

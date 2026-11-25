@@ -1,0 +1,4 @@
+# The ARMv8.0 tier (Cortex-A53 and newer: RK3326, H700, S922X's little cores
+# and every v8.2 device). Its tree also builds the GPU packs (decision D25).
+BR2_cortex_a53=y
+BR2_ROOTFS_POST_SCRIPT_ARGS="tier v8_0"

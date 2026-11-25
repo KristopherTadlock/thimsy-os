@@ -1,0 +1,10 @@
+config BR2_PACKAGE_THIMSY_DATA
+	bool "thimsy-data"
+	depends on BR2_PACKAGE_THIMSY_NANO
+	help
+	  Nano's assets, installed to /usr/share/thimsy/system/etc/
+	  from an allowlist that linux/tools/assets_allowlist.py
+	  generates from ASSETS.md's KEEP rows (decision I38). Nano
+	  falls back where an asset is missing.
+
+	  Licences per ASSETS.md; the controller art is CC BY-NC 4.0.

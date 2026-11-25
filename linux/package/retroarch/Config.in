@@ -1,0 +1,25 @@
+config BR2_PACKAGE_RETROARCH
+	bool "retroarch"
+	depends on BR2_INSTALL_LIBSTDCPP
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	depends on BR2_PACKAGE_HAS_LIBEGL
+	depends on BR2_PACKAGE_HAS_LIBGLES
+	depends on BR2_PACKAGE_HAS_LIBGBM
+	depends on BR2_PACKAGE_HAS_UDEV # libudev-zero
+	select BR2_PACKAGE_LIBDRM
+	select BR2_PACKAGE_ALSA_LIB
+	select BR2_PACKAGE_ZLIB
+	help
+	  RetroArch on KMS/DRM with EGL and OpenGL ES 3, ALSA and
+	  libudev (libudev-zero); no X11, Wayland, Qt or PulseAudio.
+	  The version is the Android build's; Thimsy's patches live
+	  in linux/gpl/patches/retroarch/. GPL-3.0.
+
+	  https://github.com/libretro/RetroArch
+
+comment "retroarch needs a toolchain w/ C++, threads"
+	depends on !BR2_INSTALL_LIBSTDCPP || !BR2_TOOLCHAIN_HAS_THREADS
+
+comment "retroarch needs EGL, OpenGL ES, GBM and libudev"
+	depends on !BR2_PACKAGE_HAS_LIBEGL || !BR2_PACKAGE_HAS_LIBGLES || \
+		!BR2_PACKAGE_HAS_LIBGBM || !BR2_PACKAGE_HAS_UDEV

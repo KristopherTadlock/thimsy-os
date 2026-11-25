@@ -1,0 +1,225 @@
+#!/bin/sh
+# Builds one Thimsy Base target with Buildroot in Docker (IMPLEMENTATION.md E.8;
+# FlipBase's build.sh is the pattern).
+#
+# Usage: linux/build.sh [options] TARGET [make target ...]
+#   TARGET     a target of configs/targets.json (python3 tools/defconfig.py --list):
+#              a CPU tier's userland with its GPU packs, or a family's hardware pack
+#   --publish  a public build: only a target marked "publish": true (a release),
+#              from a clean tree at a tagged commit; adds legal-info and a git
+#              archive of the whole repository (decisions D16, I37, I41)
+#   --dry-run  print the steps in order and run none of them
+#   --clean    start from an empty output tree
+#   --force=I-checked-no-android-build-runs
+#              passed to tools/build_guard.sh: skips its memory and load checks only
+#   -h, --help
+# "linux/build.sh card DEVICE" (a per-device card) is step G8's, not written yet.
+#
+# Order: the target's own checks (it exists, its defconfig is current, the
+# files it names exist, --publish only for a publish target); then
+# tools/build_guard.sh, which refuses while the Android build may be running
+# and holds /mnt/wsl/thimsy-build.lock for the rest of the run; then git archive
+# tarballs of libthimsy/ and nano/ at HEAD and the exported Nano assets, with
+# hash files, into the download directory (E.1: the recipes build from them, so
+# legal-info saves them and nothing untracked reaches an image); then Buildroot
+# in a debian:trixie-slim container, as an amd64 cross build.
+# Make targets default to "all sdk" for a tier (the hardware packs build with
+# its SDK) and "all" for a hardware pack.
+#
+# THIMSY_WORK (default <repo>/work/linux): dl/ (downloads; dl/thimsy-src/ the
+#   tarballs), images/<target>/ and build logs.
+# THIMSY_BUILD_DIR (default <work>/build): Buildroot, the output trees, ccache
+#   and the unpacked SDK. ext4 only: never under /mnt/<drive> (plan section 10).
+# THIMSY_PYTHON (default python3) runs tools/defconfig.py.
+#
+# Exit status: 0 built (or dry run), 1 the build failed, 2 usage or an unknown
+# target, 3 refused by the guard, 4 refused by the target's checks.
+set -eu
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+REPO="$(cd "$HERE/.." && pwd)"
+# Buildroot: FlipBase's pin (plan 3.1), so its tree merges without a version move.
+BR_VERSION="2026.08.2"
+BR_SHA256="bc9497c8e3a734c277e541e2f7fcf9a6275dc92f75bd2f753b05981c54be8705"
+DOCKER_IMAGE="debian:trixie-slim"
+PLATFORM="linux/amd64"
+PY="${THIMSY_PYTHON:-python3}"
+WORK="${THIMSY_WORK:-$REPO/work/linux}"
+BUILD_DIR="${THIMSY_BUILD_DIR:-$WORK/build}"
+SDK_NAME="aarch64-buildroot-linux-gnu_sdk-buildroot"
+
+say() { printf 'build.sh: %s\n' "$*" >&2; }
+die() { code="$1"; shift; say "$*"; exit "$code"; }
+
+publish=0 dry=0 clean=0 force="" guarded=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --publish) publish=1 ;;
+    --dry-run) dry=1 ;;
+    --clean) clean=1 ;;
+    --force=*) force="$1" ;;
+    --guarded) guarded=1 ;;  # internal: re-run by build_guard.sh, holding the lock
+    -h | --help) sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --) shift; break ;;
+    -*) die 2 "unknown option $1 (see --help)" ;;
+    *) break ;;
+  esac
+  shift
+done
+[ $# -ge 1 ] || die 2 "no target given (see --help; tools/defconfig.py --list)"
+TARGET="$1"
+shift
+[ "$TARGET" != card ] || die 2 "card assembly is step G8's and is not written yet"
+MAKE_TARGETS="$*"
+
+# step NAME TEXT: one line of the plan. A dry run prints it; a real run logs it.
+step() {
+  if [ "$dry" = 1 ]; then printf '%s: %s\n' "$1" "$2"; else say "$1: $2"; fi
+}
+# check TEXT: a refusal that a dry run reports and continues past.
+check() {
+  if [ "$dry" = 1 ]; then printf 'check: would refuse: %s\n' "$1"; else die 4 "refused: $1"; fi
+}
+
+# -- The target's own checks: read-only and quick, before the guard. ---------
+info="$("$PY" "$HERE/tools/defconfig.py" --info "$TARGET")" ||
+  die 2 "unknown target $TARGET; known: $("$PY" "$HERE/tools/defconfig.py" --list | tr '\n' ' ')"
+field() { printf '%s\n' "$info" | sed -n "s/^$1=//p"; }
+KIND="$(field kind)"
+SDK_FROM="$(field sdk_from)"
+if [ "$publish" = 1 ] && [ "$(field publish)" != true ]; then
+  die 4 "refused: --publish: $TARGET is not marked \"publish\": true in configs/targets.json; publishable: $("$PY" "$HERE/tools/defconfig.py" --list --publish | tr '\n' ' ')"
+fi
+[ "$(field errors)" = 0 ] || die 4 "refused: $TARGET's fragments do not merge (tools/defconfig.py --check)"
+"$PY" "$HERE/tools/defconfig.py" --check >/dev/null 2>&1 ||
+  check "the defconfigs are stale or the tree fails its lint: run tools/defconfig.py --check"
+missing="$(field missing)"
+[ -z "$missing" ] || check "$TARGET needs files that do not exist yet: $missing"
+case "$REPO" in
+  /mnt/[a-z]/* | /[a-z]/*) check "the tree is on a Windows drive ($REPO); build from an ext4 clone" ;;
+esac
+case "$BUILD_DIR" in
+  /mnt/[a-z]/* | /[a-z]/*) check "THIMSY_BUILD_DIR is on a Windows drive ($BUILD_DIR); use ext4" ;;
+esac
+TAG=""
+if [ "$publish" = 1 ]; then
+  [ -z "$(git -C "$REPO" status --porcelain 2>/dev/null)" ] ||
+    check "--publish needs a clean tree (git status shows changes)"
+  TAG="$(git -C "$REPO" describe --exact-match --tags HEAD 2>/dev/null)" ||
+    check "--publish needs HEAD to carry a release tag"
+fi
+if [ -z "$MAKE_TARGETS" ]; then
+  if [ "$KIND" = tier ]; then MAKE_TARGETS="all sdk"; else MAKE_TARGETS="all"; fi
+fi
+[ "$publish" = 0 ] || MAKE_TARGETS="$MAKE_TARGETS legal-info"
+
+# -- The guard, before any work. It re-runs this script holding the lock. ----
+if [ "$guarded" = 0 ]; then
+  step guard "sh tools/build_guard.sh${force:+ $force} -- (this script, holding the build lock)"
+  if [ "$dry" = 0 ]; then
+    set -- "$TARGET" "$@"
+    [ "$clean" = 0 ] || set -- --clean "$@"
+    [ "$publish" = 0 ] || set -- --publish "$@"
+    exec sh "$HERE/tools/build_guard.sh" ${force:+"$force"} -- sh "$HERE/build.sh" --guarded "$@"
+  fi
+fi
+
+# run CMD...: run it, or print it in a dry run.
+run() {
+  if [ "$dry" = 1 ]; then return 0; fi
+  "$@"
+}
+sha256() { sha256sum "$1" | cut -d' ' -f1; }
+
+DL="$WORK/dl"
+SRC="$DL/thimsy-src"
+IMAGES="$WORK/images/$TARGET"
+SHA="$(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo unknown)"
+run mkdir -p "$SRC" "$IMAGES" "$BUILD_DIR"
+
+# -- Buildroot itself, checked against its pinned hash. -----------------------
+BR_TAR="$DL/buildroot-$BR_VERSION.tar.xz"
+step buildroot "buildroot-$BR_VERSION.tar.xz into $DL, sha256 $BR_SHA256"
+if [ "$dry" = 0 ] && [ "$(sha256 "$BR_TAR" 2>/dev/null)" != "$BR_SHA256" ]; then
+  curl -fSL --retry 3 -o "$BR_TAR" "https://buildroot.org/downloads/buildroot-$BR_VERSION.tar.xz"
+  [ "$(sha256 "$BR_TAR")" = "$BR_SHA256" ] || die 1 "buildroot: bad sha256"
+fi
+
+# -- Source tarballs (E.1) and their hash files. ------------------------------
+# hashfile PKG FILE: Buildroot reads <global patch dir>/<pkg>/<pkg>.hash, and the
+# container adds dl/thimsy-src/hash to BR2_GLOBAL_PATCH_DIR.
+hashfile() {
+  mkdir -p "$SRC/hash/$1"
+  printf '# Written by linux/build.sh for %s at %s\nsha256  %s  %s\n' \
+    "$1" "$SHA" "$(sha256 "$SRC/$2")" "$2" >"$SRC/hash/$1/$1.hash"
+}
+# archive PKG NAME DIR: git archive of DIR at HEAD as NAME-<sha>.tar.gz.
+archive() {
+  step archive "git archive HEAD:$3 -> dl/thimsy-src/$2-$SHA.tar.gz (package $1)"
+  [ "$dry" = 0 ] || return 0
+  git -C "$REPO" cat-file -e "HEAD:$3" 2>/dev/null || die 1 "$3/ is not in HEAD"
+  git -C "$REPO" archive --format=tar.gz --prefix="$2-$SHA/" \
+    -o "$SRC/$2-$SHA.tar.gz" "HEAD:$3"
+  hashfile "$1" "$2-$SHA.tar.gz"
+}
+archive libthimsy libthimsy libthimsy
+archive thimsy-nano nano nano
+# The assets: nano_tree.py's export (tracked files plus the fetched upstream
+# assets, decision I2), packed reproducibly; thimsy-data filters it through the
+# ASSETS.md allowlist (I38).
+# TODO(G0, G2d): confirm export-assets' arguments once tools/nano-tree lands.
+step archive "nano_tree.py export-assets -> dl/thimsy-src/nano-assets-$SHA.tar.gz (package thimsy-data)"
+if [ "$dry" = 0 ]; then
+  [ -f "$REPO/tools/nano-tree/nano_tree.py" ] ||
+    die 1 "tools/nano-tree/nano_tree.py is missing (step G0); cannot export the assets"
+  assets="$BUILD_DIR/nano-assets-$SHA"
+  rm -rf "$assets"
+  "$PY" "$REPO/tools/nano-tree/nano_tree.py" export-assets --out "$assets/nano-assets-$SHA"
+  epoch="$(git -C "$REPO" log -1 --format=%ct HEAD)"
+  tar -C "$assets" --sort=name --mtime="@$epoch" --owner=0 --group=0 --numeric-owner \
+    -cf - "nano-assets-$SHA" | gzip -9n >"$SRC/nano-assets-$SHA.tar.gz"
+  rm -rf "$assets"
+  hashfile thimsy-data "nano-assets-$SHA.tar.gz"
+fi
+if [ "$publish" = 1 ]; then
+  step archive "git archive HEAD -> images/$TARGET/thimsy-os-$TAG-source.tar.gz (the whole repository, I41)"
+  run git -C "$REPO" archive --format=tar.gz --prefix="thimsy-os-$TAG/" \
+    -o "$IMAGES/thimsy-os-$TAG-source.tar.gz" HEAD
+fi
+
+# -- Buildroot in Docker. -----------------------------------------------------
+step docker "$DOCKER_IMAGE ($PLATFORM): make O=/build/output-$TARGET ${TARGET}_defconfig, then make $MAKE_TARGETS (log: images/$TARGET/build.log)"
+[ "$dry" = 0 ] || exit 0
+docker run --rm --platform "$PLATFORM" \
+  -v "$BUILD_DIR":/build -v "$DL":/dl -v "$IMAGES":/images -v "$HERE":/thimsy:ro \
+  -e BR_VERSION="$BR_VERSION" -e TARGET="$TARGET" -e KIND="$KIND" -e SDK_FROM="$SDK_FROM" \
+  -e SDK_NAME="$SDK_NAME" -e MAKE_TARGETS="$MAKE_TARGETS" -e CLEAN="$clean" \
+  -e THIMSY_GIT_SHA="$SHA" \
+  "$DOCKER_IMAGE" sh -euc '
+  export DEBIAN_FRONTEND=noninteractive FORCE_UNSAFE_CONFIGURE=1
+  apt-get -qq update >/dev/null
+  apt-get -qq install -y --no-install-recommends build-essential file wget cpio unzip \
+    rsync bc git ca-certificates python3 perl patch xz-utils bzip2 gzip libncurses-dev \
+    cmake >/dev/null
+  B="/build/buildroot-$BR_VERSION"
+  [ -d "$B" ] || tar -xJf "/dl/buildroot-$BR_VERSION.tar.xz" -C /build
+  O="/build/output-$TARGET"
+  [ "$CLEAN" = 0 ] || rm -rf "$O"
+  if [ "$KIND" = hw ]; then
+    # A hardware pack builds with the SDK of its tier (hw-common.fragment).
+    sdk="/build/output-$SDK_FROM/images/$SDK_NAME.tar.gz"
+    [ -f "$sdk" ] || { echo "no SDK at $sdk: build $SDK_FROM first (its default targets include sdk)" >&2; exit 1; }
+    rm -rf /build/sdk && mkdir -p /build/sdk && tar -xzf "$sdk" -C /build/sdk
+    "/build/sdk/$SDK_NAME/relocate-sdk.sh"
+  fi
+  cp "/thimsy/configs/${TARGET}_defconfig" /tmp/defconfig
+  gpd="$(sed -n "s/^BR2_GLOBAL_PATCH_DIR=\"\(.*\)\"\$/\1/p" /tmp/defconfig)"
+  printf "BR2_GLOBAL_PATCH_DIR=\"%s /dl/thimsy-src/hash\"\n" "$gpd" >>/tmp/defconfig
+  make -C "$B" O="$O" BR2_EXTERNAL=/thimsy BR2_DEFCONFIG=/tmp/defconfig defconfig >/dev/null
+  # shellcheck disable=SC2086
+  make -C "$B" O="$O" THIMSY_GIT_SHA="$THIMSY_GIT_SHA" THIMSY_SRC_DIR=/dl/thimsy-src \
+    $MAKE_TARGETS >/images/build.log 2>&1 || { tail -40 /images/build.log >&2; exit 1; }
+  cp -r --sparse=never "$O"/images/. /images/
+  [ ! -d "$O/legal-info" ] || cp -r "$O/legal-info" /images/
+' || die 1 "the build failed; log: $IMAGES/build.log"
+say "done: $IMAGES"

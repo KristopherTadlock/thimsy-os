@@ -1,0 +1,16 @@
+config BR2_PACKAGE_LIBRETRO_GENESIS_PLUS_GX
+	bool "libretro-genesis-plus-gx"
+	depends on BR2_PACKAGE_RETROARCH
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	help
+	  The genesis_plus_gx core for RetroArch: Sega Mega Drive, Mega-
+	  CD, Master System and Game Gear.
+
+	  Set: alpha (IMPLEMENTATION.md E.3). Licence: Genesis Plus GX
+	  licence (non-commercial).
+
+	  https://github.com/libretro/Genesis-Plus-GX
+
+comment "libretro-genesis-plus-gx needs a toolchain w/ threads"
+	depends on BR2_PACKAGE_RETROARCH
+	depends on !BR2_TOOLCHAIN_HAS_THREADS

@@ -1,0 +1,17 @@
+config BR2_PACKAGE_LIBRETRO_FBNEO
+	bool "libretro-fbneo"
+	depends on BR2_PACKAGE_RETROARCH
+	depends on BR2_INSTALL_LIBSTDCPP
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	select BR2_PACKAGE_ZLIB
+	help
+	  The fbneo core for RetroArch: arcade (FinalBurn Neo).
+
+	  Set: v1 (IMPLEMENTATION.md E.3). Licence: FBNeo licence (non-
+	  commercial).
+
+	  https://github.com/libretro/FBNeo
+
+comment "libretro-fbneo needs a toolchain w/ C++, threads"
+	depends on BR2_PACKAGE_RETROARCH
+	depends on !BR2_INSTALL_LIBSTDCPP || !BR2_TOOLCHAIN_HAS_THREADS

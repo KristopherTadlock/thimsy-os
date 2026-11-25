@@ -1,0 +1,15 @@
+config BR2_PACKAGE_LIBRETRO_STELLA
+	bool "libretro-stella"
+	depends on BR2_PACKAGE_RETROARCH
+	depends on BR2_INSTALL_LIBSTDCPP
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	help
+	  The stella core for RetroArch: Atari 2600.
+
+	  Set: v1 (IMPLEMENTATION.md E.3). Licence: GPL-2.0.
+
+	  https://github.com/stella-emu/stella
+
+comment "libretro-stella needs a toolchain w/ C++, threads"
+	depends on BR2_PACKAGE_RETROARCH
+	depends on !BR2_INSTALL_LIBSTDCPP || !BR2_TOOLCHAIN_HAS_THREADS

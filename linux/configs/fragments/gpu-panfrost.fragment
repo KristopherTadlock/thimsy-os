@@ -1,0 +1,14 @@
+# Mesa with Panfrost for the Mali families (decision D11: GLES, no Vulkan on
+# Bifrost), packed by thimsy-gpu-pack as gpu-panfrost.erofs. Mesa's recipe
+# builds host LLVM and Clang for Panfrost's precompiled shader library
+# (mesa_clc); no LLVM runs on the target (guess at the recipe's handling).
+BR2_PACKAGE_MESA3D=y
+BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_PANFROST=y
+BR2_PACKAGE_MESA3D_GBM=y
+BR2_PACKAGE_MESA3D_OPENGL_EGL=y
+BR2_PACKAGE_MESA3D_OPENGL_ES=y
+# BR2_PACKAGE_MESA3D_VULKAN_DRIVER_PANFROST is not set
+# BR2_PACKAGE_MESA3D_LLVM is not set
+BR2_PACKAGE_LIBDRM=y
+BR2_PACKAGE_THIMSY_GPU_PACK=y
+BR2_PACKAGE_THIMSY_GPU_PACK_PANFROST=y

@@ -1,0 +1,14 @@
+config BR2_PACKAGE_LIBRETRO_A5200
+	bool "libretro-a5200"
+	depends on BR2_PACKAGE_RETROARCH
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	help
+	  The a5200 core for RetroArch: Atari 5200.
+
+	  Set: v1 (IMPLEMENTATION.md E.3). Licence: GPL-2.0.
+
+	  https://github.com/libretro/a5200
+
+comment "libretro-a5200 needs a toolchain w/ threads"
+	depends on BR2_PACKAGE_RETROARCH
+	depends on !BR2_TOOLCHAIN_HAS_THREADS

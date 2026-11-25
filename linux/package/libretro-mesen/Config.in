@@ -1,0 +1,15 @@
+config BR2_PACKAGE_LIBRETRO_MESEN
+	bool "libretro-mesen"
+	depends on BR2_PACKAGE_RETROARCH
+	depends on BR2_INSTALL_LIBSTDCPP
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	help
+	  The mesen core for RetroArch: NES and Famicom.
+
+	  Set: alpha (IMPLEMENTATION.md E.3). Licence: GPL-3.0.
+
+	  https://github.com/libretro/Mesen
+
+comment "libretro-mesen needs a toolchain w/ C++, threads"
+	depends on BR2_PACKAGE_RETROARCH
+	depends on !BR2_INSTALL_LIBSTDCPP || !BR2_TOOLCHAIN_HAS_THREADS

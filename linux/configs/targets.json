@@ -1,0 +1,62 @@
+{
+  "comment": [
+    "Which fragments make which defconfig (IMPLEMENTATION.md E.4). tools/defconfig.py merges each",
+    "target's fragments in order, later wins only on a line marked '# override:', and writes",
+    "configs/<target>_defconfig. A fragment name without a slash is configs/fragments/<name>.fragment;",
+    "one with a slash is a path under linux/. kind: tier (a userland with its GPU packs) or hw (a",
+    "family's hardware pack, built against the SDK of the tier named by sdk_from). publish: true marks",
+    "a target linux/build.sh --publish may build; such a target must be a release (decision I37).",
+    "pending_paths: files the fragments name that later steps write; a missing one is reported, not",
+    "failed, and linux/build.sh refuses a target that needs one until it exists."
+  ],
+  "targets": {
+    "thimsy_v8_0": {
+      "kind": "tier",
+      "publish": false,
+      "fragments": ["common", "tier-v8_0", "userland", "gpu-panfrost", "gpu-swrast", "apps-alpha", "dev"]
+    },
+    "thimsy_v8_2": {
+      "kind": "tier",
+      "publish": false,
+      "fragments": ["common", "tier-v8_2", "userland", "gpu-panfrost", "apps-alpha", "dev"]
+    },
+    "thimsy_v8_0_release": {
+      "kind": "tier",
+      "publish": true,
+      "fragments": ["common", "tier-v8_0", "userland", "gpu-panfrost", "gpu-swrast", "apps-alpha", "release"]
+    },
+    "thimsy_v8_2_release": {
+      "kind": "tier",
+      "publish": true,
+      "fragments": ["common", "tier-v8_2", "userland", "gpu-panfrost", "apps-alpha", "release"]
+    },
+    "thimsy_rk3566_hw": {
+      "kind": "hw",
+      "publish": true,
+      "sdk_from": "thimsy_v8_0_release",
+      "fragments": ["common", "hw-common", "hw-rk3566", "generated/rk3566/defconfig.fragment"]
+    },
+    "thimsy_qemu_aarch64_hw": {
+      "kind": "hw",
+      "publish": false,
+      "sdk_from": "thimsy_v8_0",
+      "fragments": ["common", "hw-common", "hw-qemu-aarch64"]
+    }
+  },
+  "pending_paths": {
+    "board/common/rootfs-overlay": "G2e (init)",
+    "board/common/rootfs-overlay-dev": "G2e (init): the dev overlay this step's dev.fragment adds, with the serial getty",
+    "board/common/post-build.sh": "G2e (init)",
+    "board/common/post-image.sh": "G2e (init)",
+    "board/common/users.table": "unassigned in section G; G2e suggested",
+    "board/common/device.table": "unassigned in section G; G2e suggested",
+    "board/rk3566/linux.fragment": "Phase 2a (RK3566 hand import)",
+    "board/rk3566/uboot/uboot.fragment": "Phase 2a (FlipBase's U-Boot options)",
+    "board/qemu-aarch64-virt/linux.fragment": "G8 (image assembly)",
+    "generated/rk3566/defconfig.fragment": "Phase 2a (RK3566 hand import), thimsy-import later",
+    "gpl/generated/rk3566/linux/config": "Phase 2a (RK3566 hand import)",
+    "gpl/generated/rk3566/linux/patches": "Phase 2a (RK3566 hand import)",
+    "gpl/board/rk3566/linux/patches": "Phase 2a (FlipBase's subtree merge)",
+    "gpl/board/rk3566/uboot/patches": "Phase 2a (FlipBase's subtree merge)"
+  }
+}
