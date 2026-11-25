@@ -1,0 +1,5 @@
+{
+  "device": "anbernic-rg-arc-s",
+  "family": "rk3566",
+  "dtb": "rk3566-anbernic-rg-arc-s.dtb"
+}

@@ -1,0 +1,38 @@
+/dts-v1/;
+
+/ {
+	description = "Thimsy boot FIT: rk3566 anbernic-rg-arc-s";
+	#address-cells = <1>;
+
+	images {
+		kernel {
+			description = "Linux kernel";
+			data = /incbin/("Image.zst");
+			type = "kernel";
+			arch = "arm64";
+			os = "linux";
+			compression = "zstd";
+			load = <0x02000000>;
+			entry = <0x02000000>;
+		};
+
+		fdt {
+			description = "rk3566-anbernic-rg-arc-s.dtb";
+			data = /incbin/("rk3566-anbernic-rg-arc-s.dtb");
+			type = "flat_dt";
+			arch = "arm64";
+			compression = "none";
+		};
+	};
+
+	configurations {
+		default = "conf";
+
+		conf {
+			description = "anbernic-rg-arc-s";
+			kernel = "kernel";
+			fdt = "fdt";
+			bootargs = "init=/init rootfstype=erofs ro rootwait quiet loglevel=3";
+		};
+	};
+};
