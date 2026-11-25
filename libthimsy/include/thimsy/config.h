@@ -90,9 +90,12 @@ class ConfigStore {
     // false on timeout. Without the watcher it polls the key's file every 20 ms.
     bool waitChange(std::string_view key, uint32_t oldSerial, int timeoutMs) const;
 
-    // Observers see every change after it is stored; they can't veto it. keyOrPrefix is a key, a
-    // prefix ending in '.' or '*' (the '*' is dropped), or empty for every key. The value is empty
-    // when the key was removed. Returns an id for removeObserver.
+    // Observers see each change after it is stored; they can't veto it (a throwing observer is
+    // ignored). They see this process's own sets always, and other processes' writes while watching
+    // (on the watcher thread); a read-through get() that finds a change bumps the serial but calls
+    // no observer. keyOrPrefix is a key, a prefix ending in '.' or '*' (the '*' is dropped), or empty
+    // for every key. The value is empty when the key was removed. An observer must not call
+    // stopWatching(). Returns an id for removeObserver.
     using Observer = std::function<void(std::string_view key, std::string_view value)>;
     int addObserver(std::string_view keyOrPrefix, Observer observer);
     void removeObserver(int id);
