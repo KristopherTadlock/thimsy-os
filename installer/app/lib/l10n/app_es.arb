@@ -186,6 +186,8 @@
   "errTitleUnknown": "Algo salió mal",
   "copyDetails": "Copiar detalles",
   "detailsCopied": "Copiado",
+  "errorLogLine": "Registro: {path}",
+  "openLogFolder": "Abrir la carpeta de registros",
   "fullInstallNeededBody": "No se escribió nada. Una instalación completa funciona tenga lo que tenga ahora el dispositivo, pero borra todo su contenido. Al cambiar, volverás a «Revisar» para confirmar.",
   "switchToFull": "Cambiar a instalación completa",
   "updateCheckBody": "Antes de escribir, el instalador comprueba que el dispositivo tenga el firmware correspondiente. Si no es así, no se escribe nada y puedes cambiar a una instalación completa.",

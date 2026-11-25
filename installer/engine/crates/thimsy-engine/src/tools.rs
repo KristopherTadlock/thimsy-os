@@ -329,6 +329,11 @@ extern "C" fn on_stop_signal(sig: libc::c_int) {
         if pid > 0 {
             libc::kill(pid, libc::SIGKILL);
         }
+    }
+    // The run log says why it ends here (async-signal-safe too).
+    crate::runlog::stop_signal::note(sig);
+    // SAFETY: as above.
+    unsafe {
         libc::_exit(128 + sig);
     }
 }
@@ -336,7 +341,7 @@ extern "C" fn on_stop_signal(sig: libc::c_int) {
 /// Installs the handler for SIGTERM, SIGINT and SIGHUP (once; signals the
 /// engine was started ignoring stay ignored).
 #[cfg(unix)]
-fn install_signal_handlers() {
+pub(crate) fn install_signal_handlers() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
         for sig in [libc::SIGTERM, libc::SIGINT, libc::SIGHUP] {
@@ -359,7 +364,7 @@ fn install_signal_handlers() {
 }
 
 #[cfg(not(unix))]
-fn install_signal_handlers() {}
+pub(crate) fn install_signal_handlers() {}
 
 /// Unix: notices when the app that started the engine dies (the engine is
 /// handed to another parent) and records it like a failed write to the app
@@ -573,11 +578,21 @@ pub(crate) fn run_exe_ticking(
             set_child_pid(0);
         }
         if killed && matches!(child.try_wait(), Ok(Some(_))) {
-            // A process the tool started may keep its output open: don't
-            // wait for that, just log what already arrived.
-            while let Some(ev) = queue.pop_front().or_else(|| rx.try_recv().ok()) {
-                if let Out::Line { text, .. } = ev {
-                    rep.info(text);
+            // Log the rest of its output, including a last line without a
+            // newline (sent when its stream closes). A process the tool
+            // started may keep the output open: wait for that only briefly.
+            let deadline = std::time::Instant::now() + std::time::Duration::from_millis(1500);
+            let mut rest = ev.into_iter().chain(queue.drain(..)).collect::<Vec<_>>();
+            loop {
+                for ev in rest.drain(..) {
+                    if let Out::Line { text, .. } = ev {
+                        rep.info(text);
+                    }
+                }
+                let left = deadline.saturating_duration_since(std::time::Instant::now());
+                match rx.recv_timeout(left) {
+                    Ok(ev) => rest.push(ev),
+                    Err(_) => break,
                 }
             }
             break;

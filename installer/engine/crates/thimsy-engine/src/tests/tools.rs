@@ -343,6 +343,54 @@ fn a_fatal_line_stops_answering_and_kills_the_tool() {
     assert_eq!(asked, 0);
 }
 
+/// A tool killed after a fatal line: what it printed up to then is still
+/// logged, its last line without a newline too.
+#[cfg(unix)]
+#[test]
+fn a_killed_tool_s_last_output_is_logged() {
+    let dir = tempfile::tempdir().unwrap();
+    // One write (cat of a small file), so the tool can't be killed between
+    // the fatal line and the rest.
+    std::fs::write(
+        dir.path().join("out.txt"),
+        "unexpected response (0x00fe)\nlast words",
+    )
+    .unwrap();
+    let exe = script(
+        dir.path(),
+        "breaks-mid-line",
+        "#!/usr/bin/env bash\ncat out.txt >&2\nexec sleep 30\n",
+    );
+    let (rep, sink) = quiet();
+    let i = inv(
+        "breaks-mid-line",
+        &[],
+        &["yes"],
+        Some(crate::flash::SPD_PROMPT),
+    );
+    let err = tools::run_exe(
+        &exe,
+        &i,
+        dir.path(),
+        &rep,
+        |l| {
+            if l.contains("unexpected response") {
+                return Err(EngineError::new(Code::ToolFailed, "the write broke off").into());
+            }
+            Ok(())
+        },
+        |_| Ok(()),
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("broke off"), "{err}");
+    let ev = sink.0.lock().unwrap();
+    assert!(
+        ev.iter()
+            .any(|e| matches!(e, Event::Log { message, .. } if message == "last words")),
+        "{ev:?}"
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn a_tool_that_never_asks_fails_even_if_it_exits_0() {

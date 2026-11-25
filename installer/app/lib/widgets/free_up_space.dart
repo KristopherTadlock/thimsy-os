@@ -158,6 +158,7 @@ class _FreeUpDialogState extends State<_FreeUpDialog> {
                   key: const ValueKey('free-up-error'),
                   title: l.cleanFailed,
                   error: s.cleanError!,
+                  run: s.cleanRun,
                 ),
               ],
               if (s.backupItems.isNotEmpty)
@@ -360,6 +361,7 @@ class FreeUpSection extends StatelessWidget {
             key: const ValueKey('clean-error'),
             title: l.cleanFailed,
             error: s.cleanError!,
+            run: s.cleanRun,
           ),
         ],
       ],

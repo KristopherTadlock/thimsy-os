@@ -186,6 +186,8 @@
   "errTitleUnknown": "Un problème est survenu",
   "copyDetails": "Copier les détails",
   "detailsCopied": "Copié",
+  "errorLogLine": "Journal : {path}",
+  "openLogFolder": "Ouvrir le dossier des journaux",
   "fullInstallNeededBody": "Rien n'a été écrit. Une installation complète fonctionne quel que soit le système actuel de l'appareil, mais efface tout son contenu. Si vous changez, vous revenez à « Vérifier » pour confirmer.",
   "switchToFull": "Passer à l'installation complète",
   "updateCheckBody": "Avant d'écrire, le programme d'installation vérifie que l'appareil utilise un firmware correspondant. Sinon, rien n'est écrit et vous pouvez passer à une installation complète.",

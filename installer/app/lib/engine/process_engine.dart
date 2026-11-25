@@ -41,14 +41,17 @@ class ProcessEngine extends Engine {
 
   /// Runs a one-shot command; returns the first event of type [T]. A
   /// failed `result` (`ok` not true) is never returned: it throws, with the
-  /// engine's error when it sent one.
+  /// engine's error when it sent one and the run's log file when it wrote
+  /// one.
   Future<T> _one<T extends EngineEvent>(List<String> args) async {
     final run = _start(args);
     T? found;
     ErrorEvent? error;
+    String? logPath;
     await for (final e in run.events) {
       if (e is T && found == null) found = e;
       if (e is ErrorEvent) error ??= e;
+      if (e is LogFileEvent) logPath ??= e.path;
     }
     if (found != null && !(found is ResultEvent && !found.ok)) return found;
     if (found is ResultEvent) {
@@ -58,6 +61,7 @@ class ProcessEngine extends Engine {
               code: 'internal',
               message: '${args.first} failed without an error',
             ),
+        logPath: logPath,
       );
     }
     throw EngineException(
@@ -67,6 +71,7 @@ class ProcessEngine extends Engine {
             message: 'no answer for ${args.first}',
             local: true,
           ),
+      logPath: logPath,
     );
   }
 

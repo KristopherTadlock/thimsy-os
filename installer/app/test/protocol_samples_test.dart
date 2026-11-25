@@ -11,6 +11,7 @@ import 'package:path/path.dart' as p;
 import 'package:thimsy_installer/engine/engine.dart';
 import 'package:thimsy_installer/engine/process_engine.dart';
 import 'package:thimsy_installer/l10n/app_localizations.dart';
+import 'package:thimsy_installer/state/app_state.dart';
 import 'package:thimsy_installer/widgets/common.dart';
 
 /// Relative to installer/app (where `flutter test` runs).
@@ -288,6 +289,36 @@ void main() {
     expect(s.of<ErrorEvent>(), isNotEmpty);
     expect(errorTitleFor(l, s.of<ErrorEvent>().first.code), isNotNull);
     expect((s.events.last as ResultEvent).ok, isFalse);
+  });
+
+  // Logged runs (build, prepare, flash, drivers --install) first say where
+  // their log is; the rest never do.
+  group('log_file', () {
+    for (final name in samples.keys.toList()..sort()) {
+      final logged =
+          name.startsWith('build') ||
+          name.startsWith('prepare') ||
+          name.startsWith('flash') ||
+          name.startsWith('error-') ||
+          name == 'drivers-failed.jsonl';
+      test('$name: ${logged ? 'first' : 'no'} log_file', () {
+        final s = sample(name);
+        final logs = s.of<LogFileEvent>().toList();
+        if (!logged) {
+          expect(logs, isEmpty, reason: name);
+          return;
+        }
+        expect(s.events.first, isA<LogFileEvent>(), reason: name);
+        expect(logs, hasLength(1), reason: name);
+        expect(logs.single.path, s.rawOf('log_file')['path']);
+        expect(logs.single.path, endsWith('.log'));
+        final run = RunState();
+        for (final e in s.events) {
+          run.apply(e);
+        }
+        expect(run.logPath, logs.single.path);
+      });
+    }
   });
 
   // The samples through ProcessEngine itself (a stand-in engine that prints

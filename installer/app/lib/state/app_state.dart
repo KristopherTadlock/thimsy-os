@@ -40,6 +40,9 @@ class RunState {
   ResultEvent? result;
   final List<String> log = [];
 
+  /// The engine's log file for this run (`log_file`), when it wrote one.
+  String? logPath;
+
   /// Bumped by [reset]: events from a run started before the reset (one
   /// that was replaced or abandoned) are ignored.
   int generation = 0;
@@ -55,6 +58,7 @@ class RunState {
     prompt = null;
     error = null;
     result = null;
+    logPath = null;
     log.clear();
   }
 
@@ -82,6 +86,8 @@ class RunState {
         result = e;
         running = false;
         prompt = null;
+      case LogFileEvent():
+        logPath = e.path;
       default:
         break;
     }
@@ -108,6 +114,9 @@ class SpaceProblem {
   /// The space check's `reason` (`not_enough_space`, `fat32`,
   /// `probe_failed`), when it gave one.
   final String? reason;
+
+  /// The log of the run that failed (flash or build), when it has one.
+  final String? logPath;
   const SpaceProblem(
     this.kind, {
     this.need = 0,
@@ -115,6 +124,7 @@ class SpaceProblem {
     this.message,
     this.details,
     this.reason,
+    this.logPath,
   });
 }
 
@@ -336,6 +346,9 @@ class AppState extends ChangeNotifier {
   /// stays up with its hint. Cleared by the next check.
   ErrorEvent? driverError;
 
+  /// The failed install's log file, when the engine wrote one.
+  String? driverLogPath;
+
   /// Whether this computer needs a USB driver (Windows) or device rule
   /// (Linux) check; macOS never does.
   bool get checksDriver => host == 'windows' || host == 'linux';
@@ -418,6 +431,9 @@ class AppState extends ChangeNotifier {
   /// Why the last clean failed; null when it worked.
   ErrorEvent? cleanError;
 
+  /// The last clean (not a dry run): its log file, for the error notice.
+  final RunState cleanRun = RunState();
+
   /// The job folder name a build for the current selection uses.
   String? get _selectedJobName =>
       deviceId == null || profileId == null ? null : '$deviceId-$profileId';
@@ -477,6 +493,7 @@ class AppState extends ChangeNotifier {
     detected = const [];
     driverStatus = driverDetail = null;
     driverError = null;
+    driverLogPath = null;
     driverBusy = false;
     _driverGen++;
     final done = _resetFrom(WizardStep.profile);
@@ -856,8 +873,9 @@ class AppState extends ChangeNotifier {
     bool current() => gen == _driverGen && deviceId == d;
     driverBusy = true;
     driverError = null;
+    driverLogPath = null;
     notifyListeners();
-    String? status, detail;
+    String? status, detail, logPath;
     ErrorEvent? error;
     try {
       final r = await engine.drivers(device: d, install: install);
@@ -869,11 +887,13 @@ class AppState extends ChangeNotifier {
       status = 'missing';
       detail = e.event.hint ?? e.event.message;
       error = e.event;
+      logPath = e.logPath;
     } finally {
       if (current()) {
         driverStatus = status;
         driverDetail = detail;
         driverError = error;
+        driverLogPath = logPath;
         driverBusy = false;
         notifyListeners();
       }
@@ -1000,6 +1020,7 @@ class AppState extends ChangeNotifier {
     if (!keepResult) {
       freedBytes = null;
       cleanError = null;
+      cleanRun.reset();
     }
     try {
       final r = await engine.clean(workspace: workspace.trim(), dryRun: true);
@@ -1025,6 +1046,7 @@ class AppState extends ChangeNotifier {
     cleanBusy = true;
     cleanError = null;
     freedBytes = null;
+    cleanRun.reset();
     notifyListeners();
     // Cleaning needs the workspace: a preparation still running stops (the
     // install does any preparation still needed itself).
@@ -1037,6 +1059,9 @@ class AppState extends ChangeNotifier {
       ok = true;
     } on EngineException catch (e) {
       cleanError = e.event;
+      cleanRun
+        ..error = e.event
+        ..logPath = e.logPath;
     } finally {
       cleanBusy = false;
       notifyListeners();
@@ -1068,6 +1093,8 @@ class AppState extends ChangeNotifier {
       ..writeln('device: ${deviceId ?? '-'}  profile: ${profileId ?? '-'}')
       ..writeln('host: $host  language: ${engine.language}');
     if (run != null) {
+      final logPath = run.logPath;
+      if (logPath != null) b.writeln('log file: $logPath');
       b.writeln('\n== run log');
       for (final line in run.log) {
         b.writeln(line);
@@ -1115,6 +1142,7 @@ class AppState extends ChangeNotifier {
                 : SpaceProblemKind.build,
             message: e.hint ?? e.message,
             details: e.message,
+            logPath: state.logPath,
           );
         }
         notifyListeners();

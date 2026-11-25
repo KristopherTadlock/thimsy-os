@@ -186,6 +186,8 @@
   "errTitleUnknown": "Något gick fel",
   "copyDetails": "Kopiera detaljer",
   "detailsCopied": "Kopierat",
+  "errorLogLine": "Logg: {path}",
+  "openLogFolder": "Öppna loggmappen",
   "fullInstallNeededBody": "Inget skrevs. En fullständig installation fungerar oavsett vad enheten kör nu, men raderar allt på den. När du byter kommer du tillbaka till ”Granska” för att bekräfta.",
   "switchToFull": "Byt till fullständig installation",
   "updateCheckBody": "Innan något skrivs kontrollerar installationsprogrammet att enheten kör matchande firmware. Om inte skrivs inget och du kan byta till en fullständig installation.",

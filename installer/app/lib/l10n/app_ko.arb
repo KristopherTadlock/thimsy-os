@@ -186,6 +186,8 @@
   "errTitleUnknown": "문제가 발생했습니다",
   "copyDetails": "세부 정보 복사",
   "detailsCopied": "복사됨",
+  "errorLogLine": "로그: {path}",
+  "openLogFolder": "로그 폴더 열기",
   "fullInstallNeededBody": "아무것도 기록되지 않았습니다. 전체 설치는 기기에서 현재 무엇이 실행 중이든 작동하지만 기기의 모든 데이터를 지웁니다. 전환하면 '검토'로 돌아가 확인합니다.",
   "switchToFull": "전체 설치로 전환",
   "updateCheckBody": "기록하기 전에 설치 프로그램은 기기에서 일치하는 펌웨어가 실행 중인지 확인합니다. 그렇지 않으면 아무것도 기록하지 않으며 전체 설치로 전환할 수 있습니다.",

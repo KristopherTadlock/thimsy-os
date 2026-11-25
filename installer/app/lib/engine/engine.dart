@@ -7,7 +7,10 @@ export 'events.dart';
 /// Thrown by one-shot engine calls when the engine reports an error.
 class EngineException implements Exception {
   final ErrorEvent event;
-  const EngineException(this.event);
+
+  /// The run's log file, when the engine wrote one (`log_file`).
+  final String? logPath;
+  const EngineException(this.event, {this.logPath});
 
   String get code => event.code;
 

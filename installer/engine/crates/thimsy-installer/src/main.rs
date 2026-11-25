@@ -212,10 +212,20 @@ fn parse_kv(s: &str) -> Result<(String, String), String> {
 }
 
 fn out(json_mode: bool, v: serde_json::Value) {
-    if json_mode {
-        println!("{v}");
+    use std::io::Write;
+    let text = if json_mode {
+        v.to_string()
     } else {
-        println!("{}", serde_json::to_string_pretty(&v).unwrap());
+        serde_json::to_string_pretty(&v).unwrap_or_else(|_| v.to_string())
+    };
+    // The app may be gone (its pipe closed): note it, as for events, rather
+    // than panic.
+    let mut stdout = std::io::stdout().lock();
+    if writeln!(stdout, "{text}")
+        .and_then(|_| stdout.flush())
+        .is_err()
+    {
+        thimsy_engine::events::set_parent_gone();
     }
 }
 

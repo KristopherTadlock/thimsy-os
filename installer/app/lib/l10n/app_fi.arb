@@ -186,6 +186,8 @@
   "errTitleUnknown": "Jokin meni vikaan",
   "copyDetails": "Kopioi tiedot",
   "detailsCopied": "Kopioitu",
+  "errorLogLine": "Loki: {path}",
+  "openLogFolder": "Avaa lokikansio",
   "fullInstallNeededBody": "Mitään ei kirjoitettu. Täysi asennus toimii riippumatta siitä, mitä laitteessa nyt on, mutta tyhjentää laitteen kokonaan. Vaihtaminen vie sinut takaisin vaiheeseen ”Tarkista” vahvistamaan.",
   "switchToFull": "Vaihda täyteen asennukseen",
   "updateCheckBody": "Ennen kirjoittamista asennusohjelma tarkistaa, että laitteessa on vastaava laiteohjelmisto. Jos ei ole, mitään ei kirjoiteta ja voit vaihtaa täyteen asennukseen.",

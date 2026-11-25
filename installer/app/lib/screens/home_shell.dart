@@ -137,6 +137,7 @@ class _HomeShellState extends State<HomeShell> {
       context,
       message: message,
       details: p.details,
+      logPath: p.logPath,
       offerFolder: p.kind == SpaceProblemKind.build,
       offerFreeUp: !driveProblem,
     );

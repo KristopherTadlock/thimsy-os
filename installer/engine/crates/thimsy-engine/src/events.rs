@@ -49,6 +49,10 @@ pub enum Event {
         message: String,
         hint: Option<String>,
     },
+    /// Where this run's log is (the first event of a logged run).
+    LogFile {
+        path: String,
+    },
 }
 
 pub trait Sink: Send + Sync {
@@ -97,6 +101,7 @@ impl Sink for TextSink {
                 Some(h) => writeln!(err, "error ({code}): {message}\n   hint: {h}"),
                 None => writeln!(err, "error ({code}): {message}"),
             },
+            Event::LogFile { path } => writeln!(err, "Log: {path}"),
         };
         if written.is_err() {
             set_parent_gone();
@@ -135,6 +140,19 @@ impl Reporter {
     }
     pub fn text() -> Self {
         Self::new(Arc::new(TextSink))
+    }
+    /// Where this reporter's events go.
+    pub fn sink(&self) -> Arc<dyn Sink> {
+        self.sink.clone()
+    }
+    /// The same reporter (sharing its stage and rate limit) with its sink
+    /// replaced by `wrap(sink)`.
+    pub fn wrapped(&self, wrap: impl FnOnce(Arc<dyn Sink>) -> Arc<dyn Sink>) -> Reporter {
+        Reporter {
+            sink: wrap(self.sink.clone()),
+            stage: self.stage.clone(),
+            last_progress: self.last_progress.clone(),
+        }
     }
     pub fn emit(&self, event: Event) {
         self.sink.emit(&event);

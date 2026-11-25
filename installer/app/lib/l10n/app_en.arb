@@ -330,6 +330,15 @@
   "errTitleUnknown": "Something went wrong",
   "copyDetails": "Copy details",
   "detailsCopied": "Copied",
+  "errorLogLine": "Log: {path}",
+  "@errorLogLine": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "openLogFolder": "Open log folder",
   "fullInstallNeededBody": "Nothing was written. A full install works whatever the device runs now, but erases everything on it. Switching takes you back to Review to confirm.",
   "switchToFull": "Switch to full install",
   "updateCheckBody": "Before writing, the installer checks that the device runs matching firmware. If it doesn't, nothing is written and you can switch to a full install.",

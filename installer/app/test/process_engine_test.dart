@@ -46,7 +46,8 @@ case "$1" in
   drivers)
     case "$*" in
       *--install*)
-        # A declined install: an error, then a failed result.
+        # A declined install: its log, an error, then a failed result.
+        echo '{"type":"log_file","path":"/home/u/.local/state/thimsy-installer/logs/20261124-101500Z-drivers-d.log"}'
         echo '{"type":"error","code":"tool_failed","message":"pkexec: request dismissed","hint":"Approve the password prompt to allow access."}'
         echo '{"type":"result","ok":false}'
         exit 1 ;;
@@ -58,6 +59,7 @@ case "$1" in
       *--dry-run*)
         echo '{"type":"result","ok":true,"items":[{"kind":"scratch","path":"/w/jobs/j/work","bytes":5}],"freed":0}' ;;
       *--path\ /w/locked*)
+        echo '{"type":"log_file","path":"/w/logs/20261124-101500Z-clean.log"}'
         echo '{"type":"error","code":"internal","message":"Permission denied (os error 13)"}'
         echo '{"type":"result","ok":false}'
         exit 1 ;;
@@ -278,6 +280,12 @@ void main() {
                 (e) => e.event.hint,
                 'hint',
                 'Approve the password prompt to allow access.',
+              )
+              .having(
+                (e) => e.logPath,
+                'logPath',
+                '/home/u/.local/state/thimsy-installer/logs/'
+                    '20261124-101500Z-drivers-d.log',
               ),
         ),
       );
@@ -293,12 +301,21 @@ void main() {
       await expectLater(
         engine.clean(workspace: '/w', paths: const ['/w/locked']),
         throwsA(
-          isA<EngineException>().having((e) => e.code, 'code', 'internal'),
+          isA<EngineException>()
+              .having((e) => e.code, 'code', 'internal')
+              .having(
+                (e) => e.logPath,
+                'logPath',
+                '/w/logs/20261124-101500Z-clean.log',
+              ),
         ),
       );
+      // No log_file line: no log path.
       await expectLater(
         engine.clean(workspace: '/w', paths: const ['/w/silent']),
-        throwsA(isA<EngineException>()),
+        throwsA(
+          isA<EngineException>().having((e) => e.logPath, 'logPath', isNull),
+        ),
       );
     });
   });

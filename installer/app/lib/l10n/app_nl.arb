@@ -186,6 +186,8 @@
   "errTitleUnknown": "Er is iets misgegaan",
   "copyDetails": "Details kopiëren",
   "detailsCopied": "Gekopieerd",
+  "errorLogLine": "Logbestand: {path}",
+  "openLogFolder": "Logmap openen",
   "fullInstallNeededBody": "Er is niets geschreven. Een volledige installatie werkt ongeacht wat er nu op het apparaat draait, maar wist alles erop. Als u overschakelt, gaat u terug naar ‘Controleren’ om te bevestigen.",
   "switchToFull": "Naar volledige installatie",
   "updateCheckBody": "Voordat er iets wordt geschreven, controleert het installatieprogramma of op het apparaat passende firmware draait. Zo niet, dan wordt er niets geschreven en kunt u overschakelen naar een volledige installatie.",

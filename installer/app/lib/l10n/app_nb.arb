@@ -186,6 +186,8 @@
   "errTitleUnknown": "Noe gikk galt",
   "copyDetails": "Kopier detaljer",
   "detailsCopied": "Kopiert",
+  "errorLogLine": "Logg: {path}",
+  "openLogFolder": "Åpne loggmappen",
   "fullInstallNeededBody": "Ingenting ble skrevet. En full installasjon fungerer uansett hva enheten kjører nå, men sletter alt på den. Når du bytter, kommer du tilbake til «Se over» for å bekrefte.",
   "switchToFull": "Bytt til full installasjon",
   "updateCheckBody": "Før noe skrives, sjekker installasjonsprogrammet at enheten kjører samsvarende fastvare. Hvis ikke, skrives ingenting, og du kan bytte til en full installasjon.",

@@ -6,7 +6,7 @@
 use crate::catalog::{Catalog, InstallSupport};
 use crate::host::Host;
 use crate::i18n::tr;
-use crate::{detect, drivers, flash, job, resolve, Reporter};
+use crate::{detect, drivers, flash, job, resolve, runlog, Reporter};
 use anyhow::{Context, Result};
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -110,14 +110,46 @@ pub fn setup(g: &Global) -> Result<(Catalog, Host)> {
 
 /// Runs one command. On failure the error event is emitted (and, for
 /// streaming commands in JSON mode, a final `result` with `ok:false`);
-/// returns the process exit code.
+/// returns the process exit code. Commands that build or change something
+/// also write everything to a log file (see [`crate::runlog`]).
 pub fn run(g: &Global, cmd: Command, rep: &Reporter, out: &mut dyn FnMut(Value)) -> i32 {
     let streaming = cmd.streaming();
     let drivers_for = match &cmd {
         Command::Drivers { device, .. } => Some(device.clone()),
         _ => None,
     };
-    match dispatch(g, cmd, rep, out) {
+    let ready = setup(g);
+    let catalog_version = ready.as_ref().ok().map(|(c, _)| c.root.version.clone());
+    let log = runlog::start(g, &cmd, catalog_version.as_deref(), rep);
+    let logged;
+    let rep = match &log {
+        Some(l) => {
+            logged = runlog::reporter(rep, l);
+            &logged
+        }
+        None => rep,
+    };
+    let mut out = |v: Value| {
+        if let Some(l) = &log {
+            l.output(&v);
+        }
+        out(v);
+    };
+    // A panic still ends the log: what, where, and a footer; then it goes
+    // on as before.
+    let done = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        dispatch(cmd, ready, rep, &mut out)
+    }));
+    let done = match done {
+        Ok(done) => done,
+        Err(payload) => {
+            if let Some(l) = &log {
+                l.panicked(&runlog::panic_text(payload.as_ref()));
+            }
+            std::panic::resume_unwind(payload);
+        }
+    };
+    let code = match done {
         Ok(()) => 0,
         Err(e) => {
             rep.error(&e);
@@ -137,11 +169,20 @@ pub fn run(g: &Global, cmd: Command, rep: &Reporter, out: &mut dyn FnMut(Value))
             }
             1
         }
+    };
+    if let Some(l) = &log {
+        l.finish(code);
     }
+    code
 }
 
-fn dispatch(g: &Global, cmd: Command, rep: &Reporter, out: &mut dyn FnMut(Value)) -> Result<()> {
-    let (cat, host) = setup(g)?;
+fn dispatch(
+    cmd: Command,
+    ready: Result<(Catalog, Host)>,
+    rep: &Reporter,
+    out: &mut dyn FnMut(Value),
+) -> Result<()> {
+    let (cat, host) = ready?;
     match cmd {
         Command::Catalog => {
             let devices: Vec<_> = cat

@@ -335,13 +335,15 @@ Future<bool> confirmStopInstall(BuildContext context) async {
 enum SpaceChoice { chooseFolder, freeUp, checkAgain, cancel }
 
 /// The not-enough-space dialog (build check or flash error). [details] is
-/// the engine's own (English) message, under an expandable "Details".
+/// the engine's own (English) message, under an expandable "Details";
+/// [logPath] the log of the run that failed, when there was one.
 Future<SpaceChoice> showSpaceDialog(
   BuildContext context, {
   required String message,
   required bool offerFolder,
   bool offerFreeUp = true,
   String? details,
+  String? logPath,
 }) async {
   final l = AppLocalizations.of(context);
   final r = await showDialog<SpaceChoice>(
@@ -359,6 +361,10 @@ Future<SpaceChoice> showSpaceDialog(
             Text(message),
             if (details != null && details.isNotEmpty && details != message)
               ErrorDetails(details),
+            if (logPath != null) ...[
+              LogFileLine(logPath),
+              OpenLogFolderButton(logPath),
+            ],
           ],
         ),
       ),
@@ -531,8 +537,85 @@ class ErrorDetails extends StatelessWidget {
   }
 }
 
+/// The folder holding the file at [path], whichever separator it uses.
+String logFolderOf(String path) {
+  final i = path.lastIndexOf(RegExp(r'[\\/]'));
+  if (i < 0) return '.';
+  // Keep the root's separator: `/x.log` is in `/`, `C:\x.log` in `C:\`.
+  final root = i == 0 || (i == 2 && path[1] == ':');
+  return path.substring(0, root ? i + 1 : i);
+}
+
+/// Opens [dir] in the computer's file browser. Replaceable in tests.
+Future<void> Function(String dir) openFolder = _openFolderWithLauncher;
+
+Future<void> _openFolderWithLauncher(String dir) async {
+  try {
+    await launchUrl(Uri.directory(dir));
+  } catch (_) {
+    // Nothing to open it with: the path is still shown to copy.
+  }
+}
+
+/// "Log: `path`", for the log file the engine wrote for a run. The path is
+/// its own selectable text, left to right in every language, so copying it
+/// gives exactly the path (no direction marks).
+class LogFileLine extends StatelessWidget {
+  final String path;
+  const LogFileLine(this.path, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final style = Theme.of(context).textTheme.bodySmall;
+    // The translated text around the path.
+    const marker = '\u{FFFC}';
+    final text = l.errorLogLine(marker);
+    final at = text.indexOf(marker);
+    final before = at < 0 ? text : text.substring(0, at);
+    final after = at < 0 ? '' : text.substring(at + marker.length);
+    return Padding(
+      key: const ValueKey('log-file-line'),
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (before.isNotEmpty) Text(before, style: style),
+          Flexible(
+            child: SelectableText(
+              path,
+              key: const ValueKey('log-file-path'),
+              textDirection: TextDirection.ltr,
+              style: style,
+            ),
+          ),
+          if (after.isNotEmpty) Text(after, style: style),
+        ],
+      ),
+    );
+  }
+}
+
+/// "Open log folder": shows the folder of the log file at [path].
+class OpenLogFolderButton extends StatelessWidget {
+  final String path;
+  const OpenLogFolderButton(this.path, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    return TextButton.icon(
+      key: const ValueKey('open-log-folder'),
+      icon: const Icon(Icons.folder_open, size: 18),
+      label: Text(l.openLogFolder),
+      onPressed: () => openFolder(logFolderOf(path)),
+    );
+  }
+}
+
 /// An error notice: the translated title, the hint as the body, the
-/// engine's English message under "Details", and "Copy details" (the
+/// engine's English message under "Details", the run's log file (with
+/// "Open log folder") when the engine wrote one, and "Copy details" (the
 /// engine's stderr log plus [run]'s log, for a report).
 class ErrorNotice extends StatelessWidget {
   final ErrorEvent error;
@@ -563,6 +646,8 @@ class ErrorNotice extends StatelessWidget {
     final heading = title ?? own;
     final hint = errorHint(l, error);
     final details = errorDetails(error);
+    final shown = details == own || error.local ? null : details;
+    final logPath = run?.logPath;
     return Notice(
       icon: icon,
       title: heading,
@@ -572,15 +657,22 @@ class ErrorNotice extends StatelessWidget {
         ?extra,
       ].where((t) => t.trim().isNotEmpty).join('\n'),
       color: Theme.of(context).colorScheme.error,
-      footer: details == null || details == own || error.local
+      footer: shown == null && logPath == null
           ? null
-          : ErrorDetails(details),
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (shown != null) ErrorDetails(shown),
+                if (logPath != null) LogFileLine(logPath),
+              ],
+            ),
       action: Wrap(
         spacing: 8,
         runSpacing: 8,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           ?action,
+          if (logPath != null) OpenLogFolderButton(logPath),
           CopyDetailsButton(run: run),
         ],
       ),
@@ -650,6 +742,8 @@ class DriverNotice extends StatelessWidget {
     // A failed install's English message, under "Details".
     final error = s.driverError;
     final details = error == null ? null : errorDetails(error);
+    final logPath = error == null ? null : s.driverLogPath;
+    final shown = details == s.driverDetail ? null : details;
     return Notice(
       key: const ValueKey('driver-notice'),
       icon: Icons.usb,
@@ -659,13 +753,27 @@ class DriverNotice extends StatelessWidget {
         ?s.driverDetail,
       ].where((t) => t.isNotEmpty).join('\n'),
       color: error == null ? scheme.tertiary : scheme.error,
-      footer: details == null || details == s.driverDetail
+      footer: shown == null && logPath == null
           ? null
-          : ErrorDetails(details),
-      action: FilledButton(
-        key: const ValueKey('install-driver'),
-        onPressed: s.driverBusy ? null : () => s.checkDriver(install: true),
-        child: Text(s.host == 'linux' ? l.installButton : l.installDriver),
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (shown != null) ErrorDetails(shown),
+                if (logPath != null) LogFileLine(logPath),
+              ],
+            ),
+      action: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          FilledButton(
+            key: const ValueKey('install-driver'),
+            onPressed: s.driverBusy ? null : () => s.checkDriver(install: true),
+            child: Text(s.host == 'linux' ? l.installButton : l.installDriver),
+          ),
+          if (logPath != null) OpenLogFolderButton(logPath),
+        ],
       ),
     );
   }

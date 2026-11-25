@@ -1,3 +1,4 @@
+{"path":"<workspace>/logs/<time>-build-testdev-heavy.log","type":"log_file"}
 {"stage":"plan","title":"Checking the plan","type":"stage"}
 {"code":"busy","hint":"Another Thimsy Installer task is using this workspace. Wait for it to finish, or close the other installer window.","message":"another Thimsy Installer task is using <workspace>","type":"error"}
 {"ok":false,"type":"result"}

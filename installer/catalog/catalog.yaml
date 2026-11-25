@@ -1,4 +1,4 @@
 # Thimsy installer catalog. Data only: devices and profiles. Builds come
 # from Thimsy packages, which describe themselves (see devices/*.yaml).
-version: "0.1.0-test21"
+version: "0.1.0-test22"
 release: "Thimsy 1.0a"

@@ -1,3 +1,4 @@
+{"path":"<user-logs>/<time>-drivers-anbernic-rg-cube.log","type":"log_file"}
 {"level":"info","message":"Installing Unisoc's USB driver for Unisoc download mode (1782:4d00); Windows asks for permission","type":"log"}
 {"code":"tool_failed","hint":"Accept the Windows permission prompt, or install Unisoc's USB driver from the UnisocTools of GammaOS Next's installation guide.","message":"driver install for Unisoc download mode (1782:4d00) failed (the Windows permission prompt was declined)","type":"error"}
 {"detail":"Unisoc's USB driver isn't bundled with this build. Install it from the UnisocTools of GammaOS Next's installation guide.","ok":false,"status":"missing","type":"result"}

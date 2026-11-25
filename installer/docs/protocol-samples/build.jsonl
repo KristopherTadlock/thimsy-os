@@ -1,3 +1,4 @@
+{"path":"<workspace>/logs/<time>-build-testdev-heavy.log","type":"log_file"}
 {"stage":"plan","title":"Checking the plan","type":"stage"}
 {"level":"info","message":"Needs about 31.01 MB free in <workspace>; 123.21 GB available","type":"log"}
 {"stage":"fetch","title":"Downloading","type":"stage"}
@@ -5,7 +6,7 @@
 {"done":3670109,"label":"Checking thimsy-system.img.zst","stage":"fetch","total":3670109,"type":"progress"}
 {"done":294,"label":"Checking vb.bsdiff","stage":"fetch","total":294,"type":"progress"}
 {"done":1453,"label":"Checking odm.bsdiff","stage":"fetch","total":1453,"type":"progress"}
-{"level":"info","message":"Using the downloaded Thimsy-test-testdev-heavy.tar: Thimsy Test (package format 1, 7 build steps)","type":"log"}
+{"level":"info","message":"Using the downloaded Thimsy-test-testdev-heavy.tar: Thimsy Test, package format 1, 7 build steps","type":"log"}
 {"done":382435,"label":"Importing fw.7z.001","stage":"fetch","total":382435,"type":"progress"}
 {"done":382435,"label":"Checking fw.7z.001","stage":"fetch","total":382435,"type":"progress"}
 {"done":382435,"label":"Importing fw.7z.002","stage":"fetch","total":382435,"type":"progress"}

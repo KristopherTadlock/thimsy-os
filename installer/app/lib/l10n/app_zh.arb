@@ -186,6 +186,8 @@
   "errTitleUnknown": "出了点问题",
   "copyDetails": "复制详细信息",
   "detailsCopied": "已复制",
+  "errorLogLine": "日志：{path}",
+  "openLogFolder": "打开日志文件夹",
   "fullInstallNeededBody": "未写入任何内容。无论设备当前运行的是什么，完整安装都适用，但会清除设备上的所有内容。切换后将返回“检查”步骤进行确认。",
   "switchToFull": "切换到完整安装",
   "updateCheckBody": "写入前，安装程序会检查设备运行的固件是否匹配。如果不匹配，则不会写入任何内容，您可以切换到完整安装。",

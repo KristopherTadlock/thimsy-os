@@ -186,6 +186,8 @@
   "errTitleUnknown": "Noget gik galt",
   "copyDetails": "Kopiér detaljer",
   "detailsCopied": "Kopieret",
+  "errorLogLine": "Log: {path}",
+  "openLogFolder": "Åbn logmappen",
   "fullInstallNeededBody": "Intet blev skrevet. En fuld installation virker uanset hvad enheden kører nu, men sletter alt på den. Når du skifter, kommer du tilbage til »Gennemse« for at bekræfte.",
   "switchToFull": "Skift til fuld installation",
   "updateCheckBody": "Før der skrives, kontrollerer installationsprogrammet, at enheden kører matchende firmware. Hvis ikke, skrives der intet, og du kan skifte til en fuld installation.",

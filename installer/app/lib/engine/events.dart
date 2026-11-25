@@ -42,6 +42,8 @@ sealed class EngineEvent {
         return PlanEvent(Plan.fromJson(j));
       case 'space':
         return SpaceEvent(SpaceInfo.fromJson(j));
+      case 'log_file':
+        return LogFileEvent(_s(j['path']));
       case 'devices':
         return DevicesEvent([
           for (final d in _l(j['devices'])) DetectedDevice.fromJson(_m(d)),
@@ -79,6 +81,13 @@ class LogEvent extends EngineEvent {
   final String level;
   final String message;
   const LogEvent(this.level, this.message);
+}
+
+/// Where the engine writes this run's log (the first event of a build,
+/// clean, prepare, flash, unlock or driver install).
+class LogFileEvent extends EngineEvent {
+  final String path;
+  const LogFileEvent(this.path);
 }
 
 class PromptEvent extends EngineEvent {

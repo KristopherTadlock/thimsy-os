@@ -465,12 +465,47 @@ class FakeEngine extends Engine {
     });
   }
 
-  EngineRun _script(List<EngineEvent> Function() events) => _FakeRun(() async* {
-    for (final e in events()) {
-      await _tick();
-      yield e;
+  /// Runs [events], one per [step]; a logged command ([log]) first says
+  /// where its log file is, like the real engine.
+  EngineRun _script(List<EngineEvent> Function() events, {String? log}) =>
+      _FakeRun(() async* {
+        if (log != null) yield LogFileEvent(log);
+        for (final e in events()) {
+          await _tick();
+          yield e;
+        }
+      });
+
+  /// The log file the real engine would write for [command]: in the
+  /// workspace's `logs` folder ([workspace], or the one holding [job]),
+  /// else in the per-user folder.
+  String _logPath(
+    String command,
+    String detail, {
+    String? workspace,
+    String? job,
+  }) {
+    final n = DateTime.now().toUtc();
+    String two(int v) => v.toString().padLeft(2, '0');
+    final name =
+        '${n.year}${two(n.month)}${two(n.day)}-'
+        '${two(n.hour)}${two(n.minute)}${two(n.second)}Z-$command'
+        '${detail.isEmpty ? '' : '-$detail'}.log';
+    if (job != null) {
+      final parts = job.split(RegExp(r'[\\/]'));
+      final inJobs = parts.length >= 2 && parts[parts.length - 2] == 'jobs';
+      workspace = inJobs ? parts.sublist(0, parts.length - 2).join('/') : null;
+      if (workspace == null) return '$job/logs/$name';
     }
-  });
+    if (workspace != null) return '$workspace/logs/$name';
+    return switch (host) {
+      'windows' => r'C:\Users\you\AppData\Local\Thimsy Installer\logs\' + name,
+      'macos' => '/Users/you/Library/Logs/Thimsy Installer/$name',
+      _ => '/home/you/.local/state/thimsy-installer/logs/$name',
+    };
+  }
+
+  static String _jobName(String job) => job.split(RegExp(r'[\\/]')).last;
 
   ErrorEvent? _hostError(String device) {
     final d = DeviceInfo.fromJson(_device(device));
@@ -550,7 +585,10 @@ class FakeEngine extends Engine {
     final failure = cleanFailure;
     if (failure != null) {
       // What ProcessEngine does with an error and `ok: false`.
-      throw EngineException(failure);
+      throw EngineException(
+        failure,
+        logPath: _logPath('clean', '', workspace: workspace),
+      );
     }
     var freed = 0;
     cleanable.removeWhere((i) {
@@ -605,6 +643,7 @@ class FakeEngine extends Engine {
           'bytes': 7722216910,
         }),
       ],
+      log: _logPath('build', '$device-$profile', workspace: workspace),
     );
   }
 
@@ -643,6 +682,7 @@ class FakeEngine extends Engine {
           ),
         ResultEvent(true, {'type': 'result', 'ok': true, 'files': 60}),
       ],
+      log: _logPath('prepare', _jobName(job), job: job),
     );
   }
 
@@ -654,6 +694,7 @@ class FakeEngine extends Engine {
   }) {
     calls.add('flash ${mode.name}${dryRun ? ' dry' : ''}');
     final device = _deviceFromJob(job);
+    final log = _logPath('flash', _jobName(job), job: job);
     if (flashSpaceFailures > 0) {
       flashSpaceFailures--;
       return _script(
@@ -668,6 +709,7 @@ class FakeEngine extends Engine {
           ),
           ResultEvent(false, {'type': 'result', 'ok': false}),
         ],
+        log: log,
       );
     }
     if (flashErrors.isNotEmpty) {
@@ -678,6 +720,7 @@ class FakeEngine extends Engine {
           error,
           ResultEvent(false, {'type': 'result', 'ok': false}),
         ],
+        log: log,
       );
     }
     final hostErr = _hostError(device);
@@ -687,6 +730,7 @@ class FakeEngine extends Engine {
           hostErr,
           ResultEvent(false, {'type': 'result', 'ok': false}),
         ],
+        log: log,
       );
     }
     return _script(
@@ -712,6 +756,7 @@ class FakeEngine extends Engine {
           'backup': '$job/backup',
         }),
       ],
+      log: log,
     );
   }
 
@@ -737,6 +782,7 @@ class FakeEngine extends Engine {
         ),
         ResultEvent(true, {'type': 'result', 'ok': true}),
       ],
+      log: _logPath('unlock', device),
     );
   }
 
@@ -750,7 +796,9 @@ class FakeEngine extends Engine {
     if (install && host != 'macos') {
       final failure = driversFailure;
       // What ProcessEngine does with an error and `ok: false`.
-      if (failure != null) throw EngineException(failure);
+      if (failure != null) {
+        throw EngineException(failure, logPath: _logPath('drivers', device));
+      }
       if (host == 'windows') _driverInstalled = true;
       if (host == 'linux') linuxRuleMissing = false;
     }

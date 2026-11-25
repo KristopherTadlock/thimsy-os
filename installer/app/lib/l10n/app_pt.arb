@@ -186,6 +186,8 @@
   "errTitleUnknown": "Algo correu mal",
   "copyDetails": "Copiar detalhes",
   "detailsCopied": "Copiado",
+  "errorLogLine": "Registo: {path}",
+  "openLogFolder": "Abrir a pasta de registos",
   "fullInstallNeededBody": "Nada foi escrito. Uma instalação completa funciona seja qual for o sistema que o dispositivo tem agora, mas apaga tudo o que nele existe. Ao mudar, volta a “Revisar” para confirmar.",
   "switchToFull": "Mudar para instalação completa",
   "updateCheckBody": "Antes de escrever, o instalador verifica se o dispositivo tem o firmware correspondente. Se não tiver, nada é escrito e pode mudar para uma instalação completa.",

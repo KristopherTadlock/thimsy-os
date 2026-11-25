@@ -186,6 +186,8 @@
   "errTitleUnknown": "Qualcosa è andato storto",
   "copyDetails": "Copia dettagli",
   "detailsCopied": "Copiato",
+  "errorLogLine": "Log: {path}",
+  "openLogFolder": "Apri la cartella dei log",
   "fullInstallNeededBody": "Non è stato scritto nulla. Un'installazione completa funziona qualunque cosa esegua ora il dispositivo, ma cancella tutto ciò che contiene. Passando all'installazione completa torni al passaggio «Riepilogo» per confermare.",
   "switchToFull": "Passa all'installazione completa",
   "updateCheckBody": "Prima di scrivere, il programma di installazione verifica che sul dispositivo sia presente il firmware corrispondente. In caso contrario non viene scritto nulla e puoi passare a un'installazione completa.",

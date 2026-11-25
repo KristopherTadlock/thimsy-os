@@ -9,5 +9,6 @@ mod pac;
 mod package;
 mod parity;
 mod resolve;
+mod runlog;
 mod samples;
 mod tools;

@@ -186,6 +186,8 @@
   "errTitleUnknown": "Etwas ist schiefgelaufen",
   "copyDetails": "Details kopieren",
   "detailsCopied": "Kopiert",
+  "errorLogLine": "Protokoll: {path}",
+  "openLogFolder": "Protokollordner öffnen",
   "fullInstallNeededBody": "Es wurde nichts geschrieben. Eine Vollinstallation funktioniert unabhängig davon, was derzeit auf dem Gerät läuft, löscht aber alles darauf. Beim Wechsel kehren Sie zu „Überprüfen“ zurück, um zu bestätigen.",
   "switchToFull": "Zur Vollinstallation wechseln",
   "updateCheckBody": "Vor dem Schreiben prüft das Installationsprogramm, ob auf dem Gerät eine passende Firmware läuft. Falls nicht, wird nichts geschrieben, und Sie können zur Vollinstallation wechseln.",

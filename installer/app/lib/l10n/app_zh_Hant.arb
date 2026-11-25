@@ -186,6 +186,8 @@
   "errTitleUnknown": "發生錯誤",
   "copyDetails": "複製詳細資料",
   "detailsCopied": "已複製",
+  "errorLogLine": "記錄檔：{path}",
+  "openLogFolder": "開啟記錄檔資料夾",
   "fullInstallNeededBody": "未寫入任何內容。無論裝置目前執行的是什麼，完整安裝都適用，但會清除裝置上的所有內容。切換後將返回「檢查」步驟進行確認。",
   "switchToFull": "切換到完整安裝",
   "updateCheckBody": "寫入前，安裝程式會檢查裝置執行的韌體是否相符。如果不符，就不會寫入任何內容，您可以切換到完整安裝。",

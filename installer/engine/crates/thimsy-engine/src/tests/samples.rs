@@ -45,7 +45,8 @@ fn run(g: &Global, cmd: Command) -> (i32, Vec<Value>) {
     (code, lines)
 }
 
-/// `run-YYYYMMDD-HHMMSS[-N]` → `run-<time>`, `YYYY-MM-DDTHH:MM:SSZ` → `<time>`.
+/// `run-YYYYMMDD-HHMMSS[-N]` → `run-<time>`, `YYYY-MM-DDTHH:MM:SSZ` and
+/// `YYYYMMDD-HHMMSSZ` (run logs) → `<time>`.
 fn mask_times(s: &str) -> String {
     let b = s.as_bytes();
     let digits = |r: std::ops::Range<usize>| b[r].iter().all(u8::is_ascii_digit);
@@ -63,6 +64,11 @@ fn mask_times(s: &str) -> String {
             && b[i + 10] == b'T'
             && b[i + 19] == b'Z'
             && digits(i + 11..i + 13);
+        let log_stamp = b.len() >= i + 16
+            && digits(i..i + 8)
+            && b[i + 8] == b'-'
+            && digits(i + 9..i + 15)
+            && b[i + 15] == b'Z';
         if stamp {
             out.push_str("run-<time>");
             i += 19;
@@ -77,6 +83,9 @@ fn mask_times(s: &str) -> String {
         } else if iso {
             out.push_str("<time>");
             i += 20;
+        } else if log_stamp {
+            out.push_str("<time>");
+            i += 16;
         } else {
             let c = s[i..].chars().next().unwrap();
             out.push(c);
@@ -120,6 +129,15 @@ fn normalise(lines: Vec<Value>, paths: &[(&Path, &str)]) -> Vec<Value> {
             }
         }
         normalise_value(&mut v, &subs);
+        if v["type"] == "log_file" {
+            // `-2`, `-3`... when two runs start in the same second.
+            let p = v["path"].as_str().unwrap();
+            let stem = p.strip_suffix(".log").unwrap();
+            let base = stem.trim_end_matches(|c: char| c.is_ascii_digit());
+            if base.len() < stem.len() && base.ends_with('-') && !base.ends_with("<time>-") {
+                v["path"] = Value::from(format!("{}.log", &base[..base.len() - 1]));
+            }
+        }
         // A label finishing twice in a row (e.g. checked again) shows once.
         if v["type"] == "progress" && out.last() == Some(&v) {
             continue;
@@ -205,6 +223,7 @@ fn no_hooks() {
     tools::test::TOOLS_DIR.with(|d| *d.borrow_mut() = None);
     crate::detect::test::DEVICES.with(|d| *d.borrow_mut() = None);
     crate::disk::test::PROBE.with(|p| *p.borrow_mut() = None);
+    crate::runlog::test::USER_DIR.with(|d| *d.borrow_mut() = None);
 }
 
 #[test]
@@ -251,7 +270,10 @@ fn samples_catalog_resolve_space_detect_drivers() {
     assert_eq!(code, 0);
     sample("detect.jsonl", &normalise(l, &[]));
 
-    // The Windows driver install, declined at the UAC prompt.
+    // The Windows driver install, declined at the UAC prompt. Its log goes
+    // in the per-user folder.
+    let user_logs = tmp.path().join("user logs");
+    crate::runlog::test::USER_DIR.with(|d| *d.borrow_mut() = Some(user_logs.clone()));
     crate::drivers::test::ELEVATED_EXIT.with(|c| c.set(Some(1223)));
     let (code, l) = run(
         &global(None, "windows"),
@@ -263,7 +285,10 @@ fn samples_catalog_resolve_space_detect_drivers() {
     crate::drivers::test::ELEVATED_EXIT.with(|c| c.set(None));
     assert_eq!(code, 1);
     assert_eq!(l.last().unwrap()["status"], "missing");
-    sample("drivers-failed.jsonl", &normalise(l, &[]));
+    sample(
+        "drivers-failed.jsonl",
+        &normalise(l, &[(&user_logs, "<user-logs>")]),
+    );
     no_hooks();
 }
 

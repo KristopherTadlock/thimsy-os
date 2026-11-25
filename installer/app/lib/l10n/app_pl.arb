@@ -186,6 +186,8 @@
   "errTitleUnknown": "Coś poszło nie tak",
   "copyDetails": "Skopiuj szczegóły",
   "detailsCopied": "Skopiowano",
+  "errorLogLine": "Dziennik: {path}",
+  "openLogFolder": "Otwórz folder dzienników",
   "fullInstallNeededBody": "Nic nie zostało zapisane. Pełna instalacja działa niezależnie od tego, co jest teraz na urządzeniu, ale wymazuje z niego wszystko. Przełączenie przeniesie cię z powrotem do kroku „Przegląd”, gdzie to potwierdzisz.",
   "switchToFull": "Przełącz na pełną instalację",
   "updateCheckBody": "Przed zapisem instalator sprawdza, czy urządzenie ma pasujące oprogramowanie. Jeśli nie, nic nie zostanie zapisane i możesz przełączyć się na pełną instalację.",
