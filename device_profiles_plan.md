@@ -68,6 +68,16 @@ A package is resolved from these layers, lowest priority first:
 - **Recorded result.** The resolved result goes into `pack.json` and onto the device as
   `/odm/etc/thimsy/install-manifest.json`. Each value records the layer that set it
   (`universal_installer.md` 3.3).
+- **Platform (Linux images).** `linux_handheld_plan.md` §6.3 builds Small and Medium for Linux
+  handhelds. This plan has no platform dimension yet, and the content rule above stops layers
+  3–6 from swapping a component. The Linux build needs:
+  - a platform selector, either a layer or a per-component platform column, that is allowed to
+    substitute components;
+  - a `platform=` or `requires=platform:linux` key;
+  - a Linux substitute for each Android-only default in Small and Medium (section 5.3).
+
+  `requires=`'s Android API level means nothing on Linux. Which form the selector takes is open
+  question 7.
 
 ---
 
@@ -80,7 +90,7 @@ here.
 |---|---|---|
 | RG Cube positional ABXY keylayout (`Vendor_484b_Product_1101.kl`) | `mods/27-controller-layout.sh`, `mods/keylayout/` | device `anbernic-rg-cube` |
 | PPSSPP and RetroArch binds moved to positions | `27-controller-layout.sh`, `10-update-emulators.sh` | device (the face-button layout is a device fact) |
-| `rg_cube_4_3_cropped` / `rg_cube_8_7_cropped` RetroArch shaders | `mods/retroarch-shaders/`, `10-update-emulators.sh:217` | display `720x720` (rename them `720x720_*`) |
+| `rg_cube_4_3_cropped` / `rg_cube_8_7_cropped` RetroArch shaders | `mods/retroarch-shaders/`, `10-update-emulators.sh:217` | display `720x720` (rename them `720x720_*`; `multi_device_plan.md` §5 names them differently: open question 9) |
 | `ro.gammaos.nano.no_slide=1` | `50-nano.sh:255` | device (the RG Slide must not get it) |
 | RG Cube Quick Settings tiles (no HDMI tiles) | `50-nano.sh:265-279` | device |
 | `persist.gammaos.performance_mode`, `gammargb.control` defaults | `50-nano.sh` | chipset (performance mode), device (RGB) |
@@ -282,6 +292,17 @@ emulators):
 - **Adreno.** Dolphin and ARMSX2 get Turnip selected.
   - On Ultra, Eden uses Turnip, or the system driver on 8 Elite class chips, per upstream.
 
+**Linux substitutes** (`linux_handheld_plan.md` §6.3). Linux images need a substitute for each
+Android-only default in Small and Medium. Known so far:
+
+| System | Profiles | Android default | Linux substitute |
+|---|---|---|---|
+| Nintendo DS | Small, Medium | SeedlessDS | melonDS DS core (not yet in `mods/retroarch-cores.txt`) |
+| Nintendo 64 | Medium | M64Plus FZ | mupen64plus standalone or the `mupen64plus_next` core: to be settled by `linux_handheld_plan.md` Phase 3's per-system core table |
+
+The full list comes from the resolver once the platform selector exists (section 2, open
+question 7).
+
 ### 5.4 Ultra: what is realistic
 
 None of the 27 released GammaOS devices meets the hardware floor the emulator projects
@@ -463,6 +484,11 @@ capabilities fan rgb displayport touch
 prop         ro.gammaos.nano.no_slide=1
 ```
 
+**Chipset ids.** The SoC key and id scheme are settled by `multi_device_plan.md` Phase 1's
+descriptor (its decision 19, still open). Its SoC-family list mixes `unisoc-ums9620` and `rk3568`
+today; it recommends one vendor-prefixed scheme such as `rockchip-rk3566`. This plan's ids
+(`unisoc-t820`, `allwinner-h700`) follow whatever it fixes.
+
 A Python resolver (`scripts/resolve_package.py`, tested like `nano_systems.py`) reads these files.
 
 - **Input:** a device id and a profile.
@@ -525,6 +551,9 @@ only the right layers do. Moving device content to odm later doesn't change the 
   carry "May run poorly" or "Not recommended", with the reason (for example, "Large suggests
   6 GB of RAM; this device has 4 GB"). Picking one shows that reason once more before the
   build; it doesn't ask for anything else.
+  - Proposed exception: Linux images offer only Small and Medium (`linux_handheld_plan.md` §8.4
+    and decision 12). Large and Ultra need heavy emulators that the RK3566 and H700 images don't
+    contain. Not decided here: open question 8.
 - **Left out** components (those that can't start on this CPU or GPU) are listed on the card.
 - **Customise.** Within a profile's `editable` fields: add or remove an emulator, or change a
   platform's default. The extra apps go to the post-boot add-on pack (`universal_installer.md`
@@ -585,7 +614,24 @@ only the right layers do. Moving device content to odm later doesn't change the 
 5. **Medium's DS default.** SeedlessDS (proposed: faster on T618 / G99) or WatermelonDS (today's
    choice)?
 6. **The H700.** No GammaOS device uses it today. Keep it in the table as Small's reference chip for
-   future devices (proposed), or drop it?
+   future devices (proposed), or drop it? `linux_handheld_plan.md` Phase 7 (H700 with its two
+   images) and its decision 12 (H700 as Small) depend on keeping it.
+7. **Platform selector** (section 2). How does a Linux image swap Android-only components: a
+   platform layer, or a per-component platform column; and is the key `platform=` or
+   `requires=platform:linux`? `linux_handheld_plan.md` §6.3 leaves the choice to this plan.
+   Recommended: a `requires=platform:<name>` hard constraint on each platform-bound component, and
+   each profile's default list names the Linux entry after the Android ones
+   (`default nds seedlessds watermelonds <melonDS DS core>`). Android-only entries then drop on
+   Linux and the platform falls through to the next default, so layers 3–6 still add nothing.
+8. **Linux images and the no-gating rule** (section 8). `linux_handheld_plan.md` §8.4 and
+   decision 12 propose that Linux images offer only Small and Medium, because Large and Ultra need
+   heavy emulators those images don't contain. Accept it as an exception to "every profile on
+   every device", or offer all four with fit labels? `multi_device_plan.md` §7.1 item 6 also
+   speaks of "allowed" profiles per device. `linux_handheld_plan.md` decision 12 settles it for
+   the Linux side.
+9. **Shader names** (section 3). `multi_device_plan.md` §5 renames `rg_cube_*` to names like
+   `thimsy_4_3_cropped`, with the old names kept as aliases; section 3 here says `720x720_*`.
+   Recommended: whichever plan lands first settles the names, and the other follows.
 
 ---
 

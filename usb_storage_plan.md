@@ -107,7 +107,7 @@ While a drive holds the settings, internal storage has either nothing (the move 
 - The storage denylist rules, applied to USB as to the card.
 
 ## Risks
-- **Duplicate volume ids:** two FAT drives cloned from one image share a serial and so an id. vold's behaviour with both inserted is unknown. Detect two mounted volumes with one id and refuse to choose between them, with a message.
+- **Duplicate volume ids:** two FAT drives cloned from one image share a serial and so an id. vold's behaviour with both inserted is unknown. Detect two mounted volumes with one id and refuse to choose between them, with a message: neither drive is used. This is the card contract on both platforms: `linux_handheld_plan.md` §7.3 adopts the same rule (decision 17), and it goes into `LIBRARY-FORMAT.md` (`android_launcher_plan.md` §3).
 - **Drives that come and go** (USB hubs, docks that power-cycle the port) must not trigger the drive-out banner flapping. Keep the existing 10-s grace before treating a drive as gone.
 - **Hard-coded ids in about 12 emulator configs, the SAF grants and the Dolphin/hakuX symlinks:** every change of drive goes through `fileJobRelocate`, never a property flip.
 

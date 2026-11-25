@@ -71,8 +71,8 @@ What does not change:
 | Anbernic RG353P / RG353V / RG353M | Rockchip RK3566 | Core, beta3 (2025-02-07); also legacy GammaOS v1.5.1 (§2.2) | 13 TV (Core), 12 (legacy) / 11 | Core: RKFW, SDDiskTool SD boot or RKDevTool eMMC. Legacy: RKFW SD update, or fastbootd images on the stock vendor | likely: an Android 12 GSI (legacy GammaOS) already runs on the stock Android 11 vendor; 4.19 kernel and FCM 5/6 accepted; nothing has shipped on A14. 2 GB | 5 |
 | Anbernic RG353VS / RG353PS | RK3566 | Core, beta3 | 13 TV / none (Linux) | RKFW SD | assumed; 1 GB, no Android vendor of their own | 5 |
 | Anbernic RG ARC-D | RK3566 | Core, beta3; also legacy GammaOS v1.5.1 | 13 TV, 12 (legacy) / 11 | RKFW SD or eMMC; legacy fastbootd | likely (same evidence as the RG353P/V/M). 2 GB | 5 |
-| Anbernic RG ARC-S | RK3566 | Core, beta3 | 13 TV / none (Linux) | RKFW SD or eMMC | assumed; 1 GB | 5 |
-| Anbernic RG503 | RK3566 | Core, beta3 | 13 TV / none (Linux) | RKFW SD or eMMC | assumed; 1 GB | 5 |
+| Anbernic RG ARC-S | RK3566 | Core, beta3 | 13 TV / none (Linux) | RKFW SD (no eMMC: the droix review and the mainline device tree) | assumed; 1 GB | 5 |
+| Anbernic RG503 | RK3566 | Core, beta3 | 13 TV / none (Linux) | RKFW SD (no eMMC: the mainline device tree enables no `sdhci`) | assumed; 1 GB | 5 |
 | Powkiddy RGB30 / RGB20SX | RK3566 | Core, beta3 | 13 TV | RKFW SD; RGB30 v2 needs its own boot.img | assumed; 1 GB | 5 |
 | Powkiddy RGB10 Max 3 | RK3566 | Core, beta3 | 13 TV | RKFW SD | assumed; 1 GB | 5 |
 | Powkiddy RGB20 Pro | RK3566 | Core, beta3 | 13 TV | RKFW SD | assumed; 1 GB at 1024x768 | 5 |
@@ -117,7 +117,7 @@ Three older GammaOS repositories also ship Android builds for devices in the tab
 | Device | Decision | Why |
 |---|---|---|
 | Konkr Pocket Advance, Konkr Pocket Block | **Excluded** | GammaOS Pico is a custom LK bootloader emulator, not Android. GammaOS ships no Android vendor or drivers for them. A Thimsy port would be a from-scratch port on Ayaneo's stock vendor. Pico also writes `lk_a`/`lk_b`, so a Thimsy install would remove it and the reverse. Point users to GammaOS Pico. |
-| RK3566 GammaOS Core devices (15 entries, about 20 models) | **Deferred** to tier 5 | No Android 14 base exists; Core is Android 13 TV, frozen since February 2025. Thimsy would own every vendor fix. Start with a test boot on an RG353V or ARC-D (2 GB, eMMC, stock Android 11 vendor that already runs a GSI), flashed by fastbootd as legacy GammaOS did. |
+| RK3566 GammaOS Core devices (15 entries, about 20 models) | **Deferred** to tier 5 | No Android 14 base exists; Core is Android 13 TV, frozen since February 2025. Thimsy would own every vendor fix. Start with a test boot on an RG353V or ARC-D (2 GB, eMMC, stock Android 11 vendor that already runs a GSI), flashed by fastbootd as legacy GammaOS did. The owner's ARC-D may be erased for the Linux build (`linux_handheld_plan.md` decision 2); an RG353V would then be needed, unless the eMMC backup restores Android (its open question 7). |
 | TrimUI Smart Pro | Deferred | Only GammaOS Core beta3 (Android 13 TV); no vendor branch in GammaOSCoreVendor. Thimsy would have to build or port a vendor. |
 | RG DS Plus | Deferred | 1 GB RAM; upstream ships only a "Core" build (GammaOS Nano without Google apps, not GammaOS Core), and no public download exists. `device_profiles_plan.md` §4 already says: not a target until a low-RAM runtime variant is qualified. |
 | TrimUI Brick | Deferred with the other 1 GB devices (decision 9) | 1 GB RAM, the same reason as the RG DS Plus. The three 2 GB A133P devices stay in phase 5. |
@@ -158,6 +158,8 @@ Fields (from the build audit):
 - **Profiles:** recommended and allowed profiles.
 
 Shared defaults live in a SoC-family file (unisoc-ums9620, unisoc-ums512, mtk-mt6789, rk3568 and so on), so a device file holds only its overrides. This is `device_profiles_plan.md`'s layer model with the device layer filled in.
+
+Phase 1's descriptor settles the SoC key and id scheme once, for the build, the catalog, `device_profiles_plan.md`'s `socs/` layer and `linux_handheld_plan.md` §8.3. The ids are not settled yet: the list above mixes `rk3568` and `unisoc-ums9620`, `device_profiles_plan.md` §7.1 uses `unisoc-t820` and `allwinner-h700`, and the catalog's `soc` is display text (`Unisoc T820`). Decision 19.
 
 ### 4.3 Where device facts go
 
@@ -219,7 +221,7 @@ From the build audit. File by file:
 | `mods/45-armsx2-malisx2.sh` | MaliSX2 for every device | Mali only; Turnip defaults on Adreno; nothing on PowerVR. |
 | `mods/27-controller-layout.sh`, `mods/keylayout/Vendor_484b_Product_1101.kl` | Cube keylayout in `/product` for every device | Per-device keylayouts in the device pack; face-bind swaps applied by face layout at first boot. Check each Anbernic model's vendor `.kl` before sharing one file. |
 | `mods/10-update-emulators.sh` | RetroArch bind swap for the Cube pad; installs `rg_cube_*` shaders | Swap by face layout; shaders from the display layer. |
-| `mods/retroarch-shaders/rg_cube_*` | Named for the Cube | Rename (for example `thimsy_4_3_cropped`) with the old names kept as aliases; their maths is already size-generic. |
+| `mods/retroarch-shaders/rg_cube_*` | Named for the Cube | Rename (for example `thimsy_4_3_cropped`) with the old names kept as aliases; their maths is already size-generic. `device_profiles_plan.md` §3 renames them `720x720_*` instead (decision 20). |
 | `mods/50-nano.sh` | `no_slide=1`, RGB, performance mode and the Cube's Quick Settings tiles in system/product build.prop | Keep generic Nano defaults; move the rest to device and chipset layers. With no device entry, leave the vendor's tile list alone. |
 | `mods/12-trim-overlays.sh` | Removes cutout overlays ("the RG Cube has no cutout") | Device option, default on. |
 | `mods/58-bootanimation.sh` | One 480x480 animation | Optional per-panel variants (low priority). |
@@ -270,7 +272,7 @@ The installer must take any supported device from "pick your handheld" to a runn
 3. **Sources.** `sources: []`, each with an id, a variant key and a container format (pac, fastboot_images, mtk_scatter, qfil, gpt_disk, rk_rkfw, allwinner_imagewty). `contains` may list several files. Zip archives. Shared assets (UnisocTools.7z). A device's format can change between releases (RG DS: raw self-flashing image up to v1.4.1, RKFW update card from v1.4.4), so the format belongs to the source, not the device. A `public: false` source (supporter-only release) is never offered for download, only imported by hash. The hashes and passwords for the 30 catalogued devices are already in `installer/docs/gammaos-devices.md`.
 4. **Variants and preconditions.** Packages keyed by (profile, variant). Typed questions (storage 128/256 GB, MQ65/MQ66, Bluetooth model, overclocked or not), confirmations (manufacture date, stock version) and detected checks (`getvar`, adb props). `blocks:` is enforced, not just listed: RG557 v1.26+, RP Classic from March 2026, Air X unknown serial prefixes.
 5. **Hardware fields.** Structured SoC, GPU family, vendor API, kernel, FCM level, runtime variant, display geometry. Today's `hardware.android_api` mixes things: 33 on the five devices whose only GammaOS build is Android 13 (Helio G99 x3, RP4 Pro, RP Classic) describes GammaOS's system, while the RP Classic's vendor is stock Android 14 and the KT-R1's stock Android 12. Split it into system API and vendor API. Those five are marked as needing `check_vintf` and hardware qualification.
-6. **Profiles per device.** Allowed and default profiles; a super-fit check (system size vs the device's super free space) before downloading; real exclusions instead of "installed but unsupported" (device_profiles_plan.md phase 1).
+6. **Profiles per device.** Allowed and default profiles; a super-fit check (system size vs the device's super free space) before downloading; real exclusions instead of "installed but unsupported" (device_profiles_plan.md phase 1). "Allowed" disagrees with `device_profiles_plan.md`, where every profile is selectable on every device and nothing is greyed out; that plan records the conflict (§11 question 8). `linux_handheld_plan.md` decision 12 settles it for Linux images.
 7. **New and corrected device files:** RP Duo Lite, TrimUI Smart Pro, RK3566 devices (when un-deferred). Correct `universal_installer.md` §2.2/8.1: the RG Vita and RG Rotate are T618 PAC devices with no unlock step. Catalog `gpu: Mali-G52` for RK3576 should say MC3; A133P `vulkan: true` should say Vulkan 1.0. `device-keys.json` says Snapdragon 680 for the Air X; it is a Snapdragon 662 (the catalog is right).
 8. **Signed remote catalog** (minisign, monotonic version, expiry, revocation; `universal_installer.md` §10), so a device can be qualified without an app release. The bundled catalog stays as the offline fallback.
 
@@ -393,7 +395,7 @@ Without hardware:
 **Phase 0: facts, no hardware.** Section 8 items 1-3 for one image per family. Read `FlashPartitions` scripts, scatter files, rawprogram XML and `parameter.txt`. Fill the descriptors' partition and AVB fields. Answer the §13 open questions 1-6 and get the owner's §12 decisions 1-6.
 
 **Phase 1: descriptor refactor, Cube only.**
-- Build: `devices/anbernic-rg-cube` descriptor; `build.sh DEVICE=`; container and logo backends behind interfaces; optional steps; byte-identical Cube PAC (golden test).
+- Build: `devices/anbernic-rg-cube` descriptor, with the SoC key and id scheme settled (decision 19); `build.sh DEVICE=`; container and logo backends behind interfaces; optional steps; byte-identical Cube PAC (golden test).
 - System: `ro.thimsy.device`; Cube facts out of the shared system and product build.prop into the device pack; per-device init `.rc` fragments; gammapad and `pads.json` read the device entry.
 - Installer: Backend and Container traits with Spd only; family files; typed recipes; identify probe and readback identity check; variants and preconditions schema; format 2 read path.
 
@@ -403,11 +405,11 @@ Without hardware:
 
 **Phase 4: fastboot backend.** T618 RG405V, RG405M, RG505; Helio G99 x3 (KeyMint); RP4 Pro (test boot first); RP Classic (revision gate).
 
-**Phase 5: SD backend.** RG DS, RG Vita Pro, GKD 350H Ultra; then the 2 GB A133P devices: MagicX Mini Zero 28, Zero 40, XU20 V32 (IMAGEWTY).
+**Phase 5: SD backend.** RG DS, RG Vita Pro, GKD 350H Ultra; then the 2 GB A133P devices: MagicX Mini Zero 28, Zero 40, XU20 V32 (IMAGEWTY). `linux_handheld_plan.md` Phase 4 may build the SD-card writer first, once, in the `sdcard` crate `universal_installer.md` §5.1 reserves (`linux_handheld_plan.md` §4.5 and §8.5); this backend then reuses it. The Linux plan's `disk_image`, `fat_*` and `require_card` operations extend the `sdcard:` actions (`select_card`, `write_image`, `verify`) rather than replace them (its §8.3), and its decision 7 picks the order.
 
 **Phase 6: remaining backends.** qdl (Air X); SP Flash (Pocket Air Mini, then the Dimensity 8300 devices with the storage question); PhoenixSuit walkthrough after an automated `fastboot oem unlock` (E6 Max).
 
-**Phase 7: deferred devices.** RP Duo Lite once 1.5.0 is public; RK3566 after an Android 14 test boot on an RG353V or ARC-D (fastbootd on the stock vendor, or SD); TrimUI Smart Pro; RG DS Plus (also needs a public release), TrimUI Brick and other 1 GB devices once decision 9 allows them.
+**Phase 7: deferred devices.** RP Duo Lite once 1.5.0 is public; RK3566 after an Android 14 test boot on an RG353V or ARC-D (fastbootd on the stock vendor, or SD; the RG353V if the ARC-D is erased for the Linux build, section 3); TrimUI Smart Pro; RG DS Plus (also needs a public release), TrimUI Brick and other 1 GB devices once decision 9 allows them.
 
 In parallel from phase 1: the shared system artifact and the signed remote catalog.
 
@@ -455,6 +457,8 @@ In parallel from phase 1: the shared system artifact and the signed remote catal
 16. **Supporter-only bases** (RG DS v1.4.4, every RG DS Plus release): target only public releases (the RG DS stays on v1.4.1 and the RG DS Plus waits), or also accept a local file the user imports by hash?
 17. **Pocket Air Mini clean install:** upstream uses SP Flash "Format All + Download". Follow it, or require a download-only route that leaves nvram and calibration alone (needs a unit to prove)?
 18. **Upstream updaters** in Thimsy's system (`gammaos-ota`, `NanoOtaCheck`, possibly the Next updater): remove them, or point them at a Thimsy update server?
+19. **SoC key and ids** (§4.2). Phase 1's descriptor settles them once, for this plan, `device_profiles_plan.md` and `linux_handheld_plan.md`. Recommended: one vendor-prefixed scheme, such as `rockchip-rk3566`, as `linux_handheld_plan.md` §8.3 assumes. Still open: whether the part after the prefix is the marketing name (`t820`) or the platform code (`ums9620`).
+20. **Shader names** (§5). This plan renames `rg_cube_*` to names like `thimsy_4_3_cropped`, with the old names kept as aliases; `device_profiles_plan.md` §3 says `720x720_*`. Recommended: whichever plan lands first settles the names, and the other follows. `device_profiles_plan.md` records the same conflict (§11 question 9).
 
 ## 13. Open questions
 
@@ -519,6 +523,7 @@ Community and tools:
 - https://github.com/rockchip-linux/rkdeveloptool, https://github.com/xboot/xrock
 - https://github.com/YuzukiTsuru/OpenixCLI, https://github.com/vicromao/imagewty-tool
 - https://github.com/zenithblue-oss/panvk-kbase-android
+- Mainline device trees (eMMC is the `sdhci` node: enabled in the RG353P and ARC-D trees, absent from the ARC-S, RG353VS and RG503 trees): https://github.com/torvalds/linux/tree/master/arch/arm64/boot/dts/rockchip (`rk3566-anbernic-rg-arc-s.dts`, `rk3566-anbernic-rg503.dts`, `rk3566-anbernic-rgxx3.dtsi`); https://droix.net/blogs/anbernic-rg-arc-s-arc-d-review-with-video/ (ARC-S: no eMMC)
 
 Spec and review pages: Notebookcheck, Android Authority, retrohandhelds.gg, Retro Dodo, Joey's Retro Handhelds and Anbernic product pages, as cited per device in the research (for example https://www.androidauthority.com/retroid-pocket-classic-review-3557622/, https://www.joeysretrohandhelds.com/reviews/gkd-350h-ultra/, https://win.anbernic.com/product/685.html).
 
