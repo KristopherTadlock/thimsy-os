@@ -161,6 +161,8 @@ platform/firmware/Volumes.cpp
 platform/firmware/Power.cpp
 # platform/firmware/SystemActions.cpp: the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)
 platform/firmware/SystemActions.cpp
+# platform/firmware/InputPolicy.cpp: the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)
+platform/firmware/InputPolicy.cpp
 # NanoMenuDrmBuffers.cpp: the AHardwareBuffer render-target back end (G9a); Linux links platform/linux/display/DrmBuffersGbm.cpp instead
 NanoMenuDrmBuffers.cpp
 # NanoMenuRgbFollow.cpp: reaches GammaRgbProcess.h (a header outside Nano's folder (upstream.json siblings): v1 has neither Shares nor RGB follow on Linux)
@@ -220,6 +222,7 @@ platform/linux/AudioAlsa.cpp
 platform/linux/AudioPull.cpp
 platform/linux/ControlKeys.cpp
 platform/linux/Launcher.cpp
+platform/linux/InputPolicy.cpp
 platform/linux/LinuxPlatform.cpp
 platform/linux/Power.cpp
 platform/linux/ShellGate.cpp
@@ -246,6 +249,7 @@ platform/host/FakeEvdev.cpp
 platform/host/FakeLauncher.cpp
 platform/host/FakeVolumes.cpp
 platform/host/FakePower.cpp
+platform/host/FakeInput.cpp
 platform/host/HostConfig.cpp
 platform/host/HostControl.cpp
 platform/host/HostPlatform.cpp

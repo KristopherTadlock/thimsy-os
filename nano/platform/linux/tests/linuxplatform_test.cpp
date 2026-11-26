@@ -113,6 +113,7 @@ TEST(LinuxPlatform, HasEveryService) {
     ASSERT_TRUE(p->power != nullptr);
     EXPECT_FALSE(p->power->setBrightnessViaHal(10));
     EXPECT_TRUE(p->actions != nullptr);
+    EXPECT_TRUE(p->input != nullptr);  // G7-input
 }
 
 }  // namespace

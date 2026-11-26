@@ -68,6 +68,10 @@ PLAT_POWER_SRCS := Power.cpp ControlKeys.cpp actions/SystemActions.cpp actions/R
 PLAT_SRCS_linuxplatform_test += $(PLAT_POWER_SRCS)
 PLAT_SRCS_power_test := Power.cpp ControlKeys.cpp
 PLAT_SRCS_actions_test := actions/SystemActions.cpp actions/Run.cpp actions/WpaCtrl.cpp
+# G7-input: the input policy (padd's intercept and tap).
+PLAT_TESTS += inputpolicy_test
+PLAT_SRCS_inputpolicy_test := InputPolicy.cpp
+PLAT_SRCS_linuxplatform_test += InputPolicy.cpp
 PLAT_TEST_BINS := $(PLAT_TESTS:%=$(PLAT_O)/test/%)
 # volumes_test reads thimsy-session's own volumes.json files from data/.
 PLAT_TEST_DEFS := -DPLAT_TEST_DATA_DIR='"$(PLAT_TEST_DIR)/data"'

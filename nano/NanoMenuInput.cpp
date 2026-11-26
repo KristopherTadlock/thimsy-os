@@ -61,6 +61,7 @@ extern "C" uint32_t __system_property_serial(const prop_info* __pi);
 #include "NanoMenuShaders.h"
 #include "NanoMenuUtils.h"
 #include "NanoLaunchCommit.h"   // commitLaunch: the launch handshake's writes
+#include "NanoPlatform.h"       // nanoplat::get().input: the devices' grab (G7-input)
 #include "NanoMenuStrings.h"   // LOCALE_COUNT (DSi language picker touch)
 #include "NanoAbxy.h"
 #include "NanoI18n.h"
@@ -83,17 +84,8 @@ void NanoMenu::openInputDevices() {
         int fd = open(path, O_RDONLY | O_NONBLOCK);
         nanoabxy::forget(fd);
         if (fd >= 0) {
-            // Exclusive grab: prevent Android InputReader from stealing events.
-            // Gated by property — disable when preload is off to avoid input
-            // ownership issues during app transitions.
-            if (android::base::GetBoolProperty("persist.gammaos.nano.grab_input", false)) {
-                if (ioctl(fd, EVIOCGRAB, 1) < 0) {
-                    ALOGW("EVIOCGRAB failed for %s: %s", path, strerror(errno));
-                }
-                ALOGD("Opened + grabbed input device: %s", path);
-            } else {
-                ALOGD("Opened input device (no grab): %s", path);
-            }
+            // The grab (EVIOCGRAB): NanoPlatform.h's InputPolicy, platform/firmware/InputPolicy.cpp.
+            nanoplat::get().input->deviceOpened(fd, path, nanoplat::InputPolicy::Opened::AtStart);
             mInputFds.push_back(fd);
             mOpenedDevices.insert(entry->d_name);
             // Cache the device name per-fd so the Control Center can route the BOTTOM touch
@@ -156,7 +148,7 @@ void NanoMenu::checkInputHotplug() {
                                         (fdPath[wantLen] == '\0' ||
                                          fdPath[wantLen] == ' ')) {
                                     inputEventsLost(*it);
-                                    ioctl(*it, EVIOCGRAB, 0);
+                                    nanoplat::get().input->deviceClosing(*it);
                                     mInputFdNames.erase(*it);   // drop the fd->name entry so CC pollers
                                                                 // (key / top / bottom digitizer) never match
                                                                 // a stale closed fd after a device re-seize
@@ -179,14 +171,7 @@ void NanoMenu::checkInputHotplug() {
                     int fd = open(path, O_RDONLY | O_NONBLOCK);
                     nanoabxy::forget(fd);
                     if (fd >= 0) {
-                        // Home-mode grab only (persist.gammaos.nano.grab_input).
-                        // The overlay does NOT grab: it isolates the app's input
-                        // via the framework drop_input prop, not EVIOCGRAB.
-                        if (android::base::GetBoolProperty("persist.gammaos.nano.grab_input", false)) {
-                            if (ioctl(fd, EVIOCGRAB, 1) < 0) {
-                                ALOGW("EVIOCGRAB failed for hotplugged %s: %s", path, strerror(errno));
-                            }
-                        }
+                        nanoplat::get().input->deviceOpened(fd, path, nanoplat::InputPolicy::Opened::Hotplugged);
                         mInputFds.push_back(fd);
                         mOpenedDevices.insert(ev->name);
                         char nm[128] = {0};   // re-cache the device name so CC pollers keep routing by name
@@ -238,7 +223,7 @@ void NanoMenu::checkInputHotplug() {
                     ALOGI("Sweep: dropped stale fd %s", fdPath);
                 }
                 inputEventsLost(*it);
-                ioctl(*it, EVIOCGRAB, 0);
+                nanoplat::get().input->deviceClosing(*it);
                 mInputFdNames.erase(*it);   // keep the fd->name map free of stale closed fds (CC pollers)
                 touchPanelGone(*it);   // its fd number may come back
                 mPollSkipFd.erase(*it);
@@ -262,12 +247,7 @@ void NanoMenu::checkInputHotplug() {
         int fd = open(path, O_RDONLY | O_NONBLOCK);
         nanoabxy::forget(fd);
         if (fd >= 0) {
-            // Home-mode grab only; the overlay isolates via drop_input, not grab.
-            if (android::base::GetBoolProperty("persist.gammaos.nano.grab_input", false)) {
-                if (ioctl(fd, EVIOCGRAB, 1) < 0) {
-                    ALOGW("EVIOCGRAB failed for swept %s: %s", path, strerror(errno));
-                }
-            }
+            nanoplat::get().input->deviceOpened(fd, path, nanoplat::InputPolicy::Opened::Swept);
             mInputFds.push_back(fd);
             mOpenedDevices.insert(entry->d_name);
             char nm[128] = {0};   // re-cache the device name so CC pollers keep routing by name

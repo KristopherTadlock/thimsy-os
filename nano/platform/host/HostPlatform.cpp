@@ -42,6 +42,7 @@
 #include "FakeDisplay.h"  // G7-display
 #include "FakeLauncher.h"  // G7-launch-b
 #include "FakePower.h"  // G7-power
+#include "FakeInput.h"  // G7-input
 #include "HostConfig.h"
 #include "NanoPlatform.h"
 #include "FakeAudio.h"  // G7-audio
@@ -150,5 +151,6 @@ std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs&
     platform->volumes = std::move(volumes);   // G7-volumes
     platform->power = createFakePower();  // G7-power
     platform->actions = createFakeActions();  // G7-power
+    platform->input = createFakeInput();  // G7-input
     return platform;
 }
