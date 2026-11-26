@@ -134,9 +134,9 @@
     "nano:NanoAudio.h",
     "nano:NanoHls.h",
     "nano:NanoIcyDemux.h",
+    "nano:NanoPlatform.h",
     "nano:NanoTsDescramble.h",
     "shim:compat/include/log/log.h",
-    "stub:compat/stubs/include/aaudio/AAudio.h",
     "stub:compat/stubs/include/media/NdkMediaCodec.h",
     "stub:compat/stubs/include/media/NdkMediaExtractor.h",
     "stub:compat/stubs/include/media/NdkMediaFormat.h"
@@ -1711,6 +1711,13 @@
     "nano:nanosvg/nanosvg.h"
    ]
   },
+  "platform/firmware/Audio.cpp": {
+   "includes": [
+    "nano:NanoPlatform.h",
+    "shim:compat/include/log/log.h",
+    "stub:compat/stubs/include/aaudio/AAudio.h"
+   ]
+  },
   "platform/firmware/Display.cpp": {
    "includes": [
     "lib:libdrm:drm.h",
@@ -1753,6 +1760,17 @@
     "nano:platform/host/HostControl.h",
     "shim:compat/include/cutils/properties.h",
     "shim:compat/include/log/log.h"
+   ]
+  },
+  "platform/host/FakeAudio.cpp": {
+   "includes": [
+    "nano:platform/host/FakeAudio.h",
+    "shim:compat/include/log/log.h"
+   ]
+  },
+  "platform/host/FakeAudio.h": {
+   "includes": [
+    "nano:NanoPlatform.h"
    ]
   },
   "platform/host/FakeDisplay.cpp": {
@@ -1815,6 +1833,7 @@
   "platform/host/HostPlatform.cpp": {
    "includes": [
     "nano:NanoPlatform.h",
+    "nano:platform/host/FakeAudio.h",
     "nano:platform/host/FakeDisplay.h",
     "nano:platform/host/FakeLauncher.h",
     "nano:platform/host/HostConfig.h",
@@ -1826,6 +1845,24 @@
    "includes": [
     "nano:platform/host/HostControl.h",
     "nano:platform/host/ShellGateHost.h"
+   ]
+  },
+  "platform/linux/AudioAlsa.cpp": {
+   "includes": [
+    "lib:alsa:alsa/asoundlib.h",
+    "nano:platform/linux/AudioPull.h",
+    "shim:compat/include/log/log.h"
+   ]
+  },
+  "platform/linux/AudioPull.cpp": {
+   "includes": [
+    "nano:platform/linux/AudioPull.h",
+    "shim:compat/include/log/log.h"
+   ]
+  },
+  "platform/linux/AudioPull.h": {
+   "includes": [
+    "nano:NanoPlatform.h"
    ]
   },
   "platform/linux/ControlKeys.cpp": {
@@ -1854,6 +1891,7 @@
   "platform/linux/LinuxPlatform.cpp": {
    "includes": [
     "nano:NanoPlatform.h",
+    "nano:platform/linux/AudioPull.h",
     "nano:platform/linux/Launcher.h",
     "nano:platform/linux/display/Display.h"
    ]
@@ -1926,6 +1964,12 @@
     "shim:compat/include/utils/Thread.h"
    ]
   },
+  "platform/linux/tests/audiopull_test.cpp": {
+   "includes": [
+    "gtest:gtest/gtest.h",
+    "missing:AudioPull.h"
+   ]
+  },
   "platform/linux/tests/controlkeys_test.cpp": {
    "includes": [
     "missing:ControlKeys.h",
@@ -1955,6 +1999,7 @@
   "platform/linux/tests/linuxplatform_test.cpp": {
    "includes": [
     "gtest:gtest/gtest.h",
+    "missing:AudioPull.h",
     "missing:Launcher.h",
     "missing:display/Display.h",
     "nano:NanoPlatform.h"
@@ -2431,6 +2476,13 @@
     "shim:compat/include/utils/ThreadDefs.h"
    ]
   },
+  "test/host/headless/tests/fake_audio_test.cpp": {
+   "includes": [
+    "gtest:gtest/gtest.h",
+    "nano:NanoPlatform.h",
+    "nano:platform/host/FakeAudio.h"
+   ]
+  },
   "test/host/headless/tests/fake_display_test.cpp": {
    "includes": [
     "gtest:gtest/gtest.h",
@@ -2902,7 +2954,6 @@
    ],
    "needs": {
     "stub": [
-     "aaudio/AAudio.h",
      "media/NdkMediaCodec.h",
      "media/NdkMediaDataSource.h",
      "media/NdkMediaExtractor.h",
@@ -4892,6 +4943,16 @@
    ],
    "needs": {}
   },
+  "platform/firmware/Audio.cpp": {
+   "modules": [
+    "gammaos-nano"
+   ],
+   "needs": {
+    "stub": [
+     "aaudio/AAudio.h"
+    ]
+   }
+  },
   "platform/firmware/Display.cpp": {
    "modules": [
     "gammaos-nano"
@@ -5516,6 +5577,7 @@
    "platform/firmware/Platform.cpp": "the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)",
    "platform/firmware/Display.cpp": "the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)",
    "platform/firmware/Launcher.cpp": "the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)",
+   "platform/firmware/Audio.cpp": "the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)",
    "NanoMenuDrmBuffers.cpp": "the AHardwareBuffer render-target back end (G9a); Linux links platform/linux/display/DrmBuffersGbm.cpp instead",
    "NanoMenuRgbFollow.cpp": "reaches GammaRgbProcess.h (a header outside Nano's folder (upstream.json siblings): v1 has neither Shares nor RGB follow on Linux)",
    "NanoMenuShares.cpp": "reaches share_config.h (a header outside Nano's folder (upstream.json siblings): v1 has neither Shares nor RGB follow on Linux)",

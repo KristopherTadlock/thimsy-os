@@ -322,6 +322,9 @@ HL_PLATFORM_SRCS += test/host/headless/tests/host_drm_fake.cpp
 # The fake launcher (G7-launch-b), and the [core] commitLaunch it is reached through and shares the
 # handshake's key names with (NanoLaunchCommit.cpp, against the property shims).
 HL_PLATFORM_SRCS += platform/host/FakeLauncher.cpp NanoLaunchCommit.cpp
+# The fake audio (G7-audio).
+HL_TESTS += fake_audio_test
+HL_PLATFORM_SRCS += platform/host/FakeAudio.cpp
 HL_PLATFORM_OBJS := $(patsubst %.cpp,$(HL_O)/obj/%.o,$(HL_PLATFORM_SRCS))
 HL_CPPFLAGS := $(NANOCOMPAT_CPPFLAGS) -I$(LIBTHIMSY)/include -I$(NANO) -I$(LIBTHIMSY)/testing -I$(HL_TEST_DIR)
 HL_WARN := -Wall -Wextra -Werror

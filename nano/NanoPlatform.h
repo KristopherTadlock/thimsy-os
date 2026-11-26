@@ -37,6 +37,8 @@
 #include <memory>
 #include <optional>  // Launcher (G7-launch-b)
 #include <string>    // Launcher (G7-launch-b)
+#include <cstdint>     // Audio (G7-audio)
+#include <functional>  // Audio (G7-audio)
 
 namespace android {
 struct LaunchTuple;  // NanoLaunchCommit.h (G7-launch-b)
@@ -129,12 +131,50 @@ class Launcher {
 };
 // --- end Launcher --------------------------------------------------------------------------------
 
+// ---- Audio (G7-audio): NanoAudio.cpp's output streams, in the pull shape of its AAudio callback.
+// Each player opens its own stream (NanoAudioPlayer per track, NanoSfxPlayer for the UI sounds), so
+// Audio makes streams rather than being one. Samples are 16-bit, interleaved.
+
+struct AudioFormat {
+    const char* name = "";    // the stream's name in log lines ("NanoAudio", "NanoSfx")
+    int rate = 0;             // frames per second asked for
+    int channels = 0;         // samples per frame
+    bool lowLatency = false;  // firmware: AAUDIO_PERFORMANCE_MODE_LOW_LATENCY rather than NONE
+};
+
+// One open output stream, made by Audio::open() and paused until start(). Destroying it stops and
+// closes it; never destroy it from its own Fill or OnDisconnect.
+class AudioStream {
+ public:
+    virtual ~AudioStream() = default;
+    virtual bool start() = 0;               // true when the output accepted the start
+    virtual void pause() = 0;
+    virtual int sampleRate() const = 0;     // what the output agreed to (may differ from the request)
+    virtual int channelCount() const = 0;
+};
+
+class Audio {
+ public:
+    virtual ~Audio() = default;
+    // What a Fill returns: go on, or stop calling it (the stream then stays stopped until start()).
+    static constexpr int kFillContinue = 0;
+    static constexpr int kFillStop = 1;
+    // Writes `count` frames into `frames`; called on the platform's audio thread while started.
+    using Fill = std::function<int(int16_t* frames, int count)>;
+    // The output device went away (a headphone plugged in, Bluetooth): the stream is dead and is to
+    // be destroyed and opened again from another thread. Called on a platform thread.
+    using OnDisconnect = std::function<void()>;
+    // Null when the stream can't be opened; the platform logs why under format.name.
+    virtual std::unique_ptr<AudioStream> open(const AudioFormat& format, Fill fill, OnDisconnect onDisconnect) = 0;
+};
+
 // The platform's services. Empty until the first G7 step declares one. Each platform library
 // derives from it to keep its own state; services added later are members here.
 struct Platform {
     virtual ~Platform();
     std::unique_ptr<Display> display;  // G7-display: never null once createPlatform() returns
     std::unique_ptr<Launcher> launcher;  // G7-launch-b: never null once createPlatform() returns
+    std::unique_ptr<Audio> audio;  // G7-audio: set by every createPlatform(), never null after install()
 };
 
 struct PlatformArgs {

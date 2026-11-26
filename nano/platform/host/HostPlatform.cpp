@@ -41,6 +41,7 @@
 #include "FakeLauncher.h"  // G7-launch-b
 #include "HostConfig.h"
 #include "NanoPlatform.h"
+#include "FakeAudio.h"  // G7-audio
 
 namespace nanohost {
 
@@ -138,7 +139,9 @@ std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs&
     ALOGI("nano-headless: host platform up (display %dx%d@%d, %zu input devices, %zu shell rules)",
           cfg.display.width, cfg.display.height, cfg.display.refreshHz, cfg.devices.size(), cfg.shellRules.size());
     std::unique_ptr<nanoplat::Platform> platform(new HostPlatform(std::move(cfg)));
+    // The services, one line each (G7 steps).
     platform->display = createFakeDisplay(createHostDrm());  // G7-display
     platform->launcher = createFakeLauncher();  // G7-launch-b
+    platform->audio.reset(new FakeAudio());
     return platform;
 }

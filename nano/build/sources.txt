@@ -153,6 +153,8 @@ platform/firmware/Platform.cpp
 platform/firmware/Display.cpp
 # platform/firmware/Launcher.cpp: the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)
 platform/firmware/Launcher.cpp
+# platform/firmware/Audio.cpp: the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)
+platform/firmware/Audio.cpp
 # NanoMenuDrmBuffers.cpp: the AHardwareBuffer render-target back end (G9a); Linux links platform/linux/display/DrmBuffersGbm.cpp instead
 NanoMenuDrmBuffers.cpp
 # NanoMenuRgbFollow.cpp: reaches GammaRgbProcess.h (a header outside Nano's folder (upstream.json siblings): v1 has neither Shares nor RGB follow on Linux)
@@ -208,6 +210,8 @@ DrasticGpu3d.cpp
 # main, ShellGate.cpp as nano_shellgate, and the rest (with [drm]) as nano_platform_linux;
 # DrmBuffersGbm.cpp and EglWraps.cpp stand in for [firmware]'s NanoMenuDrmBuffers.cpp (B.8).
 [linux]
+platform/linux/AudioAlsa.cpp
+platform/linux/AudioPull.cpp
 platform/linux/ControlKeys.cpp
 platform/linux/Launcher.cpp
 platform/linux/LinuxPlatform.cpp
@@ -225,6 +229,7 @@ platform/linux/main_linux.cpp
 platform/host/DrmHost.cpp
 platform/host/FakeDisplay.cpp
 platform/host/FakeDisplayDrm.cpp
+platform/host/FakeAudio.cpp
 platform/host/FakeEvdev.cpp
 platform/host/FakeLauncher.cpp
 platform/host/HostConfig.cpp

@@ -134,6 +134,7 @@ TEST(HostPlatform, CreateWiresTheChannel) {
     args.argv = argv;
     std::unique_ptr<nanoplat::Platform> p = nanoplat::createPlatform(args);
     ASSERT_TRUE(p != nullptr);
+    EXPECT_TRUE(p->audio != nullptr);  // G7-audio: FakeAudio
 
     EXPECT_EQ(displayConfig().width, 320);
     // The services (G7): the fake display, here over host_drm_fake.cpp's HostDrm (no display).

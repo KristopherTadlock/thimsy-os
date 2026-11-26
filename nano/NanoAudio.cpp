@@ -21,8 +21,8 @@
 #include "NanoTsDescramble.h"   // descramble scrambled-flagged .ts so its audio track extracts
 #include "NanoHls.h"   // in-process HTTP/HLS fetcher (IPTV audio over http)
 #include "NanoIcyDemux.h"   // custom streaming demuxer for radio Ogg/FLAC/AAC
+#include "NanoPlatform.h"   // the output streams (nanoplat::get().audio; AAudio on the firmware)
 
-#include <aaudio/AAudio.h>
 #include <media/NdkMediaExtractor.h>
 #include <media/NdkMediaCodec.h>
 #include <media/NdkMediaFormat.h>
@@ -240,38 +240,26 @@ bool NanoAudioPlayer::ensureStream(int rate, int channels) {
 // AND error callbacks; the error callback drives route-change recovery (see recoverStream).
 bool NanoAudioPlayer::openStreamLocked(int rate, int channels) {
     if (mStream) {
-        AAudioStream* s = static_cast<AAudioStream*>(mStream);
-        AAudioStream_requestStop(s);
-        AAudioStream_close(s);
+        delete static_cast<nanoplat::AudioStream*>(mStream);   // stops and closes it
         mStream = nullptr;
         mStarted = false;
     }
-    AAudioStreamBuilder* b = nullptr;
-    if (AAudio_createStreamBuilder(&b) != AAUDIO_OK || !b) return false;
-    AAudioStreamBuilder_setDirection(b, AAUDIO_DIRECTION_OUTPUT);
-    AAudioStreamBuilder_setFormat(b, AAUDIO_FORMAT_PCM_I16);
-    AAudioStreamBuilder_setChannelCount(b, channels);
-    AAudioStreamBuilder_setSampleRate(b, rate);
-    AAudioStreamBuilder_setUsage(b, AAUDIO_USAGE_MEDIA);
-    AAudioStreamBuilder_setContentType(b, AAUDIO_CONTENT_TYPE_MUSIC);
-    AAudioStreamBuilder_setPerformanceMode(b, AAUDIO_PERFORMANCE_MODE_NONE);
-    AAudioStreamBuilder_setDataCallback(b, [](AAudioStream*, void* u, void* data, int32_t n) {
-        return (aaudio_data_callback_result_t)
-            static_cast<NanoAudioPlayer*>(u)->fillAudio(data, n);
-    }, this);
+    nanoplat::AudioFormat format;
+    format.name = "NanoAudio";
+    format.rate = rate;
+    format.channels = channels;
     // Output-device change (headphone plug/unplug, BT connect) DISCONNECTS the stream; reopen
     // it on the new default device from a one-shot thread (must not close/reopen in the callback).
-    AAudioStreamBuilder_setErrorCallback(b, [](AAudioStream*, void* u, aaudio_result_t err) {
-        NanoAudioPlayer* self = static_cast<NanoAudioPlayer*>(u);
-        if (err != AAUDIO_ERROR_DISCONNECTED || self->mShutdown.load()) return;
-        bool expected = false;
-        if (self->mRecovering.compare_exchange_strong(expected, true))
-            std::thread(&NanoAudioPlayer::recoverStream, self).detach();
-    }, this);
-    AAudioStream* s = nullptr;
-    aaudio_result_t r = AAudioStreamBuilder_openStream(b, &s);
-    AAudioStreamBuilder_delete(b);
-    if (r != AAUDIO_OK || !s) { ALOGW("NanoAudio: open stream failed (%d)", (int)r); return false; }
+    nanoplat::AudioStream* s = nanoplat::get().audio->open(format,
+        [this](int16_t* frames, int count) { return fillAudio(frames, count); },
+        [this]() {
+            NanoAudioPlayer* self = this;
+            if (self->mShutdown.load()) return;
+            bool expected = false;
+            if (self->mRecovering.compare_exchange_strong(expected, true))
+                std::thread(&NanoAudioPlayer::recoverStream, self).detach();
+        }).release();
+    if (!s) return false;
     mStream = s;
     mStreamRate = rate;
     mStreamChans = channels;
@@ -280,7 +268,7 @@ bool NanoAudioPlayer::openStreamLocked(int rate, int channels) {
     // request; position() divides the callback frame count by mStreamRate, so a mismatch would skew
     // the A/V clock. Log both to confirm whether requested == device on this device.
     ALOGI("NanoAudio: stream open req=%dHz x%d, device=%dHz x%d", rate, channels,
-          AAudioStream_getSampleRate(s), AAudioStream_getChannelCount(s));
+          s->sampleRate(), s->channelCount());
     return true;
 }
 
@@ -294,7 +282,7 @@ void NanoAudioPlayer::recoverStream() {
         if (!mShutdown.load() && mStreamRate > 0 && mStreamChans > 0) {
             bool wasStarted = mStarted.load();
             if (openStreamLocked(mStreamRate, mStreamChans) && wasStarted && !mStopped.load()) {
-                if (AAudioStream_requestStart(static_cast<AAudioStream*>(mStream)) == AAUDIO_OK)
+                if (static_cast<nanoplat::AudioStream*>(mStream)->start())
                     mStarted = true;
             }
             ALOGI("NanoAudio: stream recovered after route change (playing=%d)", (int)mStarted.load());
@@ -306,9 +294,7 @@ void NanoAudioPlayer::recoverStream() {
 void NanoAudioPlayer::closeStream() {
     std::lock_guard<std::mutex> lk(mStreamMutex);
     if (mStream) {
-        AAudioStream* s = static_cast<AAudioStream*>(mStream);
-        AAudioStream_requestStop(s);
-        AAudioStream_close(s);
+        delete static_cast<nanoplat::AudioStream*>(mStream);   // stops and closes it
         mStream = nullptr;
     }
     mStarted = false;
@@ -463,7 +449,7 @@ void NanoAudioPlayer::seekFed(double sec) {
 void NanoAudioPlayer::play() {
     std::lock_guard<std::mutex> lk(mStreamMutex);
     if (mStream && !mStarted) {
-        AAudioStream_requestStart(static_cast<AAudioStream*>(mStream));
+        static_cast<nanoplat::AudioStream*>(mStream)->start();
         mStarted = true;
         mStopped = false;
     }
@@ -472,7 +458,7 @@ void NanoAudioPlayer::play() {
 void NanoAudioPlayer::pause() {
     std::lock_guard<std::mutex> lk(mStreamMutex);
     if (mStream && mStarted) {
-        AAudioStream_requestPause(static_cast<AAudioStream*>(mStream));
+        static_cast<nanoplat::AudioStream*>(mStream)->pause();
         mStarted = false;
     }
 }
@@ -637,7 +623,7 @@ int32_t NanoAudioPlayer::fillAudio(void* audioData, int32_t numFrames) {
         // audio-leads-video desync). Either way do NOT count -> the clock is held at origin until arm.
         if (mPrerollDrain.load(std::memory_order_relaxed))
             mTail.store(tail + toRead, std::memory_order_release);
-        return AAUDIO_CALLBACK_RESULT_CONTINUE;
+        return nanoplat::Audio::kFillContinue;
     }
     float vol = mVol.load(std::memory_order_relaxed);
 
@@ -685,7 +671,7 @@ int32_t NanoAudioPlayer::fillAudio(void* audioData, int32_t numFrames) {
         for (int i = 0; i < kFftN; i++) { mFftPublish[w][i] = mFftRoll[p]; if (++p >= kFftN) p = 0; }
         mFftWhich.store(w, std::memory_order_release);
     }
-    return AAUDIO_CALLBACK_RESULT_CONTINUE;
+    return nanoplat::Audio::kFillContinue;
 }
 
 void NanoAudioPlayer::getBands(Bands& out) {
@@ -1155,36 +1141,28 @@ int32_t NanoSfxPlayer::fillCb(void* audioData, int32_t numFrames) {
         out[i * 2 + 1] = (int16_t)(r > 32767 ? 32767 : (r < -32768 ? -32768 : r));
     }
     if (any) mIdleCb = 0;
-    else if (++mIdleCb > 150) { mRunning.store(false); return AAUDIO_CALLBACK_RESULT_STOP; }   // ~1.5s idle -> stop
-    return AAUDIO_CALLBACK_RESULT_CONTINUE;
+    else if (++mIdleCb > 150) { mRunning.store(false); return nanoplat::Audio::kFillStop; }   // ~1.5s idle -> stop
+    return nanoplat::Audio::kFillContinue;
 }
 
 bool NanoSfxPlayer::openStreamLocked() {        // mStreamM held
     if (mStream) return true;
-    AAudioStreamBuilder* b = nullptr;
-    if (AAudio_createStreamBuilder(&b) != AAUDIO_OK || !b) return false;
-    AAudioStreamBuilder_setDirection(b, AAUDIO_DIRECTION_OUTPUT);
-    AAudioStreamBuilder_setFormat(b, AAUDIO_FORMAT_PCM_I16);
-    AAudioStreamBuilder_setChannelCount(b, 2);
-    AAudioStreamBuilder_setSampleRate(b, mRate);
-    AAudioStreamBuilder_setUsage(b, AAUDIO_USAGE_MEDIA);            // follow STREAM_MUSIC == the DSi sounds
-    AAudioStreamBuilder_setContentType(b, AAUDIO_CONTENT_TYPE_MUSIC);
-    AAudioStreamBuilder_setPerformanceMode(b, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
-    AAudioStreamBuilder_setDataCallback(b, [](AAudioStream*, void* u, void* data, int32_t n) {
-        return (aaudio_data_callback_result_t)static_cast<NanoSfxPlayer*>(u)->fillCb(data, n);
-    }, this);
+    nanoplat::AudioFormat format;   // usage MEDIA, as every stream: follow STREAM_MUSIC == the DSi sounds
+    format.name = "NanoSfx";
+    format.rate = mRate;
+    format.channels = 2;
+    format.lowLatency = true;
     // Route-change recovery: on a headphone plug/unplug AAudio disconnects the stream and stops
     // delivering callbacks, so without this the SFX went silent until the app restarted. Reopen on
     // the new device, the same way NanoAudioPlayer does for the music stream.
-    AAudioStreamBuilder_setErrorCallback(b, [](AAudioStream*, void* u, aaudio_result_t err) {
-        NanoSfxPlayer* self = static_cast<NanoSfxPlayer*>(u);
-        if (err != AAUDIO_ERROR_DISCONNECTED || self->mShutdown.load()) return;
-        std::thread(&NanoSfxPlayer::recoverStream, self).detach();
-    }, this);
-    AAudioStream* s = nullptr;
-    aaudio_result_t r = AAudioStreamBuilder_openStream(b, &s);
-    AAudioStreamBuilder_delete(b);
-    if (r != AAUDIO_OK || !s) { ALOGW("NanoSfx: open stream failed (%d)", (int)r); return false; }
+    nanoplat::AudioStream* s = nanoplat::get().audio->open(format,
+        [this](int16_t* frames, int count) { return fillCb(frames, count); },
+        [this]() {
+            NanoSfxPlayer* self = this;
+            if (self->mShutdown.load()) return;
+            std::thread(&NanoSfxPlayer::recoverStream, self).detach();
+        }).release();
+    if (!s) return false;
     mStream = s;
     return true;
 }
@@ -1197,14 +1175,12 @@ void NanoSfxPlayer::recoverStream() {
     if (mShutdown.load()) return;
     const bool wasRunning = mRunning.load();
     if (mStream) {
-        AAudioStream* s = static_cast<AAudioStream*>(mStream);
-        AAudioStream_requestStop(s);
-        AAudioStream_close(s);
+        delete static_cast<nanoplat::AudioStream*>(mStream);   // stops and closes it
         mStream = nullptr;
     }
     mRunning.store(false);
     if (!openStreamLocked()) { ALOGW("NanoSfx: stream reopen after route change failed"); return; }
-    if (wasRunning && AAudioStream_requestStart(static_cast<AAudioStream*>(mStream)) == AAUDIO_OK)
+    if (wasRunning && static_cast<nanoplat::AudioStream*>(mStream)->start())
         mRunning.store(true);
     ALOGI("NanoSfx: stream recovered after route change (playing=%d)", (int)mRunning.load());
 }
@@ -1219,7 +1195,7 @@ void NanoSfxPlayer::trigger() {
         std::thread([this]() {
             std::lock_guard<std::mutex> lk(mStreamM);
             if (!mStream) openStreamLocked();
-            if (mStream && AAudioStream_requestStart((AAudioStream*)mStream) == AAUDIO_OK) mRunning.store(true);
+            if (mStream && static_cast<nanoplat::AudioStream*>(mStream)->start()) mRunning.store(true);
             mStarting.store(false);
         }).detach();
     }
@@ -1234,7 +1210,7 @@ void NanoSfxPlayer::release() {
     // awake. Wait for it, bounded.
     for (int i = 0; i < 40 && mStarting.load(); i++) usleep(5000);
     std::lock_guard<std::mutex> lk(mStreamM);
-    if (mStream) { AAudioStream_requestStop((AAudioStream*)mStream); AAudioStream_close((AAudioStream*)mStream); mStream = nullptr; }
+    if (mStream) { delete static_cast<nanoplat::AudioStream*>(mStream); mStream = nullptr; }   // stops and closes it
     mRunning.store(false); mStarting.store(false);
     for (int v = 0; v < kVoices; v++) mVoiceOn[v].store(false);
 }
@@ -1242,7 +1218,7 @@ void NanoSfxPlayer::release() {
 void NanoSfxPlayer::shutdown() {
     mShutdown.store(true);
     std::lock_guard<std::mutex> lk(mStreamM);
-    if (mStream) { AAudioStream_requestStop((AAudioStream*)mStream); AAudioStream_close((AAudioStream*)mStream); mStream = nullptr; }
+    if (mStream) { delete static_cast<nanoplat::AudioStream*>(mStream); mStream = nullptr; }   // stops and closes it
     mRunning.store(false);
 }
 

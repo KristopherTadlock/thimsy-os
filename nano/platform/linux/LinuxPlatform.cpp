@@ -23,11 +23,13 @@
 #include "NanoPlatform.h"
 #include "Launcher.h"  // G7-launch-b
 #include "display/Display.h"  // G7-display
+#include "AudioPull.h"  // G7-audio
 
 std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs& /*args*/) {
     std::unique_ptr<Platform> platform(new Platform);
     // The services, one line each (G7 steps).
     platform->display = nanolinux::display::create(nanolinux::display::createKms());  // G7-display
     platform->launcher = nanolinux::launcher::create(platform->display.get());  // G7-launch-b
+    platform->audio = nanolinux::makeAudio();
     return platform;
 }

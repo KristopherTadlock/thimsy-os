@@ -50,6 +50,7 @@ cc_binary {
         "platform/firmware/Platform.cpp",  // the firmware platform (createPlatform)
         "platform/firmware/Display.cpp",   // the firmware platform's Display (G7-display)
         "platform/firmware/Launcher.cpp",  // the firmware platform's Launcher (G7-launch-b)
+        "platform/firmware/Audio.cpp",     // the firmware Audio: NanoAudio's AAudio output (G7-audio)
         "NanoMenu.cpp",
         "NanoLaunchCommit.cpp",            // the launch handshake's writes (G7-launch-a)
         "NanoMenuDrm.cpp",
