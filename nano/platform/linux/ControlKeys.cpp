@@ -126,10 +126,9 @@ void defaultLaunch(const LaunchRequest& r) {
         if (!desc.empty()) desc += ' ';
         desc += kv.first.substr(strlen("sys.gammaos.nano.")) + "=" + kv.second;
     }
-    // TODO(G7-launch): the Linux launcher. Until then Nano exits after a launch and the session
-    // starts it again.
-    ALOGW("launch requested by %s, but this build has no Linux launcher yet: %s", r.trigger.c_str(),
-          desc.c_str());
+    // thimsy-nano's main gives launcher::launchFromHandshake (Launcher.h, G7-launch-b); without it,
+    // only this line.
+    ALOGW("launch requested by %s, but no launcher was given: %s", r.trigger.c_str(), desc.c_str());
 }
 
 std::string familyHookPath() {

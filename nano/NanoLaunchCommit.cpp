@@ -18,13 +18,13 @@
 // commitLaunch() (NanoLaunchCommit.h): the launch handshake's writes, in the call site's order.
 // The LOG_TAG is the call sites' (NanoMenu.cpp and the files split from it), for NanoMenuUtils.h's
 // inline helpers; commitLaunch itself logs nothing.
+// The writes are the platform launcher's (NanoPlatform.h, G7-launch-b): the firmware's are the
+// handshake that was here (platform/firmware/Launcher.cpp); Linux and the host add their own launch.
 
 #define LOG_TAG "GammaOSNano"
 
-#include <cutils/properties.h>
-
 #include "NanoLaunchCommit.h"
-#include "NanoMenuUtils.h"   // setLaunchRomPath, setLaunchGame
+#include "NanoPlatform.h"
 
 namespace android {
 
@@ -48,19 +48,7 @@ const char* launchKeyProperty(LaunchKey key) {
 }
 
 void commitLaunch(const LaunchTuple& tuple) {
-    for (const LaunchTuple::Write& w : tuple.writes) {
-        switch (w.key) {
-            case LaunchKey::RomPath:
-                setLaunchRomPath(w.value);
-                break;
-            case LaunchKey::Game:
-                setLaunchGame(w.value, w.rom, w.core);
-                break;
-            default:
-                property_set(launchKeyProperty(w.key), w.value.c_str());
-                break;
-        }
-    }
+    nanoplat::get().launcher->commit(tuple);
 }
 
 }  // namespace android

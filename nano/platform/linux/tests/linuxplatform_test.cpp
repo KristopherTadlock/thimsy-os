@@ -80,6 +80,11 @@ TEST(LinuxPlatform, HasEveryService) {
     // With no display found, the hand-off has nothing to release.
     EXPECT_EQ(p->display->startScanout(-1, false, nullptr), -1);
     EXPECT_FALSE(p->display->releaseForChild());
+    // The launcher (G7-launch-b): Nano stays; nothing is running until a launch.
+    ASSERT_TRUE(p->launcher != nullptr);
+    EXPECT_FALSE(p->launcher->nanoExitsOnLaunch());
+    EXPECT_FALSE(p->launcher->childRunning());
+    EXPECT_FALSE(p->launcher->pollChild().has_value());
 }
 
 }  // namespace

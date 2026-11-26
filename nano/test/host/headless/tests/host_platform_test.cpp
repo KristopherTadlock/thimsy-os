@@ -26,8 +26,10 @@
 #include <cutils/properties.h>
 #include <gtest/gtest.h>
 
+#include "NanoLaunchCommit.h"
 #include "NanoPlatform.h"
 #include "headless_test_util.h"
+#include "platform/host/FakeLauncher.h"
 #include "platform/host/HostConfig.h"
 
 using namespace nanohost;
@@ -159,8 +161,21 @@ TEST(HostPlatform, CreateWiresTheChannel) {
     EXPECT_TRUE(waitFor([&] { return headless_test::readFile(events).find("\"token\":\"p1\"") != std::string::npos; }));
     close(w);
 
+    // The fake launcher (G7-launch-b): installed, a call site's commit reaches it and a trigger is
+    // a launch event.
+    ASSERT_TRUE(p->launcher != nullptr);
+    EXPECT_FALSE(p->launcher->childRunning());
     nanoplat::install(std::move(p));
     (void)nanoplat::get();
+    android::commitLaunch(android::LaunchTuple()
+                                  .core("/data/data/com.retroarch.aarch64/cores/snes9x_libretro_android.so")
+                                  .app("com.retroarch.aarch64")
+                                  .doLaunch("1"));
+    log = headless_test::readFile(events);
+    EXPECT_NE(log.find("\"key\":\"sys.gammaos.nano.do_launch\",\"value\":\"1\""), std::string::npos);
+    EXPECT_NE(log.find("{\"ev\":\"launch\""), std::string::npos) << log;
+    EXPECT_NE(log.find("\"kind\":\"Core\""), std::string::npos);
+    ASSERT_EQ(launchRecord().requests.size(), 1u);
 }
 
 TEST(HostPlatform, BadConfigFails) {

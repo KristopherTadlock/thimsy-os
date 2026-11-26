@@ -69,8 +69,9 @@ struct LaunchRequest {
 };
 
 struct Handlers {
-    // Defaults: the session request key with a sequence number; a log line (no Linux launcher
-    // until G7-launch); the family hook, run in the background.
+    // Defaults: the session request key with a sequence number; a log line (main_linux.cpp gives
+    // launch the Linux launcher, launcher::launchFromHandshake in Launcher.h); the family hook, run
+    // in the background.
     std::function<void(const std::string& verb)> sessionRequest;
     std::function<void(const LaunchRequest&)> launch;
     std::function<void(const std::string& action)> runHook;
