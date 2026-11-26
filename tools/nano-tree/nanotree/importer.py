@@ -6,6 +6,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 from typing import Dict, List, Optional, Tuple
 
 from .compose import (MARKER, Entries, composed_entries, files_problems,
@@ -354,22 +355,198 @@ def import_patch(layout: Layout, cfg: Upstream, fork: Fork, cache: Cache, ref: O
     return rc or (1 if problems else 0)
 
 
-def _commit_for_patch_blob(fork: Fork, blob: str) -> Optional[str]:
-    """A local commit (branch, remote branch, MERGE_HEAD or FETCH_HEAD) whose patch is BLOB."""
-    out = fork.git("for-each-ref", "--format=%(objectname)", "refs/heads", "refs/remotes", check=False)
-    revs = out.decode().split()
-    for special in ("MERGE_HEAD", "FETCH_HEAD", "AUTO_MERGE"):
+BLOCK_SHA_REL = "tools/nano-tree/block.sha256"
+UPSTREAM_REL = "tools/nano-tree/upstream.json"
+
+
+def _incoming_candidates(fork: Fork) -> List[str]:
+    """Commits that may be the incoming side of the running merge, most likely first: the
+    GITHEAD_<sha> variables `git merge` sets for its drivers, MERGE_HEAD and friends, then every
+    local and remote branch."""
+    revs: List[str] = []
+    for key in sorted(os.environ):
+        if key.upper().startswith("GITHEAD_") and len(key) == len("GITHEAD_") + 40:
+            revs.append(key[len("GITHEAD_"):].lower())
+    for special in ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "REBASE_HEAD", "FETCH_HEAD",
+                    "AUTO_MERGE"):
         r = fork.rev_parse(special)
         if r:
             revs.append(r)
+    out = fork.git("for-each-ref", "--format=%(objectname)", "refs/heads", "refs/remotes", check=False)
+    revs += out.decode().split()
+    seen = set()
+    return [r for r in revs if not (r in seen or seen.add(r))]
+
+
+def _blobs_at(fork: Fork, revs: List[str], path: str) -> List[Optional[str]]:
+    """The blob id of PATH in each of REVS (None where it is missing)."""
     if not revs:
-        return None
-    query = "".join("%s:%s\n" % (r, PATCH_REL) for r in revs).encode()
+        return []
+    query = "".join("%s:%s\n" % (r, path) for r in revs).encode()
     res = fork.git("cat-file", "--batch-check", input=query, check=False).decode().splitlines()
-    for rev, line in zip(revs, res):
-        if line.split()[:1] == [blob]:
+    result: List[Optional[str]] = []
+    for line in res:
+        parts = line.split()
+        result.append(parts[0] if len(parts) >= 2 and parts[1] == "blob" else None)
+    return result + [None] * (len(revs) - len(result))
+
+
+def _commit_with_blob(fork: Fork, blob: str, path: str = PATCH_REL) -> Optional[str]:
+    """A commit that may be the incoming side (see _incoming_candidates) whose PATH is BLOB."""
+    revs = _incoming_candidates(fork)
+    for rev, b in zip(revs, _blobs_at(fork, revs, path)):
+        if b == blob:
             return rev
     return None
+
+
+def _commit_for_patch_blob(fork: Fork, blob: str) -> Optional[str]:
+    return _commit_with_blob(fork, blob, PATCH_REL)
+
+
+def _hash(fork: Fork, data: bytes) -> str:
+    return fork.git("hash-object", "--no-filters", "--stdin", input=data).decode().strip()
+
+
+def _nano_entries_at(fork: Fork, rev: str) -> Entries:
+    out = fork.git("ls-tree", "-r", "-z", rev, "--", "nano/")
+    result: Entries = {}
+    for rec in out.split(b"\0"):
+        if not rec:
+            continue
+        meta, _, path = rec.partition(b"\t")
+        mode, typ, sha = meta.decode().split()
+        p = path.decode("utf-8", "surrogateescape")
+        if typ == "blob" and p.startswith("nano/"):
+            result[p[len("nano/"):]] = (mode, sha)
+    return result
+
+
+class ForkMerge(object):
+    """A merge of two fork commits that both hold nano/ (a step branch into linux, say). The patch
+    and block.sha256 are generated, so the merged ones are regenerated from the merge of the two
+    nano/ trees, computed from git's objects rather than from the working tree (merge-ort runs
+    the drivers before it writes the working tree, merge-recursive in path order)."""
+
+    def __init__(self, ours: str, theirs: str, base: str):
+        self.ours, self.theirs, self.base = ours, theirs, base
+
+
+def identify_fork_merge(fork: Fork, path: str, o_data: bytes, a_data: bytes, b_data: bytes,
+                        theirs: Optional[str] = None) -> Tuple[Optional[ForkMerge], str]:
+    """The (ours, theirs, merge base) commits of the running merge, checked against the driver's
+    three versions of PATH; (None, why) when they can't be told for certain."""
+    ours = fork.rev_parse("HEAD")
+    if not ours:
+        return None, "no HEAD"
+    if _blobs_at(fork, [ours], path)[0] != _hash(fork, a_data):
+        return None, "this side's %s is not HEAD's (a rebase or cherry-pick?)" % path
+    if theirs is None:
+        theirs = _commit_with_blob(fork, _hash(fork, b_data), path)
+    if not theirs:
+        return None, "can't find the incoming commit"
+    bases = fork.git("merge-base", "--all", ours, theirs, check=False, ok_codes=(0, 1)).decode().split()
+    if len(bases) != 1:
+        return None, "%d merge bases" % len(bases)
+    if _blobs_at(fork, bases, path)[0] != _hash(fork, o_data):
+        return None, "the merge base's %s is not the driver's ancestor version" % path
+    return ForkMerge(ours, theirs, bases[0]), ""
+
+
+MARK = b"@@@ nano_tree.py: the Nano block @@@\n"
+
+
+def _merge_outside(cache: Cache, o: bytes, a: bytes, b: bytes) -> Optional[bytes]:
+    if a == o or a == b:
+        return b
+    if b == o:
+        return a
+    merged, nconf = merge_file(cache, a, o, b, ("ours", "base", "theirs"))
+    return None if nconf else merged
+
+
+def compute_fork_merge(layout: Layout, fork: Fork, cache: Cache, fm: ForkMerge, log=_err
+                       ) -> Optional[Tuple[bytes, str]]:
+    """(merged patch, its block's sha256), or None (with the reasons logged) when nano/ or the
+    patch's framework sections do not merge cleanly. Kept in the git directory for a day, since
+    git runs the patch's driver and block.sha256's separately, in either order."""
+    key = sha256(("%s %s %s" % (fm.ours, fm.theirs, fm.base)).encode())[:32]
+    store = os.path.join(fork.git_dir(), "nanotree-merge")
+    pfile, sfile = os.path.join(store, key + ".patch"), os.path.join(store, key + ".sha256")
+    if os.path.isfile(pfile) and os.path.isfile(sfile):
+        with open(pfile, "rb") as f:
+            data = f.read()
+        with open(sfile, "r", encoding="ascii") as f:
+            return data, f.read().strip()
+    texts = [fork.show(r, UPSTREAM_REL) for r in (fm.base, fm.ours, fm.theirs)]
+    if any(t is None for t in texts):
+        log("nanopatch: a side of the merge has no %s" % UPSTREAM_REL)
+        return None
+    t_o, t_a, t_b = texts
+    if t_a == t_b or t_b == t_o:
+        cfg_text = t_a
+    elif t_a == t_o:
+        cfg_text = t_b
+    else:
+        log("nanopatch: both sides changed %s; merge it by hand" % UPSTREAM_REL)
+        return None
+    if len({Upstream.from_text(t.decode("utf-8")).base for t in texts}) != 1:
+        log("nanopatch: the sides are on different GammaOS bases; run `nano_tree.py import-base` "
+            "on one side first")
+        return None
+    cfg = Upstream.from_text(cfg_text.decode("utf-8"))
+    if not cache.has_commit(cfg.base):
+        log("nanopatch: the base cache is missing (run nano_tree.py fetch)")
+        return None
+    patches = [fork.show(r, PATCH_REL) for r in (fm.base, fm.ours, fm.theirs)]
+    if any(p is None for p in patches):
+        log("nanopatch: a side of the merge has no %s" % PATCH_REL)
+        return None
+    parts = [Patch.parse(p).split_block(cfg.prefix) for p in patches]
+    cache.alternates = [fork.objects_dir()]
+    outside = _merge_outside(cache, *[p[0] + MARK + p[2] for p in parts])
+    if outside is None or outside.count(MARK) != 1:
+        log("nanopatch: both sides changed the same framework sections of the patch (outside the "
+            "Nano block)")
+        return None
+    before, after = outside.split(MARK)
+    O, M, T = (_nano_entries_at(fork, r) for r in (fm.base, fm.ours, fm.theirs))
+    plan = three_way(cache, O, T, M, labels=("ours", "base", "theirs"))
+    if plan.conflicts:
+        for rel, why in plan.conflicts:
+            log("nanopatch: nano/%s does not merge cleanly: %s" % (rel, why))
+        return None
+    merged = dict(M)
+    for rel in plan.delete:
+        merged.pop(rel, None)
+    for rel, (mode, data) in plan.write.items():
+        merged[rel] = (mode, cache.hash_bytes(data))
+    from .regen import regen_bytes
+    new_data, new_block = regen_bytes(layout, cfg, fork, cache, before + parts[1][1] + after,
+                                      nano=merged, extra_blocks=[parts[2][1], parts[0][1]])
+    digest = sha256(new_block)
+    try:
+        os.makedirs(store, exist_ok=True)
+        _prune_store(store)
+        with open(pfile + ".tmp", "wb") as f:
+            f.write(new_data)
+        with open(sfile, "w", encoding="ascii", newline="\n") as f:
+            f.write(digest + "\n")
+        os.replace(pfile + ".tmp", pfile)
+    except OSError:
+        pass
+    return new_data, digest
+
+
+def _prune_store(store: str, age: float = 86400.0) -> None:
+    now = time.time()
+    for n in os.listdir(store):
+        p = os.path.join(store, n)
+        try:
+            if now - os.path.getmtime(p) > age:
+                os.remove(p)
+        except OSError:
+            pass
 
 
 def merge_patch(layout: Layout, cfg: Upstream, fork: Fork, cache: Cache, o_path: str, a_path: str,
@@ -383,13 +560,25 @@ def merge_patch(layout: Layout, cfg: Upstream, fork: Fork, cache: Cache, o_path:
         a_data = f.read()
     with open(b_path, "rb") as f:
         b_data = f.read()
-    b_blob = fork.git("hash-object", "--no-filters", "--stdin", input=b_data).decode().strip()
-    theirs = _commit_for_patch_blob(fork, b_blob)
-    if theirs and fork.show(theirs, "tools/nano-tree/upstream.json") is not None:
-        log("nanopatch: both sides changed the generated Nano patch and the incoming side (%s) has "
-            "nano/ too: git merges nano/ itself. After resolving nano/, run `nano_tree.py regen "
-            "--force` and `git add %s`." % (theirs[:12], name))
-        return 1
+    theirs = _commit_for_patch_blob(fork, _hash(fork, b_data))
+    if theirs and fork.show(theirs, UPSTREAM_REL) is not None:
+        # Both sides are the fork: git merges nano/ itself, and the patch is regenerated from the
+        # merge of the two nano/ trees.
+        fm, why = identify_fork_merge(fork, PATCH_REL, o_data, a_data, b_data, theirs)
+        result = compute_fork_merge(layout, fork, cache, fm, log) if fm else None
+        if result is None:
+            if not fm:
+                log("nanopatch: can't regenerate the patch for this merge (%s)." % why)
+            log("nanopatch: the patch was left as this side's. Once nano/ and %s are merged, run "
+                "`nano_tree.py regen --force` and `git add %s %s`." % (UPSTREAM_REL, name, BLOCK_SHA_REL))
+            return 1
+        with open(a_path, "wb") as f:
+            f.write(result[0])
+        if b"merge-block" not in fork.git("config", "--get", "merge.nanoblock.driver", check=False,
+                                          ok_codes=(0, 1)):
+            log("nanopatch: the nanoblock driver is not installed (nano_tree.py install-driver), so "
+                "%s may conflict; its merged value is %s" % (BLOCK_SHA_REL, result[1]))
+        return 0
     if not cache.has_commit(cfg.base):
         log("nanopatch: the base cache is missing (run nano_tree.py fetch); the patch was left "
             "as nano/'s side")
@@ -426,6 +615,34 @@ def merge_patch(layout: Layout, cfg: Upstream, fork: Fork, cache: Cache, o_path:
             if mode == "100755":
                 log("  executable: nano/%s" % rel)
         return 1
+    return 0
+
+
+def merge_block(layout: Layout, fork: Fork, cache: Cache, o_path: str, a_path: str, b_path: str,
+                name: str, log=None) -> int:
+    """The `nanoblock` merge driver for block.sha256 (%O %A %B %P). In a merge of two fork commits
+    it writes the hash of the Nano block regenerated from the merged nano/ (what merge_patch
+    writes into the patch). Otherwise, or when that merge is not clean, it keeps this side's value
+    and exits 1."""
+    log = log or _err
+    with open(o_path, "rb") as f:
+        o_data = f.read()
+    with open(a_path, "rb") as f:
+        a_data = f.read()
+    with open(b_path, "rb") as f:
+        b_data = f.read()
+    if a_data == b_data:
+        return 0
+    fm, why = identify_fork_merge(fork, BLOCK_SHA_REL, o_data, a_data, b_data)
+    result = compute_fork_merge(layout, fork, cache, fm, log) if fm else None
+    if result is None:
+        if not fm:
+            log("nanoblock: can't compute the merged block's hash (%s)." % why)
+        log("nanoblock: %s was left as this side's; once nano/ is merged, run `nano_tree.py regen "
+            "--force` and `git add %s`." % (name, name))
+        return 1
+    with open(a_path, "w", encoding="ascii", newline="\n") as f:
+        f.write(result[1] + "\n")
     return 0
 
 

@@ -13,3 +13,6 @@ mods/rom-licenses/** -text
 # The patch's Nano block is generated from nano/ (tools/nano-tree/nano_tree.py regen); merges run
 # the nanopatch driver (nano_tree.py install-driver), and reviews read nano/, not the patch.
 patches/thimsy/0001-thimsy.patch merge=nanopatch -diff linguist-generated
+# The block's hash is generated with it: a merge of two branches that both changed nano/ gets the
+# regenerated block's hash from the nanoblock driver.
+tools/nano-tree/block.sha256 merge=nanoblock
