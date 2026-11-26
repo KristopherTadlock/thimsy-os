@@ -47,6 +47,8 @@ class DrmKms : public Kms {
  public:
     void earlySplash(int fd) override { android::drmEarlySplash(fd); }
 
+    void finishGpu() override { glFinish(); }  // GLES2/gl2.h, through NanoMenuDrm.h
+
     bool active() const override { return android::sDrmActive; }
 
     void setRotationDeg(int deg) override { android::sDrmRotationDeg = deg; }

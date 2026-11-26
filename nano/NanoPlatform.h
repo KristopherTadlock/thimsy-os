@@ -40,8 +40,9 @@ namespace nanoplat {
 
 // --- Display (G7-display) ------------------------------------------------------------------------
 // The panel: taken at start-up, and handed to a game's process and back. Render thread only (the
-// NanoMenu thread; its EGL context is current from readyToRun() on). The firmware's is readyToRun's
-// DRM splash decision, moved (platform/firmware/Display.cpp); Linux's always takes the panel and
+// NanoMenu thread). startScanout runs in readyToRun() before its EGL set-up, so no EGL context is
+// current then; releaseForChild and reacquire need Nano's context current. The firmware's is
+// readyToRun's DRM splash decision, moved (platform/firmware/Display.cpp); Linux's always takes the panel and
 // applies the rotation contract (platform/linux/display/); the host's records what it did
 // (platform/host/FakeDisplay.cpp).
 class Display {
@@ -58,8 +59,8 @@ class Display {
     // The hand-off to a child process that becomes DRM master itself (a game), and back, for a
     // platform where Nano keeps running while the child runs (Linux). The firmware's home exits on
     // a launch instead, so its versions do nothing and return false.
-    // releaseForChild: waits for the flip in flight, disables Nano's overlay planes, frees the
-    // scanout ring and drops master; false when the panel was not Nano's.
+    // releaseForChild: finishes the GPU's work, waits for the flip in flight, disables Nano's
+    // overlay planes, frees the scanout ring and drops master; false when the panel was not Nano's.
     // reacquire: takes master back (retrying while the child's file is still being closed),
     // modesets and rebuilds the ring; false when the panel could not be taken back.
     virtual bool releaseForChild() = 0;

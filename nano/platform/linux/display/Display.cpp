@@ -38,6 +38,7 @@ namespace {
 
 const char kSfOrientationKey[] = "ro.surface_flinger.primary_display_orientation";
 const char kDeviceRotationKey[] = "ro.thimsy.device.panel.rotation";
+const char kRotationSourceKey[] = "ro.thimsy.device.panel.rotation_source";
 
 std::string trimmed(const std::string& s) {
     size_t b = 0, e = s.size();
@@ -93,6 +94,7 @@ class LinuxDisplay : public nanoplat::Display {
             ALOGW("releaseForChild: the panel is not Nano's");
             return false;
         }
+        kms_->finishGpu();  // before drmStop frees the ring the GPU may still be drawing into
         kms_->waitForFlips();
         const int planes = kms_->disableOverlayPlanes();
         kms_->rememberInstallMatrix();
@@ -125,17 +127,40 @@ class LinuxDisplay : public nanoplat::Display {
             ALOGI("rotation: %s=%s (drmEarlySplash applied it)", kSfOrientationKey, sf.c_str());
             return;
         }
-        const char* source = "the DRM panel orientation";
-        const std::string orientation = kms_->panelOrientation();
-        int deg = rotationFromPanelOrientation(orientation);
-        if (deg < 0) {
-            source = "fbcon";
-            std::string text;
-            if (readSmallFile(options_.fbconRotatePath, &text)) deg = rotationFromFbcon(text);
+        // The order, from device.json's rotation_source (Display.h).
+        enum Source { kDrm, kFbcon, kDeviceJson };
+        const std::string wanted = prop(kRotationSourceKey);
+        Source order[3] = {kDrm, kDeviceJson, kFbcon};
+        if (wanted == "device-json" || wanted == "device-tree") {
+            order[0] = kDeviceJson;
+            order[1] = kDrm;
+            order[2] = kFbcon;
+        } else if (wanted == "fbcon") {
+            order[0] = kFbcon;
+            order[1] = kDeviceJson;
+            order[2] = kDrm;
+        } else if (!wanted.empty() && wanted != "drm-panel-orientation") {
+            ALOGW("rotation: unknown %s=%s; using the DRM property first", kRotationSourceKey, wanted.c_str());
         }
-        if (deg < 0) {
-            source = "device.json";
-            deg = rotationFromDegrees(prop(kDeviceRotationKey));
+        const char* source = "no source";
+        int deg = -1;
+        for (int i = 0; i < 3 && deg < 0; i++) {
+            switch (order[i]) {
+                case kDrm:
+                    source = "the DRM panel orientation";
+                    deg = rotationFromPanelOrientation(kms_->panelOrientation());
+                    break;
+                case kFbcon: {
+                    source = "fbcon";
+                    std::string text;
+                    if (readSmallFile(options_.fbconRotatePath, &text)) deg = rotationFromFbcon(text);
+                    break;
+                }
+                case kDeviceJson:
+                    source = "device.json";
+                    deg = rotationFromDegrees(prop(kDeviceRotationKey));
+                    break;
+            }
         }
         if (deg < 0) {
             source = "no source";

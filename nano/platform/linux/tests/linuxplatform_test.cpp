@@ -31,6 +31,7 @@ namespace {
 class NoKms : public nanolinux::display::Kms {
  public:
     void earlySplash(int) override {}
+    void finishGpu() override {}
     bool active() const override { return false; }
     void setRotationDeg(int) override {}
     std::string panelOrientation() override { return ""; }

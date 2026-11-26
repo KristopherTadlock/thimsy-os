@@ -61,6 +61,7 @@ class FakeKms : public Kms {
         r_->calls.push_back("splash(" + std::to_string(fd) + ")");
         r_->active = r_->splashFindsDisplay;
     }
+    void finishGpu() override { r_->calls.push_back("finish"); }
     bool active() const override { return r_->active; }
     void setRotationDeg(int deg) override { r_->calls.push_back("rot=" + std::to_string(deg)); }
     std::string panelOrientation() override {
@@ -160,18 +161,75 @@ TEST_F(DisplayTest, RotationFromThePanelOrientationFirst) {
     EXPECT_EQ(rec.joined(), "splash(-1) orientation rot=90");
 }
 
-TEST_F(DisplayTest, RotationFromFbconWithoutTheProperty) {
+TEST_F(DisplayTest, RotationFromDeviceJsonWithoutTheProperty) {
     writeFbcon("3\n");
     property_set("ro.thimsy.device.panel.rotation", "90");
+    make()->startScanout(-1, false, nullptr);
+    EXPECT_EQ(rec.joined(), "splash(-1) orientation rot=90");
+}
+
+TEST_F(DisplayTest, FbconZeroDoesNotBeatDeviceJson) {
+    // A DSI panel with no orientation property: the kernel's fbcon hint reads 0 too.
+    writeFbcon("0\n");
+    property_set("ro.thimsy.device.panel.rotation", "270");
     make()->startScanout(-1, false, nullptr);
     EXPECT_EQ(rec.joined(), "splash(-1) orientation rot=270");
 }
 
-TEST_F(DisplayTest, RotationFromDeviceJsonLast) {
-    writeFbcon("garbage");
-    property_set("ro.thimsy.device.panel.rotation", "90");
+TEST_F(DisplayTest, RotationFromFbconLast) {
+    writeFbcon("3\n");
+    property_set("ro.thimsy.device.panel.rotation", "garbage");
     make()->startScanout(-1, false, nullptr);
-    EXPECT_EQ(rec.joined(), "splash(-1) orientation rot=90");
+    EXPECT_EQ(rec.joined(), "splash(-1) orientation rot=270");
+}
+
+TEST_F(DisplayTest, DrmSourceNamedExplicitly) {
+    property_set("ro.thimsy.device.panel.rotation_source", "drm-panel-orientation");
+    property_set("ro.thimsy.device.panel.rotation", "90");
+    rec.orientation = "Normal";
+    make()->startScanout(-1, false, nullptr);
+    EXPECT_EQ(rec.joined(), "splash(-1) orientation rot=0");
+}
+
+TEST_F(DisplayTest, DeviceJsonSourceOverridesDrmNormal) {
+    property_set("ro.thimsy.device.panel.rotation_source", "device-json");
+    property_set("ro.thimsy.device.panel.rotation", "270");
+    writeFbcon("1\n");
+    rec.orientation = "Normal";
+    make()->startScanout(-1, false, nullptr);
+    EXPECT_EQ(rec.joined(), "splash(-1) rot=270");  // the property is not even read
+}
+
+TEST_F(DisplayTest, DeviceTreeSourceFallsBackToDrm) {
+    property_set("ro.thimsy.device.panel.rotation_source", "device-tree");
+    rec.orientation = "Upside Down";
+    make()->startScanout(-1, false, nullptr);
+    EXPECT_EQ(rec.joined(), "splash(-1) orientation rot=180");
+}
+
+TEST_F(DisplayTest, FbconSourceFirst) {
+    property_set("ro.thimsy.device.panel.rotation_source", "fbcon");
+    property_set("ro.thimsy.device.panel.rotation", "270");
+    writeFbcon("1\n");
+    rec.orientation = "Left Side Up";
+    make()->startScanout(-1, false, nullptr);
+    EXPECT_EQ(rec.joined(), "splash(-1) rot=90");
+}
+
+TEST_F(DisplayTest, FbconSourceThenDeviceJson) {
+    property_set("ro.thimsy.device.panel.rotation_source", "fbcon");
+    property_set("ro.thimsy.device.panel.rotation", "270");
+    rec.orientation = "Right Side Up";
+    make()->startScanout(-1, false, nullptr);  // no fbcon file
+    EXPECT_EQ(rec.joined(), "splash(-1) rot=270");
+}
+
+TEST_F(DisplayTest, UnknownSourceUsesTheDefaultOrder) {
+    property_set("ro.thimsy.device.panel.rotation_source", "drm");
+    property_set("ro.thimsy.device.panel.rotation", "90");
+    rec.orientation = "Upside Down";
+    make()->startScanout(-1, false, nullptr);
+    EXPECT_EQ(rec.joined(), "splash(-1) orientation rot=180");
 }
 
 TEST_F(DisplayTest, RotationZeroWithNoSource) {
@@ -187,7 +245,7 @@ TEST_F(DisplayTest, SurfaceFlingerPropertyWins) {
     EXPECT_EQ(rec.joined(), "splash(-1)");  // drmEarlySplash applied it
     ASSERT_TRUE(d->releaseForChild());
     ASSERT_TRUE(d->reacquire());
-    EXPECT_EQ(rec.joined(), "splash(-1) flips planes matrix stop takeBack");
+    EXPECT_EQ(rec.joined(), "splash(-1) finish flips planes matrix stop takeBack");
 }
 
 TEST_F(DisplayTest, HandOffOrder) {
@@ -197,9 +255,9 @@ TEST_F(DisplayTest, HandOffOrder) {
     d->startScanout(-1, false, nullptr);
     rec.calls.clear();
     ASSERT_TRUE(d->releaseForChild());
-    EXPECT_EQ(rec.joined(), "flips planes matrix stop");
+    EXPECT_EQ(rec.joined(), "finish flips planes matrix stop");
     EXPECT_FALSE(d->releaseForChild());  // already released: nothing more is called
-    EXPECT_EQ(rec.joined(), "flips planes matrix stop");
+    EXPECT_EQ(rec.joined(), "finish flips planes matrix stop");
     rec.calls.clear();
     ASSERT_TRUE(d->reacquire());
     // The re-splash re-read the orientation property; the chosen rotation is put back, not chosen again.

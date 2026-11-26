@@ -21,18 +21,27 @@
 //   always Nano's: drmEarlySplash takes master, modesets and shows the splash. Then the rotation
 //   contract: one rotation for the panel, written to sDrmRotationDeg, so the shared code's GL path
 //   (initShaders' matrix, sDrmGlRotation) turns every frame at present time.
-// - releaseForChild, before a game's process starts: waits for the flip in flight, turns Nano's
-//   overlay (Cluster) planes off, keeps the install matrix and calls drmStop, which frees the ring,
-//   drops master and closes the fd, so the child opens card0 and becomes master itself.
+// - releaseForChild, before a game's process starts: glFinish (as the parked home does before
+//   drmStop, so the GPU is not still drawing into the buffers drmStop frees), waits for the flip in
+//   flight, turns Nano's overlay (Cluster) planes off, keeps the install matrix and calls drmStop,
+//   which frees the ring, drops master and closes the fd, so the child opens card0 and becomes
+//   master itself.
 // - reacquire, after the child has exited: drmReacquireForHome reopens card0 and takes master
 //   (retrying while the child's file is still being closed), runs drmEarlySplash's full modeset,
 //   rebuilds the ring on the same EGL context and puts the matrix back; then the rotation again,
 //   since the re-splash re-read it.
 //
-// The rotation contract's sources, in order (device.schema.json's rotation_source): the primary
-// connector's DRM "panel orientation" property, then fbcon's rotation, then device.json's
-// panel.rotation (ro.thimsy.device.panel.rotation, written by thimsy-prop). Degrees are in
-// device.json's convention, the device tree's `rotation`. When the store has
+// The rotation contract (plan 5.3). device.json's panel.rotation_source
+// (ro.thimsy.device.panel.rotation_source, flattened by thimsy-prop with panel.rotation) says
+// which source to trust, and sets the order:
+//   "device-json", "device-tree": device.json's panel.rotation (ro.thimsy.device.panel.rotation),
+//                                 then the DRM property, then fbcon;
+//   "fbcon":                      fbcon's rotation, then device.json, then the DRM property;
+//   "drm-panel-orientation", unset or unknown: the primary connector's DRM "panel orientation"
+//                                 property, then device.json, then fbcon.
+// fbcon comes after device.json there because the kernel derives fbcon's rotation from the same
+// panel orientation: with no property it reads 0, which is no answer. Degrees are in device.json's
+// convention, the device tree's `rotation`. When the store has
 // ro.surface_flinger.primary_display_orientation, drmEarlySplash has applied it and it wins.
 //
 // The calls into NanoMenuDrm.cpp go through Kms, bound in DisplayKms.cpp, so this header and
@@ -54,6 +63,7 @@ class Kms {
  public:
     virtual ~Kms() = default;
     virtual void earlySplash(int fd) = 0;        // drmEarlySplash(fd): master, modeset, splash
+    virtual void finishGpu() = 0;                // glFinish, on Nano's current EGL context
     virtual bool active() const = 0;             // sDrmActive
     virtual void setRotationDeg(int deg) = 0;    // sDrmRotationDeg
     virtual std::string panelOrientation() = 0;  // the primary connector's, readPanelOrientation()
