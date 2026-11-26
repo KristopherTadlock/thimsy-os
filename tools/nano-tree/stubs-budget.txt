@@ -1,0 +1,7 @@
+# The layer-2 stub budget (IMPLEMENTATION.md B.4, H.4): how many names the headers under
+# nano/compat/stubs/include declare (macros, types, enumerators, functions, variables and members,
+# qualified by scope; overloads count once), counted by tools/nano-tree/tests/test_nano_stubs.py.
+# The count may only shrink: a new stub needs a reviewed reason, and layer 4 (P4) lowers it as it
+# moves firmware code out. After removing stubs:
+#   py -3.12 tools/nano-tree/tests/test_nano_stubs.py --update-budget
+446

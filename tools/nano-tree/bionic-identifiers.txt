@@ -1,0 +1,17 @@
+# Bionic-only identifiers used in nano/'s shared C and C++ files (IMPLEMENTATION.md B.2, H.4,
+# decision I31): the ones glibc 2.31 lacks, each provided on Linux and the host by a layer-1 shim
+# (nano/compat/include, nanocompat/bionic.h force-included). test_nano_stubs.py fails when the set
+# changes or one has no shim. After a deliberate change, or a merge that brought a new one:
+#   py -3.12 tools/nano-tree/tests/test_nano_stubs.py --update-bionic
+ANDROID_PRIORITY_BACKGROUND
+ANDROID_PRIORITY_DISPLAY
+ANDROID_PRIORITY_NORMAL
+M_CACHE_COUNT_MAX
+M_PURGE_ALL
+SLOGE_IF
+__system_property_find
+__system_property_serial
+__system_property_wait
+getprogname
+gettid
+strlcpy

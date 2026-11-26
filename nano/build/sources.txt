@@ -12,15 +12,20 @@
 # Android.bp stays authoritative for Android; this file only partitions it. Fork-only: never in
 # the patch (upstream.json's fork_only has build/**).
 #
-# After editing: py -3.12 tools/nano-tree/include_census.py write   (regenerates unit-closure.txt)
+# [core], [drm], [firmware] and [dropped-linux] are GENERATED (G4): the path lines right below
+# their headers come from the include census (tools/nano-tree/include_census.py: its SPLIT_DECISIONS
+# and NOT_STUBBED tables hold the hand decisions). Do not edit those lines; change the tables, then
+#   py -3.12 tools/nano-tree/include_census.py write   (also regenerates unit-closure.txt and
+#                                                      tools/nano-tree/include-census.json)
+# The other sections are edited by hand; run the same command afterwards.
 
 # Shared files compiled on every platform: gammaos-nano's srcs minus [drm] and [firmware], with the
 # media, overlay and SD-move files that compile against the layer-2 stubs (C.1, B.4).
 #
-# FIRST CUT (G1c): [core] and [firmware] are split by the design's list (C.1), not yet by the include
-# census. G4 refines the split from tools/nano-tree/include-census.json (a file reaching an
-# Android-only header that has neither a shim nor a stub, and that G4 decides not to stub, moves to
-# [firmware]), and G10 may move a file after compiling it, with the reason.
+# Made by the include census (G4): a file is [core] unless SPLIT_DECISIONS places it, or it reaches an
+# Android-only header with neither shim nor stub (NOT_STUBBED says why each such header has none), a
+# header of the Nano folder's siblings, or a header that resolves nowhere. Compiling decides nothing
+# until G10, which may move a file and records why.
 [core]
 NanoMenu.cpp
 NanoMenuXmb.cpp
@@ -130,28 +135,62 @@ NanoUtf8Case.cpp
 [drm]
 NanoMenuDrm.cpp
 
-# Android firmware only (FIRST CUT, see [core]): the entry point; drastic-nano's runner, GPU and
-# settings and the JNI shim; the AHardwareBuffer back end (NanoMenuDrmBuffers.cpp, split out by
-# G9a); the boot chime (tinyalsa); Bluetooth's stability helper; Shares and RGB follow, whose
-# headers live outside Nano's folder (v1 has neither on Linux); the libretro runner (until Phase 5).
+# Android firmware only: the entry point; drastic-nano's runner, GPU and settings and the JNI shim;
+# the AHardwareBuffer back end (NanoMenuDrmBuffers.cpp, split out by G9a); the boot chime
+# (tinyalsa); Bluetooth's stability helper; Shares and RGB follow, whose headers live outside Nano's
+# folder (v1 has neither on Linux); the libretro runner (until Phase 5). Each file's reason is the
+# comment line above it.
 [firmware]
+# main.cpp: reaches binder/ProcessState.h (not stubbed: Android's entry point (main.cpp) starts the binder thread pool; Linux has its own main); jni.h (not stubbed: the JNI shim of drastic-nano's runner (the DS player, not on Linux v1) and main.cpp's)
 main.cpp
+# NanoMenuDrmBuffers.cpp: the AHardwareBuffer render-target back end (G9a); Linux links platform/linux/display/DrmBuffersGbm.cpp instead
 NanoMenuDrmBuffers.cpp
+# NanoMenuRgbFollow.cpp: reaches GammaRgbProcess.h (a header outside Nano's folder (upstream.json siblings): v1 has neither Shares nor RGB follow on Linux)
 NanoMenuRgbFollow.cpp
+# NanoMenuShares.cpp: reaches share_config.h (a header outside Nano's folder (upstream.json siblings): v1 has neither Shares nor RGB follow on Linux)
 NanoMenuShares.cpp
+# NanoBootChime.cpp: the boot chime plays through tinyalsa on the Android audio HAL's card; Linux boot sound is not v1's
 NanoBootChime.cpp
+# NanoMenuDrasticPark.cpp: parks drastic-nano, the DS player (not on Linux v1)
 NanoMenuDrasticPark.cpp
+# NanoBtStable.cpp: a workaround for Android's Bluetooth stack (its services and settings)
 NanoBtStable.cpp
+# LibretroRunner.cpp: the in-process libretro runner, until plan Phase 5
 LibretroRunner.cpp
+# FakeJNI.cpp: reaches jni.h (not stubbed: the JNI shim of drastic-nano's runner (the DS player, not on Linux v1) and main.cpp's)
 FakeJNI.cpp
+# DrasticRunner.cpp: reaches jni.h (not stubbed: the JNI shim of drastic-nano's runner (the DS player, not on Linux v1) and main.cpp's)
 DrasticRunner.cpp
+# DrasticGpu3d.cpp: drastic-nano's GPU renderer (the DS player, not on Linux v1)
 DrasticGpu3d.cpp
+# DrasticSettings.cpp: drastic-nano's settings (the DS player, not on Linux v1)
 DrasticSettings.cpp
 
-# A subset of [firmware]: the files that define NanoMenu:: methods [core] calls, for which the Linux
-# and host builds link stubs generated at build time (nano/test/host/stubgen, G4). Empty unless a
-# file truly can't compile.
+# A subset of [firmware]: the files that define something [core] or [drm] names (NanoMenu:: methods,
+# free functions, variables). The Linux and host links get inert stubs for whatever of it is still
+# undefined, generated at build time from nm's output (nano/test/host/stubgen/gen.py --from <file>),
+# never committed (C.1, I29). The comment line above each file says what is named.
 [dropped-linux]
+# main.cpp: [core]/[drm] name what it defines: gEarlyDrmFd
+main.cpp
+# NanoMenuDrmBuffers.cpp: [core]/[drm] name what it defines: android::drmAllocAhbTarget
+NanoMenuDrmBuffers.cpp
+# NanoMenuRgbFollow.cpp: [core]/[drm] name what it defines: android::nanoRgbFollowSample
+NanoMenuRgbFollow.cpp
+# NanoMenuShares.cpp: [core]/[drm] name what it defines: android::NanoMenu::buildShareEditor, android::NanoMenu::buildSharesList, android::NanoMenu::nsAddShare, android::NanoMenu::nsDiscardIfUnconfigured and 9 more
+NanoMenuShares.cpp
+# NanoBootChime.cpp: [core]/[drm] name what it defines: nanoDirectActive, nanoDirectAudioUsable, nanoDirectHoldOpen, nanoDirectPlayOneShot and 4 more
+NanoBootChime.cpp
+# NanoMenuDrasticPark.cpp: [core]/[drm] name what it defines: android::NanoMenu::drasticParkEnabled, android::NanoMenu::drasticParkPageOutAll, android::NanoMenu::drasticParkSession
+NanoMenuDrasticPark.cpp
+# NanoBtStable.cpp: [core]/[drm] name what it defines: android::nanoStartBtStability
+NanoBtStable.cpp
+# LibretroRunner.cpp: [core]/[drm] name what it defines: LibretroRunner::LibretroRunner, LibretroRunner::abandon, LibretroRunner::init, LibretroRunner::initAudio and 21 more
+LibretroRunner.cpp
+# DrasticRunner.cpp: [core]/[drm] name what it defines: android::DrasticRunner::DrasticRunner, android::DrasticRunner::addCustomCheat, android::DrasticRunner::applyCheats, android::DrasticRunner::applyCpuPlacement and 113 more
+DrasticRunner.cpp
+# DrasticGpu3d.cpp: [core]/[drm] name what it defines: android::compile, android::texFor, gpu3dPresenterTimerBegin, gpu3dPresenterTimerEnd
+DrasticGpu3d.cpp
 
 # The Linux platform (G9): platform/linux/**.cpp and main_linux.cpp. Empty until they exist.
 [linux]

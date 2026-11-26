@@ -11,14 +11,18 @@ Commands (Python 3.8 or later, standard library only):
                                           tools/nano-tree/include-census.json
   include_census.py unit-closure [--out FILE]
                                           nano/build/unit-closure.txt's text (stdout, or FILE)
-  include_census.py write                 writes nano/build/unit-closure.txt and
-                                          tools/nano-tree/include-census.json
-  include_census.py check                 exit 1 when either committed file is stale
+  include_census.py split                 the [core]/[drm]/[firmware]/[dropped-linux] split, one
+                                          line per file with its reason
+  include_census.py write                 writes nano/build/unit-closure.txt,
+                                          tools/nano-tree/include-census.json and the four split
+                                          sections of nano/build/sources.txt (G4)
+  include_census.py check                 exit 1 when any of the three is stale
 
 Each include is put in one class:
 
-  nano       a file in nano/ (outside compat/include)
+  nano       a file in nano/ (outside compat/include and compat/stubs)
   shim       a header of nano/compat/include (layer 1)
+  stub       a header of nano/compat/stubs/include (layer 2: nano_core's include path only)
   system     the C and C++ standard libraries, POSIX, glibc and the Linux UAPI
   gtest      <gtest/gtest.h>: GoogleTest, or libthimsy/testing's stand-in
   libthimsy  <thimsy/...>: the repository's libthimsy
@@ -31,8 +35,22 @@ Each include is put in one class:
   missing    a quoted include that resolves nowhere
   unknown    an angle include none of the tables knows
 
-A file's needs are its lib, android, sibling, missing and unknown includes, and those of every nano/
-file it reaches, counting only includes outside any #if (a header's include guard does not count).
+A file's needs are its lib, android, stub, sibling, missing and unknown includes, and those of every
+nano/ file it reaches, counting only includes outside any #if (a header's include guard does not
+count). A stub is a need for a unit test program (layer 2 is not on its include path) and is
+satisfied for [core] and [drm].
+
+The split (IMPLEMENTATION.md C.1, B.4), over nano/Android.bp's gammaos-nano srcs, in its order:
+  - SPLIT_DECISIONS places a file by hand, with the reason (the KMS file is [drm]; features v1 leaves
+    out on Linux are [firmware]);
+  - any other file is [firmware] when it reaches an Android-only header with neither shim nor stub
+    (each such header needs a NOT_STUBBED reason, or the census fails), a sibling's header, or a
+    header that resolves nowhere; else [core];
+  - [dropped-linux] is every [firmware] file that defines something a [core] or [drm] file (or a
+    header they reach) names: a NanoMenu:: method, a free function or a variable. The Linux and host
+    links get stubs generated for exactly those (nano/test/host/stubgen/gen.py).
+`write` rewrites only the path lines right below those four section headers (with a comment line
+per [firmware] and [dropped-linux] file giving its reason); the rest of sources.txt is kept.
 
 A test program also needs an asset folder (upstream.json "assets": ps3xmb, nano_esde_themes,
 nano_esde_assets) when a string literal of its test source names one: nano/ holds only the files the
@@ -64,13 +82,39 @@ CENSUS_REL = "tools/nano-tree/include-census.json"
 CLOSURE_REL = "nano/build/unit-closure.txt"
 SOURCES_REL = "nano/build/sources.txt"
 COMPAT_INCLUDE = "compat/include"
+STUBS_INCLUDE = "compat/stubs/include"
+STUBGEN = "nano/test/host/stubgen/gen.py"
 # Folders whose headers the host build puts on the include path after compat/include and nano/
 # itself (with Android.bp's local_include_dirs): the tests' helpers.
 EXTRA_INCLUDE_DIRS = ("test/unit",)
-# Left out of the census: the shims themselves (layer 1) and their own tests, which build with
-# compat.mk and include compat/src's private headers.
-SKIP_DIRS = (COMPAT_INCLUDE + "/", "test/host/compat/")
-NEED_CLASSES = ("lib", "android", "sibling", "missing", "unknown")
+# Left out of the census: the shims and the stubs themselves (layers 1 and 2) and their own tests,
+# which build with compat.mk and stubs.mk.
+SKIP_DIRS = (COMPAT_INCLUDE + "/", "compat/stubs/", "test/host/compat/")
+NEED_CLASSES = ("lib", "android", "stub", "sibling", "missing", "unknown")
+
+# The split's hand decisions (G4): {gammaos-nano src: (section, reason)}. Everything else follows the
+# census (module docstring).
+SPLIT_DECISIONS: "OrderedDict[str, Tuple[str, str]]" = OrderedDict([
+    ("NanoMenuDrm.cpp", ("drm", "the KMS display code, firmware and Linux each with its own buffer back end; "
+                                "the host replaces it (platform/host/DrmHost.cpp)")),
+    ("NanoMenuDrmBuffers.cpp", ("firmware", "the AHardwareBuffer render-target back end (G9a); Linux links "
+                                            "platform/linux/display/DrmBuffersGbm.cpp instead")),
+    ("NanoBootChime.cpp", ("firmware", "the boot chime plays through tinyalsa on the Android audio HAL's "
+                                       "card; Linux boot sound is not v1's")),
+    ("NanoBtStable.cpp", ("firmware", "a workaround for Android's Bluetooth stack (its services and settings)")),
+    ("NanoMenuDrasticPark.cpp", ("firmware", "parks drastic-nano, the DS player (not on Linux v1)")),
+    ("LibretroRunner.cpp", ("firmware", "the in-process libretro runner, until plan Phase 5")),
+    ("DrasticGpu3d.cpp", ("firmware", "drastic-nano's GPU renderer (the DS player, not on Linux v1)")),
+    ("DrasticSettings.cpp", ("firmware", "drastic-nano's settings (the DS player, not on Linux v1)")),
+])
+# Android-only headers G4 decided not to stub: {header: reason}. A [core] or [drm] file may not reach
+# one (the census then puts it in [firmware]); a header that is in neither table nor stubbed fails.
+NOT_STUBBED: Dict[str, str] = {
+    "jni.h": "the JNI shim of drastic-nano's runner (the DS player, not on Linux v1) and main.cpp's",
+    "binder/ProcessState.h": "Android's entry point (main.cpp) starts the binder thread pool; Linux has "
+                             "its own main",
+}
+SIBLING_REASON = "a header outside Nano's folder (upstream.json siblings): v1 has neither Shares nor RGB follow on Linux"
 
 # Where a header's definitions live when it is not the .cpp of the same name. Each entry was found
 # by linking a test program on the host (G1c); only [test-unit] production files are added.
@@ -150,7 +194,7 @@ class Include:
         self.path: Optional[str] = None   # the nano/ path for "nano" and "shim"
 
     def label(self) -> str:
-        if self.cls in ("nano", "shim"):
+        if self.cls in ("nano", "shim", "stub"):
             return "%s:%s" % (self.cls, self.path)
         if self.cls == "lib":
             return "lib:%s:%s" % (self.detail, self.name)
@@ -232,7 +276,7 @@ class Census:
         with open(os.path.join(self.nano, "Android.bp"), "r", encoding="utf-8") as f:
             self.bp = Blueprint(f.read())
         _named, bp_dirs = blueprint_surface(self.bp, self.all_files, self.cfg.prefix)
-        dirs = [COMPAT_INCLUDE]
+        dirs = [COMPAT_INCLUDE, STUBS_INCLUDE]
         for d in list(bp_dirs) + list(EXTRA_INCLUDE_DIRS):
             if d not in dirs:
                 dirs.append(d)
@@ -265,7 +309,12 @@ class Census:
         for inc in incs:
             p = resolve_include(path, inc.quote, inc.name, self.include_dirs, self.fileset)
             if p is not None:
-                inc.cls = "shim" if p.startswith(COMPAT_INCLUDE + "/") else "nano"
+                if p.startswith(COMPAT_INCLUDE + "/"):
+                    inc.cls = "shim"
+                elif p.startswith(STUBS_INCLUDE + "/"):
+                    inc.cls = "stub"
+                else:
+                    inc.cls = "nano"
                 inc.path = p
             elif inc.name in optional:
                 inc.cls = "optional"
@@ -312,7 +361,8 @@ class Census:
         return out
 
 
-def census_json(c: Census) -> str:
+def census_json(c: Census, split: "Optional[Split]" = None) -> str:
+    split = split if split is not None else Split(c)
     files = OrderedDict()
     for path in sorted(c.files):
         incs = c.files[path]
@@ -330,15 +380,22 @@ def census_json(c: Census) -> str:
         needs = c.needs(path)
         sources[path] = OrderedDict([("modules", modules),
                                      ("needs", OrderedDict((k, sorted(v)) for k, v in sorted(needs.items())))])
+    split_doc = OrderedDict()
+    for sec, paths in split.sections.items():
+        split_doc[sec] = OrderedDict((p, split.reasons.get("%s:%s" % (sec, p), "")) for p in paths)
     doc = OrderedDict([
         ("comment", "Generated by tools/nano-tree/include_census.py (IMPLEMENTATION.md B.4, C.1); do not "
-                    "edit. First version by G1c; G4 refines and owns it. 'files': every C-family file's "
-                    "includes that are not the system's, unconditional and (under 'conditional') inside "
-                    "an #if; 'sources': every file a module of nano/Android.bp compiles, with the "
-                    "headers outside nano/ and the shims that it reaches."),
+                    "edit; G4 owns it. 'files': every C-family file's includes that are not the system's, "
+                    "unconditional and (under 'conditional') inside an #if; 'sources': every file a module "
+                    "of nano/Android.bp compiles, with the headers outside nano/ and the shims that it "
+                    "reaches ('stub': layer 2's); 'split': nano/build/sources.txt's four sections over "
+                    "gammaos-nano's srcs, with each placement's reason; 'not_stubbed': the Android-only "
+                    "headers left without a stub, and why."),
         ("include_dirs", c.include_dirs),
         ("files", files),
         ("sources", sources),
+        ("split", split_doc),
+        ("not_stubbed", OrderedDict(sorted(NOT_STUBBED.items()))),
     ])
     return json.dumps(doc, indent=1) + "\n"
 
@@ -407,10 +464,146 @@ def unit_closure_text(c: Census, sources: SourceList) -> str:
     return "\n".join(out) + "\n"
 
 
+def _stubgen(root: str):
+    """nano/test/host/stubgen/gen.py as a module (its dropped_definitions and blank)."""
+    import importlib.util
+    path = os.path.join(root, *STUBGEN.split("/"))
+    spec = importlib.util.spec_from_file_location("nano_stubgen", path)
+    if spec is None or spec.loader is None:
+        raise NanoTreeError("can't load %s" % STUBGEN)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    return mod
+
+
+class Split:
+    """The [core]/[drm]/[firmware]/[dropped-linux] split of gammaos-nano's srcs (module docstring).
+    .sections maps each of the four sections to its files in Android.bp order; .reasons maps a
+    [drm], [firmware] or [dropped-linux] file (keyed "<section>:<path>") to its reason."""
+
+    SECTIONS = ("core", "drm", "firmware", "dropped-linux")
+
+    def __init__(self, c: Census):
+        m = c.bp.module("gammaos-nano")
+        if m is None:
+            raise NanoTreeError("nano/Android.bp has no gammaos-nano module")
+        srcs = [s for s in c.bp.srcs(m) if not s.startswith(":") and s.endswith(C_FAMILY)]
+        unknown = sorted(set(SPLIT_DECISIONS) - set(srcs))
+        if unknown:
+            raise NanoTreeError("SPLIT_DECISIONS names files gammaos-nano does not compile: %s" % ", ".join(unknown))
+        self.sections: "OrderedDict[str, List[str]]" = OrderedDict((s, []) for s in self.SECTIONS)
+        self.reasons: Dict[str, str] = {}
+        undecided: List[str] = []
+        for path in srcs:
+            if path in SPLIT_DECISIONS:
+                sec, why = SPLIT_DECISIONS[path]
+                self.sections[sec].append(path)
+                if sec != "core":
+                    self.reasons["%s:%s" % (sec, path)] = why
+                continue
+            needs = c.needs(path)
+            why = []
+            for h in sorted(needs.get("android", ())):
+                if h in NOT_STUBBED:
+                    why.append("%s (not stubbed: %s)" % (h, NOT_STUBBED[h]))
+                else:
+                    undecided.append("%s reaches %s" % (path, h))
+            for h in sorted(needs.get("sibling", ())):
+                why.append("%s (%s)" % (h, SIBLING_REASON))
+            for cls in ("missing", "unknown"):
+                for h in sorted(needs.get(cls, ())):
+                    why.append("%s (%s: resolves nowhere)" % (h, cls))
+            if why:
+                self.sections["firmware"].append(path)
+                self.reasons["firmware:" + path] = "reaches " + "; ".join(why)
+            else:
+                self.sections["core"].append(path)
+        if undecided:
+            raise NanoTreeError("Android-only headers with neither shim nor stub: stub them (nano/compat/stubs) or "
+                                "add a NOT_STUBBED reason:\n  " + "\n  ".join(undecided))
+        self._dropped(c)
+
+    def _dropped(self, c: Census) -> None:
+        gen = _stubgen(c.root)
+        shared = self.sections["core"] + self.sections["drm"]
+        code_parts = []
+        for p in c.reach(shared):
+            with open(os.path.join(c.nano, *p.split("/")), "rb") as f:
+                code_parts.append(gen.blank(f.read().decode("utf-8", "replace")))
+        code = "\n".join(code_parts)
+        words = set(re.findall(r"[A-Za-z_]\w*", code))
+        calls = set(re.findall(r"([A-Za-z_]\w*)\s*\(", code))
+        for path in self.sections["firmware"]:
+            with open(os.path.join(c.nano, *path.split("/")), "rb") as f:
+                defs = gen.dropped_definitions(f.read().decode("utf-8", "replace"))
+            used = []
+            for q in sorted(defs):
+                # android::NanoMenu::nsTick, android::LibretroRunner::init, android::gEarlyDrmFd: each
+                # qualifier other than android must be named by the shared code, and so must the name
+                # (called, for a function of a class or namespace: "init" alone is everywhere).
+                parts = q.split("::")
+                name = parts[-1].lstrip("~")
+                quals = [p for p in parts[:-1] if p != "android"]
+                if name == "main" and not quals:
+                    continue
+                if not all(p in words for p in quals):
+                    continue
+                if name in calls or (name in words and (not quals or name == quals[-1])):
+                    used.append(q)
+            if used:
+                self.sections["dropped-linux"].append(path)
+                shown = ", ".join(used[:4]) + (" and %d more" % (len(used) - 4) if len(used) > 4 else "")
+                self.reasons["dropped-linux:" + path] = "[core]/[drm] name what it defines: " + shown
+
+    def text(self) -> str:
+        out = []
+        for sec, paths in self.sections.items():
+            for p in paths:
+                why = self.reasons.get("%s:%s" % (sec, p))
+                out.append("%-14s %s%s" % ("[%s]" % sec, p, ("  -- " + why) if why else ""))
+        return "\n".join(out) + "\n"
+
+    def section_lines(self, sec: str) -> List[str]:
+        lines = []
+        for p in self.sections[sec]:
+            why = self.reasons.get("%s:%s" % (sec, p))
+            if why and sec in ("firmware", "dropped-linux"):
+                lines.append("# %s: %s" % (p, why))
+            lines.append(p)
+        return lines
+
+
+def rewrite_sources(text: str, split: Split) -> str:
+    """TEXT (sources.txt) with the path lines right below the four split section headers replaced:
+    the run of non-blank lines after each header is the generated part."""
+    lines = text.split("\n")
+    out: List[str] = []
+    i = 0
+    seen = set()
+    while i < len(lines):
+        line = lines[i]
+        out.append(line)
+        m = re.match(r"^\[([a-z0-9-]+)\]\s*$", line.strip())
+        i += 1
+        if m and m.group(1) in Split.SECTIONS:
+            seen.add(m.group(1))
+            while i < len(lines) and lines[i].strip() and not re.match(r"^\[[a-z0-9-]+\]\s*$", lines[i].strip()):
+                i += 1
+            out.extend(split.section_lines(m.group(1)))
+    missing = [s for s in Split.SECTIONS if s not in seen]
+    if missing:
+        raise NanoTreeError("sources.txt lacks the section(s) %s" % ", ".join(missing))
+    return "\n".join(out)
+
+
 def _outputs(root: str) -> Dict[str, str]:
     c = Census(root)
-    sources = SourceList.load(os.path.join(root, *SOURCES_REL.split("/")))
-    return {CLOSURE_REL: unit_closure_text(c, sources), CENSUS_REL: census_json(c)}
+    split = Split(c)
+    src_path = os.path.join(root, *SOURCES_REL.split("/"))
+    with open(src_path, "r", encoding="utf-8", newline="") as f:
+        src_text = rewrite_sources(f.read(), split)
+    sources = SourceList.parse(src_text, src_path)
+    return {SOURCES_REL: src_text, CLOSURE_REL: unit_closure_text(c, sources), CENSUS_REL: census_json(c, split)}
 
 
 def _read(path: str) -> Optional[str]:
@@ -436,6 +629,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     for name in ("census", "unit-closure"):
         p = sub.add_parser(name)
         p.add_argument("--out")
+    sub.add_parser("split")
     sub.add_parser("write")
     sub.add_parser("check")
     args = ap.parse_args(argv)
@@ -451,6 +645,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 _write(args.out, text)
             else:
                 sys.stdout.write(text)
+            return 0
+        if args.cmd == "split":
+            sys.stdout.write(Split(Census(root)).text())
             return 0
         if args.cmd == "write":
             for rel, text in _outputs(root).items():
