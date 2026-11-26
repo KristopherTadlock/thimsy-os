@@ -35,7 +35,9 @@ void Supervisor::scheduleRestart(Restartable* r, Ms now) {
 }
 
 Ms Supervisor::launchCycleDelay(Ms now) {
-    if (now - nano_.startedAt >= config_.launchLoopWindowMs) {
+    // A user picking games that fail at once has Nano on screen for seconds before each launch; an
+    // auto-launch does not.
+    if (now - nano_.startedAt >= config_.launchLoopWindowMs || launchActMs_ >= config_.launchLoopActMs) {
         quickLaunches_ = 0;
         nano_.backoff = 0;
         return 0;
@@ -64,6 +66,7 @@ std::vector<SupAction> Supervisor::start(Ms now, bool deferredAlreadyRan, bool p
 std::vector<SupAction> Supervisor::nanoStarted(Ms now, int pid) {
     nanoStarting_ = false;
     nano_.startedAt = now;
+    nanoShownAt_ = kNever;
     if (pid > 0) {
         nano_.pid = pid;
         if (firstNanoStart_ == kNever) firstNanoStart_ = now;
@@ -92,6 +95,7 @@ void Supervisor::scrapeStarted(int pid) {
 std::vector<SupAction> Supervisor::nanoExited(Ms now, int gamePid, bool launchOver) {
     std::vector<SupAction> out;
     nano_.pid = 0;
+    launchActMs_ = nanoShownAt_ == kNever ? 0 : now - nanoShownAt_;
     if (shutdown_) return out;
     if (restartRequested_) {
         restartRequested_ = false;
@@ -139,8 +143,8 @@ std::vector<SupAction> Supervisor::paddExited(Ms now) {
 void Supervisor::scrapeExited() { scrapePid_ = 0; }
 
 std::vector<SupAction> Supervisor::firstFrame(Ms now) {
-    (void)now;
     std::vector<SupAction> out;
+    if (nano_.pid > 0 && nanoShownAt_ == kNever) nanoShownAt_ = now;
     if (deferredDone_ || shutdown_) return out;
     deferredDone_ = true;
     out.push_back({SupKind::RunDeferred});

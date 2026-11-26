@@ -532,6 +532,9 @@ void Session::runSup(const std::vector<SupAction>& acts) {
                 // Nano starts only with no game of its own running (the supervisor holds it until
                 // the game ends), so an app_launched left at 1 (a crash, an earlier session) is stale.
                 if (gamePid() == 0) clearAppState("before Nano starts");
+                // Each Nano sets it to 1 at its own first frame (once per process): from 0, the
+                // change is seen, and the supervisor knows when this Nano was first on screen.
+                store_->set(kKeyFirstFrame, "0");
                 SpawnSpec s;
                 s.argv = {tool(opts_.nanoPath)};
                 s.env = gpuEnv_;   // the games Nano starts inherit it

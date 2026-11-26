@@ -7,14 +7,18 @@
 //   Nano      started at once. When it exits it is started again: at once if it ran for at least
 //             minUptimeMs, else after a back-off that doubles from backoffStartMs to backoffMaxMs.
 //             If it exits while the game it launched still runs (as Android's home exits when it
-//             starts a game), it is started again when that game ends, without a back-off. If it
-//             says it exited for a launch (exit status 0) and no game runs (the game ended at once,
-//             or the launch could not start), it is started again at once, the back-off reset.
-//             A launch loop is not let spin, though: a launch cycle (Nano's start to the moment it
-//             is to start again, the game's run included) shorter than launchLoopWindowMs is quick,
-//             and after launchLoopFreeRestarts quick cycles in a row the next ones wait the same
-//             back-off as crashes (backoffStartMs doubling to backoffMaxMs). A longer cycle, or a
-//             restart asked for (restartNano), ends the run of quick ones. Crashes do not count.
+//             starts a game), it is started again when that game ends. If it says it exited for a
+//             launch (exit status 0) and no game runs (the game ended at once, or the launch could
+//             not start), it is started again at once, the back-off reset. Either way subject to
+//             the launch-loop hold-back: a launch cycle is quick when it is shorter than
+//             launchLoopWindowMs (Nano's start to the moment it is to start again, the game's run
+//             included) and Nano's first frame was on screen less than launchLoopActMs before it
+//             exited for the launch, or never (no one had time to choose: an auto-launch, not a
+//             user trying games). After launchLoopFreeRestarts quick cycles in a row the next ones
+//             wait the same back-off as crashes (backoffStartMs doubling to backoffMaxMs). A cycle
+//             that is not quick, or a restart asked for (restartNano), ends the run of quick ones.
+//             Crashes do not count. The loop tells firstFrame() each Nano's first frame (the
+//             session sets sys.thimsy.nano.first_frame to 0 before each start).
 //   deferred  "rcD start" once per boot: at Nano's first frame (sys.thimsy.nano.first_frame=1), or
 //             deferredFallbackMs after Nano was first started if no first frame came, so a broken
 //             Nano still gets SSH and the drives. Never twice: a respawned session that finds the
@@ -42,7 +46,8 @@ struct SupervisorConfig {
     Ms backoffMaxMs = 30000;
     Ms deferredFallbackMs = 30000;
     Ms quitKillMs = 3000;
-    Ms launchLoopWindowMs = 10000;  // a launch cycle shorter than this is quick
+    Ms launchLoopWindowMs = 10000;  // a launch cycle shorter than this is quick...
+    Ms launchLoopActMs = 2000;      // ...when Nano was on screen less than this before the launch
     int launchLoopFreeRestarts = 3;  // quick cycles in a row started again at once
 };
 
@@ -83,6 +88,7 @@ class Supervisor {
     std::vector<SupAction> paddExited(Ms now);
     void scrapeExited();
 
+    // Nano's first frame: the deferred services (once), and when this Nano was first on screen.
     std::vector<SupAction> firstFrame(Ms now);
     std::vector<SupAction> scrapeRequested(Ms now);
     std::vector<SupAction> quitGame(Ms now, int pgid);
@@ -120,6 +126,8 @@ class Supervisor {
     bool waitingForGame_ = false;
     bool restartRequested_ = false;
     int quickLaunches_ = 0;  // quick launch cycles in a row
+    Ms nanoShownAt_ = kNever;  // the running Nano's first frame (kNever: none yet)
+    Ms launchActMs_ = 0;  // how long the last Nano to exit was on screen before it did (0: never)
     Ms firstNanoStart_ = kNever;
     bool deferredDone_ = false;
     Restartable padd_;
