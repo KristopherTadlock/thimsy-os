@@ -1,0 +1,61 @@
+################################################################################
+#
+# thimsy-nano
+#
+################################################################################
+
+# Nano, built with CMake (nano/CMakeLists.txt, step G6) from the git archive of
+# the repository's nano/ at HEAD that linux/build.sh writes to $(THIMSY_SRC_DIR)
+# as nano-<sha>.tar.gz, with its hash file from build.sh (IMPLEMENTATION.md
+# E.1 and E.3, decisions I41 and G2a-14).
+THIMSY_NANO_VERSION = $(THIMSY_GIT_SHA)
+THIMSY_NANO_SITE = $(or $(THIMSY_SRC_DIR),$(DL_DIR)/thimsy-src)
+THIMSY_NANO_SITE_METHOD = file
+THIMSY_NANO_SOURCE = nano-$(THIMSY_NANO_VERSION).tar.gz
+# The Kanji table (NanoOskKanji.h, from SKK-JISYO) makes the binary a
+# GPL-compatible combination, published with its full source (decision I41;
+# plan 3.3's question stays open for the owner). liba52 (GPL-2.0) is built only
+# with NANO_WITH_AC3=ON, which Linux leaves off.
+THIMSY_NANO_LICENSE = Apache-2.0, GPL-2.0+ (NanoOskKanji.h, from SKK-JISYO), Zlib (nanosvg), MIT (rcheevos)
+# TODO(G0, I41): nano/NOTICE (which lists liba52/, NanoAc3.* and NanoOskKanji.h
+# with their licences) and an Apache-2.0 LICENSE file in nano/ do not exist yet;
+# add them here when they land. lint_packages.py reports them as pending.
+THIMSY_NANO_LICENSE_FILES = NanoOskKanji.h nanosvg/nanosvg.h rcheevos/LICENSE
+THIMSY_NANO_DEPENDENCIES = \
+	host-pkgconf \
+	libthimsy \
+	libegl \
+	libgles \
+	libgbm \
+	libdrm \
+	freetype \
+	libpng \
+	jpeg \
+	libwebp \
+	giflib \
+	zlib \
+	tinyxml2 \
+	libcurl \
+	openssl \
+	alsa-lib
+# Option names are G6's (nano/CMakeLists.txt, not written yet): G6 keeps them or
+# changes this list.
+THIMSY_NANO_CONF_OPTS = \
+	-DNANO_PLATFORM=linux \
+	-DNANO_WITH_AC3=OFF \
+	-DNANO_BUILD_TESTS=OFF
+
+ifeq ($(BR2_PACKAGE_THIMSY_NANO_SCRAPE),y)
+THIMSY_NANO_CONF_OPTS += -DNANO_BUILD_SCRAPE=ON
+else
+THIMSY_NANO_CONF_OPTS += -DNANO_BUILD_SCRAPE=OFF
+endif
+
+define THIMSY_NANO_CHECK_SOURCE
+	@test -n "$(THIMSY_GIT_SHA)" || { \
+		echo "thimsy-nano: THIMSY_GIT_SHA is not set; build through linux/build.sh," \
+			"which writes the source tarball"; exit 1; }
+endef
+THIMSY_NANO_PRE_DOWNLOAD_HOOKS += THIMSY_NANO_CHECK_SOURCE
+
+$(eval $(cmake-package))

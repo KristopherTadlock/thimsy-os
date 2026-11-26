@@ -1,0 +1,7 @@
+# Buildroot recipes ported from GPL sources (ROCKNIX's package.mk files;
+# rocknix-joypad later), GPL-2.0 as gpl/README.md says. One "source" line per
+# package directory here; external.mk includes their .mk files. Empty until the
+# first such recipe lands.
+
+menu "Thimsy (ported from GPL sources)"
+endmenu

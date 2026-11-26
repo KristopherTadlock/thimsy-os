@@ -2,7 +2,7 @@
 # mainline kernel from its arm64 defconfig plus linux.fragment (virtio block,
 # GPU, input and net built in; EROFS); no U-Boot (QEMU's -kernel) and no DTB
 # (QEMU writes one). Not published.
-BR2_ROOTFS_POST_SCRIPT_ARGS="hw qemu-aarch64-virt"
+BR2_ROOTFS_POST_SCRIPT_ARGS="hw qemu-aarch64-virt --family=qemu-aarch64-virt"
 # Newest 6.12.y when G8 pins it, with its hash (guess at the point release).
 BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.12.58"
 BR2_LINUX_KERNEL_USE_ARCH_DEFAULT_CONFIG=y

@@ -1,0 +1,12 @@
+# TODO(G10): the hashes are filled in at the first download, which is not
+# allowed now. With BR2_DOWNLOAD_FORCE_CHECK_HASHES the build refuses these
+# files until then, and linux/tools/lint_packages.py reports the package as
+# pending. One line per file:
+# sha256  <hash>  roboto-unhinted.zip
+# sha256  <hash>  03_NotoSansCJK-OTC.zip
+# sha256  <hash>  noto-emoji-2.047.tar.gz
+# sha256  <hash>  NotoNaskhArabic-v2.018.zip
+# sha256  <hash>  NotoSansThai-v2.002.zip
+# sha256  <hash>  NotoSansHebrew-v3.001.zip
+# sha256  <hash>  roboto/LICENSE
+# sha256  <hash>  noto-emoji/fonts/LICENSE

@@ -44,10 +44,7 @@
     }
   },
   "pending_paths": {
-    "board/common/rootfs-overlay": "G2e (init)",
     "board/common/rootfs-overlay-dev": "G2e (init): the dev overlay this step's dev.fragment adds, with the serial getty",
-    "board/common/post-build.sh": "G2e (init)",
-    "board/common/post-image.sh": "G2e (init)",
     "board/common/users.table": "unassigned in section G; G2e suggested",
     "board/common/device.table": "unassigned in section G; G2e suggested",
     "board/rk3566/linux.fragment": "Phase 2a (RK3566 hand import)",
