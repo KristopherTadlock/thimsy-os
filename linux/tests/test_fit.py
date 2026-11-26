@@ -123,8 +123,8 @@ class GoldenTest(unittest.TestCase):
         for path in DEVICES:
             with open(path, encoding="utf-8") as f:
                 dev = json.load(f)
-            golden = os.path.join(FIX, "%s-%s.its" % (dev["family"], dev["device"]))
-            with self.subTest(device=dev["device"]):
+            golden = os.path.join(FIX, "%s-%s.its" % (dev["family"], dev["id"]))
+            with self.subTest(device=dev["id"]):
                 cfg = fit.resolve(dev["family"], None, None, path)
                 with open(golden, encoding="utf-8", newline="") as f:
                     want = f.read()
@@ -162,6 +162,26 @@ class GoldenTest(unittest.TestCase):
         self.assertTrue(cfg["bootargs"].endswith(" console=ttyS2,1500000"))
         self.assertIn('bootargs = "init=/init', fit.write_its(cfg))
 
+    def test_board_device_jsons(self):
+        """Every board device.json with a DTB resolves; the FIT names the DTB without its
+        directory, and the command line still overrides the JSON."""
+        board = os.path.join(HERE, os.pardir, "board")
+        seen = 0
+        for path in sorted(glob.glob(os.path.join(board, "*", "devices", "*.json"))):
+            with open(path, encoding="utf-8") as f:
+                dev = json.load(f)
+            if dev.get("family") not in fit.FAMILIES or not dev.get("dtb"):
+                continue
+            with self.subTest(device=dev["id"]):
+                cfg = fit.resolve(dev["family"], None, None, path)
+                self.assertEqual(cfg["device"], dev["id"])
+                self.assertEqual(cfg["dtb"], os.path.basename(dev["dtb"]))
+                self.assertIn('data = /incbin/("%s");' % cfg["dtb"], fit.write_its(cfg))
+                seen += 1
+        self.assertGreaterEqual(seen, 2)
+        cfg = fit.resolve("rk3566", "other", "o.dtb", DEVICES[0])
+        self.assertEqual((cfg["device"], cfg["dtb"]), ("other", "o.dtb"))
+
     def test_resolve_refusals(self):
         with self.assertRaisesRegex(fit.FitError, "-kernel"):
             fit.resolve("qemu-aarch64-virt", "x", "x.dtb", None)
@@ -175,9 +195,18 @@ class GoldenTest(unittest.TestCase):
         try:
             p = os.path.join(d, "dev.json")
             with open(p, "w", encoding="utf-8") as f:
-                json.dump({"device": "x", "family": "h700", "dtb": "x.dtb"}, f)
+                json.dump({"id": "x", "family": "h700", "dtb": "rockchip/x.dtb"}, f)
             with self.assertRaisesRegex(fit.FitError, "family"):
                 fit.resolve("rk3566", None, None, p)
+            for bad, text in (({"family": "rk3566", "dtb": "rockchip/x.dtb"}, '"id"'),
+                              ({"device": "x", "family": "rk3566", "dtb": "rockchip/x.dtb"}, '"id"'),
+                              ({"id": "x", "family": "rk3566", "dtb": None}, "no FIT"),
+                              ({"id": "x", "family": "rk3566", "dtb": "x.dtb"}, "<vendor>/<name>.dtb"),
+                              ({"id": "x", "family": "rk3566", "dtb": "a/b/x.dtb"}, "<vendor>/<name>.dtb")):
+                with open(p, "w", encoding="utf-8") as f:
+                    json.dump(bad, f)
+                with self.subTest(json=bad), self.assertRaisesRegex(fit.FitError, text):
+                    fit.resolve("rk3566", None, None, p)
             rc, _, err = run(["its", "--family", "qemu-aarch64-virt", "--device", "x",
                               "--dtb", "x.dtb"])
             self.assertEqual(rc, 2)

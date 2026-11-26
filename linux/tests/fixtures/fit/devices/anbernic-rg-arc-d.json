@@ -1,5 +1,6 @@
 {
-  "device": "anbernic-rg-arc-d",
+  "schema_version": 1,
+  "id": "anbernic-rg-arc-d",
   "family": "rk3566",
-  "dtb": "rk3566-anbernic-rg-arc-d.dtb"
+  "dtb": "rockchip/rk3566-anbernic-rg-arc-d.dtb"
 }
