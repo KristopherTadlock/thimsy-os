@@ -1,0 +1,24 @@
+# device.table: modes and owners in the root, applied under fakeroot after
+# Buildroot's system/device_table.txt (BR2_ROOTFS_DEVICE_TABLE, makedevs
+# format: name type mode uid gid major minor start inc count).
+# SPDX-License-Identifier: MIT
+#
+# Device nodes come from devtmpfs (BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_DEVTMPFS),
+# so this table makes none, and never /dev/block/by-name (IMPLEMENTATION B.5).
+# It names the directories the init scripts mount over or write links into,
+# so their modes do not depend on the build host's umask:
+#   /storage   the data partition's mount point (S00base)
+#   /run, /tmp tmpfs mount points (S00base mounts them 0755 and 1777)
+#   /system and the link targets of post-build.d/10-android-links.sh
+#   /usr/libexec/thimsy/android-bin  the curated /system/bin (B.5)
+# Not /root: post-build.d/30-permissions.sh makes it a link into /storage.
+#
+# name                               type mode uid gid major minor start inc count
+/storage                             d    755  0   0   -     -     -     -   -
+/run                                 d    755  0   0   -     -     -     -   -
+/tmp                                 d    1777 0   0   -     -     -     -   -
+/system                              d    755  0   0   -     -     -     -   -
+/usr/share/thimsy                    d    755  0   0   -     -     -     -   -
+/usr/share/thimsy/system/etc         d    755  0   0   -     -     -     -   -
+/usr/share/fonts/thimsy              d    755  0   0   -     -     -     -   -
+/usr/libexec/thimsy/android-bin      d    755  0   0   -     -     -     -   -

@@ -45,11 +45,8 @@
   },
   "pending_paths": {
     "board/common/rootfs-overlay-dev": "G2e (init): the dev overlay this step's dev.fragment adds, with the serial getty",
-    "board/common/users.table": "unassigned in section G; G2e suggested",
-    "board/common/device.table": "unassigned in section G; G2e suggested",
     "board/rk3566/linux.fragment": "Phase 2a (RK3566 hand import)",
     "board/rk3566/uboot/uboot.fragment": "Phase 2a (FlipBase's U-Boot options)",
-    "board/qemu-aarch64-virt/linux.fragment": "G8 (image assembly)",
     "generated/rk3566/defconfig.fragment": "Phase 2a (RK3566 hand import), thimsy-import later",
     "gpl/generated/rk3566/linux/config": "Phase 2a (RK3566 hand import)",
     "gpl/generated/rk3566/linux/patches": "Phase 2a (RK3566 hand import)",
