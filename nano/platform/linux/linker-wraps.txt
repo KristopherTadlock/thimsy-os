@@ -1,0 +1,14 @@
+# The symbols thimsy-nano links with -Wl,--wrap=<symbol> (docs/linux/IMPLEMENTATION.md B.5, B.8).
+# One list for every build that links Nano for Linux: CMake (G6) and the platform tests read it.
+# The wrappers are in nano/platform/linux/ShellGate.cpp (the shell gate) and
+# nano/platform/linux/display/EglWraps.cpp (the EGL gate of drmSetupZeroCopy). --wrap rewrites
+# the undefined references of every object and static archive in the link and leaves shared
+# libraries alone; a symbol nothing references is harmless.
+system
+popen
+pclose
+execv
+execvp
+execve
+eglGetProcAddress
+eglQueryString

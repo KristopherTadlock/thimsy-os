@@ -136,6 +136,15 @@ class AndroidLinksTest(unittest.TestCase):
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("/system must be a directory", r.stdout)
 
+    def test_paths_the_root_must_not_have_fail(self) -> None:
+        for p in ("dev/block", "vendor", "mnt/shares"):
+            (self.target / p).mkdir(parents=True)
+            r = self.run_script()
+            self.assertNotEqual(r.returncode, 0, p)
+            self.assertIn("/%s must not exist in the root" % p, r.stdout)
+            shutil.rmtree(str(self.target / p))
+        self.assertEqual(self.run_script().returncode, 0)
+
     def test_something_under_storage_fails(self) -> None:
         (self.target / "storage/emulated").mkdir()
         r = self.run_script()

@@ -19,8 +19,10 @@
 # when a package is left out. /storage/self/primary is not made here:
 # /storage is the data partition's mount point, so S00base makes it there
 # on first boot, and anything under the root's /storage would be hidden.
-# /mnt/shares and /vendor/bin are not made (B.5: Shares is [firmware], and
-# the shell gate refuses /vendor). Nothing is made under /dev/block.
+# /mnt/shares and /vendor are not made (B.5: Shares is [firmware], and the
+# shell gate refuses a /vendor program the image does not have), and nothing
+# is made under /dev/block (NanoScreenCal's baseparameter write must find no
+# node): the script fails if a package put any of them in the root.
 #
 # Re-runnable (Buildroot runs post-build again on every "make"). A path that
 # is already the right link is kept; an empty directory in its place is
@@ -71,6 +73,13 @@ place system/etc /usr/share/thimsy/system/etc
 place system/fonts /usr/share/fonts/thimsy
 place system/bin /usr/libexec/thimsy/android-bin
 place mnt/media_rw /run/thimsy/media_rw
+
+# B.5: paths the root must not have.
+for p in dev/block vendor mnt/shares; do
+	if [ -e "$target/$p" ] || [ -L "$target/$p" ]; then
+		fail "/$p must not exist in the root (IMPLEMENTATION B.5)"
+	fi
+done
 
 # Nothing of the root may sit under /storage: the data partition covers it.
 if [ -n "$(ls -A "$target/storage")" ]; then
