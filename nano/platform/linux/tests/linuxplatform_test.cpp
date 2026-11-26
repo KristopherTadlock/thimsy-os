@@ -80,6 +80,10 @@ TEST(LinuxPlatform, HasEveryService) {
     // With no display found, the hand-off has nothing to release.
     EXPECT_EQ(p->display->startScanout(-1, false, nullptr), -1);
     EXPECT_FALSE(p->display->releaseForChild());
+    // G7-power: the power and the system actions (no lights HAL on Linux).
+    ASSERT_TRUE(p->power != nullptr);
+    EXPECT_FALSE(p->power->setBrightnessViaHal(10));
+    EXPECT_TRUE(p->actions != nullptr);
 }
 
 }  // namespace

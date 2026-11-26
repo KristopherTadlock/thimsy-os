@@ -280,6 +280,15 @@ std::string nextRequest(const std::string& current, const std::string& verb) {
     return std::to_string(seq + 1) + ":" + verb;
 }
 
+void sessionRequest(const std::string& verb) {
+    Handlers h = handlers();
+    if (h.sessionRequest) {
+        h.sessionRequest(verb);
+    } else {
+        defaultSessionRequest(verb);
+    }
+}
+
 void install(Handlers h) {
     uninstall();
     std::set<std::string> keys;

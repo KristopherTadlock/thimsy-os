@@ -22,10 +22,14 @@
 
 #include "NanoPlatform.h"
 #include "Display.h"  // G7-display
+#include "Power.h"  // G7-power
+#include "SystemActions.h"  // G7-power
 
 std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs& /*args*/) {
     std::unique_ptr<Platform> platform(new Platform);
     // The services, one line each (G7 steps).
     platform->display = nanofirmware::createDisplay();  // G7-display
+    platform->power = nanofirmware::createPower();  // G7-power
+    platform->actions = nanofirmware::createSystemActions();  // G7-power
     return platform;
 }

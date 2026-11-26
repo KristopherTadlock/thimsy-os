@@ -1152,6 +1152,7 @@
     "nano:NanoI18n.h",
     "nano:NanoMenu.h",
     "nano:NanoMenuShaders.h",
+    "nano:NanoPlatform.h",
     "shim:compat/include/cutils/properties.h",
     "shim:compat/include/log/log.h"
    ]
@@ -1189,6 +1190,7 @@
     "nano:NanoMenuShaders.h",
     "nano:NanoMenuStrings.h",
     "nano:NanoMenuUtils.h",
+    "nano:NanoPlatform.h",
     "shim:compat/include/cutils/properties.h",
     "shim:compat/include/log/log.h",
     "shim:compat/include/utils/SystemClock.h"
@@ -1254,6 +1256,7 @@
     "nano:NanoMenu.h",
     "nano:NanoMenuShaders.h",
     "nano:NanoMenuUtils.h",
+    "nano:NanoPlatform.h",
     "nano:NanoSdMove.h",
     "nano:NanoSliderHud.h",
     "shim:compat/include/cutils/properties.h",
@@ -1730,7 +1733,42 @@
   "platform/firmware/Platform.cpp": {
    "includes": [
     "nano:NanoPlatform.h",
-    "nano:platform/firmware/Display.h"
+    "nano:platform/firmware/Display.h",
+    "nano:platform/firmware/Power.h",
+    "nano:platform/firmware/SystemActions.h"
+   ]
+  },
+  "platform/firmware/Power.cpp": {
+   "includes": [
+    "nano:NanoMenu.h",
+    "nano:NanoPlatform.h",
+    "nano:platform/firmware/Power.h",
+    "shim:compat/include/cutils/properties.h",
+    "shim:compat/include/utils/Log.h",
+    "stub:compat/stubs/include/aidl/android/hardware/health/BatteryStatus.h",
+    "stub:compat/stubs/include/aidl/android/hardware/health/IHealth.h",
+    "stub:compat/stubs/include/aidl/android/hardware/light/HwLight.h",
+    "stub:compat/stubs/include/aidl/android/hardware/light/HwLightState.h",
+    "stub:compat/stubs/include/aidl/android/hardware/light/ILights.h",
+    "stub:compat/stubs/include/aidl/android/hardware/light/LightType.h",
+    "stub:compat/stubs/include/android/binder_manager.h",
+    "stub:compat/stubs/include/android/hardware/health/2.0/IHealth.h"
+   ]
+  },
+  "platform/firmware/Power.h": {
+   "includes": [
+    "nano:NanoPlatform.h"
+   ]
+  },
+  "platform/firmware/SystemActions.cpp": {
+   "includes": [
+    "nano:NanoPlatform.h",
+    "nano:platform/firmware/SystemActions.h"
+   ]
+  },
+  "platform/firmware/SystemActions.h": {
+   "includes": [
+    "nano:NanoPlatform.h"
    ]
   },
   "platform/host/DrmHost.cpp": {
@@ -1739,6 +1777,12 @@
     "nano:platform/host/HostControl.h",
     "shim:compat/include/cutils/properties.h",
     "shim:compat/include/log/log.h"
+   ]
+  },
+  "platform/host/FakeActions.cpp": {
+   "includes": [
+    "nano:platform/host/FakePower.h",
+    "nano:platform/host/HostControl.h"
    ]
   },
   "platform/host/FakeDisplay.cpp": {
@@ -1765,6 +1809,17 @@
     "nano:platform/host/FakeEvdev.h"
    ]
   },
+  "platform/host/FakePower.cpp": {
+   "includes": [
+    "nano:platform/host/FakePower.h",
+    "nano:platform/host/HostControl.h"
+   ]
+  },
+  "platform/host/FakePower.h": {
+   "includes": [
+    "nano:NanoPlatform.h"
+   ]
+  },
   "platform/host/HostConfig.cpp": {
    "includes": [
     "libthimsy:thimsy/json.h",
@@ -1787,6 +1842,7 @@
    "includes": [
     "nano:NanoPlatform.h",
     "nano:platform/host/FakeDisplay.h",
+    "nano:platform/host/FakePower.h",
     "nano:platform/host/HostConfig.h",
     "shim:compat/include/log/log.h",
     "shim:compat/include/nanocompat/nanocompat.h"
@@ -1809,7 +1865,22 @@
   "platform/linux/LinuxPlatform.cpp": {
    "includes": [
     "nano:NanoPlatform.h",
+    "nano:platform/linux/Power.h",
+    "nano:platform/linux/actions/SystemActions.h",
     "nano:platform/linux/display/Display.h"
+   ]
+  },
+  "platform/linux/Power.cpp": {
+   "includes": [
+    "nano:platform/linux/ControlKeys.h",
+    "nano:platform/linux/Power.h",
+    "shim:compat/include/cutils/properties.h",
+    "shim:compat/include/log/log.h"
+   ]
+  },
+  "platform/linux/Power.h": {
+   "includes": [
+    "nano:NanoPlatform.h"
    ]
   },
   "platform/linux/ShellGate.cpp": {
@@ -1817,6 +1888,30 @@
     "nano:platform/linux/ShellGate.h",
     "shim:compat/include/cutils/properties.h",
     "shim:compat/include/log/log.h"
+   ]
+  },
+  "platform/linux/actions/Run.cpp": {
+   "includes": [
+    "nano:platform/linux/actions/Run.h"
+   ]
+  },
+  "platform/linux/actions/SystemActions.cpp": {
+   "includes": [
+    "nano:platform/linux/actions/SystemActions.h",
+    "nano:platform/linux/actions/WpaCtrl.h",
+    "shim:compat/include/cutils/properties.h",
+    "shim:compat/include/log/log.h"
+   ]
+  },
+  "platform/linux/actions/SystemActions.h": {
+   "includes": [
+    "nano:NanoPlatform.h",
+    "nano:platform/linux/actions/Run.h"
+   ]
+  },
+  "platform/linux/actions/WpaCtrl.cpp": {
+   "includes": [
+    "nano:platform/linux/actions/WpaCtrl.h"
    ]
   },
   "platform/linux/display/Display.cpp": {
@@ -1879,6 +1974,15 @@
     "shim:compat/include/utils/Thread.h"
    ]
   },
+  "platform/linux/tests/actions_test.cpp": {
+   "includes": [
+    "missing:actions/Run.h",
+    "missing:actions/SystemActions.h",
+    "missing:actions/WpaCtrl.h",
+    "missing:compat_test_util.h",
+    "shim:compat/include/cutils/properties.h"
+   ]
+  },
   "platform/linux/tests/controlkeys_test.cpp": {
    "includes": [
     "missing:ControlKeys.h",
@@ -1900,6 +2004,14 @@
     "gtest:gtest/gtest.h",
     "missing:display/Display.h",
     "nano:NanoPlatform.h"
+   ]
+  },
+  "platform/linux/tests/power_test.cpp": {
+   "includes": [
+    "missing:ControlKeys.h",
+    "missing:Power.h",
+    "missing:compat_test_util.h",
+    "shim:compat/include/cutils/properties.h"
    ]
   },
   "platform/linux/tests/shellgate_test.cpp": {
@@ -2385,6 +2497,14 @@
    "includes": [
     "gtest:gtest/gtest.h",
     "nano:platform/host/FakeEvdev.h",
+    "nano:test/host/headless/tests/headless_test_util.h"
+   ]
+  },
+  "test/host/headless/tests/fake_power_test.cpp": {
+   "includes": [
+    "gtest:gtest/gtest.h",
+    "nano:platform/host/FakePower.h",
+    "nano:platform/host/HostControl.h",
     "nano:test/host/headless/tests/headless_test_util.h"
    ]
   },
@@ -4847,6 +4967,41 @@
    ],
    "needs": {}
   },
+  "platform/firmware/Power.cpp": {
+   "modules": [
+    "gammaos-nano"
+   ],
+   "needs": {
+    "lib:egl": [
+     "EGL/egl.h"
+    ],
+    "lib:freetype": [
+     "ft2build.h"
+    ],
+    "lib:gles": [
+     "GLES2/gl2.h"
+    ],
+    "stub": [
+     "aidl/android/hardware/health/BatteryStatus.h",
+     "aidl/android/hardware/health/IHealth.h",
+     "aidl/android/hardware/light/HwLight.h",
+     "aidl/android/hardware/light/HwLightState.h",
+     "aidl/android/hardware/light/ILights.h",
+     "aidl/android/hardware/light/LightType.h",
+     "android/binder_manager.h",
+     "android/hardware/health/2.0/IHealth.h",
+     "android/looper.h",
+     "android/sensor.h",
+     "binder/IBinder.h"
+    ]
+   }
+  },
+  "platform/firmware/SystemActions.cpp": {
+   "modules": [
+    "gammaos-nano"
+   ],
+   "needs": {}
+  },
   "powerwatch/nano_powerwatch.cpp": {
    "modules": [
     "nano-powerwatch"
@@ -5436,6 +5591,8 @@
    "main.cpp": "reaches binder/ProcessState.h (not stubbed: Android's entry point (main.cpp) starts the binder thread pool; Linux has its own main); jni.h (not stubbed: the JNI shim of drastic-nano's runner (the DS player, not on Linux v1) and main.cpp's)",
    "platform/firmware/Platform.cpp": "the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)",
    "platform/firmware/Display.cpp": "the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)",
+   "platform/firmware/Power.cpp": "the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)",
+   "platform/firmware/SystemActions.cpp": "the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)",
    "NanoMenuDrmBuffers.cpp": "the AHardwareBuffer render-target back end (G9a); Linux links platform/linux/display/DrmBuffersGbm.cpp instead",
    "NanoMenuRgbFollow.cpp": "reaches GammaRgbProcess.h (a header outside Nano's folder (upstream.json siblings): v1 has neither Shares nor RGB follow on Linux)",
    "NanoMenuShares.cpp": "reaches share_config.h (a header outside Nano's folder (upstream.json siblings): v1 has neither Shares nor RGB follow on Linux)",

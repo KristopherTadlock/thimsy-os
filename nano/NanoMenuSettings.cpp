@@ -47,6 +47,7 @@
 #include "NanoMenu.h"
 #include "NanoI18n.h"      // trDyn() runtime translation of hardcoded UI strings
 #include "NanoMenuShaders.h"
+#include "NanoPlatform.h"
 
 namespace android {
 
@@ -68,10 +69,14 @@ std::mutex& netHelperMutex() {
 // saved) don't bleed onto the render thread's stderr fd.
 static std::string runCmdUnlocked(const std::string& cmdline, int timeoutSecs);
 
+}  // namespace
+
 std::string runCmd(const std::string& cmdline, int timeoutSecs = 3) {
     std::lock_guard<std::mutex> lk(netHelperMutex());
     return runCmdUnlocked(cmdline, timeoutSecs);
 }
+
+namespace {
 
 // runCmd without the shared lock, for a helper that runs for minutes on its own worker (a pairing
 // that waits on the user), which would otherwise stall every other helper call, render-path ones
@@ -936,20 +941,7 @@ void NanoMenu::connectWithWizardSettings() {
 
 void NanoMenu::forgetWifiNetwork(int savedNetId) {
     if (savedNetId < 0) { startWifiScanAsync(); return; }
-    // Always take the root-gated shell path. The old code gated it behind
-    // nanoNetBridgeCmd("wifi_forget"), but that helper is FIRE-AND-FORGET (it just
-    // writes sys.gammaos.nano.net_cmd and returns true whenever the bridge is up,
-    // never confirming the op), so when the bridge was up the reliable shell path
-    // never ran and the whole thing hinged on the bridge handler - which used the
-    // deprecated, always-false WifiManager.removeNetwork()+saveConfiguration() pair
-    // and silently no-op'd, so "Forget This Network" did nothing. `cmd wifi
-    // forget-network` runs from nano's root domain (gammaos-nano.rc user root, which
-    // clears WifiShellCommand's ROOT_UID gate) and calls the modern working
-    // mWifiService.forget(netId, listener). A WPA2/WPA3 transition profile is a single
-    // WifiConfiguration under one netId, so forgetting that id removes it outright.
-    char cmd[128];
-    snprintf(cmd, sizeof(cmd), "cmd wifi forget-network %d 2>&1", savedNetId);
-    (void)runCmd(cmd);
+    nanoplat::get().actions->forgetWifiNetwork(savedNetId);
     // Refresh on the scan thread so we don't block the caller.
     startWifiScanAsync();
 }
@@ -963,9 +955,7 @@ bool NanoMenu::wifiRadioEnabled() {
 }
 
 void NanoMenu::toggleWifiRadio(bool on) {
-    if (!nanoNetBridgeCmd(on ? "wifi_enable" : "wifi_disable", ""))
-        (void)runCmd(on ? "cmd wifi set-wifi-enabled enabled"
-                        : "cmd wifi set-wifi-enabled disabled");
+    nanoplat::get().actions->setWifiEnabled(on);
     { std::lock_guard<std::mutex> lk(mNetStateMutex); mWifiRadioOn = on; }
     mWifiStatusMsg = trDyn(on ? "Enabling Wi-Fi..." : "Disabling Wi-Fi...");
     mWifiStatusMsgUntilMs = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -1884,9 +1874,7 @@ void NanoMenu::startBtDiscoveryAsync() {
 }
 
 void NanoMenu::toggleBtRadio(bool on) {
-    if (!nanoNetBridgeCmd(on ? "bt_enable" : "bt_disable", ""))
-        (void)runCmd(on ? "cmd bluetooth_manager enable"
-                        : "cmd bluetooth_manager disable");
+    nanoplat::get().actions->setBluetoothEnabled(on);
     mBtStatusMsg = trDyn(on ? "Enabling Bluetooth..." : "Disabling Bluetooth...");
     mBtStatusMsgUntilMs = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count() + 2000;
@@ -1953,25 +1941,7 @@ void NanoMenu::unpairBtDevice(const std::string& mac) {
 }
 
 void NanoMenu::connectBtDevice(const std::string& mac) {
-    // `cmd bluetooth_manager connect-profile <profile> <mac>` exists on
-    // recent AOSP, but profile ids vary by HIDL version. Invoke a
-    // profile-agnostic reconnect by toggling bonded-connect via
-    // "cmd bluetooth_manager factory-reset"? No -- that wipes bonds.
-    //
-    // Practical compromise for now: issue a generic connect via
-    // `cmd bluetooth_manager connect <mac>` (present on A13+) and
-    // fall back to a disable+enable cycle if that subcommand is
-    // missing. The radio auto-reconnects cached bonded audio/input
-    // devices on re-enable.
-    // Prefer the bridge: BluetoothDevice.connect() reconnects just this bonded device
-    // (all profiles) without bouncing the radio and dropping every other connection.
-    if (!nanoNetBridgeCmd("bt_connect", mac)) {
-        // No AOSP CLI exposes direct connect; fall back to a radio toggle so
-        // bonded audio/input devices re-pair on the next enable.
-        (void)runCmd("cmd bluetooth_manager disable");
-        usleep(400 * 1000);
-        (void)runCmd("cmd bluetooth_manager enable");
-    }
+    nanoplat::get().actions->connectBluetooth(mac);
     (void)mac;
     mBtStatusMsg = trDyn("Reconnecting...");
     mBtStatusMsgUntilMs = std::chrono::duration_cast<std::chrono::milliseconds>(

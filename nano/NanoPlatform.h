@@ -35,6 +35,7 @@
 #pragma once
 
 #include <memory>
+#include <string>  // G7-power
 
 namespace nanoplat {
 
@@ -68,11 +69,79 @@ class Display {
 };
 // --- end Display ---------------------------------------------------------------------------------
 
+// --- Power (G7-power) ----------------------------------------------------------------------------
+// The battery, the platform's half of the brightness, and the power actions: what NanoMenuSystem.cpp
+// asked Android's health and lights HALs, Settings and init for. The firmware's is that code, moved
+// (platform/firmware/Power.cpp); Linux reads /sys/class/power_supply and asks thimsy-session to
+// reboot or power off (platform/linux/Power.cpp); the host's records (platform/host/FakePower.cpp).
+// The backlight nodes themselves are not here: NanoBacklight.h (shared with drastic-nano) drives
+// /sys/class/backlight on every platform.
+class Power {
+ public:
+    virtual ~Power() = default;
+
+    // pollBattery(), about once a second on the render thread: the battery's charge (0-100) and
+    // whether it is charging (or full), written in place; a value no source can give is left as it
+    // was (-1 and false until a first reading).
+    virtual void readBattery(int& percent, bool& charging) = 0;
+
+    // applyBrightness() and the sleep paths: the platform's own backlight control besides the
+    // sysfs nodes (the firmware's lights HAL), at `level` in the panel's node range (0 is off).
+    // false when the platform has none, or it was not reached.
+    virtual bool setBrightnessViaHal(int level) = 0;
+
+    // syncBrightnessToAndroid(), after it wrote persist.gammaos.nano.brightness: records Nano's
+    // level (1-255) where the rest of the system keeps the brightness (the firmware: Settings.System,
+    // from a worker thread, the latest level only). Any thread; does not block.
+    virtual void mirrorBrightness(int level) = 0;
+
+    // readAndroidBrightness(): that recorded level (1-255), or -1 when there is none or it can't
+    // be read. May block (the firmware runs `settings get`); not on the render thread after boot.
+    virtual int savedBrightness() = 0;
+
+    // prepareShutdown()'s last step, after the running game was asked to save and quit: `action`
+    // is "reboot" or "shutdown" (also "recovery", "safemode" and "android", which only the firmware
+    // has). Returns at once; the platform carries it out.
+    virtual void powerAction(const char* action) = 0;
+};
+// --- end Power -----------------------------------------------------------------------------------
+
+// --- SystemActions (G7-power) --------------------------------------------------------------------
+// The radios and the clock settings: the Wi-Fi, Bluetooth, time-format and time-zone commands of
+// NanoMenuSettings.cpp and NanoMenuSetupWizard.cpp. The firmware's are those commands, moved
+// (platform/firmware/SystemActions.cpp); Linux's use wpa_supplicant's control socket, bluetoothctl
+// and the zoneinfo link (platform/linux/actions/); the host's record (platform/host/FakeActions.cpp).
+// Called from the menu's input and worker threads; each may block for as long as its command runs.
+// The state they change is read back by the callers' own polls, so nothing is returned.
+class SystemActions {
+ public:
+    virtual ~SystemActions() = default;
+
+    // toggleWifiRadio(): turns the Wi-Fi radio on or off.
+    virtual void setWifiEnabled(bool on) = 0;
+    // forgetWifiNetwork(): removes the saved network with this id (an id the platform's own saved
+    // list gave, >= 0).
+    virtual void forgetWifiNetwork(int savedNetId) = 0;
+    // toggleBtRadio(): turns the Bluetooth radio on or off.
+    virtual void setBluetoothEnabled(bool on) = 0;
+    // connectBtDevice(): reconnects a bonded device ("AA:BB:CC:DD:EE:FF").
+    virtual void connectBluetooth(const std::string& mac) = 0;
+    // setSetupClockFormats(), after persist.gammaos.nano.clock12 was written: tells the system's
+    // clock the 12-hour (true) or 24-hour format. Does not block.
+    virtual void setTimeFormat(bool h12) = 0;
+    // setupApplyTimezone(): makes `tz` (an Olson id, "Europe/London") the system time zone, so
+    // persist.sys.timezone reads it back.
+    virtual void setTimeZone(const std::string& tz) = 0;
+};
+// --- end SystemActions ---------------------------------------------------------------------------
+
 // The platform's services. Empty until the first G7 step declares one. Each platform library
 // derives from it to keep its own state; services added later are members here.
 struct Platform {
     virtual ~Platform();
     std::unique_ptr<Display> display;  // G7-display: never null once createPlatform() returns
+    std::unique_ptr<Power> power;  // G7-power: never null once createPlatform() returns
+    std::unique_ptr<SystemActions> actions;  // G7-power: never null once createPlatform() returns
 };
 
 struct PlatformArgs {
