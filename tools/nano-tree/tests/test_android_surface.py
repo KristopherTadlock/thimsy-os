@@ -2,10 +2,11 @@
 compiles or installs from nano/ unless a commit says so.
 
 The surface is read from nano/Android.bp at HEAD (nanotree/surface.py: every module's files, the
-headers they include, what drastic-nano and the rest of the patch include from Nano's folder). For
-each surface path, the patch's section at HEAD is compared with the section at
-`git merge-base HEAD nano-144`, both read from git objects, so no base cache and no baseline file is
-needed. Every difference must come from a commit since the merge base whose message has a line
+headers they include, what drastic-nano and the rest of the patch include from Nano's folder). Every
+path of the patch's Nano block at HEAD or at `git merge-base HEAD nano-144` has its sections
+compared, both read from git objects, so no base cache and no baseline file is needed; a difference
+counts when the path is on the surface or is not a file of nano/ at HEAD (deleted, dropped, or never
+committed: nanotree/surface.py surface_diffs). Every difference must come from a commit since the merge base whose message has a line
 
   android-surface: <step id> <what changed> (review: <how it was reviewed>)
 
@@ -28,7 +29,8 @@ sys.path.insert(0, TOOL_DIR)
 from nanotree.androidbp import Blueprint  # noqa: E402
 from nanotree.config import Upstream  # noqa: E402
 from nanotree.surface import (Commit, Repo, blueprint_surface, compute_surface, coverage,  # noqa: E402
-                              includes_of, module_sources, outside_sections, resolve_include)
+                              includes_of, module_sources, outside_sections, resolve_include,
+                              surface_diffs)
 
 NANO = os.path.join(ROOT, "nano")
 HAVE = os.path.isdir(NANO) and os.path.isfile(os.path.join(TOOL_DIR, "upstream.json"))
@@ -123,6 +125,19 @@ class SurfaceUnit(unittest.TestCase):
                          [("2" * 40, ["X.cpp"]), ("3" * 40, ["Y.cpp"])])
         self.assertEqual(coverage(set(), [bare]), ([], []))
 
+    def test_surface_diffs_see_paths_gone_from_nano(self):
+        """android-safety-1: a deleted file, a dropped asset and a section with no committed file
+        are compared, though HEAD's surface (from nano/ at HEAD) cannot list them."""
+        base = {"a.cpp": b"A", "assets/lynx.svg": b"new file lynx", "patched.png": b"patch",
+                "off.txt": b"x", "same.cpp": b"s"}
+        head = {"a.cpp": b"A2", "gone.h": b"deleted file", "stray.cpp": b"new file",
+                "off.txt": b"y", "same.cpp": b"s"}
+        files = {"a.cpp", "off.txt", "same.cpp"}       # nano/ at HEAD
+        surface = {"a.cpp", "same.cpp"}
+        self.assertEqual(surface_diffs(head, base, surface, files),
+                         {"a.cpp", "assets/lynx.svg", "patched.png", "gone.h", "stray.cpp"})
+        self.assertEqual(surface_diffs(base, base, surface, files), set())
+
 
 @unittest.skipUnless(HAVE, "no nano/ in this checkout")
 class AndroidSurface(unittest.TestCase):
@@ -193,7 +208,7 @@ class AndroidSurface(unittest.TestCase):
         self.assertIsNotNone(self.head_patch, "no patch at HEAD")
         head_block = self.repo.block_at("HEAD", self.prefix)
         base_block = self.repo.block_at(mb, self.prefix)
-        diffs = {p for p in self.surface if head_block.get(p) != base_block.get(p)}
+        diffs = surface_diffs(head_block, base_block, self.surface, set(self.tree))
         if not diffs:
             return
         commits = self.repo.surface_commits(mb, "HEAD", self.prefix, diffs)
