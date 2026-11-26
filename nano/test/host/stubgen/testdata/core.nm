@@ -1,0 +1,24 @@
+
+core.o:
+                 U __gxx_personality_v0
+                 U _Unwind_Resume
+0000000000000000 W android::FakeMenu::core(int)
+                 U android::FakeMenu::drasticParkEnabled() const
+                 U android::FakeMenu::ids(unsigned int)
+                 U android::FakeMenu::label[abi:cxx11]() const
+                 U android::FakeMenu::mode() const
+                 U android::FakeMenu::nsTick(int, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)
+                 U android::FakeMenu::sCount
+                 U android::FakeMenu::FakeMenu()
+                 U android::FakeMenu::~FakeMenu()
+                 U android::gDroppedValue
+                 U android::nanoRgbFollowSample()
+                 U android::Runner::init(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, int)
+                 U android::Runner::matrix()
+                 U android::Runner::Runner()
+0000000000000000 T main
+                 U printf
+                 U operator delete(void*, unsigned long)
+                 U std::allocator<char>::allocator()
+                 U vtable for __cxxabiv1::__class_type_info
+                 w __gmon_start__

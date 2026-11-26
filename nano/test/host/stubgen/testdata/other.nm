@@ -1,0 +1,2 @@
+libother.a:other.o:0000000000000010 T android::Runner::matrix()
+libother.a:other.o:                 U android::Runner::init(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, int)

@@ -20,6 +20,7 @@
 #
 # Targets:
 #   check-compat   libthimsy's and compat/'s tests (compat/compat.mk)
+#   check-stubs    the layer-2 stubs' checks and the stub generator's self test (compat/stubs/stubs.mk)
 #   check-unit-0   every test/unit program whose closure needs no outside library, through the shims,
 #                  with libthimsy/testing's GoogleTest stand-in; lists the others with their needs
 #   check-unit     every test/unit program; a program whose outside headers are missing prints
@@ -29,7 +30,7 @@
 #   headless       nano-headless for the host E2E (heavy; SKIPs until G5's files and the headers exist)
 #   list-unit      each test program, its production files, its needs and whether check-unit-0 has it
 #   clean          removes O's unit, syntax and headless trees (compat-clean removes compat's)
-#   check          check-compat and check-unit-0 (the default)
+#   check          check-compat, check-stubs and check-unit-0 (the default)
 #
 # Every target first runs linux/tools/build_guard.sh --light --target <the heaviest goal asked>: while
 # an Android build may be running only check-compat and check-unit-0 pass (with 6 GB available), and
@@ -63,11 +64,12 @@ CXX ?= g++
 SOURCES_TXT := $(NANO)/build/sources.txt
 CLOSURE_TXT := $(NANO)/build/unit-closure.txt
 
-.PHONY: check check-unit-0 check-unit syntax-core headless list-unit clean host-guard
+.PHONY: check check-unit-0 check-unit syntax-core headless list-unit clean host-guard check-stubs
 .SUFFIXES:
 .DEFAULT_GOAL := check
 
 include $(HOST_DIR)/compat/compat.mk
+include $(NANO)/compat/stubs/stubs.mk
 
 # --- the lists -------------------------------------------------------------------------------------
 # sources.txt: SRC_<section> (dashes become underscores). unit-closure.txt: UNIT_PROGRAMS, UNIT0_PROGRAMS
@@ -112,8 +114,10 @@ compat-guard: host-guard
 # --- flags -----------------------------------------------------------------------------------------
 # GCC-only warnings Clang does not give, so no Nano file is edited for GCC's sake (C.3). One place.
 # -Wdangling-else: GCC warns on "if (c) EXPECT_TRUE(x);" although the macro blocks the else (as
-# GoogleTest's does); Clang does not.
-GCC_SUPPRESS := -Wno-class-memaccess -Wno-stringop-truncation -Wno-format-truncation -Wno-dangling-else
+# GoogleTest's does); Clang does not. -Wmisleading-indentation: GCC's -Wall has it and NanoAudio.cpp
+# writes "if (a) x; if (b) y;" on one line (found by G4's syntax check against the stubs).
+GCC_SUPPRESS := -Wno-class-memaccess -Wno-stringop-truncation -Wno-format-truncation -Wno-dangling-else \
+	-Wno-misleading-indentation
 UNIT_STD := -std=gnu++17
 UNIT_WARN := -Wall -Werror $(GCC_SUPPRESS)
 UNIT_FLAGS := $(COMPAT_ASAN_FLAGS)
@@ -225,7 +229,7 @@ list-unit:
 CORE_HEADERS := zlib.h openssl/md5.h openssl/sha.h tinyxml2.h ft2build.h png.h curl/curl.h EGL/egl.h \
 	EGL/eglext.h GLES2/gl2.h GLES2/gl2ext.h GLES3/gl3.h drm.h drm_fourcc.h
 STUBS_INCLUDE := $(wildcard $(NANO)/compat/stubs/include)
-CORE_CPPFLAGS := $(NANO_CPPFLAGS) $(addprefix -I,$(STUBS_INCLUDE)) $(LIB_CPPFLAGS) -DGL_GLEXT_PROTOTYPES -DEGL_EGLEXT_PROTOTYPES
+CORE_CPPFLAGS := $(NANO_CPPFLAGS) $(if $(STUBS_INCLUDE),$(NANOSTUBS_CPPFLAGS)) $(LIB_CPPFLAGS) -DGL_GLEXT_PROTOTYPES -DEGL_EGLEXT_PROTOTYPES
 ifneq ($(filter syntax-core headless,$(MAKECMDGOALS)),)
 $(call probe_headers,$(CORE_HEADERS))
 endif
@@ -260,8 +264,20 @@ $(HEADLESS_O)/obj/%.o: $(NANO)/%.cpp | host-guard compat-guard
 $(HEADLESS_O)/obj/%.o: $(NANO)/%.c | host-guard compat-guard
 	@mkdir -p $(@D)
 	$(COMPAT_CC_RUN) $(CC) $(COMPAT_CSTD) -Wall $(UNIT_FLAGS) -c $< -o $@
-$(HEADLESS_O)/nano-headless: $(HEADLESS_OBJS) $(GLSTUB_OBJS) $(COMPAT_ASAN_LIB) $(COMPAT_LIBTHIMSY_ASAN) | host-guard compat-guard
-	$(COMPAT_CC_RUN) $(CXX) $(UNIT_FLAGS) $(HEADLESS_WRAP) $(filter %.o,$^) $(HEADLESS_LDLIBS) $(NANOCOMPAT_ASAN_LIBS) -o $@
+# [dropped-linux]: inert stubs generated from what the link still lacks (stubgen/gen.py, C.1), never
+# committed. nm lists every object's symbols; gen.py stubs the missing ones the dropped files define.
+HEADLESS_DROPPED := $(addprefix $(NANO)/,$(SRC_dropped_linux))
+$(HEADLESS_O)/link.nm: $(HEADLESS_OBJS) $(GLSTUB_OBJS) $(NANOSTUBS_ASAN_LIB) $(COMPAT_ASAN_LIB) | host-guard
+	nm -C $^ >$@.new && mv -f $@.new $@
+$(HEADLESS_O)/dropped-stubs.cpp: $(HEADLESS_O)/link.nm $(HEADLESS_DROPPED) $(NANO)/test/host/stubgen/gen.py
+	python3 $(NANO)/test/host/stubgen/gen.py --nm $< $(addprefix --from ,$(HEADLESS_DROPPED)) \
+		--decls $(NANO) --include-root $(NANO) --out $@
+$(HEADLESS_O)/dropped-stubs.o: $(HEADLESS_O)/dropped-stubs.cpp | host-guard compat-guard
+	$(COMPAT_CC_RUN) $(CXX) $(UNIT_STD) -Wall $(GCC_SUPPRESS) $(UNIT_FLAGS) $(CORE_CPPFLAGS) -c $< -o $@
+$(HEADLESS_O)/nano-headless: $(HEADLESS_OBJS) $(GLSTUB_OBJS) $(HEADLESS_O)/dropped-stubs.o $(NANOSTUBS_ASAN_LIB) \
+		$(COMPAT_ASAN_LIB) $(COMPAT_LIBTHIMSY_ASAN) | host-guard compat-guard
+	$(COMPAT_CC_RUN) $(CXX) $(UNIT_FLAGS) $(HEADLESS_WRAP) $(filter %.o,$^) $(HEADLESS_LDLIBS) $(NANOSTUBS_ASAN_LIB) \
+		$(NANOCOMPAT_ASAN_LIBS) -o $@
 
 ifeq ($(strip $(HEADLESS_MISSING)),)
 headless: host-guard $(HEADLESS_O)/nano-headless
@@ -271,7 +287,7 @@ headless:
 	@echo "SKIP headless: missing $(strip $(HEADLESS_MISSING))"
 endif
 
-check: check-compat check-unit-0
+check: check-compat check-stubs check-unit-0
 
 clean:
 	@test -n "$(O)" && test "$(O)" != "/"
