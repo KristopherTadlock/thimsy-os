@@ -3,8 +3,15 @@
 # FlipBase's build.sh is the pattern).
 #
 # Usage: linux/build.sh [options] TARGET [make target ...]
+#        linux/build.sh [options] card DEVICE [DEVICE ...]
 #   TARGET     a target of configs/targets.json (python3 tools/defconfig.py --list):
 #              a CPU tier's userland with its GPU packs, or a family's hardware pack
+#   card       re-runs the post-image step of an already built hardware pack
+#              (Buildroot's target-post-image) with THIMSY_DEVICES=DEVICE..., so
+#              only those devices' cards are put together again; the devices are
+#              board/<family>/devices/<id>.json of one family, and the hardware
+#              target is the one whose BR2_ROOTFS_POST_SCRIPT_ARGS has
+#              --family=<family>. No --publish, --clean or make targets.
 #   --publish  a public build: only a target marked "publish": true (a release),
 #              from a clean tree at a tagged commit; adds legal-info and a git
 #              archive of the whole repository (decisions D16, I37, I41)
@@ -13,7 +20,6 @@
 #   --force=I-checked-no-android-build-runs
 #              passed to tools/build_guard.sh: skips its memory and load checks only
 #   -h, --help
-# "linux/build.sh card DEVICE" (a per-device card) is step G8's, not written yet.
 #
 # Order: the target's own checks (it exists, its defconfig is current, the
 # files it names exist, --publish only for a publish target); then
@@ -31,6 +37,8 @@
 # THIMSY_BUILD_DIR (default <work>/build): Buildroot, the output trees, ccache
 #   and the unpacked SDK. ext4 only: never under /mnt/<drive> (plan section 10).
 # THIMSY_PYTHON (default python3) runs tools/defconfig.py.
+# The container exports THIMSY_BUILD_TARGET=<target> (and THIMSY_DEVICES for
+# card) to the post-build and post-image scripts.
 #
 # Exit status: 0 built (or dry run), 1 the build failed, 2 usage or an unknown
 # target, 3 refused by the guard, 4 refused by the target's checks.
@@ -59,7 +67,7 @@ while [ $# -gt 0 ]; do
     --clean) clean=1 ;;
     --force=*) force="$1" ;;
     --guarded) guarded=1 ;;  # internal: re-run by build_guard.sh, holding the lock
-    -h | --help) sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h | --help) sed -n '2,44p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     --) shift; break ;;
     -*) die 2 "unknown option $1 (see --help)" ;;
     *) break ;;
@@ -69,8 +77,44 @@ done
 [ $# -ge 1 ] || die 2 "no target given (see --help; tools/defconfig.py --list)"
 TARGET="$1"
 shift
-[ "$TARGET" != card ] || die 2 "card assembly is step G8's and is not written yet"
 MAKE_TARGETS="$*"
+DEVICES=""
+if [ "$TARGET" = card ]; then
+  # card DEVICE...: the family from the device JSONs, the hardware target from
+  # the defconfig whose post-script arguments name that family.
+  [ $# -ge 1 ] || die 2 "card: no device given (board/<family>/devices/<id>.json)"
+  [ "$publish" = 0 ] || die 2 "card: --publish builds whole targets, not single cards"
+  [ "$clean" = 0 ] || die 2 "card: --clean would remove the hardware pack card needs"
+  family=""
+  for d in "$@"; do
+    case "$d" in
+      "" | -* | *[!a-z0-9-]*) die 2 "card: bad device id '$d' (lower case letters, digits and -)" ;;
+    esac
+    found=""
+    for f in "$HERE"/board/*/devices/"$d".json; do
+      if [ -f "$f" ]; then found="$f"; fi
+    done
+    [ -n "$found" ] || die 2 "card: no board/*/devices/$d.json"
+    fam="$(basename "$(dirname "$(dirname "$found")")")"
+    [ -z "$family" ] || [ "$fam" = "$family" ] ||
+      die 2 "card: $d is a $fam device, not $family: one family per run"
+    family="$fam"
+    case " $DEVICES " in *" $d "*) ;; *) DEVICES="${DEVICES:+$DEVICES }$d" ;; esac
+  done
+  hw=""
+  for c in "$HERE"/configs/*_defconfig; do
+    if grep -q "^BR2_ROOTFS_POST_SCRIPT_ARGS=\".*--family=$family[\" ]" "$c"; then
+      t="$(basename "$c" _defconfig)"
+      hw="${hw:+$hw }$t"
+    fi
+  done
+  case "$hw" in
+    "") die 2 "card: no hardware target builds family $family (configs/*_defconfig)" ;;
+    *" "*) die 2 "card: several hardware targets build family $family: $hw" ;;
+  esac
+  TARGET="$hw"
+  MAKE_TARGETS="target-post-image"
+fi
 
 # step NAME TEXT: one line of the plan. A dry run prints it; a real run logs it.
 step() {
@@ -117,7 +161,12 @@ fi
 if [ "$guarded" = 0 ]; then
   step guard "sh tools/build_guard.sh${force:+ $force} -- (this script, holding the build lock)"
   if [ "$dry" = 0 ]; then
-    set -- "$TARGET" "$@"
+    if [ -n "$DEVICES" ]; then
+      # shellcheck disable=SC2086
+      set -- card $DEVICES
+    else
+      set -- "$TARGET" "$@"
+    fi
     [ "$clean" = 0 ] || set -- --clean "$@"
     [ "$publish" = 0 ] || set -- --publish "$@"
     exec sh "$HERE/tools/build_guard.sh" ${force:+"$force"} -- sh "$HERE/build.sh" --guarded "$@"
@@ -139,8 +188,8 @@ run mkdir -p "$SRC" "$IMAGES" "$BUILD_DIR"
 
 # -- Buildroot itself, checked against its pinned hash. -----------------------
 BR_TAR="$DL/buildroot-$BR_VERSION.tar.xz"
-step buildroot "buildroot-$BR_VERSION.tar.xz into $DL, sha256 $BR_SHA256"
-if [ "$dry" = 0 ] && [ "$(sha256 "$BR_TAR" 2>/dev/null)" != "$BR_SHA256" ]; then
+[ -n "$DEVICES" ] || step buildroot "buildroot-$BR_VERSION.tar.xz into $DL, sha256 $BR_SHA256"
+if [ "$dry" = 0 ] && [ -z "$DEVICES" ] && [ "$(sha256 "$BR_TAR" 2>/dev/null)" != "$BR_SHA256" ]; then
   curl -fSL --retry 3 -o "$BR_TAR" "https://buildroot.org/downloads/buildroot-$BR_VERSION.tar.xz"
   [ "$(sha256 "$BR_TAR")" = "$BR_SHA256" ] || die 1 "buildroot: bad sha256"
 fi
@@ -162,19 +211,22 @@ archive() {
     -o "$SRC/$2-$SHA.tar.gz" "HEAD:$3"
   hashfile "$1" "$2-$SHA.tar.gz"
 }
+if [ -n "$DEVICES" ]; then
+  step card "$TARGET's post-image again, for $DEVICES (no sources or Buildroot download: the tree is built)"
+else
 archive libthimsy libthimsy libthimsy
 archive thimsy-nano nano nano
 # The assets: nano_tree.py's export (tracked files plus the fetched upstream
 # assets, decision I2), packed reproducibly; thimsy-data filters it through the
 # ASSETS.md allowlist (I38).
-# TODO(G0, G2d): confirm export-assets' arguments once tools/nano-tree lands.
+# export-assets takes its output directory as a positional argument.
 step archive "nano_tree.py export-assets -> dl/thimsy-src/nano-assets-$SHA.tar.gz (package thimsy-data)"
 if [ "$dry" = 0 ]; then
   [ -f "$REPO/tools/nano-tree/nano_tree.py" ] ||
     die 1 "tools/nano-tree/nano_tree.py is missing (step G0); cannot export the assets"
   assets="$BUILD_DIR/nano-assets-$SHA"
   rm -rf "$assets"
-  "$PY" "$REPO/tools/nano-tree/nano_tree.py" export-assets --out "$assets/nano-assets-$SHA"
+  "$PY" "$REPO/tools/nano-tree/nano_tree.py" export-assets "$assets/nano-assets-$SHA"
   epoch="$(git -C "$REPO" log -1 --format=%ct HEAD)"
   tar -C "$assets" --sort=name --mtime="@$epoch" --owner=0 --group=0 --numeric-owner \
     -cf - "nano-assets-$SHA" | gzip -9n >"$SRC/nano-assets-$SHA.tar.gz"
@@ -186,15 +238,18 @@ if [ "$publish" = 1 ]; then
   run git -C "$REPO" archive --format=tar.gz --prefix="thimsy-os-$TAG/" \
     -o "$IMAGES/thimsy-os-$TAG-source.tar.gz" HEAD
 fi
+fi
 
 # -- Buildroot in Docker. -----------------------------------------------------
-step docker "$DOCKER_IMAGE ($PLATFORM): make O=/build/output-$TARGET ${TARGET}_defconfig, then make $MAKE_TARGETS (log: images/$TARGET/build.log)"
+envtxt=""
+[ -z "$DEVICES" ] || envtxt=" THIMSY_DEVICES=\"$DEVICES\""
+step docker "$DOCKER_IMAGE ($PLATFORM): make O=/build/output-$TARGET ${TARGET}_defconfig, then make $MAKE_TARGETS (log: images/$TARGET/build.log; environment THIMSY_BUILD_TARGET=$TARGET$envtxt)"
 [ "$dry" = 0 ] || exit 0
 docker run --rm --platform "$PLATFORM" \
   -v "$BUILD_DIR":/build -v "$DL":/dl -v "$IMAGES":/images -v "$HERE":/thimsy:ro \
   -e BR_VERSION="$BR_VERSION" -e TARGET="$TARGET" -e KIND="$KIND" -e SDK_FROM="$SDK_FROM" \
   -e SDK_NAME="$SDK_NAME" -e MAKE_TARGETS="$MAKE_TARGETS" -e CLEAN="$clean" \
-  -e THIMSY_GIT_SHA="$SHA" \
+  -e THIMSY_GIT_SHA="$SHA" -e THIMSY_BUILD_TARGET="$TARGET" -e THIMSY_DEVICES="$DEVICES" \
   "$DOCKER_IMAGE" sh -euc '
   export DEBIAN_FRONTEND=noninteractive FORCE_UNSAFE_CONFIGURE=1
   apt-get -qq update >/dev/null
@@ -205,7 +260,15 @@ docker run --rm --platform "$PLATFORM" \
   [ -d "$B" ] || tar -xJf "/dl/buildroot-$BR_VERSION.tar.xz" -C /build
   O="/build/output-$TARGET"
   [ "$CLEAN" = 0 ] || rm -rf "$O"
-  if [ "$KIND" = hw ]; then
+  # Seen by the post-build and post-image scripts (20-build-props.sh, card.sh).
+  export THIMSY_BUILD_TARGET
+  if [ -n "$THIMSY_DEVICES" ]; then
+    export THIMSY_DEVICES
+    [ -f "$O/.config" ] || { echo "card: $O is not built: run linux/build.sh $TARGET first" >&2; exit 1; }
+  else
+    unset THIMSY_DEVICES
+  fi
+  if [ "$KIND" = hw ] && [ -z "${THIMSY_DEVICES:-}" ]; then
     # A hardware pack builds with the SDK of its tier (hw-common.fragment).
     sdk="/build/output-$SDK_FROM/images/$SDK_NAME.tar.gz"
     [ -f "$sdk" ] || { echo "no SDK at $sdk: build $SDK_FROM first (its default targets include sdk)" >&2; exit 1; }
