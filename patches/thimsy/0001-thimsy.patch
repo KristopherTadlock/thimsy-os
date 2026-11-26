@@ -2466,23 +2466,24 @@ index 2ff1dad7970..89bb33a9256 100644
                      } else { close(fd); unlink(tmp.c_str()); }
                  }
 diff --git a/frameworks/base/cmds/gammaos-nano/Android.bp b/frameworks/base/cmds/gammaos-nano/Android.bp
-index 0f747c9a45c..081ba519c79 100644
+index 0f747c9a45c..d98c51bac4e 100644
 --- a/frameworks/base/cmds/gammaos-nano/Android.bp
 +++ b/frameworks/base/cmds/gammaos-nano/Android.bp
-@@ -45,8 +45,12 @@ cc_binary {
+@@ -45,8 +45,13 @@ cc_binary {
  
      srcs: [
          "main.cpp",
 +        "NanoBootSequence.cpp",            // main()'s boot steps, shared with the Linux main
 +        "NanoPlatform.cpp",                // the platform seam: install() and get()
 +        "platform/firmware/Platform.cpp",  // the firmware platform (createPlatform)
++        "platform/firmware/Display.cpp",   // the firmware platform's Display (G7-display)
          "NanoMenu.cpp",
          "NanoMenuDrm.cpp",
 +        "NanoMenuDrmBuffers.cpp", // the render targets' buffer back end (AHardwareBuffer, gralloc)
          "NanoMenuRgbFollow.cpp",
          "NanoMenuXmb.cpp",
          "NanoMenuShaders.cpp",
-@@ -69,23 +73,31 @@ cc_binary {
+@@ -69,23 +74,31 @@ cc_binary {
          "NanoMenuPS3EmuCatalog.cpp",
          "NanoMenuPS3Folder.cpp",
          "NanoMenuFileExplorer.cpp",
@@ -2515,7 +2516,7 @@ index 0f747c9a45c..081ba519c79 100644
          "NanoMenuSetupWizard.cpp",
          "NanoMenuStrings.cpp",
          "NanoBtStable.cpp",
-@@ -111,13 +123,40 @@ cc_binary {
+@@ -111,13 +124,40 @@ cc_binary {
          "NanoAacDec.cpp",
          "NanoCea608.cpp",
          "NanoScraper.cpp",
@@ -2556,7 +2557,7 @@ index 0f747c9a45c..081ba519c79 100644
          "LibretroRunner.cpp",
          "FakeJNI.cpp",
          "DrasticRunner.cpp",
-@@ -133,6 +172,7 @@ cc_binary {
+@@ -133,6 +173,7 @@ cc_binary {
          "liba52_nano",   // AC-3 decoder (no AC-3 codec on the device)
          "libtinyxml2",   // XML DOM parser for the ES-DE theme engine (NanoEsdeTheme)
          "libnanosvg_nano",   // SVG rasterizer for ES-DE theme logos (NanoThemeEngine)
@@ -2564,7 +2565,7 @@ index 0f747c9a45c..081ba519c79 100644
          // Share storage + credential encoding, shared with the gammaos-sharefs daemon so a share
          // added in the menu is written exactly as the daemon expects to read it.
          "libgammaos_sharecfg",
-@@ -143,14 +183,13 @@ cc_binary {
+@@ -143,14 +184,13 @@ cc_binary {
          "jni_headers",
          "native_headers",   // <android/imagedecoder.h> + <android/bitmap.h> (photo viewer decode)
          "libgammargb_process_headers",   // shared GammaRGB colour pipeline (parity with SF sampler)
@@ -2580,7 +2581,7 @@ index 0f747c9a45c..081ba519c79 100644
          "libbinder_ndk",
          "libcutils",
          "liblog",
-@@ -172,21 +211,28 @@ cc_binary {
+@@ -172,21 +212,28 @@ cc_binary {
          "libandroid",   // APerformanceHint (ADPF render-thread hint session)
          "libaaudio",    // GammaEQ audio preview + music player output (AAudio)
          "libmediandk",  // music player decode: AMediaExtractor + AMediaCodec -> PCM
@@ -2613,7 +2614,7 @@ index 0f747c9a45c..081ba519c79 100644
          "nano_xmb_icons",
          "nano_xmb_normalmaps",
          "nano_xmb_glass",
-@@ -204,13 +250,64 @@ cc_binary {
+@@ -204,13 +251,64 @@ cc_binary {
          "nano_xmb_photoviewer",
          "nano_xmb_backgrounds",
          "nano_xmb_systemstatus",
@@ -2679,7 +2680,7 @@ index 0f747c9a45c..081ba519c79 100644
  // Vendored liba52 (a52dec 0.7.4, GPL-2) - AC-3 decoder. The device has no hardware
  // or software AC-3 codec, so NanoAc3 uses this to decode AC-3 audio in .ts / MKV / VOB.
  // Pure-C generic path (no SIMD / djbfft / memalign); -w because the 2002-era source
-@@ -249,6 +346,7 @@ cc_library_static {
+@@ -249,6 +347,7 @@ cc_library_static {
  // source is not clean under Soong's warning set (same treatment as liba52_nano).
  cc_library_static {
      name: "libnanosvg_nano",
@@ -2687,7 +2688,7 @@ index 0f747c9a45c..081ba519c79 100644
      srcs: ["nanosvg/nanosvg_impl.c"],
      local_include_dirs: ["nanosvg"],
      export_include_dirs: ["nanosvg"],
-@@ -323,14 +421,40 @@ sh_binary {
+@@ -323,14 +422,40 @@ sh_binary {
      src: "nano-pmdown.sh",
  }
  
@@ -2729,7 +2730,7 @@ index 0f747c9a45c..081ba519c79 100644
  // /system/etc/nano_xmb/<sub_dir>/; the renderer also checks
  // /data/system/nano_xmb/ first so assets can be pushed during development
  // without rebuilding the system image.
-@@ -340,18 +464,6 @@ prebuilt_etc {
+@@ -340,18 +465,6 @@ prebuilt_etc {
      sub_dir: "nano_xmb/fonts",
  }
  
@@ -2748,7 +2749,7 @@ index 0f747c9a45c..081ba519c79 100644
  // ES-DE built-in asset SVGs the theme engine falls back to when a theme does not
  // ship its own: the helpsystem button glyphs (the legend icons at the bottom of
  // every view), the per-controller badge icons, and the metadata badge icons.
-@@ -388,12 +500,6 @@ prebuilt_etc {
+@@ -388,12 +501,6 @@ prebuilt_etc {
      sub_dir: "nano_xmb/gradients",
  }
  
@@ -2761,7 +2762,7 @@ index 0f747c9a45c..081ba519c79 100644
  prebuilt_etc {
      name: "nano_xmb_icons",
      srcs: ["ps3xmb/icons/*.png"],
-@@ -423,7 +529,27 @@ prebuilt_etc {
+@@ -423,7 +530,27 @@ prebuilt_etc {
  // /data/system/nano_xmb/audio/ first (dev override), else this install path.
  prebuilt_etc {
      name: "nano_xmb_audio",
@@ -2790,7 +2791,7 @@ index 0f747c9a45c..081ba519c79 100644
      sub_dir: "nano_xmb/audio",
  }
  
-@@ -510,6 +636,13 @@ prebuilt_etc {
+@@ -510,6 +637,13 @@ prebuilt_etc {
          "ps3xmb/i18n/ar.json",
          "ps3xmb/i18n/tr.json",
          "ps3xmb/i18n/pl.json",
@@ -2804,7 +2805,7 @@ index 0f747c9a45c..081ba519c79 100644
      ],
      sub_dir: "gammaos-nano/i18n",
  }
-@@ -543,7 +676,12 @@ prebuilt_etc {
+@@ -543,7 +677,12 @@ prebuilt_etc {
  // first, this is the bundled fallback).
  prebuilt_etc {
      name: "nano_xmb_nds",
@@ -2818,7 +2819,7 @@ index 0f747c9a45c..081ba519c79 100644
      sub_dir: "nano_xmb/nds",
  }
  
-@@ -558,6 +696,32 @@ prebuilt_etc {
+@@ -558,6 +697,32 @@ prebuilt_etc {
      sub_dir: "nano_xmb/daijishou",
  }
  
@@ -2851,7 +2852,7 @@ index 0f747c9a45c..081ba519c79 100644
  // Source files shared with the drastic-nano binary. drastic-nano
  // reuses the DRM rendering stack, DrasticRunner lifecycle, and
  // FakeJNI shim from gammaos-nano; wrapping them in a filegroup lets
-@@ -567,11 +731,386 @@ filegroup {
+@@ -567,11 +732,386 @@ filegroup {
      name: "drastic_nano_shared_srcs",
      srcs: [
          "NanoMenuDrm.cpp",
@@ -24753,7 +24754,7 @@ index 00000000000..c5771f81017
 +
 +}  // namespace nanolaunch
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoMenu.cpp b/frameworks/base/cmds/gammaos-nano/NanoMenu.cpp
-index dcd7bbaf475..715beb6c27a 100644
+index dcd7bbaf475..7eb145ab6be 100644
 --- a/frameworks/base/cmds/gammaos-nano/NanoMenu.cpp
 +++ b/frameworks/base/cmds/gammaos-nano/NanoMenu.cpp
 @@ -19,6 +19,7 @@
@@ -24781,7 +24782,7 @@ index dcd7bbaf475..715beb6c27a 100644
  #include "DrasticRunner.h"
  #include <aidl/android/hardware/light/HwLightState.h>
  #include <aidl/android/hardware/light/LightType.h>
-@@ -84,11 +88,13 @@ extern "C" uint32_t __system_property_serial(const prop_info* __pi);
+@@ -84,13 +88,16 @@ extern "C" uint32_t __system_property_serial(const prop_info* __pi);
  #include <android/hardware/light/2.0/ILight.h>
  
  #include "NanoMenu.h"
@@ -24794,8 +24795,11 @@ index dcd7bbaf475..715beb6c27a 100644
 +#include "NanoOtaCheck.h"   // otaDropStalePackage at startup
  #include "NanoBtStable.h"
  #include "NanoMenuPS3Bg.h"   // ps3bg::themeFading() for the adaptive idle frame-rate
++#include "NanoPlatform.h"   // nanoplat::get().display: readyToRun's splash
  
-@@ -135,7 +141,7 @@ NanoMenu::NanoMenu()
+ extern int gEarlyDrmFd;
+ 
+@@ -135,7 +142,7 @@ NanoMenu::NanoMenu()
        mMenuScrollTop(0),
        mStickYTriggered(false),
        mStickXTriggered(false),
@@ -24804,7 +24808,7 @@ index dcd7bbaf475..715beb6c27a 100644
        mBrightness(128), mMaxBrightness(255),
        mShowBrightnessBar(false), mBrightnessBarTimer(0),
        mVolume(10), mMaxVolume(15),
-@@ -217,7 +223,7 @@ NanoMenu::NanoMenu()
+@@ -217,7 +224,7 @@ NanoMenu::NanoMenu()
      }
      // Load Quick Resume toggle from persistent property
      mQuickResumeEnabled = android::base::GetBoolProperty(
@@ -24813,7 +24817,7 @@ index dcd7bbaf475..715beb6c27a 100644
  }
  
  void NanoMenu::initSurfaceFlingerPath() {
-@@ -240,18 +246,9 @@ void NanoMenu::initSurfaceFlingerPath() {
+@@ -240,18 +247,9 @@ void NanoMenu::initSurfaceFlingerPath() {
          return;
      }
  
@@ -24835,7 +24839,7 @@ index dcd7bbaf475..715beb6c27a 100644
  
      mDisplayToken = SurfaceComposerClient::getPhysicalDisplayToken(chosenId);
      if (mDisplayToken == nullptr) {
-@@ -280,7 +277,8 @@ void NanoMenu::initSurfaceFlingerPath() {
+@@ -280,7 +278,8 @@ void NanoMenu::initSurfaceFlingerPath() {
      SurfaceComposerClient::Transaction t;
      Rect forcedRes(0, 0, resolution.width, resolution.height);
      Rect physRes(0, 0, displayMode.resolution.width, displayMode.resolution.height);
@@ -24845,7 +24849,7 @@ index dcd7bbaf475..715beb6c27a 100644
      t.setLayer(control, 0x40000001);
      t.setLayerStack(control, chosenLayerStack);
      t.apply();
-@@ -290,7 +288,7 @@ void NanoMenu::initSurfaceFlingerPath() {
+@@ -290,7 +289,7 @@ void NanoMenu::initSurfaceFlingerPath() {
      // for the full rationale (phase-bistable dequeue pacing under the SF client
      // composite).
      if (mOverlayMode) s->setMaxDequeuedBufferCount(3);
@@ -24854,7 +24858,7 @@ index dcd7bbaf475..715beb6c27a 100644
      EGLSurface sfSurface = eglCreateWindowSurface(mDisplay, config, s.get(), nullptr);
      eglMakeCurrent(mDisplay, sfSurface, sfSurface, mContext);
      // Overlay: don't vsync-block in eglSwapBuffers. SurfaceFlinger latches on
-@@ -326,6 +324,10 @@ NanoMenu::~NanoMenu() {
+@@ -326,6 +325,10 @@ NanoMenu::~NanoMenu() {
      // codec first so the wedged worker unblocks and the join finishes), so this only turns a
      // spurious abort into a clean, if slightly slow, exit; it is never reset (we are exiting).
      mVidTeardownExempt.store(true, std::memory_order_relaxed);
@@ -24865,7 +24869,7 @@ index dcd7bbaf475..715beb6c27a 100644
      // Background workers that are only cleaned up "before the next operation" (a Wi-Fi
      // rescan detaches the previous scan thread, a net test joins the previous one, etc.)
      // are left JOINABLE for the rest of the session once used. This home instance exits
-@@ -456,7 +458,9 @@ status_t NanoMenu::readyToRun() {
+@@ -456,7 +459,9 @@ status_t NanoMenu::readyToRun() {
          wl = open("/sys/power/wake_unlock", O_WRONLY | O_CLOEXEC);
          if (wl >= 0) { ssize_t n = write(wl, "nano_ota", 8); (void)n; close(wl); }
          property_set("sys.gammaos.nano.ota_busy", "0");
@@ -24875,7 +24879,7 @@ index dcd7bbaf475..715beb6c27a 100644
  
      // On non-Qualcomm SoCs, main() already grabbed DRM master early.
      // On Qualcomm, gEarlyDrmFd is -1 (grab deferred to after skip_nano).
-@@ -620,7 +624,7 @@ status_t NanoMenu::readyToRun() {
+@@ -620,7 +625,7 @@ status_t NanoMenu::readyToRun() {
          // the launch_app/launch_intent props: it runs at every boot and setting
          // launch_intent would make RootWindowContainer auto-launch an app on boot
          // (the user only wants quick-resume to launch, and only when they set it).
@@ -24884,20 +24888,56 @@ index dcd7bbaf475..715beb6c27a 100644
          if (sDrasticQrFastPath) {
              ALOGW("NanoMenu: drastic QR fast-path ACTIVE "
                    "(smoke=%d qr_primed=%d), skipping heavy init",
-@@ -635,6 +639,12 @@ status_t NanoMenu::readyToRun() {
+@@ -635,39 +640,15 @@ status_t NanoMenu::readyToRun() {
          }
      }
  
+-    // GammaOS: Nano mode is confirmed active (skip_nano check passed).
+-    // Run DRM splash now - before any SF/HWC setup. This replaces the
+-    // bootloader logo with NanoMenu's DRM direct rendering. Skip on
+-    // restarts (returning from app) since HWC is already active.
+-    {
+-        char bootDone[PROPERTY_VALUE_MAX] = {};
+-        property_get("sys.boot_completed", bootDone, "0");
+-        // force_drm=1 re-grabs DRM master post-boot for drastic nano
+-        // mode (XMB -> drastic nano restart path).
+-        char forceDrm[PROPERTY_VALUE_MAX] = {};
+-        property_get("sys.gammaos.nano.force_drm", forceDrm, "0");
+-        // Overlay mode never grabs DRM master: it coexists with SurfaceFlinger
+-        // and the running app as a translucent layer. Force the SF path.
+-        if (mOverlayMode || nanoForceSfPath()) {
+-            ALOGI("NanoMenu: %s, skipping DRM splash (SF path)",
+-                  mOverlayMode ? "overlay mode" : "force-SF home");
+-        } else if (strcmp(bootDone, "1") != 0 || strcmp(forceDrm, "1") == 0) {
+-            if (strcmp(forceDrm, "1") == 0) {
+-                ALOGW("NanoMenu: force_drm=1, grabbing DRM master "
+-                      "post-boot for drastic nano");
+-            }
+-            drmEarlySplash(earlyDrmFd);
+-            earlyDrmFd = -1;
+-        } else {
+-            ALOGI("NanoMenu: skipping DRM splash (already booted)");
+-        }
+-    }
+-    if (earlyDrmFd >= 0 && !sDrmActive) {
+-        // DRM splash failed - release the fd so HWC can use it
+-        ioctl(earlyDrmFd, DRM_IOCTL_DROP_MASTER, 0);
+-        close(earlyDrmFd);
+-        earlyDrmFd = -1;
+-    }
 +    // Font/icon/systems file reads and the ES-DE theme parse run on workers from here, overlapping
 +    // the DRM splash and EGL bring-up below; initFonts / initIconTextures / ensureEsdeTheme take
 +    // their results.
 +    startupPreloadStart();
 +    if (!mOverlayMode && !sDrasticQrFastPath) esdePrebuildStart();
 +
-     // GammaOS: Nano mode is confirmed active (skip_nano check passed).
-     // Run DRM splash now - before any SF/HWC setup. This replaces the
-     // bootloader logo with NanoMenu's DRM direct rendering. Skip on
-@@ -688,7 +698,7 @@ status_t NanoMenu::readyToRun() {
++    // The panel, through the platform's Display (NanoPlatform.h): DRM master and the splash,
++    // unless this process presents through SurfaceFlinger.
++    earlyDrmFd = nanoplat::get().display->startScanout(earlyDrmFd, mOverlayMode, nanoForceSfPath);
+     tlog("drmEarlySplash done");
+ 
+     // Diagnostic: write DRM splash result to file (logcat overflows)
+@@ -688,7 +669,7 @@ status_t NanoMenu::readyToRun() {
      // so it can be running alongside us with the same z-layer.
      //
      // CRITICAL: only the HOME nano may do this. The resident OVERLAY process also
@@ -24906,7 +24946,7 @@ index dcd7bbaf475..715beb6c27a 100644
      // service.bootanim.exit and EXITS when it flips to 1 (it reads that as the
      // app-handoff signal). If the overlay set it, the home nano would exit into a
      // blank screen the moment the overlay service starts. The overlay is not the
-@@ -831,7 +841,7 @@ status_t NanoMenu::readyToRun() {
+@@ -831,7 +812,7 @@ status_t NanoMenu::readyToRun() {
                  eglTerminate(display);
                  display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
                  eglInitialize(display, nullptr, nullptr);
@@ -24915,7 +24955,7 @@ index dcd7bbaf475..715beb6c27a 100644
              }
              if (config == nullptr) {
                  ALOGE("NanoMenu: EGL config still null after polling %dms, "
-@@ -892,7 +902,21 @@ status_t NanoMenu::readyToRun() {
+@@ -892,7 +873,21 @@ status_t NanoMenu::readyToRun() {
          initXmbSystems();
          loadXmbRecent();
          loadCollections();
@@ -24938,7 +24978,7 @@ index dcd7bbaf475..715beb6c27a 100644
      }
      openInputDevices();
      if (!sDrasticQrFastPath) {
-@@ -1088,18 +1112,11 @@ status_t NanoMenu::readyToRun() {
+@@ -1088,18 +1083,11 @@ status_t NanoMenu::readyToRun() {
          }
          if (ids.empty()) { ALOGE("No displays found"); return NAME_NOT_FOUND; }
  
@@ -24962,7 +25002,7 @@ index dcd7bbaf475..715beb6c27a 100644
  
          mDisplayToken = SurfaceComposerClient::getPhysicalDisplayToken(chosenId);
          if (mDisplayToken == nullptr) return NAME_NOT_FOUND;
-@@ -1130,7 +1147,7 @@ status_t NanoMenu::readyToRun() {
+@@ -1130,7 +1118,7 @@ status_t NanoMenu::readyToRun() {
          Rect physRes(0, 0, displayMode.resolution.width, displayMode.resolution.height);
          // Overlay must not retarget the display projection (the running app
          // owns it); only the home instance forces the projection/size.
@@ -24971,7 +25011,7 @@ index dcd7bbaf475..715beb6c27a 100644
              t.setDisplayProjection(mDisplayToken, ui::ROTATION_0, forcedRes, physRes);
          }
          // A very high Z so the overlay sits above app + system windows.
-@@ -1464,8 +1481,11 @@ bool NanoMenu::threadLoop() {
+@@ -1464,8 +1452,11 @@ bool NanoMenu::threadLoop() {
  
      // readyToRun() sets service.bootanim.exit=1 to kill the vendor bootanim.
      // Reset it here so our own exit check (further below) doesn't immediately
@@ -24985,7 +25025,7 @@ index dcd7bbaf475..715beb6c27a 100644
  
      // Wait for persistent properties to load before reading any persist.*
      // values. readyToRun() used to wait for ro.persistent_properties.ready
-@@ -1538,10 +1558,9 @@ bool NanoMenu::threadLoop() {
+@@ -1538,10 +1529,9 @@ bool NanoMenu::threadLoop() {
          }
      }
  
@@ -24998,7 +25038,7 @@ index dcd7bbaf475..715beb6c27a 100644
      mXmbMode = android::base::GetBoolProperty(
              "persist.gammaos.nano.xmb_mode", false);
      // PS3 XMB layout (NanoMenuPS3Menu.cpp). Dev-gated during build-up; takes
-@@ -1549,11 +1568,11 @@ bool NanoMenu::threadLoop() {
+@@ -1549,11 +1539,11 @@ bool NanoMenu::threadLoop() {
      mPs3Xmb = android::base::GetBoolProperty(
              "persist.gammaos.nano.ps3xmb", true);   // default on when the prop is unset
      // DSi System Menu theme: an optional home theme that takes priority over the PS3
@@ -25013,7 +25053,7 @@ index dcd7bbaf475..715beb6c27a 100644
      // The separate persist.gammaos.nano.minima bool is still honoured as a fallback so a device already
      // toggled to Minima stays there across the enum migration.
      int homeTheme = android::base::GetIntProperty("persist.gammaos.nano.ndstheme", 0);
-@@ -1597,38 +1616,7 @@ bool NanoMenu::threadLoop() {
+@@ -1597,38 +1587,7 @@ bool NanoMenu::threadLoop() {
              "persist.gammaos.nano.ps3xmb.controlcenter", false);
      ALOGI("NanoMenu: persist read quick_resume=%d xmb_mode=%d ps3xmb=%d nds=%d",
            mQuickResumeEnabled ? 1 : 0, mXmbMode ? 1 : 0, mPs3Xmb ? 1 : 0, mNdsTheme ? 1 : 0);
@@ -25053,7 +25093,7 @@ index dcd7bbaf475..715beb6c27a 100644
      // Re-read wallpaper effect (constructor ran before persist props loaded)
      {
          char wallpaper[PROPERTY_VALUE_MAX] = {};
-@@ -1741,7 +1729,8 @@ bool NanoMenu::threadLoop() {
+@@ -1741,7 +1700,8 @@ bool NanoMenu::threadLoop() {
          // window) and hand off to the DrasticSf host activity, which renders the real
          // preview through SurfaceFlinger. This does not depend on the (persist, factory-
          // reset-clearable) backend/gate props being set. No effect on DRM-direct SoCs.
@@ -25063,7 +25103,7 @@ index dcd7bbaf475..715beb6c27a 100644
          bool splashHandoff = nanoForceSfPath() || (dnGate && (dnBackend == "sf" || dnBackend == "auto"));
          void maybeNanoScreenshot();   // defined in NanoMenuRender.cpp
          if (splashHandoff) {
-@@ -1837,7 +1826,9 @@ bool NanoMenu::threadLoop() {
+@@ -1837,7 +1797,9 @@ bool NanoMenu::threadLoop() {
                      const bool isTouch = (itn != mInputFdNames.end()
                                            && itn->second == touchDev);
                      while (read(fd, &drain_ev, sizeof(drain_ev)) == sizeof(drain_ev)) {
@@ -25073,7 +25113,7 @@ index dcd7bbaf475..715beb6c27a 100644
                          if (isTouch) {
                              // Bottom digitizer -> DS touchscreen.
                              if (ie.type == EV_ABS) {
-@@ -1870,14 +1861,15 @@ bool NanoMenu::threadLoop() {
+@@ -1870,14 +1832,15 @@ bool NanoMenu::threadLoop() {
                              continue;
                          }
                          // Gamepad -> DS buttons (Nintendo face layout, same mapping as
@@ -25091,7 +25131,7 @@ index dcd7bbaf475..715beb6c27a 100644
                              case BTN_SOUTH:  bit(DrasticRunner::kDsBtnA);      break;
                              case BTN_EAST:   bit(DrasticRunner::kDsBtnB);      break;
                              case BTN_NORTH:  bit(DrasticRunner::kDsBtnX);      break;
-@@ -1909,6 +1901,7 @@ bool NanoMenu::threadLoop() {
+@@ -1909,6 +1872,7 @@ bool NanoMenu::threadLoop() {
                          }
                      }
                  }
@@ -25099,7 +25139,7 @@ index dcd7bbaf475..715beb6c27a 100644
                  // Recompute the DS stylus position when a touch frame closed. Map the
                  // raw digitizer (its real ABS range) to DS coords 0..255 x 0..191,
                  // applying the CC's per-panel swap/flip calibration.
-@@ -2423,12 +2416,14 @@ bool NanoMenu::threadLoop() {
+@@ -2423,12 +2387,14 @@ bool NanoMenu::threadLoop() {
                  for (int fd : mInputFds) {
                      struct input_event ev;
                      while (read(fd, &ev, sizeof(ev)) == sizeof(ev)) {
@@ -25115,7 +25155,7 @@ index dcd7bbaf475..715beb6c27a 100644
                                  if (pressed && !backWasDown) {
                                      backPressStartMs =
                                              elapsedRealtime();
-@@ -2457,10 +2452,10 @@ bool NanoMenu::threadLoop() {
+@@ -2457,10 +2423,10 @@ bool NanoMenu::threadLoop() {
                                  if (pressed) dsBtnMask |=  mask;
                                  else         dsBtnMask &= ~mask;
                              };
@@ -25130,7 +25170,7 @@ index dcd7bbaf475..715beb6c27a 100644
                              case BTN_SOUTH:   bit(DrasticRunner::kDsBtnA);     break;
                              case BTN_EAST:    bit(DrasticRunner::kDsBtnB);     break;
                              case BTN_NORTH:   bit(DrasticRunner::kDsBtnX);     break;
-@@ -2497,6 +2492,7 @@ bool NanoMenu::threadLoop() {
+@@ -2497,6 +2463,7 @@ bool NanoMenu::threadLoop() {
                      }
                      if (qrCancelled) break;
                  }
@@ -25138,7 +25178,7 @@ index dcd7bbaf475..715beb6c27a 100644
                  if (qrCancelled) break;
  
                  // Long-press BACK (3s) exits to XMB. Checked every
-@@ -3284,6 +3280,11 @@ if (sRingPrimedCount >= 2) {
+@@ -3284,6 +3251,11 @@ if (sRingPrimedCount >= 2) {
                  ALOGW("Quick Resume: qr_core=drastic reached libretro "
                        "branch unexpectedly (sDrasticQrFastPath=%d) -- "
                        "skipping libretro launch", sDrasticQrFastPath ? 1 : 0);
@@ -25150,7 +25190,7 @@ index dcd7bbaf475..715beb6c27a 100644
              } else if (!qrRom.empty() && !qrCore.empty()) {
                  // GammaOS: Ensure rotation uniforms are set for the QR screens.
                  // The QR path runs before render(), which uploads the matrix
-@@ -3580,12 +3581,14 @@ if (sRingPrimedCount >= 2) {
+@@ -3580,12 +3552,14 @@ if (sRingPrimedCount >= 2) {
                                  for (int fd : mInputFds) {
                                      struct input_event ev;
                                      while (read(fd, &ev, sizeof(ev)) == sizeof(ev)) {
@@ -25166,7 +25206,7 @@ index dcd7bbaf475..715beb6c27a 100644
                                                  if (pressed && !backWasDown) {
                                                      backPressStartMs =
                                                              elapsedRealtime();
-@@ -3607,7 +3610,8 @@ if (sRingPrimedCount >= 2) {
+@@ -3607,7 +3581,8 @@ if (sRingPrimedCount >= 2) {
                                                  backWasDown = pressed;
                                                  continue;
                                              }
@@ -25176,7 +25216,7 @@ index dcd7bbaf475..715beb6c27a 100644
                                              case BTN_A:      runner.setButton(0, RETRO_DEVICE_ID_JOYPAD_A, pressed); break;
                                              case BTN_B:      runner.setButton(0, RETRO_DEVICE_ID_JOYPAD_B, pressed); break;
                                              case BTN_X:      runner.setButton(0, RETRO_DEVICE_ID_JOYPAD_X, pressed); break;
-@@ -3649,6 +3653,7 @@ if (sRingPrimedCount >= 2) {
+@@ -3649,6 +3624,7 @@ if (sRingPrimedCount >= 2) {
                                      }
                                      if (qrCancelled) break;
                                  }
@@ -25184,7 +25224,7 @@ index dcd7bbaf475..715beb6c27a 100644
  
                                  // Long-press BACK (3s) exits to XMB -- but only before the
                                  // handoff has fired. Once do_launch is out and RetroArch is
-@@ -3706,7 +3711,7 @@ if (sRingPrimedCount >= 2) {
+@@ -3706,7 +3682,7 @@ if (sRingPrimedCount >= 2) {
                                      if (!handoffFired) {
                                          if (handoffStorageWaitMs == 0)
                                              handoffStorageWaitMs = elapsedRealtime();
@@ -25193,7 +25233,7 @@ index dcd7bbaf475..715beb6c27a 100644
                                          // Bounded: after 30s of storage never
                                          // reporting ready, hand off anyway. The
                                          // relaunch monitor in SystemServer holds
-@@ -3732,6 +3737,9 @@ if (sRingPrimedCount >= 2) {
+@@ -3732,6 +3708,9 @@ if (sRingPrimedCount >= 2) {
                                              // bypass the slow init property-trigger chain.
                                              ALOGI("Quick Resume: handoff to RetroArch, "
                                                    "holding preview until app_drawn");
@@ -25203,7 +25243,7 @@ index dcd7bbaf475..715beb6c27a 100644
                                              handoffFade = true;
                                              // Clear app_drawn so a stale =1 from a previous boot
                                              // cannot make us exit before RetroArch actually draws.
-@@ -3752,6 +3760,7 @@ if (sRingPrimedCount >= 2) {
+@@ -3752,6 +3731,7 @@ if (sRingPrimedCount >= 2) {
                                              }
                                              property_set("sys.gammaos.nano.return_recent", "0");
                                              property_set("sys.gammaos.nano.drop_input", "1");
@@ -25211,7 +25251,7 @@ index dcd7bbaf475..715beb6c27a 100644
                                              // Direct: trigger the relaunch monitor immediately.
                                              property_set("sys.gammaos.nano.do_launch", "1");
                                              nanoDropReclaimableCaches();   // hand the launching app the dentry/inode cache RAM
-@@ -3967,7 +3976,7 @@ if (sRingPrimedCount >= 2) {
+@@ -3967,7 +3947,7 @@ if (sRingPrimedCount >= 2) {
                                      // conditions already true at entry) does not present
                                      // an undefined (black) SF window buffer.
                                      if (frame > 0 && bc[0] == '1'
@@ -25220,7 +25260,7 @@ index dcd7bbaf475..715beb6c27a 100644
                                          break;
                                  }
                                  // Drain input; the splash is inert.
-@@ -3976,7 +3985,9 @@ if (sRingPrimedCount >= 2) {
+@@ -3976,7 +3956,9 @@ if (sRingPrimedCount >= 2) {
                                      if (fd < 0) continue;
                                      while (read(fd, &iev, sizeof(iev)) ==
                                             (ssize_t)sizeof(iev)) { }
@@ -25230,7 +25270,7 @@ index dcd7bbaf475..715beb6c27a 100644
                                  drmFrameBegin();
                                  // Dark-blue loading backdrop (matches the exit
                                  // "Loading..." splash) instead of pure black, so a
-@@ -4026,9 +4037,11 @@ if (sRingPrimedCount >= 2) {
+@@ -4026,9 +4008,11 @@ if (sRingPrimedCount >= 2) {
                          // init action-queue latency, and the legacy
                          // nano_retroarch prop keeps its init side effects
                          // (bootanim exit).
@@ -25242,7 +25282,7 @@ index dcd7bbaf475..715beb6c27a 100644
                          property_set("sys.gammaos.nano.do_launch", "1");
                          nanoDropReclaimableCaches();   // hand the launching app the dentry/inode cache RAM
                          property_set("service.bootanim.nano_retroarch", "1");
-@@ -4045,6 +4058,7 @@ if (sRingPrimedCount >= 2) {
+@@ -4045,6 +4029,7 @@ if (sRingPrimedCount >= 2) {
      bool stockClocksApplied = false;
      int64_t bootCompletedDetectedMs = 0;
      while (!exitPending() && !mExitRequested) {
@@ -25250,7 +25290,7 @@ index dcd7bbaf475..715beb6c27a 100644
          // Render-thread liveness for the watchdog. Bump the heartbeat once per loop
          // iteration (not only inside render()). EVERY intentional render-thread park
          // below - the overlay screen-off idle poll, the hidden-overlay prop-wait, the
-@@ -4058,6 +4072,8 @@ if (sRingPrimedCount >= 2) {
+@@ -4058,6 +4043,8 @@ if (sRingPrimedCount >= 2) {
          // the screen-off park at ~3455 used to skip render() and freeze the heartbeat.)
          mRenderHeartbeat.fetch_add(1, std::memory_order_relaxed);
          if (!mWatchdogStarted) { mWatchdogStarted = true; startRenderWatchdog(); }
@@ -25259,7 +25299,7 @@ index dcd7bbaf475..715beb6c27a 100644
  
          // GammaOS hardware-rotate (force-SF): SurfaceFlinger is pinned at ROTATION_0 for nano's
          // layer (DisplayRotation forces the angle from sys.gammaos.rotate.state whenever nano is
-@@ -4340,7 +4356,10 @@ if (sRingPrimedCount >= 2) {
+@@ -4340,7 +4327,10 @@ if (sRingPrimedCount >= 2) {
                          property_set("sys.gammaos.nano.cc.active", "1");
                      // Seed the idle timer on the activation edge so a freshly shown CC does not instantly
                      // auto-sleep. mCcActiveSeeded is cleared on teardown, so it re-arms per activation.
@@ -25271,7 +25311,7 @@ index dcd7bbaf475..715beb6c27a 100644
                      // System IME up on the bottom panel: on a dual-screen device the soft keyboard is pinned
                      // to display 0, exactly where the CC renders, so the CC occludes it. HIDE the CC and stop
                      // rendering it while the keyboard is shown so it appears and is touchable (drop_input is
-@@ -4392,6 +4411,7 @@ if (sRingPrimedCount >= 2) {
+@@ -4392,6 +4382,7 @@ if (sRingPrimedCount >= 2) {
                      if (ccIdleMs > 0 && !mCcSleeping && mCcSleepDir >= 0 && (ccNowMs - mCcLastTouchMs) >= ccIdleMs) {
                          ccBeginSleep();
                      }
@@ -25279,7 +25319,7 @@ index dcd7bbaf475..715beb6c27a 100644
                      renderControlCenterFrame();
                      // Focus ring over the TOP app: here the CC pins the controller to the top, so a focus
                      // change fires a top-panel ring. The CC just rendered the bottom; present the ring on
-@@ -4486,11 +4506,71 @@ if (sRingPrimedCount >= 2) {
+@@ -4486,11 +4477,71 @@ if (sRingPrimedCount >= 2) {
                      static unsigned sParkOrientCounter = 0;
                      if ((sParkOrientCounter++ & 3u) == 0) orientationTick();
                  }
@@ -25352,7 +25392,7 @@ index dcd7bbaf475..715beb6c27a 100644
              overlayUpdateSurfaceSize();
          }
  
-@@ -4502,7 +4582,7 @@ if (sRingPrimedCount >= 2) {
+@@ -4502,7 +4553,7 @@ if (sRingPrimedCount >= 2) {
          // Its own prop: sys.gammaos.nano.launch_rom is the quick-resume hand-off
          // nano itself sets for every libretro launch, and reading that here sent
          // every RetroArch game into drastic-nano.
@@ -25361,7 +25401,7 @@ index dcd7bbaf475..715beb6c27a 100644
              char lr[PROPERTY_VALUE_MAX] = {};
              property_get("sys.gammaos.nano.drastic_launch_rom", lr, "");
              if (lr[0]) {
-@@ -4555,8 +4635,11 @@ if (sRingPrimedCount >= 2) {
+@@ -4555,8 +4606,11 @@ if (sRingPrimedCount >= 2) {
              // renders its SF layer. Opt-in via the backend property; the
              // dual-display RG DS and every DRM-direct default keep
              // backend=auto/drm and take the unchanged handshake below.
@@ -25374,7 +25414,7 @@ index dcd7bbaf475..715beb6c27a 100644
                  ALOGW("drastic nano: SF mode -- launching DrasticSf via launch_app");
                  // Launch the DrasticSf host activity through the SAME path a
                  // normal app (e.g. the store) uses: set launch_app and let the
-@@ -4615,7 +4698,7 @@ if (sRingPrimedCount >= 2) {
+@@ -4615,7 +4669,7 @@ if (sRingPrimedCount >= 2) {
              // fade->mExitRequested handoff never run, and the occlusion guard below is
              // not reached. A fixed 260ms here used to cut the DSi card lift short.
              if (mLaunchFadeStart == 0) mLaunchFadeStart = uptimeMillis();
@@ -25383,7 +25423,7 @@ index dcd7bbaf475..715beb6c27a 100644
                  render();
                  mRenderHeartbeat.fetch_add(1, std::memory_order_relaxed);
                  continue;
-@@ -4624,6 +4707,7 @@ if (sRingPrimedCount >= 2) {
+@@ -4624,6 +4678,7 @@ if (sRingPrimedCount >= 2) {
              // to the launched card (pollInput does this for every other launch; this path
              // exits below without ever reaching it).
              if (mNdsTheme && mPs3Xmb) ndsSaveReturnPath();
@@ -25391,7 +25431,7 @@ index dcd7bbaf475..715beb6c27a 100644
              // Clear the stale stock-DraStic launch state the standalone XMB launch
              // path set (launch_app=com.dsemu.drastic + launch_intent=file). This
              // DRM-direct path runs the drastic-nano BINARY via start=1 and never uses
-@@ -4731,6 +4815,11 @@ if (sRingPrimedCount >= 2) {
+@@ -4731,6 +4786,11 @@ if (sRingPrimedCount >= 2) {
              if (!sAlPi) sAlPi = __system_property_find("sys.gammaos.nano.app_launched");
              if (sAlPi) { uint32_t s = __system_property_serial(sAlPi); if (s != sAlSer) { sAlSer = s; sAlVal = property_get_bool("sys.gammaos.nano.app_launched", false); } }
              else sAlVal = false;
@@ -25403,7 +25443,7 @@ index dcd7bbaf475..715beb6c27a 100644
              if (!sSoPi) sSoPi = __system_property_find("sys.gammaos.nano.show_overlay");
              if (sSoPi) { uint32_t s = __system_property_serial(sSoPi); if (s != sSoSer) { sSoSer = s; sSoVal = property_get_bool("sys.gammaos.nano.show_overlay", false); } }
              else sSoVal = false;
-@@ -4835,12 +4924,17 @@ if (sRingPrimedCount >= 2) {
+@@ -4835,12 +4895,17 @@ if (sRingPrimedCount >= 2) {
                  // a foreground app). Idempotent.
                  videoHardFree();
                  scraperFreeBoxart();   // never let scraped cover textures linger behind an app
@@ -25422,7 +25462,7 @@ index dcd7bbaf475..715beb6c27a 100644
          checkInputHotplug();
          // Offer the "Run on primary screen" prompt when system_server has flagged a dual-screen
          // app. Self-guards to the home root with no other modal up and no app foreground.
-@@ -4864,6 +4958,11 @@ if (sRingPrimedCount >= 2) {
+@@ -4864,6 +4929,11 @@ if (sRingPrimedCount >= 2) {
              mShowLaunchBusy = false;
              mLaunchBusyTimer = 0;
              handleSelect();
@@ -25434,7 +25474,7 @@ index dcd7bbaf475..715beb6c27a 100644
          }
  
          // Adaptive framerate:
-@@ -4908,10 +5007,10 @@ if (sRingPrimedCount >= 2) {
+@@ -4908,10 +4978,10 @@ if (sRingPrimedCount >= 2) {
          bool ps3Settled = mPs3Xmb && !mPs3CatAnimActive
                         && mPs3ItemAnimStart < 0.0f && mPs3SubAnimStart < 0.0f
                         && mOverlayEnterStart < 0.0f
@@ -25447,7 +25487,7 @@ index dcd7bbaf475..715beb6c27a 100644
                         && !pspClockActive
                         && !ps3bg::themeFading();
          int frameTimeUs;
-@@ -4944,6 +5043,7 @@ if (sRingPrimedCount >= 2) {
+@@ -4944,6 +5014,7 @@ if (sRingPrimedCount >= 2) {
          } else {
              frameTimeUs = 100000; // 10fps idle
          }
@@ -25455,7 +25495,7 @@ index dcd7bbaf475..715beb6c27a 100644
          // Measure real frame delta for animations
          {
              struct timespec ts;
-@@ -5046,14 +5146,13 @@ if (sRingPrimedCount >= 2) {
+@@ -5046,14 +5117,13 @@ if (sRingPrimedCount >= 2) {
              // user's mode when it returns (the framework drives display standby for the
              // overlay, but not the CPU clocks). Also fully close the home audio: the DSi
              // menu_ambiance BGM must NOT keep playing behind a dark screen, and a merely
@@ -25473,7 +25513,7 @@ index dcd7bbaf475..715beb6c27a 100644
                  nanoApplyPerfClock("powersave"); property_set("sys.gammaos.nano.screenoff", "1"); sOvlPwrSave = true;
              }
              else if (!screenOff && sOvlPwrSave) { property_set("sys.gammaos.nano.screenoff", "0"); nanoRestorePerfClock(); sOvlPwrSave = false; }
-@@ -5079,13 +5178,7 @@ if (sRingPrimedCount >= 2) {
+@@ -5079,13 +5149,7 @@ if (sRingPrimedCount >= 2) {
                      if (wl >= 0) { ssize_t n = write(wl, "nano_music", 10); (void)n; close(wl); }
                      sOvlAudioWake = true;
                  }
@@ -25488,7 +25528,7 @@ index dcd7bbaf475..715beb6c27a 100644
                  usleep(1000000);   // 1Hz while playing screen-off (catch end-of-track promptly)
                  continue;
              }
-@@ -5095,6 +5188,7 @@ if (sRingPrimedCount >= 2) {
+@@ -5095,6 +5159,7 @@ if (sRingPrimedCount >= 2) {
                  sOvlAudioWake = false;
              }
              if (screenOff) {
@@ -25496,7 +25536,7 @@ index dcd7bbaf475..715beb6c27a 100644
                  usleep(250000);   // 4Hz idle poll while the panel is off (no audio)
                  continue;
              }
-@@ -5119,16 +5213,13 @@ if (sRingPrimedCount >= 2) {
+@@ -5119,16 +5184,13 @@ if (sRingPrimedCount >= 2) {
              static bool sSfPwrSave = false;
              if (screenOff && !sSfPwrSave) {
                  // Fully close nano's home audio behind the dark panel. Stopping the
@@ -25516,7 +25556,7 @@ index dcd7bbaf475..715beb6c27a 100644
                  nanoApplyPerfClock("powersave"); property_set("sys.gammaos.nano.screenoff", "1"); sSfPwrSave = true;
              }
              else if (!screenOff && sSfPwrSave) { property_set("sys.gammaos.nano.screenoff", "0"); nanoRestorePerfClock(); sSfPwrSave = false; }
-@@ -5145,12 +5236,7 @@ if (sRingPrimedCount >= 2) {
+@@ -5145,12 +5207,7 @@ if (sRingPrimedCount >= 2) {
                      if (wl >= 0) { ssize_t n = write(wl, "nano_music", 10); (void)n; close(wl); }
                      sSfAudioWake = true;
                  }
@@ -25530,7 +25570,7 @@ index dcd7bbaf475..715beb6c27a 100644
                  usleep(1000000);   // 1Hz while playing screen-off (catch end-of-track)
                  continue;
              }
-@@ -5162,10 +5248,14 @@ if (sRingPrimedCount >= 2) {
+@@ -5162,10 +5219,14 @@ if (sRingPrimedCount >= 2) {
              if (screenOff) {
                  // The screen stays on during a system update: wake it again (see otaScreenOffTick).
                  if (mOtaFlowActive) otaScreenOffTick();
@@ -25545,7 +25585,7 @@ index dcd7bbaf475..715beb6c27a 100644
  
          // GammaOS: DSi theme idle. The DSi home has no continuous animation once the
          // carousel has landed, yet the loop above paces it like the XMB wave (60 fps,
-@@ -5176,9 +5266,12 @@ if (sRingPrimedCount >= 2) {
+@@ -5176,9 +5237,12 @@ if (sRingPrimedCount >= 2) {
          // identical frames. When nothing on either panel is in motion and there has
          // been no input for 1.5 s, skip the render and the present (the scanout keeps
          // the last frame), wait on the input fds so a press wakes the loop at once,
@@ -25561,7 +25601,7 @@ index dcd7bbaf475..715beb6c27a 100644
          bool ndsIdleSkip = false;
          {
              static int64_t sNdsLastDrawMs = 0;
-@@ -5204,53 +5297,113 @@ if (sRingPrimedCount >= 2) {
+@@ -5204,53 +5268,113 @@ if (sRingPrimedCount >= 2) {
              const bool esdeQuiet = mEsdeTheme && !mNdsTheme && !mMinimaTheme && !mEsdeWantsFastFrame
                  && !mPs3OptActive && !mPs3OptClosing;
              const bool ndsSettled = (ndsQuiet || minimaQuiet || esdeQuiet) && mPs3Xmb && !mOverlayMode && sNdsIdleRedrawMs > 0
@@ -25702,7 +25742,7 @@ index dcd7bbaf475..715beb6c27a 100644
              ndsSfxPreload(NDS_SFX_LAUNCH);
          }
  
-@@ -5315,7 +5468,11 @@ if (sRingPrimedCount >= 2) {
+@@ -5315,7 +5439,11 @@ if (sRingPrimedCount >= 2) {
              int64_t frameStartUs = mLastFrameNs / 1000LL;
              int64_t elapsedUs = nowUs - frameStartUs;
              int64_t remainUs = (int64_t)frameTimeUs - elapsedUs;
@@ -25715,7 +25755,7 @@ index dcd7bbaf475..715beb6c27a 100644
          }
  
          // Check every ~0.5s if an external trigger requested exit
-@@ -5324,13 +5481,13 @@ if (sRingPrimedCount >= 2) {
+@@ -5324,13 +5452,13 @@ if (sRingPrimedCount >= 2) {
          if (++exitCheckCounter >= exitCheckInterval) {
              exitCheckCounter = 0;
              // Test hook: sys.gammaos.nano.direct_test=<wav> plays that file through the direct
@@ -25731,7 +25771,7 @@ index dcd7bbaf475..715beb6c27a 100644
                  }
              }
              // GammaOS Nano orientation: publish the foreground-aware orientation
-@@ -5406,7 +5563,7 @@ if (sRingPrimedCount >= 2) {
+@@ -5406,7 +5534,7 @@ if (sRingPrimedCount >= 2) {
                      // skipped while the setup wizard runs (below), so applyBrightness ran here every
                      // tick for the whole wizard: each call forked a shell on the render thread that
                      // ran a Java `settings put` (measured 4 forks a second, 70 to 100 ms frames, the
@@ -25740,7 +25780,7 @@ index dcd7bbaf475..715beb6c27a 100644
                      // already asserted by the first call; a changed value re-asserts through it.
                      static int sBootAssertedValue = -1;
                      if (sBootAssertedValue != mBrightness) {
-@@ -5525,7 +5682,12 @@ if (sRingPrimedCount >= 2) {
+@@ -5525,7 +5653,12 @@ if (sRingPrimedCount >= 2) {
                          // into view; otherwise keep the cursor where it was.
                          if (!mPs3Stack.empty() && mPs3Stack.back().title == "Applications") {
                              int keep = mPs3Stack.back().sel;
@@ -25753,7 +25793,7 @@ index dcd7bbaf475..715beb6c27a 100644
                              int n = (int)mPs3Stack.back().items.size();
                              int target = -1;
                              if (!newPkg.empty())
-@@ -5546,6 +5708,7 @@ if (sRingPrimedCount >= 2) {
+@@ -5546,6 +5679,7 @@ if (sRingPrimedCount >= 2) {
                              else if (n <= 0) mPs3Stack.back().sel = 0;
                              else { if (keep < 0) keep = 0; if (keep > n - 1) keep = n - 1;
                                     mPs3Stack.back().sel = keep; }
@@ -25761,7 +25801,7 @@ index dcd7bbaf475..715beb6c27a 100644
                          }
                          // Legacy (non-ps3xmb) Applications list: same jump-to-new-app, else clamp.
                          if (mMenuState == MENU_APPS) {
-@@ -5585,26 +5748,12 @@ if (sRingPrimedCount >= 2) {
+@@ -5585,26 +5719,12 @@ if (sRingPrimedCount >= 2) {
              if (sDrmActive && sDrmZeroCopy && drmSuspendCycleDetected()) {
                  ALOGW("NanoMenu DRM: resumed from suspend, re-committing the modeset");
                  drmResumeRecommit();
@@ -25793,7 +25833,7 @@ index dcd7bbaf475..715beb6c27a 100644
              // GammaOS: Defensive recovery for the secondary (wallpaper-only)
              // displays. After exiting a DualStack app, DualStackController
              // tears down its forced tall size via clearForcedDisplaySize,
-@@ -5618,7 +5767,12 @@ if (sRingPrimedCount >= 2) {
+@@ -5618,7 +5738,12 @@ if (sRingPrimedCount >= 2) {
              // secondary display states each ~0.5s and re-apply ROTATION_0
              // whenever the rotation drifts. Cheap: bounded by the number of
              // secondary displays (typically one).
@@ -25807,7 +25847,7 @@ index dcd7bbaf475..715beb6c27a 100644
                  const sp<IBinder>& token = mSecondaryDisplayTokens[i];
                  if (token == nullptr) continue;
                  ui::DisplayState state;
-@@ -5680,6 +5834,7 @@ if (sRingPrimedCount >= 2) {
+@@ -5680,6 +5805,7 @@ if (sRingPrimedCount >= 2) {
                      property_get("sys.boot_completed", val, "0");
                      if (!strcmp(val, "1")) {
                          mXmbBootCompleted = true;
@@ -25815,7 +25855,7 @@ index dcd7bbaf475..715beb6c27a 100644
                          // During the first-run setup wizard the device is under heavy memory
                          // pressure (RetroArch/ROM extraction). Defer the initial ROM scan, which
                          // reads and caches every share, until setup finishes. finishSetupWizard()
-@@ -5701,6 +5856,7 @@ if (sRingPrimedCount >= 2) {
+@@ -5701,6 +5827,7 @@ if (sRingPrimedCount >= 2) {
                              auto& sys = mXmbSystems[i];
                              auto& res = mBgScanResults[i];
                              if (!sys.enabled) continue;   // disabled systems are never scanned
@@ -25823,7 +25863,7 @@ index dcd7bbaf475..715beb6c27a 100644
                              // Guard: don't replace with fewer ROMs when storage
                              // is partially mounted. Two checks:
                              // 1. Path count: if fewer source dirs, storage not ready
-@@ -5830,6 +5986,13 @@ if (sRingPrimedCount >= 2) {
+@@ -5830,6 +5957,13 @@ if (sRingPrimedCount >= 2) {
                  // the media drains below) because a scrape runs while the user is
                  // deep in the Settings submenu with the progress modal up.
                  scraperDrainResults();
@@ -25837,7 +25877,7 @@ index dcd7bbaf475..715beb6c27a 100644
  
                  // IPTV: rebuild the open channel-groups screen when the background fetch/
                  // parse finishes. Must run every frame (not only at the settled XMB root)
-@@ -5855,8 +6018,8 @@ if (sRingPrimedCount >= 2) {
+@@ -5855,8 +5989,8 @@ if (sRingPrimedCount >= 2) {
                      // setup.sh extraction I/O). Already unreachable in setup because the initial
                      // scan is deferred (mXmbSystems empty), but gate explicitly to survive refactors.
                      int64_t now = elapsedRealtime();
@@ -25848,7 +25888,7 @@ index dcd7bbaf475..715beb6c27a 100644
                          forceRescanAllSystems();
                      }
                  }
-@@ -5890,7 +6053,7 @@ if (sRingPrimedCount >= 2) {
+@@ -5890,7 +6024,7 @@ if (sRingPrimedCount >= 2) {
                  if (mPs3Xmb && mPs3Stack.empty()
                      && !mVidActive && !mMpActive && !mPvActive
                      && !mPs3DlgActive && !mOskActive && !mPs3WizActive
@@ -25857,7 +25897,7 @@ index dcd7bbaf475..715beb6c27a 100644
                      && animSettledOrNonXmbTheme) {
                      // During the SetupWizard (esp. INSTALLING, while setup.sh extracts ~1.3GB of ROMs on a
                      // ~1GB device) do NOT drain scan results / rebuild the XMB columns / kick library scans:
-@@ -5967,6 +6130,7 @@ if (sRingPrimedCount >= 2) {
+@@ -5967,6 +6101,7 @@ if (sRingPrimedCount >= 2) {
                          mMusicCatsStale = false;
                          mPhotoCatsStale = false;
                          mVideoCatsStale = false;
@@ -25865,7 +25905,7 @@ index dcd7bbaf475..715beb6c27a 100644
                      }
                  }
              }
-@@ -5996,6 +6160,7 @@ if (sRingPrimedCount >= 2) {
+@@ -5996,6 +6131,7 @@ if (sRingPrimedCount >= 2) {
          // wallpaper so the app (or a later video clip) can use it, and stop burning power decoding a
          // background the user cannot see.
          if (mWpVideoTop) wpVideoStop();
@@ -25873,7 +25913,7 @@ index dcd7bbaf475..715beb6c27a 100644
          drmStop();
          if (!mDrmBootPath) {
              setupSecondaryEglSurfaces();
-@@ -6004,13 +6169,10 @@ if (sRingPrimedCount >= 2) {
+@@ -6004,13 +6140,10 @@ if (sRingPrimedCount >= 2) {
  
      // Only re-apply performance clocks when launching an app (not on bootanim.exit)
      // Run in background — setclock_max.sh has a 20s retry loop that must not block exit.
@@ -25890,7 +25930,7 @@ index dcd7bbaf475..715beb6c27a 100644
      }
  
      // Transition: grab input devices. drop_input was already set in handleSelect()
-@@ -6067,7 +6229,9 @@ if (sRingPrimedCount >= 2) {
+@@ -6067,7 +6200,9 @@ if (sRingPrimedCount >= 2) {
              for (int wait = 0; wait < 600; wait++) {
                  for (int fd : mInputFds) {
                      while (read(fd, &drain_ev, sizeof(drain_ev)) == sizeof(drain_ev)) {}
@@ -25900,7 +25940,7 @@ index dcd7bbaf475..715beb6c27a 100644
                  drmFrameBegin();
                  if (sDrmGlRotation && sDrmZeroCopy) {
                      glViewport(0, 0, sAhbTarget.w, sAhbTarget.h);
-@@ -6157,7 +6321,139 @@ if (sRingPrimedCount >= 2) {
+@@ -6157,7 +6292,139 @@ if (sRingPrimedCount >= 2) {
      // stopProcess() is the residual hazard). Bounded wait (listener wait is bounded);
      // worst case covers one callback+fence timeout. No-op if the worker never ran.
      pspClockStopCaptureWorker(1300);
@@ -63067,10 +63107,10 @@ index 00000000000..1cf7b6955b2
 +}  // namespace nanoplat
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoPlatform.h b/frameworks/base/cmds/gammaos-nano/NanoPlatform.h
 new file mode 100644
-index 00000000000..b738ac26d2e
+index 00000000000..58dcf309172
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/NanoPlatform.h
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,95 @@
 +/*
 + * Copyright (C) 2026 The Thimsy OS Project
 + *
@@ -63111,10 +63151,41 @@ index 00000000000..b738ac26d2e
 +
 +namespace nanoplat {
 +
++// --- Display (G7-display) ------------------------------------------------------------------------
++// The panel: taken at start-up, and handed to a game's process and back. Render thread only (the
++// NanoMenu thread). startScanout runs in readyToRun() before its EGL set-up, so no EGL context is
++// current then; releaseForChild and reacquire need Nano's context current. The firmware's is
++// readyToRun's DRM splash decision, moved (platform/firmware/Display.cpp); Linux's always takes the panel and
++// applies the rotation contract (platform/linux/display/); the host's records what it did
++// (platform/host/FakeDisplay.cpp).
++class Display {
++ public:
++    virtual ~Display() = default;
++
++    // readyToRun(): takes the panel for Nano's own scanout (DRM master and the splash,
++    // drmEarlySplash) unless this process presents through SurfaceFlinger. `earlyDrmFd` is main()'s
++    // early DRM master fd, or -1; `overlayMode` is the --overlay instance; `forceSfPath` is
++    // readyToRun's rule for the SoCs whose composer must keep master. Returns the early fd still
++    // held, or -1; sDrmActive (NanoMenuDrm.h) tells whether the panel is Nano's.
++    virtual int startScanout(int earlyDrmFd, bool overlayMode, bool (*forceSfPath)()) = 0;
++
++    // The hand-off to a child process that becomes DRM master itself (a game), and back, for a
++    // platform where Nano keeps running while the child runs (Linux). The firmware's home exits on
++    // a launch instead, so its versions do nothing and return false.
++    // releaseForChild: finishes the GPU's work, waits for the flip in flight, disables Nano's
++    // overlay planes, frees the scanout ring and drops master; false when the panel was not Nano's.
++    // reacquire: takes master back (retrying while the child's file is still being closed),
++    // modesets and rebuilds the ring; false when the panel could not be taken back.
++    virtual bool releaseForChild() = 0;
++    virtual bool reacquire() = 0;
++};
++// --- end Display ---------------------------------------------------------------------------------
++
 +// The platform's services. Empty until the first G7 step declares one. Each platform library
 +// derives from it to keep its own state; services added later are members here.
 +struct Platform {
 +    virtual ~Platform();
++    std::unique_ptr<Display> display;  // G7-display: never null once createPlatform() returns
 +};
 +
 +struct PlatformArgs {
@@ -80551,12 +80622,146 @@ index 00000000000..517afa3ed3e
 +    fi
 +    state=$now
 +done
+diff --git a/frameworks/base/cmds/gammaos-nano/platform/firmware/Display.cpp b/frameworks/base/cmds/gammaos-nano/platform/firmware/Display.cpp
+new file mode 100644
+index 00000000000..83783751993
+--- /dev/null
++++ b/frameworks/base/cmds/gammaos-nano/platform/firmware/Display.cpp
+@@ -0,0 +1,94 @@
++/*
++ * Copyright (C) 2026 GammaOS
++ * Copyright (C) 2026 The Thimsy OS Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++// The firmware's nanoplat::Display (NanoPlatform.h; docs/linux/IMPLEMENTATION.md B.6): readyToRun()'s
++// DRM splash decision, moved verbatim from NanoMenu.cpp, with NanoMenu.cpp's LOG_TAG so the
++// firmware's log is unchanged. startScanout's parameters carry the names of what the moved lines
++// read in readyToRun (its local earlyDrmFd, the member mOverlayMode and NanoMenu.cpp's static
++// nanoForceSfPath(), which readyToRun's SurfaceFlinger set-up still calls), so the lines are the same.
++
++#define LOG_TAG "GammaOSNano"
++
++#include <string.h>
++#include <sys/ioctl.h>
++#include <unistd.h>
++
++#include <memory>
++
++#include <drm.h>
++
++#include <cutils/properties.h>
++#include <utils/Log.h>
++
++#include "Display.h"
++#include "NanoMenuDrm.h"
++#include "NanoPlatform.h"
++
++namespace android {
++namespace {
++
++class FirmwareDisplay : public nanoplat::Display {
++ public:
++    int startScanout(int earlyDrmFd, bool mOverlayMode, bool (*nanoForceSfPath)()) override {
++        // GammaOS: Nano mode is confirmed active (skip_nano check passed).
++        // Run DRM splash now - before any SF/HWC setup. This replaces the
++        // bootloader logo with NanoMenu's DRM direct rendering. Skip on
++        // restarts (returning from app) since HWC is already active.
++        {
++            char bootDone[PROPERTY_VALUE_MAX] = {};
++            property_get("sys.boot_completed", bootDone, "0");
++            // force_drm=1 re-grabs DRM master post-boot for drastic nano
++            // mode (XMB -> drastic nano restart path).
++            char forceDrm[PROPERTY_VALUE_MAX] = {};
++            property_get("sys.gammaos.nano.force_drm", forceDrm, "0");
++            // Overlay mode never grabs DRM master: it coexists with SurfaceFlinger
++            // and the running app as a translucent layer. Force the SF path.
++            if (mOverlayMode || nanoForceSfPath()) {
++                ALOGI("NanoMenu: %s, skipping DRM splash (SF path)",
++                      mOverlayMode ? "overlay mode" : "force-SF home");
++            } else if (strcmp(bootDone, "1") != 0 || strcmp(forceDrm, "1") == 0) {
++                if (strcmp(forceDrm, "1") == 0) {
++                    ALOGW("NanoMenu: force_drm=1, grabbing DRM master "
++                          "post-boot for drastic nano");
++                }
++                drmEarlySplash(earlyDrmFd);
++                earlyDrmFd = -1;
++            } else {
++                ALOGI("NanoMenu: skipping DRM splash (already booted)");
++            }
++        }
++        if (earlyDrmFd >= 0 && !sDrmActive) {
++            // DRM splash failed - release the fd so HWC can use it
++            ioctl(earlyDrmFd, DRM_IOCTL_DROP_MASTER, 0);
++            close(earlyDrmFd);
++            earlyDrmFd = -1;
++        }
++        return earlyDrmFd;
++    }
++
++    // The firmware's home exits on every launch (init or the overlay brings it back), and the parked
++    // home (NanoMenuDrasticPark.cpp) calls NanoMenuDrm.h itself, so nothing hands the panel over here.
++    bool releaseForChild() override { return false; }
++    bool reacquire() override { return false; }
++};
++
++}  // namespace
++}  // namespace android
++
++std::unique_ptr<nanoplat::Display> nanofirmware::createDisplay() {
++    return std::unique_ptr<nanoplat::Display>(new android::FirmwareDisplay);
++}
+diff --git a/frameworks/base/cmds/gammaos-nano/platform/firmware/Display.h b/frameworks/base/cmds/gammaos-nano/platform/firmware/Display.h
+new file mode 100644
+index 00000000000..4b2f2dbe02c
+--- /dev/null
++++ b/frameworks/base/cmds/gammaos-nano/platform/firmware/Display.h
+@@ -0,0 +1,28 @@
++/*
++ * Copyright (C) 2026 The Thimsy OS Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++// The firmware's nanoplat::Display (platform/firmware/Display.cpp), made by Platform.cpp.
++#pragma once
++
++#include <memory>
++
++#include "NanoPlatform.h"
++
++namespace nanofirmware {
++
++std::unique_ptr<nanoplat::Display> createDisplay();
++
++}  // namespace nanofirmware
 diff --git a/frameworks/base/cmds/gammaos-nano/platform/firmware/Platform.cpp b/frameworks/base/cmds/gammaos-nano/platform/firmware/Platform.cpp
 new file mode 100644
-index 00000000000..4dc936eec6a
+index 00000000000..7a32b615204
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/platform/firmware/Platform.cpp
-@@ -0,0 +1,29 @@
+@@ -0,0 +1,31 @@
 +/*
 + * Copyright (C) 2026 The Thimsy OS Project
 + *
@@ -80580,10 +80785,12 @@ index 00000000000..4dc936eec6a
 +#include <memory>
 +
 +#include "NanoPlatform.h"
++#include "Display.h"  // G7-display
 +
 +std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs& /*args*/) {
 +    std::unique_ptr<Platform> platform(new Platform);
 +    // The services, one line each (G7 steps).
++    platform->display = nanofirmware::createDisplay();  // G7-display
 +    return platform;
 +}
 diff --git a/frameworks/base/cmds/gammaos-nano/powerwatch/nano_powerwatch.cpp b/frameworks/base/cmds/gammaos-nano/powerwatch/nano_powerwatch.cpp

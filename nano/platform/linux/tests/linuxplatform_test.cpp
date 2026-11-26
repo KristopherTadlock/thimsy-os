@@ -15,13 +15,38 @@
  */
 
 // The Linux platform's createPlatform() (LinuxPlatform.cpp), installed the way main_linux.cpp
-// installs it, with NanoPlatform.cpp's install() and get().
+// installs it, with NanoPlatform.cpp's install() and get(). The display's KMS binding
+// (display/DisplayKms.cpp) needs NanoMenuDrm.cpp, so this program defines createKms() itself.
 
 #include <memory>
+#include <string>
 
 #include <gtest/gtest.h>
 
 #include "NanoPlatform.h"
+#include "display/Display.h"
+
+namespace {
+
+class NoKms : public nanolinux::display::Kms {
+ public:
+    void earlySplash(int) override {}
+    void finishGpu() override {}
+    bool active() const override { return false; }
+    void setRotationDeg(int) override {}
+    std::string panelOrientation() override { return ""; }
+    void waitForFlips() override {}
+    int disableOverlayPlanes() override { return 0; }
+    void rememberInstallMatrix() override {}
+    void stop() override {}
+    bool takeBack(int) override { return false; }
+};
+
+}  // namespace
+
+std::unique_ptr<nanolinux::display::Kms> nanolinux::display::createKms() {
+    return std::unique_ptr<Kms>(new NoKms);
+}
 
 namespace {
 
@@ -45,6 +70,16 @@ TEST(LinuxPlatform, EachCallMakesItsOwn) {
     ASSERT_TRUE(a != nullptr);
     ASSERT_TRUE(b != nullptr);
     EXPECT_TRUE(a.get() != b.get());
+}
+
+TEST(LinuxPlatform, HasEveryService) {
+    nanoplat::PlatformArgs args;
+    std::unique_ptr<nanoplat::Platform> p = nanoplat::createPlatform(args);
+    ASSERT_TRUE(p != nullptr);
+    EXPECT_TRUE(p->display != nullptr);
+    // With no display found, the hand-off has nothing to release.
+    EXPECT_EQ(p->display->startScanout(-1, false, nullptr), -1);
+    EXPECT_FALSE(p->display->releaseForChild());
 }
 
 }  // namespace

@@ -12,10 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# The Linux platform's host tests (docs/linux/IMPLEMENTATION.md G9, G7-main): the shell gate, the
-# control keys and the platform's createPlatform (with nano/NanoPlatform.cpp), against Nano's compat
-# shims and libthimsy (nano/test/host/compat/compat.mk), with g++ and make only. The display back end and the EGL wraps need libdrm, GBM and EGL headers and are not
-# built here (G10 runs -fsyntax-only on them).
+# The Linux platform's host tests (docs/linux/IMPLEMENTATION.md G9, G7-main, G7-display): the shell
+# gate, the control keys, the display (display/Display.cpp and PanelOrientation.cpp over fakes) and
+# the platform's createPlatform (with nano/NanoPlatform.cpp), against Nano's compat shims and
+# libthimsy (nano/test/host/compat/compat.mk), with g++ and make only. The display back end, the EGL
+# wraps and the display's KMS binding (display/DisplayKms.cpp) need libdrm, GBM and EGL headers and
+# are not built here (G10 runs -fsyntax-only on them); the kernel's DRM uapi headers (drm.h,
+# drm_mode.h) are found in PLAT_DRM_UAPI, after the system's own include directories.
 #
 #   nice -n 19 make -f nano/platform/linux/tests/platform.mk -j1 check
 #
@@ -37,13 +40,17 @@ include $(PLAT_NANO_DIR)/test/host/compat/compat.mk
 PLAT_WRAPS := $(shell sed -e 's/\#.*//' $(PLAT_DIR)/linker-wraps.txt)
 PLAT_WRAP_LDFLAGS := $(foreach s,$(PLAT_WRAPS),-Wl,--wrap=$(s))
 # nano/ for quoted includes only ("NanoPlatform.h"), so no header of nano/ shadows a shim.
-PLAT_CPPFLAGS := $(COMPAT_TEST_CPPFLAGS) -I$(PLAT_DIR) -iquote $(PLAT_NANO_DIR)
+# The kernel's DRM uapi headers (linux-libc-dev) for <drm.h> and <drm_mode.h>, as libdrm's include
+# directory gives them on the image.
+PLAT_DRM_UAPI ?= /usr/include/drm
+PLAT_CPPFLAGS := $(COMPAT_TEST_CPPFLAGS) -I$(PLAT_DIR) -iquote $(PLAT_NANO_DIR) -idirafter $(PLAT_DRM_UAPI)
 
-PLAT_TESTS := shellgate_test controlkeys_test linuxplatform_test
+PLAT_TESTS := shellgate_test controlkeys_test linuxplatform_test display_test
 # PLAT_SRCS_<test>: files of platform/linux; PLAT_NANO_SRCS_<test>: files of nano/.
 PLAT_SRCS_shellgate_test := ShellGate.cpp
 PLAT_SRCS_controlkeys_test := ControlKeys.cpp
-PLAT_SRCS_linuxplatform_test := LinuxPlatform.cpp
+PLAT_SRCS_linuxplatform_test := LinuxPlatform.cpp display/Display.cpp display/PanelOrientation.cpp
+PLAT_SRCS_display_test := display/Display.cpp display/PanelOrientation.cpp
 PLAT_NANO_SRCS_linuxplatform_test := NanoPlatform.cpp
 PLAT_TEST_BINS := $(PLAT_TESTS:%=$(PLAT_O)/test/%)
 
@@ -87,4 +94,4 @@ platform-linux-clean:
 	@test -n "$(PLAT_O)" && test "$(PLAT_O)" != "/"
 	rm -rf -- "$(PLAT_O)/obj" "$(PLAT_O)/nano-obj" "$(PLAT_O)/test-obj" "$(PLAT_O)/test" "$(PLAT_O)/log"
 
--include $(wildcard $(PLAT_O)/obj/*.d $(PLAT_O)/nano-obj/*.d $(PLAT_O)/test-obj/*.d)
+-include $(wildcard $(PLAT_O)/obj/*.d $(PLAT_O)/obj/*/*.d $(PLAT_O)/nano-obj/*.d $(PLAT_O)/test-obj/*.d)

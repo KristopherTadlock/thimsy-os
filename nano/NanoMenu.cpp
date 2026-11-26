@@ -97,6 +97,7 @@ extern "C" uint32_t __system_property_serial(const prop_info* __pi);
 #include "NanoOtaCheck.h"   // otaDropStalePackage at startup
 #include "NanoBtStable.h"
 #include "NanoMenuPS3Bg.h"   // ps3bg::themeFading() for the adaptive idle frame-rate
+#include "NanoPlatform.h"   // nanoplat::get().display: readyToRun's splash
 
 extern int gEarlyDrmFd;
 
@@ -645,39 +646,9 @@ status_t NanoMenu::readyToRun() {
     startupPreloadStart();
     if (!mOverlayMode && !sDrasticQrFastPath) esdePrebuildStart();
 
-    // GammaOS: Nano mode is confirmed active (skip_nano check passed).
-    // Run DRM splash now - before any SF/HWC setup. This replaces the
-    // bootloader logo with NanoMenu's DRM direct rendering. Skip on
-    // restarts (returning from app) since HWC is already active.
-    {
-        char bootDone[PROPERTY_VALUE_MAX] = {};
-        property_get("sys.boot_completed", bootDone, "0");
-        // force_drm=1 re-grabs DRM master post-boot for drastic nano
-        // mode (XMB -> drastic nano restart path).
-        char forceDrm[PROPERTY_VALUE_MAX] = {};
-        property_get("sys.gammaos.nano.force_drm", forceDrm, "0");
-        // Overlay mode never grabs DRM master: it coexists with SurfaceFlinger
-        // and the running app as a translucent layer. Force the SF path.
-        if (mOverlayMode || nanoForceSfPath()) {
-            ALOGI("NanoMenu: %s, skipping DRM splash (SF path)",
-                  mOverlayMode ? "overlay mode" : "force-SF home");
-        } else if (strcmp(bootDone, "1") != 0 || strcmp(forceDrm, "1") == 0) {
-            if (strcmp(forceDrm, "1") == 0) {
-                ALOGW("NanoMenu: force_drm=1, grabbing DRM master "
-                      "post-boot for drastic nano");
-            }
-            drmEarlySplash(earlyDrmFd);
-            earlyDrmFd = -1;
-        } else {
-            ALOGI("NanoMenu: skipping DRM splash (already booted)");
-        }
-    }
-    if (earlyDrmFd >= 0 && !sDrmActive) {
-        // DRM splash failed - release the fd so HWC can use it
-        ioctl(earlyDrmFd, DRM_IOCTL_DROP_MASTER, 0);
-        close(earlyDrmFd);
-        earlyDrmFd = -1;
-    }
+    // The panel, through the platform's Display (NanoPlatform.h): DRM master and the splash,
+    // unless this process presents through SurfaceFlinger.
+    earlyDrmFd = nanoplat::get().display->startScanout(earlyDrmFd, mOverlayMode, nanoForceSfPath);
     tlog("drmEarlySplash done");
 
     // Diagnostic: write DRM splash result to file (logcat overflows)
