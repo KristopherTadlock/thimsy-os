@@ -138,6 +138,7 @@ TEST(HostPlatform, CreateWiresTheChannel) {
     ASSERT_TRUE(p->display != nullptr);
     EXPECT_EQ(p->display->startScanout(-1, false, nullptr), -1);
     EXPECT_FALSE(p->display->releaseForChild());
+    EXPECT_TRUE(p->input != nullptr);  // G7-input: the fake input policy
     EXPECT_EQ(property_set("sys.gammaos.nano.launch_app", "com.example"), 0);
     EXPECT_EQ(property_set("persist.gammaos.nano.theme", "xmb"), 0);
     EXPECT_EQ(property_set("debug.unrecorded", "1"), 0);

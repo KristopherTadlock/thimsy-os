@@ -22,10 +22,12 @@
 
 #include "NanoPlatform.h"
 #include "Display.h"  // G7-display
+#include "InputPolicy.h"  // G7-input
 
 std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs& /*args*/) {
     std::unique_ptr<Platform> platform(new Platform);
     // The services, one line each (G7 steps).
     platform->display = nanofirmware::createDisplay();  // G7-display
+    platform->input = nanofirmware::createInputPolicy();  // G7-input
     return platform;
 }

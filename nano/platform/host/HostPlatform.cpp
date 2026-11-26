@@ -37,6 +37,7 @@
 #include <nanocompat/nanocompat.h>
 
 #include "FakeDisplay.h"  // G7-display
+#include "FakeInput.h"  // G7-input
 #include "HostConfig.h"
 #include "NanoPlatform.h"
 
@@ -137,5 +138,6 @@ std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs&
           cfg.display.width, cfg.display.height, cfg.display.refreshHz, cfg.devices.size(), cfg.shellRules.size());
     std::unique_ptr<nanoplat::Platform> platform(new HostPlatform(std::move(cfg)));
     platform->display = createFakeDisplay(createHostDrm());  // G7-display
+    platform->input = createFakeInput();  // G7-input
     return platform;
 }

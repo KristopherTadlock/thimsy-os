@@ -80,6 +80,7 @@ TEST(LinuxPlatform, HasEveryService) {
     // With no display found, the hand-off has nothing to release.
     EXPECT_EQ(p->display->startScanout(-1, false, nullptr), -1);
     EXPECT_FALSE(p->display->releaseForChild());
+    EXPECT_TRUE(p->input != nullptr);  // G7-input
 }
 
 }  // namespace

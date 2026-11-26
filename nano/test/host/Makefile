@@ -313,9 +313,12 @@ HL_O := $(O)/headless0
 HL_TEST_DIR := $(NANO)/test/host/headless/tests
 HL_TESTS := seam_test host_control_test fake_evdev_test shell_gate_test host_platform_test glstub_test \
 	fake_display_test launch_commit_test
+# G7-input: the fake input policy (FakeInput.cpp).
+HL_TESTS += fake_input_test
 HL_PLATFORM_SRCS := NanoPlatform.cpp platform/host/HostControl.cpp platform/host/FakeEvdev.cpp \
 	platform/host/ShellGateHost.cpp platform/host/HostConfig.cpp platform/host/HostPlatform.cpp \
 	platform/host/FakeDisplay.cpp
+HL_PLATFORM_SRCS += platform/host/FakeInput.cpp  # G7-input
 # FakeDisplayDrm.cpp (the fake display's binding to DrmHost.cpp) needs NanoMenuDrm.h: every program
 # here links host_drm_fake.cpp's createHostDrm() instead (G7-display).
 HL_PLATFORM_SRCS += test/host/headless/tests/host_drm_fake.cpp

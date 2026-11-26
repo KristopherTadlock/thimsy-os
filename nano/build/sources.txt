@@ -151,6 +151,8 @@ main.cpp
 platform/firmware/Platform.cpp
 # platform/firmware/Display.cpp: the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)
 platform/firmware/Display.cpp
+# platform/firmware/InputPolicy.cpp: the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)
+platform/firmware/InputPolicy.cpp
 # NanoMenuDrmBuffers.cpp: the AHardwareBuffer render-target back end (G9a); Linux links platform/linux/display/DrmBuffersGbm.cpp instead
 NanoMenuDrmBuffers.cpp
 # NanoMenuRgbFollow.cpp: reaches GammaRgbProcess.h (a header outside Nano's folder (upstream.json siblings): v1 has neither Shares nor RGB follow on Linux)
@@ -207,6 +209,7 @@ DrasticGpu3d.cpp
 # DrmBuffersGbm.cpp and EglWraps.cpp stand in for [firmware]'s NanoMenuDrmBuffers.cpp (B.8).
 [linux]
 platform/linux/ControlKeys.cpp
+platform/linux/InputPolicy.cpp
 platform/linux/LinuxPlatform.cpp
 platform/linux/ShellGate.cpp
 platform/linux/display/Display.cpp
@@ -223,6 +226,7 @@ platform/host/DrmHost.cpp
 platform/host/FakeDisplay.cpp
 platform/host/FakeDisplayDrm.cpp
 platform/host/FakeEvdev.cpp
+platform/host/FakeInput.cpp
 platform/host/HostConfig.cpp
 platform/host/HostControl.cpp
 platform/host/HostPlatform.cpp

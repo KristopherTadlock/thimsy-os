@@ -52,6 +52,10 @@ PLAT_SRCS_controlkeys_test := ControlKeys.cpp
 PLAT_SRCS_linuxplatform_test := LinuxPlatform.cpp display/Display.cpp display/PanelOrientation.cpp
 PLAT_SRCS_display_test := display/Display.cpp display/PanelOrientation.cpp
 PLAT_NANO_SRCS_linuxplatform_test := NanoPlatform.cpp
+# G7-input: the input policy (padd's intercept and tap).
+PLAT_TESTS += inputpolicy_test
+PLAT_SRCS_inputpolicy_test := InputPolicy.cpp
+PLAT_SRCS_linuxplatform_test += InputPolicy.cpp
 PLAT_TEST_BINS := $(PLAT_TESTS:%=$(PLAT_O)/test/%)
 
 .PHONY: check check-platform-linux platform-linux-clean

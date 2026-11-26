@@ -49,6 +49,7 @@ cc_binary {
         "NanoPlatform.cpp",                // the platform seam: install() and get()
         "platform/firmware/Platform.cpp",  // the firmware platform (createPlatform)
         "platform/firmware/Display.cpp",   // the firmware platform's Display (G7-display)
+        "platform/firmware/InputPolicy.cpp", // the firmware platform's InputPolicy (G7-input)
         "NanoMenu.cpp",
         "NanoLaunchCommit.cpp",            // the launch handshake's writes (G7-launch-a)
         "NanoMenuDrm.cpp",

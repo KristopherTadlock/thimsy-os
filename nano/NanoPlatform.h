@@ -68,11 +68,44 @@ class Display {
 };
 // --- end Display ---------------------------------------------------------------------------------
 
+// --- InputPolicy (G7-input) ----------------------------------------------------------------------
+// Who else gets the pads' events while Nano reads them. Nano's own evdev code (opening
+// /dev/input/event*, reading, hotplug) is the same on every platform; what differs is silencing.
+// The firmware's home grabs each device node as it opens it (EVIOCGRAB when
+// persist.gammaos.nano.grab_input is set) and releases the grab before closing it: that code, moved
+// from NanoMenuInput.cpp (platform/firmware/InputPolicy.cpp). On Linux the built-in pad is
+// thimsy-padd's, and silencing it is padd's intercept (sys.thimsy.padd.intercept), so Linux leaves
+// the device nodes alone (platform/linux/InputPolicy.cpp). The host's grabs as the firmware's does,
+// so its fake devices see the same grabs, and records each call (platform/host/FakeInput.cpp).
+class InputPolicy {
+ public:
+    virtual ~InputPolicy() = default;
+
+    // Where Nano opened a device node: openInputDevices' first scan, checkInputHotplug's IN_CREATE,
+    // or checkInputHotplug's once-a-second sweep for missed devices. The firmware's log lines name it.
+    enum class Opened { AtStart, Hotplugged, Swept };
+
+    // Render thread only (the NanoMenu thread: openInputDevices and checkInputHotplug).
+    // deviceOpened: Nano has just opened the node `path` as `fd` (O_RDONLY | O_NONBLOCK; fd >= 0),
+    // before it keeps the fd. deviceClosing: Nano is about to close `fd`, a device it opened whose
+    // node went away (IN_DELETE, or the sweep found it deleted).
+    virtual void deviceOpened(int fd, const char* path, Opened where) = 0;
+    virtual void deviceClosing(int fd) = 0;
+
+    // Any thread. Stops the built-in pad's events reaching anyone but Nano's menu (true), and gives
+    // them back (false), for a platform where the menu can be up while a game runs (Linux: padd's
+    // intercept; the menu then reads the pad from padd's tap). The firmware silences per device in
+    // deviceOpened and its home exits on a launch, so its version does nothing.
+    virtual void silenceGamePad(bool on) = 0;
+};
+// --- end InputPolicy -----------------------------------------------------------------------------
+
 // The platform's services. Empty until the first G7 step declares one. Each platform library
 // derives from it to keep its own state; services added later are members here.
 struct Platform {
     virtual ~Platform();
     std::unique_ptr<Display> display;  // G7-display: never null once createPlatform() returns
+    std::unique_ptr<InputPolicy> input;  // G7-input: never null once createPlatform() returns
 };
 
 struct PlatformArgs {
