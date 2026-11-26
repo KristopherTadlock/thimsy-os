@@ -33,10 +33,20 @@ BR2_PACKAGE_ALSA_UTILS_AMIXER=y
 # BR2_PACKAGE_ALSA_UTILS_ALSAMIXER is not set
 
 # Filesystems: the ext4 data partition, exFAT and FAT32 game drives (D10cards,
-# D60firstboot).
+# D60firstboot). e2fsck (S00base's "e2fsck -p" of the data partition) is part
+# of e2fsprogs' default install; mkfs.exfat comes from exfatprogs; sfdisk
+# (D60firstboot adds and retypes the games entry) from util-linux's basic set
+# (guess that sfdisk is in BR2_PACKAGE_UTIL_LINUX_BINARIES, as in 2025.02).
 BR2_PACKAGE_E2FSPROGS=y
 BR2_PACKAGE_EXFATPROGS=y
 BR2_PACKAGE_DOSFSTOOLS=y
 BR2_PACKAGE_DOSFSTOOLS_FSCK_FAT=y
+BR2_PACKAGE_UTIL_LINUX=y
+BR2_PACKAGE_UTIL_LINUX_BINARIES=y
+
+# BusyBox applets the init scripts use beyond Buildroot's default set: ip
+# (D30net), udhcpc, ntpd (D40time) and fractional sleep (rcK); see the
+# fragment file.
+BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_THIMSY_PATH)/board/common/busybox.fragment"
 
 BR2_TARGET_TZ_INFO=y

@@ -1,0 +1,30 @@
+# BusyBox options on top of Buildroot's default BusyBox config
+# (BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES, set by userland.fragment). Most
+# of these are already in that default; they are stated here because the init
+# scripts (board/common/rootfs-overlay, linux/docs/init.md) depend on them.
+# SPDX-License-Identifier: MIT
+
+# D30net: links up, addresses and routes for Wi-Fi; DHCP in the foreground of a
+# background job ("udhcpc -f -S -T 1 -A 2 -p PIDFILE").
+CONFIG_IP=y
+CONFIG_FEATURE_IP_ADDRESS=y
+CONFIG_FEATURE_IP_LINK=y
+CONFIG_FEATURE_IP_ROUTE=y
+CONFIG_UDHCPC=y
+CONFIG_FEATURE_UDHCPC_ARPING=y
+
+# D40time: "ntpd -n -p SERVER ...".
+CONFIG_NTPD=y
+
+# rcK waits in steps of "sleep 0.1".
+CONFIG_SLEEP=y
+CONFIG_FEATURE_FANCY_SLEEP=y
+CONFIG_FEATURE_FLOAT_SLEEP=y
+
+# Used by rcS, the S* and D* scripts and lib.sh's tool table.
+CONFIG_HOSTNAME=y
+CONFIG_MOUNT=y
+CONFIG_UMOUNT=y
+CONFIG_SYNC=y
+CONFIG_KILL=y
+CONFIG_MODPROBE=y

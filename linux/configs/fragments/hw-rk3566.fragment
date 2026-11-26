@@ -1,7 +1,12 @@
 # The RK3566 hardware pack (wave 0: the RG ARC-D and ARC-S). The kernel version,
 # DTB list and firmware come from generated/rk3566/defconfig.fragment, written
 # by hand in Phase 2a and by thimsy-import later (plan 3.2).
-BR2_ROOTFS_POST_SCRIPT_ARGS="hw rk3566"
+# --family=rk3566 makes post-build.sh and post-image.sh run board/rk3566/'s
+# own parts after the common ones (board/common/post-build.sh).
+BR2_ROOTFS_POST_SCRIPT_ARGS="hw rk3566 --family=rk3566"
+# override: the family's init files (its hook under /usr/share/thimsy/family/
+# rk3566/) ship in the family's hardware pack, on top of the common overlay
+BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_THIMSY_PATH)/board/common/rootfs-overlay $(BR2_EXTERNAL_THIMSY_PATH)/board/rk3566/common/rootfs-overlay"
 
 # Kernel: ROCKNIX's RK3566 config and patches (gpl/generated/rk3566/), then
 # FlipBase's RK3566-generic patches and Thimsy's (gpl/board/rk3566/), then

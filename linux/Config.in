@@ -1,6 +1,6 @@
 # Thimsy Base (BR2_EXTERNAL name THIMSY). Options that are not packages come
-# first; the packages are in package/Config.in. gpl/package/ gets its source
-# line here with its first recipe (G2d).
+# first; the packages are in package/Config.in, and the recipes ported from GPL
+# sources in gpl/package/Config.in (linux/gpl/README.md).
 
 menu "Thimsy image"
 
@@ -30,3 +30,4 @@ endchoice
 endmenu
 
 source "$BR2_EXTERNAL_THIMSY_PATH/package/Config.in"
+source "$BR2_EXTERNAL_THIMSY_PATH/gpl/package/Config.in"

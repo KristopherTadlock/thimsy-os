@@ -1,0 +1,7 @@
+# TODO(G10): the hashes are filled in at the first download, which is not
+# allowed now. With BR2_DOWNLOAD_FORCE_CHECK_HASHES the build refuses these
+# files until then, and linux/tools/lint_packages.py reports the package as
+# pending. One line per file:
+# sha256  <hash>  retroarch-1.22.2.tar.gz
+# sha256  <hash>  libretro-core-info-1.22.2.tar.gz
+# sha256  <hash>  COPYING
