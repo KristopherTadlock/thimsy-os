@@ -24,11 +24,13 @@ mode). THIMSY_SH overrides the shell.
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -637,7 +639,27 @@ class TestPropsAndFamily(WorldCase):
     def test_family_from_prop(self) -> None:
         self.w.run(INITD + "/S01props", "start", env={"THIMSY_FAKE_FAMILY": "rk3566"})
         self.assertEqual(self.w.read("run/thimsy/family"), "rk3566\n")
-        self.assertIn({"tool": "thimsy-prop", "args": ["boot"]}, self.w.calls())
+        calls = [c["args"] for c in self.w.calls() if c["tool"] == "thimsy-prop"]
+        self.assertEqual(len(calls), 1)
+        args = calls[0]
+        self.assertEqual(args[0], "boot")
+        self.assertEqual(len(args), 7)
+        opts = dict(zip(args[1::2], args[2::2]))
+        self.assertEqual(sorted(opts), ["--build", "--device", "--install"])
+        self.assertTrue(opts["--device"].endswith("/usr/share/thimsy/device.json"))
+        self.assertTrue(opts["--build"].endswith("/usr/share/thimsy/build.props"))
+        # G2e-14: the card's thimsy/ folder on the data partition, not /boot.
+        self.assertTrue(opts["--install"].endswith("/storage/thimsy/install.json"))
+
+    def test_install_json_path_matches_thimsy_prop(self) -> None:
+        # thimsy-prop's own default (for a shell user) is the path S01props passes.
+        path = LINUX.parent / "libthimsy" / "tools" / "thimsy-prop.cpp"
+        if not path.is_file():
+            self.skipTest("no libthimsy/ beside linux/")
+        src = path.read_text(encoding="utf-8")
+        self.assertIn('envOr("THIMSY_INSTALL_JSON", "/storage/thimsy/install.json")', src)
+        self.assertIn('envOr("THIMSY_DEVICE_JSON", "/usr/share/thimsy/device.json")', src)
+        self.assertIn('envOr("THIMSY_BUILD_PROPS", "/usr/share/thimsy/build.props")', src)
 
     def test_family_from_the_only_family_dir(self) -> None:
         self.w.run(INITD + "/S01props", "start")
@@ -663,6 +685,58 @@ class TestPropsAndFamily(WorldCase):
         self.assertEqual(self.w.read(cpu).strip(), "schedutil")
         self.assertEqual(self.w.read("sys/class/devfreq/fde60000.gpu/governor").strip(),
                          "simple_ondemand")
+
+    @unittest.skipUnless(os.name == "posix", "signals a real process")
+    def test_s02padd_stop(self) -> None:
+        for comm, killed in (("thimsy-padd", True), ("sleep", False)):
+            with self.subTest(comm=comm):
+                proc = subprocess.Popen(["sleep", "60"])
+                try:
+                    self.w.write("proc/%d/comm" % proc.pid, comm + "\n")
+                    self.w.write("run/thimsy/padd.pid", "%d\n" % proc.pid)
+                    self.w.run(INITD + "/S02padd", "stop")
+                    if killed:
+                        self.assertEqual(proc.wait(timeout=10), -15)
+                        self.assertIn("stopped thimsy-padd", self.w.boot_log())
+                    else:
+                        time.sleep(0.2)
+                        self.assertIsNone(proc.poll(), "a process that is not thimsy-padd was signalled")
+                        self.assertIn("thimsy-padd is not running", self.w.boot_log())
+                    self.assertFalse((self.w.root / "run/thimsy/padd.pid").exists())
+                finally:
+                    if proc.poll() is None:
+                        proc.kill()
+                        proc.wait()
+        # No pid file at all: nothing to do, and no error.
+        self.w.run(INITD + "/S02padd", "stop")
+
+    def test_fixedperf_actions(self) -> None:
+        # Run as Nano's control keys run it: sh hook fixedperf-on|off (G9-13).
+        hook = "usr/share/thimsy/family/rk3566/hook"
+        cpu = "sys/devices/system/cpu/cpufreq/policy0/scaling_governor"
+        gpu = "sys/class/devfreq/fde60000.gpu/governor"
+        self.w.run(hook, "fixedperf-on")
+        self.assertEqual(self.w.read(cpu).strip(), "performance")
+        self.assertEqual(self.w.read(gpu).strip(), "performance")
+        self.w.run(hook, "fixedperf-off")
+        self.assertEqual(self.w.read(cpu).strip(), "schedutil")
+        self.assertEqual(self.w.read(gpu).strip(), "simple_ondemand")
+        # Missing or read-only files are skipped, and the hook still succeeds.
+        (self.w.root / gpu).unlink()
+        (self.w.root / cpu).chmod(0o444)
+        try:
+            r = self.w.run(hook, "fixedperf-on")
+            self.assertEqual(r.returncode, 0)
+            self.assertEqual(r.stderr, b"")
+            if os.name == "posix" and os.geteuid() != 0:
+                self.assertEqual(self.w.read(cpu).strip(), "schedutil")
+        finally:
+            (self.w.root / cpu).chmod(0o644)
+        # The control-key table names exactly these two actions.
+        table = (LINUX.parent / "tools" / "nano-tree" / "control-keys.json")
+        if table.is_file():
+            routes = {r.get("route") for r in json.loads(table.read_text(encoding="utf-8"))["rows"]}
+            self.assertLessEqual({"hook:fixedperf-on", "hook:fixedperf-off"}, routes)
 
     def test_d10cards_skips_the_emmc(self) -> None:
         self.w.standard()

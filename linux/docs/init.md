@@ -153,10 +153,17 @@ release fragment, I37), else `dev`. The date is `SOURCE_DATE_EPOCH`'s.
 | `deferred` | `D05family` (sourced) | `schedutil`, `simple_ondemand` |
 | `sound-defaults` | `D20sound`, first boot only | `Playback Path` = `SPK_HP` |
 | `sleep-pre`, `sleep-post` | `thimsy-session` (run) | `deep` into `mem_sleep` |
+| `fixedperf-on`, `fixedperf-off` | Nano's control keys (run; `sys.gammaos.nano.fixedperf=1`/`0`, G9-13) | as `boot`, then as `deferred` |
 
-A hook must not call `exit`. Each family's files sit under
-`family/<family>/`, so a tier root can carry several families. The
-family's overlay must be in `BR2_ROOTFS_OVERLAY` (G2a's fragments).
+A hook must not call `exit`, and skips a governor file that is missing or
+refuses the value. Each family's files sit under `family/<family>/`, so a
+tier root can carry several families. The family's overlay is in its
+hardware pack's `BR2_ROOTFS_OVERLAY` (`hw-<family>.fragment`), and reaches
+each card's root when the card is put together (`post-image.d/lib/card.sh`).
+
+`ro.thimsy.family` and `ro.thimsy.modules` are written by `thimsy-prop boot`
+from `device.json`'s `family` and `modules` (the latter space-separated;
+`S03modules` loads them).
 
 ## Deferred services
 
