@@ -108,6 +108,20 @@ class AgainstAndroidBp(unittest.TestCase):
                      if p not in srcs]
         self.assertEqual(problems, [])
 
+    def test_platform_sections(self):
+        """[linux] is every platform/linux .cpp outside platform/linux/tests/, and [host] every
+        platform/host .cpp plus the headless main; both list NanoPlatform.cpp (G5-3) until G7-main
+        moves it to [core]."""
+        def cpps(prefix):
+            return [p for p in self.files if p.startswith(prefix) and p.endswith(".cpp")]
+        linux = [p for p in cpps("platform/linux/") if not p.startswith("platform/linux/tests/")]
+        self.assertTrue(linux, "no platform/linux sources")
+        self.assertEqual(sorted(self.src["linux"]), sorted(["NanoPlatform.cpp"] + linux))
+        self.assertEqual([p for p in self.src["linux"] if "/tests/" in p], [])
+        self.assertEqual(sorted(self.src["host"]),
+                         sorted(["NanoPlatform.cpp", "test/host/headless/main_headless.cpp"]
+                                + cpps("platform/host/")))
+
     def test_dropped_linux_subset_of_firmware(self):
         self.assertEqual(sorted(set(self.src["dropped-linux"]) - set(self.src["firmware"])), [])
 
