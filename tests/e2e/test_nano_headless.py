@@ -314,7 +314,10 @@ head -c 4 /dev/urandom | wc -c | grep -q 4 || fail "/dev/urandom"
 [ -p /dev/input/event0 ] || fail "event0 is no FIFO"
 [ -r /proc/self/maps ] || fail "no /proc/self/maps"
 grep -q MemTotal /proc/meminfo || fail "no /proc/meminfo"
-[ "$(cat /proc/1/comm)" != systemd ] || fail "the host's pid 1 is visible"
+# The jail's own /proc (its pid namespace's), not the host's: a handful of processes, and pid 1 in
+# this process's namespace. (A check on /proc/1/comm would pass on WSL, whose pid 1 is "init".)
+[ "$(ls /proc | grep -c '^[0-9][0-9]*$')" -le 10 ] || fail "the host's processes are visible in /proc"
+[ "$(readlink /proc/self/ns/pid)" = "$(readlink /proc/1/ns/pid 2>/dev/null)" ] || fail "/proc is not the jail's"
 [ ! -e /home ] || fail "/home is visible"
 [ -d /system/bin ] || fail "no /system/bin"
 [ -z "$(ls -A /system/bin)" ] || fail "/system/bin is not empty"
@@ -411,7 +414,10 @@ while True:
         if cmd[0] == "barrier": barrier = cmd[1] == "on"; grants = 0
         elif cmd[0] == "grant": grants += int(cmd[1])
         elif cmd[0] == "capture": capture = cmd[1]
-        elif cmd[0] == "quit": event("exit", code=0); sys.exit(0)
+        elif cmd[0] == "quit":
+            if os.environ.get("FAKE_ASAN_AT_QUIT"):
+                sys.stderr.write("==1==ERROR: AddressSanitizer: heap-use-after-free on address 0x1\n"); sys.stderr.flush()
+            event("exit", code=0); sys.exit(0)
     if barrier and grants == 0:
         time.sleep(0.005); continue
     if barrier: grants -= 1
@@ -431,6 +437,8 @@ while True:
             setprop("sys.gammaos.nano.launch_core", "/data/data/com.retroarch.aarch64/cores/snes9x_libretro_android.so")
             setprop("sys.gammaos.nano.launch_rom", "/storage/1234-ABCD/ROMs/snes/Test Game.sfc")
             setprop("sys.gammaos.nano.launch_app", "com.retroarch.aarch64")
+            if os.environ.get("FAKE_CRASH_BEFORE_DO_LAUNCH"):
+                os.abort()
             setprop("sys.gammaos.nano.do_launch", "1")
             launched = time.monotonic()
     if launched and time.monotonic() - launched > 0.2:
@@ -475,9 +483,10 @@ class RunnerWithAFakeNano(util.TestCase):
             self.skipTest("no /usr/bin/python3 to run the fake inside the jail")
         self.binary = self.write("bin/fake-nano-headless", FAKE_NANO, mode=0o755)
 
-    def run_text(self, text, work):
-        run = nano_scenario.HeadlessRun(self.binary, nano_scenario.parse(text, "fake"), self.path(work),
-                                        env={"PYTHONDONTWRITEBYTECODE": "1"})
+    def run_text(self, text, work, env=None):
+        e = {"PYTHONDONTWRITEBYTECODE": "1"}
+        e.update(env or {})
+        run = nano_scenario.HeadlessRun(self.binary, nano_scenario.parse(text, "fake"), self.path(work), env=e)
         run.play()
         return run
 
@@ -499,6 +508,93 @@ class RunnerWithAFakeNano(util.TestCase):
         self.assertIn("settings get global fake", str(cm.exception))
         # Unless the scenario allows it.
         self.run_text('{"boot": {"shell": {"unexpected": "allow"}}}\n{"expect": {"present_count_at_least": 1}}', "f3")
+
+    def test_a_crash_is_not_a_launch(self):
+        """test-quality-3: Nano aborting after launch_app but before do_launch is no hand-off."""
+        with self.assertRaises(nano_scenario.ScenarioFailure) as cm:
+            self.run_text(FAKE_SCENARIO, "crash", env={"FAKE_CRASH_BEFORE_DO_LAUNCH": "1"})
+        self.assertIn("launch", str(cm.exception))
+
+    def test_a_sanitizer_report_fails_the_scenario(self):
+        with self.assertRaises(nano_scenario.ScenarioFailure) as cm:
+            self.run_text('{"boot": {"shell": {"unexpected": "allow"}}}\n{"expect": {"present_count_at_least": 1}}\n'
+                          '{"quit": true}', "asan", env={"FAKE_ASAN_AT_QUIT": "1"})
+        self.assertIn("sanitizer reports", str(cm.exception))
+        self.assertIn("heap-use-after-free", str(cm.exception))
+
+
+class _Proc:
+    """A finished (or running: status None) process, for RunnerChecks."""
+
+    def __init__(self, status):
+        self.returncode = status
+
+    def poll(self):
+        return self.returncode
+
+
+@unittest.skipUnless(HAVE_NANO, "no nano/ in this checkout")
+class RunnerChecks(util.TestCase):
+    """HeadlessRun's exit, sanitizer and launch bookkeeping on recorded events, without a process."""
+
+    def run_over(self, events):
+        run = nano_scenario.HeadlessRun(self.path("bin", "nano-headless"), nano_scenario.parse('{"boot": {}}'),
+                                        self.path("work"))
+        run.events.all = list(events)
+        run.events.poll = lambda: []
+        return run
+
+    LAUNCH = [{"ev": "start"},
+              {"ev": "prop", "key": "sys.gammaos.nano.launch_core", "value": "/cores/snes9x_libretro_android.so"},
+              {"ev": "prop", "key": "sys.gammaos.nano.launch_rom", "value": "/ROMs/a.sfc"},
+              {"ev": "prop", "key": "sys.gammaos.nano.launch_app", "value": "com.retroarch.aarch64"}]
+
+    def test_a_crash_after_launch_app_is_no_commit(self):
+        run = self.run_over(self.LAUNCH)
+        run.proc = _Proc(-6)   # SIGABRT (abort_on_error=1)
+        self.assertFalse(run.launch_state()[1])
+        run.proc = _Proc(0)    # the firmware's hand-off: a clean exit
+        self.assertTrue(run.launch_state()[1])
+        run.proc = _Proc(None)
+        self.assertFalse(run.launch_state()[1])
+
+    def test_an_earlier_processs_launch_does_not_count_again(self):
+        """test-quality-6"""
+        run = self.run_over(self.LAUNCH + [{"ev": "prop", "key": "sys.gammaos.nano.do_launch", "value": "1"},
+                                           {"ev": "exit", "code": 0}, {"ev": "start"}])
+        run.proc = _Proc(None)
+        self.assertTrue(run.launch_state()[1])        # before the restart's bookkeeping
+        run.start_index = run.launch_from = 6         # what start() sets for the second process
+        keys, committed = run.launch_state()
+        self.assertFalse(committed)
+        self.assertEqual(keys["launch_rom"], "/ROMs/a.sfc")   # the store's values still show
+        run.events.all.append({"ev": "prop", "key": "sys.gammaos.nano.do_launch", "value": "1"})
+        self.assertTrue(run.launch_state()[1])
+        run.launch_from = len(run.events.all)         # an expect_launch matched it
+        self.assertFalse(run.launch_state()[1])
+
+    def test_exit_statuses_and_sanitizer_reports(self):
+        run = self.run_over([{"ev": "start"}])
+        run.starts = 1
+        run.proc = _Proc(0)
+        run.check_exits()
+        run.starts = 2
+        run.proc = _Proc(-6)
+        with self.assertRaises(nano_scenario.ScenarioFailure) as cm:
+            run.check_exits()
+        self.assertIn("nano-headless #2 died of signal 6", str(cm.exception))
+        run.check_exits()                             # reported once
+        run.starts = 3
+        run.proc = _Proc(1)
+        with self.assertRaises(nano_scenario.ScenarioFailure) as cm:
+            run.check_exits()
+        self.assertIn("#3 exited with status 1", str(cm.exception))
+        os.makedirs(os.path.dirname(run.log_path), exist_ok=True)
+        with open(run.log_path, "w", encoding="utf-8") as f:
+            f.write("ok\nsrc/x.cpp:3:5: runtime error: signed integer overflow\n")
+        with self.assertRaises(nano_scenario.ScenarioFailure) as cm:
+            run.check_exits()
+        self.assertIn("runtime error: signed integer overflow", str(cm.exception))
 
 
 @util.slow
