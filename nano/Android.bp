@@ -48,6 +48,7 @@ cc_binary {
         "NanoBootSequence.cpp",            // main()'s boot steps, shared with the Linux main
         "NanoPlatform.cpp",                // the platform seam: install() and get()
         "platform/firmware/Platform.cpp",  // the firmware platform (createPlatform)
+        "platform/firmware/Display.cpp",   // the firmware platform's Display (G7-display)
         "NanoMenu.cpp",
         "NanoMenuDrm.cpp",
         "NanoMenuDrmBuffers.cpp", // the render targets' buffer back end (AHardwareBuffer, gralloc)

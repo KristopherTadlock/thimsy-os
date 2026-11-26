@@ -21,9 +21,11 @@
 #include <memory>
 
 #include "NanoPlatform.h"
+#include "display/Display.h"  // G7-display
 
 std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs& /*args*/) {
     std::unique_ptr<Platform> platform(new Platform);
     // The services, one line each (G7 steps).
+    platform->display = nanolinux::display::create(nanolinux::display::createKms());  // G7-display
     return platform;
 }

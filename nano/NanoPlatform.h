@@ -38,10 +38,40 @@
 
 namespace nanoplat {
 
+// --- Display (G7-display) ------------------------------------------------------------------------
+// The panel: taken at start-up, and handed to a game's process and back. Render thread only (the
+// NanoMenu thread; its EGL context is current from readyToRun() on). The firmware's is readyToRun's
+// DRM splash decision, moved (platform/firmware/Display.cpp); Linux's always takes the panel and
+// applies the rotation contract (platform/linux/display/); the host's records what it did
+// (platform/host/FakeDisplay.cpp).
+class Display {
+ public:
+    virtual ~Display() = default;
+
+    // readyToRun(): takes the panel for Nano's own scanout (DRM master and the splash,
+    // drmEarlySplash) unless this process presents through SurfaceFlinger. `earlyDrmFd` is main()'s
+    // early DRM master fd, or -1; `overlayMode` is the --overlay instance; `forceSfPath` is
+    // readyToRun's rule for the SoCs whose composer must keep master. Returns the early fd still
+    // held, or -1; sDrmActive (NanoMenuDrm.h) tells whether the panel is Nano's.
+    virtual int startScanout(int earlyDrmFd, bool overlayMode, bool (*forceSfPath)()) = 0;
+
+    // The hand-off to a child process that becomes DRM master itself (a game), and back, for a
+    // platform where Nano keeps running while the child runs (Linux). The firmware's home exits on
+    // a launch instead, so its versions do nothing and return false.
+    // releaseForChild: waits for the flip in flight, disables Nano's overlay planes, frees the
+    // scanout ring and drops master; false when the panel was not Nano's.
+    // reacquire: takes master back (retrying while the child's file is still being closed),
+    // modesets and rebuilds the ring; false when the panel could not be taken back.
+    virtual bool releaseForChild() = 0;
+    virtual bool reacquire() = 0;
+};
+// --- end Display ---------------------------------------------------------------------------------
+
 // The platform's services. Empty until the first G7 step declares one. Each platform library
 // derives from it to keep its own state; services added later are members here.
 struct Platform {
     virtual ~Platform();
+    std::unique_ptr<Display> display;  // G7-display: never null once createPlatform() returns
 };
 
 struct PlatformArgs {
