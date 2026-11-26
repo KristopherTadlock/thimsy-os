@@ -20,11 +20,14 @@
 # A re-written card (device-safety-2): when the image is written again over a
 # card that already has a Thimsy library, the image ends 1 MiB before games
 # (genimage.cfg's size), so the library's exFAT is still there, boot region
-# and all. Before step 1, if the region at the start holds an exFAT labelled
-# THIMSY, entry 5 is created over its extent, typed basic data at once (the
-# filesystem is complete), and nothing is formatted. That is one sfdisk
-# write, so a power cut leaves either no entry 5 (adopted at the next boot)
-# or the adopted one. Anything else there is formatted as on a first boot.
+# and all. Before step 1, if the region at the start holds a complete exFAT
+# (whatever its label: the user may have renamed the library), entry 5 is
+# created over its extent, typed basic data at once, and nothing is
+# formatted. That is one sfdisk write, so a power cut leaves either no entry 5
+# (adopted at the next boot) or the adopted one. When the region can't be
+# read, nothing is done until the next boot: a read error never formats.
+# Anything else there (no exFAT, or one whose format was cut) is formatted as
+# on a first boot.
 #
 # An entry 5 of any other type or name is the user's and is left alone.
 . "${THIMSY_ROOT:-}/usr/share/thimsy/init/lib.sh"
@@ -124,44 +127,55 @@ le() {
 	[ "$_sh" -eq $(($2 * 8)) ]
 }
 
-# label_bytes LABEL: LABEL_OUT is LABEL as an exFAT volume-label entry has it
-# from its byte 1: the character count, then the characters in UTF-16LE
-# (ASCII labels only), as decimal bytes.
-label_bytes() {
-	_in=$1
-	_n=0
-	_chars=
-	while [ -n "$_in" ]; do
-		_c=${_in%"${_in#?}"}
-		_in=${_in#?}
-		_chars="$_chars $(printf '%d' "'$_c") 0"
-		_n=$((_n + 1))
+# label_entry BYTES...: the 32 bytes (decimal) of an exFAT volume-label entry.
+# LABEL_TEXT is its label: ASCII characters as they are, any other as '?'.
+label_entry() {
+	shift
+	_cnt=$1
+	[ "$_cnt" -le 11 ] || _cnt=11
+	LABEL_TEXT=
+	_k=0
+	while [ "$_k" -lt "$_cnt" ]; do
+		if [ "$3" -eq 0 ] && [ "$2" -ge 32 ] && [ "$2" -lt 127 ]; then
+			LABEL_TEXT=$LABEL_TEXT$(printf "\\$(printf '%03o' "$2")")
+		else
+			LABEL_TEXT="$LABEL_TEXT?"
+		fi
+		shift 2
+		_k=$((_k + 1))
 	done
-	LABEL_OUT="$_n$_chars"
 }
 
-# probe_library START: true when the region at sector START holds an exFAT
-# (boot sector: "EXFAT   ", 55 AA) whose root directory's volume-label entry
-# says THIMSY. ADOPT_SECTORS is its extent (VolumeLength) in disk sectors,
-# clamped to the disk.
+# probe_library START: what the region at sector START holds.
+#   0  a complete exFAT: the boot sector is one ("EXFAT   ", 55 AA, sane
+#      shifts and lengths) and the first cluster of the root directory has
+#      the allocation-bitmap (0x81) and up-case-table (0x82) entries. It is
+#      adopted whatever its label. ADOPT_SECTORS is its extent (VolumeLength)
+#      in disk sectors, clamped to the disk; ADOPT_LABEL its label ("" when it
+#      has none).
+#   1  no exFAT there, or one whose format was cut before its root directory.
+#   2  unknown: the region could not be read (dd or od failed).
 probe_library() {
 	ADOPT_SECTORS=0
+	ADOPT_LABEL=
 	_base=$(($1 * SSZ))
-	read_disk "$_base" 1 || return 1
-	_sig=$(od -A n -t u1 -v -j 3 -N 8 "$PROBE") || return 1
+	read_disk "$_base" 1 || return 2
+	_sig=$(od -A n -t u1 -v -j 3 -N 8 "$PROBE") || return 2
 	# shellcheck disable=SC2086
 	set -- $_sig
+	[ "$#" -eq 8 ] || return 2
 	[ "$*" = "69 88 70 65 84 32 32 32" ] || return 1
-	le 510 2 && [ "$LE_OUT" -eq 43605 ] || return 1
-	le 72 8 || return 1
+	le 510 2 || return 2
+	[ "$LE_OUT" -eq 43605 ] || return 1
+	le 72 8 || return 2
 	_vol_len=$LE_OUT
-	le 88 4 || return 1
+	le 88 4 || return 2
 	_heap=$LE_OUT
-	le 96 4 || return 1
+	le 96 4 || return 2
 	_root_cluster=$LE_OUT
-	le 108 1 || return 1
+	le 108 1 || return 2
 	_bpss=$LE_OUT
-	le 109 1 || return 1
+	le 109 1 || return 2
 	_spcs=$LE_OUT
 	[ "$_bpss" -ge 9 ] && [ "$_bpss" -le 12 ] && [ $((_bpss + _spcs)) -le 25 ] &&
 		[ "$_root_cluster" -ge 2 ] && [ "$_vol_len" -gt 0 ] || return 1
@@ -170,45 +184,38 @@ probe_library() {
 	[ "$_root" -lt "$_vol_len" ] || return 1
 	_cluster=$((1 << (_bpss + _spcs)))
 	[ "$_cluster" -le 4096 ] || _cluster=4096
-	read_disk $((_base + (_root << _bpss))) $((_cluster / 512)) || return 1
-	_dir=$(od -A n -t u1 -v "$PROBE") || return 1
+	read_disk $((_base + (_root << _bpss))) $((_cluster / 512)) || return 2
+	_dir=$(od -A n -t u1 -v "$PROBE") || return 2
 	rm -f "$PROBE"
-	label_bytes "$THIMSY_GAMES_LABEL"
-	_want=$LABEL_OUT
-	_found=
+	_bitmap= _upcase=
 	# shellcheck disable=SC2086
 	set -- $_dir
+	[ "$#" -ge 32 ] || return 2
 	while [ "$#" -ge 32 ]; do
 		case $1 in
 		0) break ;;   # the end of the directory
-		131)          # 0x83: the volume label
-			shift
-			_cnt=$1
-			_got=$1
-			_k=0
-			while [ "$_k" -lt $((2 * _cnt)) ] && [ "$_k" -lt 22 ]; do
-				shift
-				_got="$_got $1"
-				_k=$((_k + 1))
-			done
-			[ "$_got" = "$_want" ] && _found=1
-			break
+		129) _bitmap=1 ;;
+		130) _upcase=1 ;;
+		131)
+			label_entry "$@"
+			ADOPT_LABEL=$LABEL_TEXT
 			;;
 		esac
 		shift 32
 	done
-	[ -n "$_found" ] || return 1
+	[ -n "$_bitmap" ] && [ -n "$_upcase" ] || return 1
 	ADOPT_SECTORS=$(((_vol_len << _bpss) / SSZ))
 	_room=$((LAST_LBA + 1 - start))
 	if [ "$ADOPT_SECTORS" -gt "$_room" ]; then
 		thimsy_warn $TAG "the old library's exFAT runs past the card ($ADOPT_SECTORS > $_room sectors): entry 5 ends at the card's end"
 		ADOPT_SECTORS=$_room
 	fi
-	[ $((ADOPT_SECTORS / (1048576 / SSZ))) -ge "$THIMSY_GAMES_MIN_MIB" ]
+	return 0
 }
 
 # Steps 0 and 1. Returns 0 when entry 5 exists afterwards, 1 on an error,
-# 2 when there is no room for it. ADOPTED=1 when an old library was taken.
+# 2 when there is no room for it, 3 when the games start could not be read
+# (nothing created). ADOPTED=1 when an old library was taken.
 create_entry() {
 	ADOPTED=
 	align=$((1048576 / SSZ))
@@ -230,8 +237,25 @@ create_entry() {
 	fi
 	# --force: the disk is in use (root and /storage are mounted), which
 	# sfdisk refuses otherwise; it still tells the kernel about the new entry.
-	if probe_library "$start"; then
-		thimsy_warn $TAG "exFAT $THIMSY_GAMES_LABEL found at sector $start: re-adopting it as entry 5 ($ADOPT_SECTORS sectors, basic data), not formatting"
+	probe_library "$start"
+	probe=$?
+	if [ "$probe" -eq 2 ]; then
+		rm -f "$PROBE"
+		thimsy_warn $TAG "could not read $BOOT_DISK at sector $start: entry 5 not created, trying again at the next boot"
+		return 3
+	fi
+	if [ "$probe" -eq 0 ]; then
+		if [ -z "$ADOPT_LABEL" ]; then
+			_what="an exFAT without a label"
+		elif [ "$ADOPT_LABEL" = "$THIMSY_GAMES_LABEL" ]; then
+			_what="exFAT $THIMSY_GAMES_LABEL"
+		else
+			_what="an exFAT labelled \"$ADOPT_LABEL\""
+		fi
+		thimsy_warn $TAG "$_what found at sector $start: re-adopting it as entry 5 ($ADOPT_SECTORS sectors, basic data), not formatting"
+		if [ $((ADOPT_SECTORS / align)) -lt "$THIMSY_GAMES_MIN_MIB" ]; then
+			thimsy_warn $TAG "the adopted exFAT is under $THIMSY_GAMES_MIN_MIB MiB; it is kept as it is"
+		fi
 		printf 'start=%s, size=%s, type=%s, name="%s"\n' "$start" "$ADOPT_SECTORS" \
 			"$BASICDATA" "$THIMSY_GAMES_NAME" |
 			"$SFDISK" --force -N 5 "$DISK_DEV" >> "$LOG" 2>&1 || return 1
@@ -301,6 +325,7 @@ firstboot() {
 		create_entry
 		rc=$?
 		[ "$rc" -eq 2 ] && return 0
+		[ "$rc" -eq 3 ] && return 1
 		[ "$rc" -eq 0 ] || {
 			thimsy_warn $TAG "creating entry 5 failed"
 			return 1

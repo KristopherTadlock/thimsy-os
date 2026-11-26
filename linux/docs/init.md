@@ -251,21 +251,25 @@ region (sectors 0 to 23: main and backup boot regions) and all.
 before 2 MiB after it.
 
 Before step 1, D60 reads the boot sector at the computed start (`dd`, `od`).
-If it says `EXFAT   ` at byte 3 and ends in 55 AA, and the first cluster of
-the root directory has a volume-label entry (0x83) reading `THIMSY`, D60
-creates entry 5 over the filesystem's extent (`VolumeLength` shifted by
-`BytesPerSectorShift`, clamped to the card's last usable sector, at least
-64 MiB), typed **basic data** at once and named `games`, logs it, and runs
-no `mkfs`. That is one sfdisk write: a power cut leaves either no entry 5
-(adopted at the next boot) or the adopted entry, and the filesystem was
-complete before the entry existed, so a basic-data entry still never lacks
-one. Anything else at the start (another label, no label, a boot sector
-without its root directory, NTFS, zeros) is formatted as at a first boot,
-so a second-hand card still gets a fresh library. Not covered: a library
-the user relabelled (it is formatted), and a format that was cut between
-the boot sector and the root directory and then re-written over (its
-half-made exFAT can be adopted if its root directory already says THIMSY;
-the session's fsck then sees it).
+If it says `EXFAT   ` at byte 3, ends in 55 AA, has sane shifts and lengths,
+and the first cluster of the root directory has the allocation-bitmap (0x81)
+and up-case-table (0x82) entries (a complete exFAT), D60 creates entry 5
+over the filesystem's extent (`VolumeLength` shifted by
+`BytesPerSectorShift`, clamped to the card's last usable sector), typed
+**basic data** at once and named `games`, logs it with the volume's label,
+and runs no `mkfs`. The label does not matter (review finding
+linux-host-impls-4): a library the user renamed or cleared on a PC, or one
+under 64 MiB, is adopted as it is. That is one sfdisk write: a power cut
+leaves either no entry 5 (adopted at the next boot) or the adopted entry,
+and the filesystem was complete before the entry existed, so a basic-data
+entry still never lacks one. When `dd` or `od` fails, D60 creates nothing,
+warns (`could not read ...: trying again at the next boot`) and exits with
+an error: a read error never formats a library. Anything else at the start
+(a boot sector without its root directory, NTFS, zeros) is formatted as at
+a first boot, so a second-hand card still gets a fresh library. Not
+covered: a format that was cut after the root directory's entries were
+written and then re-written over (its half-made exFAT is adopted; the
+session's fsck then sees it).
 
 The partition is the alpha's library drive by default (I44): the
 session's volume policy accepts the boot disk's `games` partition and no

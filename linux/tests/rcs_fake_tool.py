@@ -225,14 +225,16 @@ def sniff_exfat(path: Path, offset: int) -> Optional[Dict[str, Any]]:
     bpss, spcs = boot[108], boot[109]
     root = heap + ((root_cluster - 2) << spcs)
     d = read_bytes(path, offset + (root << bpss), 4096)
-    label = None
+    label = ""
+    seen = set()
     for i in range(0, len(d) - 31, 32):
         if d[i] == 0:
             break
+        seen.add(d[i])
         if d[i] == 0x83:
             label = d[i + 2:i + 2 + 2 * d[i + 1]].decode("utf-16-le")
-            break
-    return {"type": "exfat", "label": label or "", "complete": label is not None}
+    # Complete: the root directory has its allocation bitmap and up-case table.
+    return {"type": "exfat", "label": label, "complete": {0x81, 0x82} <= seen}
 
 
 # --- tools ------------------------------------------------------------------------

@@ -156,7 +156,11 @@ mount)
 	esac
 	;;
 dd)
-	# The disk's bytes are dev/<disk>.img (rcs_fake_tool.py); none: a read error.
+	# The disk's bytes are dev/<disk>.img (rcs_fake_tool.py); none: a blank
+	# disk (zeros). THIMSY_FAKE_FAIL=dd: a read error.
+	case " ${THIMSY_FAKE_FAIL:-} " in
+	*" dd "*) exit 1 ;;
+	esac
 	n=$#
 	while [ "$n" -gt 0 ]; do
 		a=$1
@@ -165,7 +169,7 @@ dd)
 		case $a in
 		if=*)
 			a=if=${a#if=}.img
-			[ -f "${a#if=}" ] || exit 1
+			[ -f "${a#if=}" ] || a=if=/dev/zero
 			;;
 		esac
 		set -- "$@" "$a"
@@ -1244,36 +1248,76 @@ class TestD60Readopt(D60Case):
                 self.assert_done()
                 self.assert_invariant()
 
-    def test_anything_else_is_formatted(self) -> None:
-        """A second-hand card gets a fresh library: an exFAT with another label or none, a
-        boot sector without its root directory (a cut format), or no exFAT at all."""
-        for case in ("label OTHER", "no label", "torn", "ntfs", "zeros", "short volume"):
+    def world(self, prefix: str) -> Path:
+        """A fresh world for a subtest, booted from mmcblk1; the card's bytes' path."""
+        w = World(Path(tempfile.mkdtemp(prefix=prefix)))
+        self.addCleanup(shutil.rmtree, str(w.tmp), True)
+        self.w = w
+        w.standard()
+        w.cmdline("root=PARTUUID=11111111-0000-4000-8000-000000000003")
+        w.mounted_root("179:19")
+        self.others = {n: w.disk_bytes(n) for n in ("mmcblk0", "mmcblk2")}
+        return self.with_bytes(w)
+
+    def test_no_complete_exfat_is_formatted(self) -> None:
+        """A second-hand card gets a fresh library: a boot sector without its root directory
+        (a cut format), another filesystem, or nothing at all."""
+        for case in ("torn", "ntfs", "zeros"):
             with self.subTest(case=case):
-                w = World(Path(tempfile.mkdtemp(prefix="test-rcs-other-")))
-                self.addCleanup(shutil.rmtree, str(w.tmp), True)
-                self.w = w
-                w.standard()
-                w.cmdline("root=PARTUUID=11111111-0000-4000-8000-000000000003")
-                w.mounted_root("179:19")
-                self.others = {n: w.disk_bytes(n) for n in ("mmcblk0", "mmcblk2")}
-                img = self.with_bytes(w)
+                img = self.world("test-rcs-other-")
                 off = GAMES_START * 512
-                size = 4 * 1024 * MIB * 512
-                if case == "label OTHER":
-                    fake.write_exfat(img, off, size, "OTHER")
-                elif case == "no label":
-                    fake.write_exfat(img, off, size, "")
-                elif case == "torn":
-                    fake.write_exfat(img, off, size, "THIMSY", complete=False)
+                if case == "torn":
+                    fake.write_exfat(img, off, 4 * 1024 * MIB * 512, "THIMSY", complete=False)
                 elif case == "ntfs":
                     fake.patch_bytes(img, off + 3, b"NTFS    ")
-                elif case == "short volume":   # under THIMSY_GAMES_MIN_MIB
-                    fake.write_exfat(img, off, 32 * MIB * 512, "THIMSY")
-                w.run(self.D60, "start")
+                self.w.run(self.D60, "start")
                 self.assertEqual(self.steps(), ["relocate", "create", "mkfs", "retype"])
                 self.assert_done()
                 self.assertEqual(fake.sniff_exfat(img, off),
                                  {"type": "exfat", "label": "THIMSY", "complete": True})
+
+    def test_a_renamed_or_small_library_is_adopted(self) -> None:
+        """REV4 (linux-host-impls-4): a complete exFAT at the games start is the old library
+        whatever its label (the user renamed or cleared it on a PC) or size: adopted, not
+        formatted."""
+        for case, label, mib, what in (("label OTHER", "OTHER", 4 * 1024, 'an exFAT labelled "OTHER"'),
+                                       ("no label", "", 4 * 1024, "an exFAT without a label"),
+                                       ("short volume", "THIMSY", 32, "exFAT THIMSY")):
+            with self.subTest(case=case):
+                img = self.world("test-rcs-renamed-")
+                off = GAMES_START * 512
+                fake.write_exfat(img, off, mib * MIB * 512, label)
+                fake.patch_bytes(img, off + 20 * MIB * 512, self.MARK)
+                self.w.run(self.D60, "start")
+                self.assertEqual(self.steps(), ["relocate", "create"])  # no mkfs, no retype
+                p5 = self.w.disk("mmcblk1")["parts"]["5"]
+                self.assertEqual((p5["start"], p5["size"], p5["type"], p5["name"]),
+                                 (GAMES_START, mib * MIB, BASICDATA, "games"))
+                self.assertEqual(fake.read_bytes(img, off + 20 * MIB * 512, len(self.MARK)), self.MARK)
+                self.assertEqual(fake.sniff_exfat(img, off), {"type": "exfat", "label": label, "complete": True})
+                self.assertIn(what + " found at sector %d: re-adopting" % GAMES_START, self.w.boot_log())
+                if case == "short volume":
+                    self.assertIn("under 64 MiB; it is kept", self.w.boot_log())
+                self.assert_invariant()
+                self.assert_others_untouched()
+
+    def test_a_read_error_formats_nothing(self) -> None:
+        """REV4 (linux-host-impls-4): when the games start can't be read, no entry is made and
+        nothing is formatted; the next boot reads it and adopts the library."""
+        p5 = self.library()
+        self.rewrite_image()
+        r = self.w.run(self.D60, "start", env={"THIMSY_FAKE_FAIL": "dd"}, check=False)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertEqual(self.steps(), ["relocate"])  # no create, no mkfs
+        self.assertNotIn("5", self.w.disk("mmcblk1")["parts"])
+        self.assertIn("could not read mmcblk1 at sector %d" % GAMES_START, self.w.boot_log())
+        self.assertNotIn("creating entry 5 failed", self.w.boot_log())
+        self.w.clear_calls()
+        self.w.reboot()
+        self.w.run(self.D60, "start")
+        self.assertEqual(self.steps(), ["create"])
+        self.assert_kept(p5)
+        self.assert_done()
 
     def test_library_longer_than_the_card_is_clamped(self) -> None:
         fake.write_exfat(self.img, GAMES_START * 512, 64 * 1024 * MIB * 512, "THIMSY")
