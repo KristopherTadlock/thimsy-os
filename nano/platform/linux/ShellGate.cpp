@@ -476,7 +476,7 @@ std::pair<int, std::string> runRoutes(const Decision& d) {
             out += "\n";
         } else if (c.route == "powerctl") {
             std::string v;
-            if (a[0] == "svc") {
+            if (c.tool == "svc") {   // the tool's name: also /system/bin/svc
                 v = a[2] == "shutdown" ? "shutdown" : "reboot";
                 if (a.size() > 3) v += "," + a[3];
             } else {   // reboot [-p | reason]
