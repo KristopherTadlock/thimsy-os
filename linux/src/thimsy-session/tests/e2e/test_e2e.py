@@ -122,6 +122,13 @@ echo "$(basename "$0") $*" >> "$THIMSY_ROOT/commands.log"
 
 LONG_RUNNING = TOOL + "exec sleep 1000\n"
 
+# Nano also records the GPU pack's environment it was given (gpu.json's "env").
+NANO = TOOL + 'echo "nano-env GALLIUM_DRIVER=${GALLIUM_DRIVER-unset}" >> "$THIMSY_ROOT/commands.log"\n' + \
+    "exec sleep 1000\n"
+
+# As thimsy-gpu-pack writes it for the swrast pack.
+GPU_JSON = {"driver": "swrast", "env": {"GALLIUM_DRIVER": "softpipe"}, "files": ["usr/lib/libEGL.so.1"]}
+
 DEVICE_JSON = {
     "id": "anbernic-rg-arc-d",
     "family": "rk3566",
@@ -252,13 +259,14 @@ def build_root(base: str) -> Root:
     os.makedirs(r.p("/run/thimsy/props/ro"), exist_ok=True)
     os.makedirs(r.p("/storage/.config/thimsy"), exist_ok=True)
     r.write("/usr/share/thimsy/device.json", json.dumps(DEVICE_JSON))
+    r.write("/usr/share/thimsy/gpu.json", json.dumps(GPU_JSON, indent=1))
     r.write("/usr/share/thimsy/family/rk3566/hook", TOOL.replace("$(basename \"$0\")", "hook"), 0o755)
     r.write("/etc/init.d/rcD", TOOL.replace("$(basename \"$0\")", "rcD"), 0o755)
     r.write("/etc/init.d/deferred/D30net", TOOL.replace("$(basename \"$0\")", "D30net"), 0o755)
 
     for name in ("mount", "umount", "fsck.exfat", "fsck.fat", "e2fsck", "amixer", "poweroff", "reboot"):
         r.tool(name)
-    r.tool("thimsy-nano", LONG_RUNNING)
+    r.tool("thimsy-nano", NANO)
     r.tool("thimsy-padd", LONG_RUNNING)
     r.tool("thimsy-nano-scrape", TOOL + "sleep 0.2\n")
     return r
@@ -387,6 +395,11 @@ class BootDrivesKeysAndRequests(SessionCase):
         self.assertTrue(os.path.exists(self.r.p("/run/thimsy/nano.pid")))
         self.assertTrue(os.path.exists(self.r.p("/run/thimsy/padd.pid")))
 
+    def test_01b_nano_gets_the_gpu_environment(self):
+        wait_for(lambda: self.ran("nano-env"), what="Nano's environment")
+        self.assertEqual(self.ran("nano-env"), ["nano-env GALLIUM_DRIVER=softpipe"])
+        self.assertIn("GPU environment for Nano: GALLIUM_DRIVER=softpipe", self.log())
+
     def test_02_first_frame_runs_the_deferred_services_once(self):
         self.assertEqual(self.ran("rcD"), [])
         self.set_prop("sys.thimsy.nano.first_frame", "1")
@@ -395,6 +408,8 @@ class BootDrivesKeysAndRequests(SessionCase):
         time.sleep(0.3)
         self.assertEqual(self.ran("rcD"), ["rcD start"])
         self.assertTrue(os.path.exists(self.r.p("/run/thimsy/session/deferred-started")))
+        # Nano's control keys set sys.boot_completed at its first frame (G9-11); the session never.
+        self.assertFalse(os.path.exists(self.r.p("/run/thimsy/props/sys.boot_completed")))
 
     def test_03_coldplug_mounts_only_the_second_cards_data_drive(self):
         for name, devtype in (("mmcblk0", "disk"), ("mmcblk0p1", "partition"), ("mmcblk0boot0", "disk"),

@@ -22,6 +22,7 @@
 #include <set>
 #include <vector>
 
+#include "core/GpuEnv.h"
 #include "core/KeyMachine.h"
 #include "core/NanoJail.h"
 #include "core/Requests.h"
@@ -51,6 +52,7 @@ constexpr const char* kLogDir = "/run/thimsy/log";
 constexpr const char* kVolumesJson = "/run/thimsy/volumes.json";
 constexpr const char* kMediaRwDir = "/run/thimsy/media_rw";
 constexpr const char* kDeviceJson = "/usr/share/thimsy/device.json";
+constexpr const char* kGpuJson = "/usr/share/thimsy/gpu.json";
 constexpr const char* kDeferredMarker = "/run/thimsy/session/deferred-started";
 
 constexpr const char* kKeyFirstFrame = "sys.thimsy.nano.first_frame";
@@ -105,6 +107,7 @@ class Session {
     void kmsg(const std::string& msg);
 
     void loadDeviceFacts();
+    void loadGpuEnv();
     void loadBootDisk();
     std::vector<std::string> jailPlan() const;
     void killOrphanNano();
@@ -161,6 +164,7 @@ class Session {
     BootDisk boot_;
     std::string family_;
     std::string memSleepPref_;
+    std::vector<std::string> gpuEnv_;   // gpu.json's "env", for Nano (and so its games)
     std::string audioCard_ = "0";
     KeyConfig keyConfig_;
     int volumeLevel_ = 60;
@@ -259,6 +263,26 @@ void Session::loadDeviceFacts() {
     }
     int64_t v = 0;
     if (parseInt64(store_->get(kKeyAudioVolume), &v) && v >= 0 && v <= 100) volumeLevel_ = static_cast<int>(v);
+}
+
+// The GPU pack's environment (core/GpuEnv.h): read once, as the root is read-only.
+void Session::loadGpuEnv() {
+    std::string text;
+    if (!readFile(P(kGpuJson), &text)) {
+        log("no gpu.json: Nano gets no GPU environment");
+        return;
+    }
+    std::string err;
+    std::vector<std::string> skipped;
+    if (!gpuEnvFromJson(text, &gpuEnv_, &err, &skipped)) {
+        log(err + ": Nano gets no GPU environment");
+        gpuEnv_.clear();
+        return;
+    }
+    for (const std::string& k : skipped) log("gpu.json: env \"" + k + "\" left out (bad name or value)");
+    std::string all;
+    for (const std::string& kv : gpuEnv_) all += " " + kv;
+    log("GPU environment for Nano:" + (all.empty() ? std::string(" none") : all));
 }
 
 void Session::loadBootDisk() {
@@ -363,6 +387,7 @@ bool Session::init() {
         return false;
     }
     loadDeviceFacts();
+    loadGpuEnv();
     keys_ = KeyMachine(keyConfig_);
     loadBootDisk();
     if (!family_.empty()) log("family " + family_);
@@ -448,6 +473,7 @@ void Session::runSup(const std::vector<SupAction>& acts) {
             case SupKind::SpawnNano: {
                 SpawnSpec s;
                 s.argv = {tool(opts_.nanoPath)};
+                s.env = gpuEnv_;   // the games Nano starts inherit it
                 s.logFile = P(std::string(kLogDir) + "/nano.log");
                 std::vector<std::string> plan = jailPlan();
                 if (opts_.fakeHw) {
