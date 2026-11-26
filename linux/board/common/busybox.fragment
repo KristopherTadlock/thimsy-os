@@ -16,6 +16,9 @@ CONFIG_FEATURE_UDHCPC_ARPING=y
 # D40time: "ntpd -n -p SERVER ...".
 CONFIG_NTPD=y
 
+# D35bluetooth: one start or stop at a time ("flock 9" on its lock file).
+CONFIG_FLOCK=y
+
 # rcK waits in steps of "sleep 0.1".
 CONFIG_SLEEP=y
 CONFIG_FEATURE_FANCY_SLEEP=y

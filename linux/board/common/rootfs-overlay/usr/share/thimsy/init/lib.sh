@@ -45,6 +45,7 @@ thimsy_tool DROPBEARKEY dropbearkey
 thimsy_tool DBUS_DAEMON dbus-daemon
 thimsy_tool DBUS_UUIDGEN dbus-uuidgen
 thimsy_tool BLUETOOTHD bluetoothd
+thimsy_tool FLOCK flock
 
 # Tunables; /etc/thimsy/init.conf may override them.
 THIMSY_DATA_MOUNT_OPTS=noatime,nosuid,nodev

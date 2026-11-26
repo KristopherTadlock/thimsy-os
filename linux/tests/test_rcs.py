@@ -138,7 +138,7 @@ class World:
     PY_TOOLS = ["sfdisk", "mkfs.exfat"]
     SH_TOOLS = ["mount", "umount", "e2fsck", "sync", "modprobe", "thimsy-prop",
                 "thimsy-padd", "amixer", "alsactl", "dd", "chown", "dropbear",
-                "dropbearkey", "dbus-daemon", "dbus-uuidgen", "bluetoothd"]
+                "dropbearkey", "dbus-daemon", "dbus-uuidgen", "bluetoothd", "flock"]
     # The trivial fakes: log the call (as rcs_fake_tool.log_call does), fail
     # without an effect after a power cut, and do the little each one does.
     SH_FAKE = r"""#!/bin/sh
@@ -288,6 +288,24 @@ exit 0
                    "23 22 0:5 / /dev rw,nosuid shared:2 - devtmpfs devtmpfs rw\n" % majmin)
 
     # running ------------------------------------------------------------------
+    def popen(self, rel: str, *args: str) -> subprocess.Popen:
+        """rel in the background, with run()'s environment."""
+        assert SH is not None
+        return subprocess.Popen(SH + [posix(self.root / rel)] + list(args), env=self._env(None),
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    def _env(self, env: Optional[Dict[str, str]]) -> Dict[str, str]:
+        e = dict(os.environ)
+        e.update({"THIMSY_ROOT": posix(self.root), "THIMSY_TOOLDIR": posix(self.bin),
+                  "THIMSY_FAKE_LOG": posix(self.log), "LC_ALL": "C"})
+        for k in ("THIMSY_FAKE_POWERCUT", "THIMSY_FAKE_FAIL", "THIMSY_FAKE_FAMILY",
+                  "THIMSY_FAKE_MODULES"):
+            e.pop(k, None)
+        e.update(self.env_extra)
+        if env:
+            e.update(env)
+        return e
+
     def run(self, rel: str, *args: str, env: Optional[Dict[str, str]] = None,
             check: bool = True) -> subprocess.CompletedProcess:
         assert SH is not None
@@ -1113,7 +1131,8 @@ class TestD35Bluetooth(WorldCase):
 
     @unittest.skipUnless(os.name == "posix", "the shell's kill needs the processes' own pids")
     def test_stop_ends_bluetoothd_then_the_bus(self) -> None:
-        # Two real processes stand in for the daemons, each noting its TERM.
+        # Two real processes stand in for the daemons, each noting its TERM; the fake /proc says
+        # which daemon each is.
         log = self.w.root / "order.log"
         procs = []
         for name in ("bluetoothd", "dbus-daemon"):
@@ -1124,6 +1143,8 @@ class TestD35Bluetooth(WorldCase):
             time.sleep(0.5)
             self.w.write("run/bluetoothd.pid", "%d\n" % procs[0].pid)
             self.w.write("run/dbus-daemon.pid", "%d\n" % procs[1].pid)
+            self.w.write("proc/%d/comm" % procs[0].pid, "bluetoothd\n")
+            self.w.write("proc/%d/comm" % procs[1].pid, "dbus-daemon\n")
             self.w.run(self.D35, "stop")
             for p in procs:
                 p.wait(timeout=10)
@@ -1132,6 +1153,63 @@ class TestD35Bluetooth(WorldCase):
             for p in procs:
                 if p.poll() is None:
                     p.kill()
+
+
+    @unittest.skipUnless(os.name == "posix", "the shell's kill needs the processes' own pids")
+    def test_a_pid_that_is_not_the_daemon_is_left_alone(self) -> None:
+        # w5-linux-4: a daemon that died leaves its pidfile, and the pid may be another process's by
+        # now. stop does not signal it, and start does not take it for bluetoothd.
+        other = subprocess.Popen(["sleep", "60"])
+        try:
+            self.w.write("proc/%d/comm" % other.pid, "sleep\n")
+            for pid in ("run/bluetoothd.pid", "run/dbus-daemon.pid"):
+                self.w.write(pid, "%d\n" % other.pid)
+            self.w.run(self.D35, "stop")
+            time.sleep(0.3)
+            self.assertIsNone(other.poll())
+            for pid in ("run/bluetoothd.pid", "run/dbus-daemon.pid"):
+                self.assertFalse((self.w.root / pid).exists(), pid)
+            self.device("true", "1")
+            for pid in ("run/bluetoothd.pid", "run/dbus-daemon.pid"):
+                self.w.write(pid, "%d\n" % other.pid)
+            self.w.run(self.D35, "start")
+            end = time.monotonic() + 10
+            while len(self.daemon_calls()) < 3 and time.monotonic() < end:
+                time.sleep(0.05)
+            self.assertEqual([t for t, _ in self.daemon_calls()], ["dbus-uuidgen", "dbus-daemon", "bluetoothd"])
+            self.assertNotEqual(self.w.read("run/bluetoothd.pid").strip(), str(other.pid))
+            self.assertIsNone(other.poll())
+        finally:
+            other.kill()
+            other.wait()
+
+    @unittest.skipUnless(os.name == "posix" and shutil.which("flock") is not None,
+                         "needs flock(1) and fcntl")
+    def test_one_start_or_stop_at_a_time(self) -> None:
+        # w5-linux-5: rcD's start and Nano's switch may overlap. Each waits for the lock; start then
+        # reads the switch again.
+        import fcntl
+        (self.w.bin / "flock").unlink()  # the real flock(1)
+        self.device("true", "1")
+        lock = self.w.root / "run/thimsy/bluetooth.lock"
+        with open(str(lock), "a") as held:
+            fcntl.flock(held.fileno(), fcntl.LOCK_EX)
+            start = self.w.popen(self.D35, "start")
+            stop = self.w.popen(self.D35, "stop")
+            time.sleep(0.7)
+            self.assertIsNone(start.poll())
+            self.assertIsNone(stop.poll())
+            self.assertEqual(self.daemon_calls(), [])
+            # The switch went off meanwhile (its stop is the one waiting).
+            self.w.write("storage/.config/thimsy/persist.props", "persist.thimsy.bluetooth.enabled=0\n")
+            fcntl.flock(held.fileno(), fcntl.LOCK_UN)
+        self.assertEqual(start.wait(timeout=30), 0)
+        self.assertEqual(stop.wait(timeout=30), 0)
+        for p in (start, stop):
+            p.stdout.close()
+            p.stderr.close()
+        self.assertEqual(self.daemon_calls(), [])
+        self.assertFalse((self.w.root / "run/bluetoothd.pid").exists())
 
 
 class TestStateLinks(unittest.TestCase):

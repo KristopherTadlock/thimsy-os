@@ -18,6 +18,14 @@
 # own and none of Nano's descriptors (nano/platform/linux/actions/Run.cpp), so
 # the daemons outlive a restart of Nano and hold none of its evdev grabs.
 #
+# One start or stop at a time: rcD's start at boot can still be waiting for
+# the controller when Nano's switch (its actions worker, or the PS3 wizard's
+# thread) runs this again. Each holds /run/thimsy/bluetooth.lock (flock on
+# fd 9, which the daemons are started without), and start reads the switch
+# again once it holds it. A pidfile is trusted only while its process runs
+# and is that daemon (/proc/PID/comm): a daemon that died leaves its pidfile,
+# and pids are reused.
+#
 # Exit status: 0 when nothing was asked for or bluetoothd runs; 3 when it was
 # asked for and this device has no Bluetooth: device.json says none, the
 # kernel has none (no /sys/class/bluetooth: S03modules has loaded every
@@ -34,6 +42,10 @@ BTD_PID=$R/run/bluetoothd.pid
 # recipe's paths).
 DBUS_SOCKET=$R/run/dbus/system_bus_socket
 STATE_DIR=$THIMSY_CONFIG/bluetooth
+LOCK=$R/run/thimsy/bluetooth.lock
+# The daemons' names as /proc/PID/comm shows them (both under 16 bytes).
+BTD_NAME=${BLUETOOTHD##*/}
+DBUS_NAME=${DBUS_DAEMON##*/}
 
 # BlueZ installs bluetoothd in its libexec directory, not on PATH.
 bluetoothd_path() {
@@ -49,34 +61,67 @@ bluetoothd_path() {
 	return 1
 }
 
-# pid_alive FILE: true when FILE holds the pid of a running process.
-pid_alive() {
+# pid_is PID NAME: true when PID runs and is NAME (its /proc/PID/comm).
+pid_is() {
+	kill -0 "$1" 2>/dev/null || return 1
+	[ -r "$R/proc/$1/comm" ] || return 1
+	comm=
+	read -r comm < "$R/proc/$1/comm" || :
+	[ "$comm" = "$2" ]
+}
+
+# pid_of FILE NAME: true when FILE holds the pid of a running NAME, in
+# PID_OUT. A pidfile that names no process, or another one, is removed.
+pid_of() {
+	PID_OUT=
 	[ -r "$1" ] || return 1
 	pid=
 	read -r pid < "$1" || :
 	case $pid in
-	'' | *[!0-9]*) return 1 ;;
+	'' | *[!0-9]*) ;;
+	*)
+		if pid_is "$pid" "$2"; then
+			PID_OUT=$pid
+			return 0
+		fi
+		;;
 	esac
-	kill -0 "$pid" 2>/dev/null
+	rm -f "$1"
+	return 1
 }
 
-# stop_pidfile FILE: TERM the process FILE names, wait up to 2 s for it,
-# then KILL it.
-stop_pidfile() {
-	[ -r "$1" ] || return 0
-	pid=
-	read -r pid < "$1" || :
-	rm -f "$1"
-	case $pid in
-	'' | *[!0-9]*) return 0 ;;
-	esac
-	kill -TERM "$pid" 2>/dev/null || return 0
+# wait_exec PID NAME: up to 1 s for a background job just started to become
+# NAME (until it execs, its comm is this shell's), so its pidfile is trusted.
+wait_exec() {
 	i=0
-	while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 20 ]; do
+	while kill -0 "$1" 2>/dev/null && ! pid_is "$1" "$2" && [ "$i" -lt 10 ]; do
 		sleep 0.1 2>/dev/null || sleep 1
 		i=$((i + 1))
 	done
-	kill -KILL "$pid" 2>/dev/null || :
+}
+
+# stop_pidfile FILE NAME: TERM the NAME FILE names, wait up to 2 s for it,
+# then KILL it if that same process is still there.
+stop_pidfile() {
+	pid_of "$1" "$2" || return 0
+	rm -f "$1"
+	pid=$PID_OUT
+	kill -TERM "$pid" 2>/dev/null || return 0
+	i=0
+	while pid_is "$pid" "$2" && [ "$i" -lt 20 ]; do
+		sleep 0.1 2>/dev/null || sleep 1
+		i=$((i + 1))
+	done
+	if pid_is "$pid" "$2"; then
+		kill -KILL "$pid" 2>/dev/null || :
+	fi
+}
+
+# take_lock: hold $LOCK (fd 9) until this script exits.
+take_lock() {
+	mkdir -p "${LOCK%/*}"
+	exec 9>> "$LOCK"
+	"$FLOCK" 9 || thimsy_warn $TAG "flock $LOCK failed ($?); going on without it"
 }
 
 # wait_for_controller: true once the kernel has a Bluetooth controller (the
@@ -94,11 +139,11 @@ wait_for_controller() {
 }
 
 start_bus() {
-	pid_alive "$DBUS_PID" && return 0
+	pid_of "$DBUS_PID" "$DBUS_NAME" && return 0
 	mkdir -p "$R/run/dbus" "$R/tmp/dbus"
-	"$DBUS_UUIDGEN" --ensure > /dev/null 2>&1 || thimsy_log $TAG "dbus-uuidgen failed ($?)"
+	"$DBUS_UUIDGEN" --ensure > /dev/null 2>&1 9>&- || thimsy_log $TAG "dbus-uuidgen failed ($?)"
 	rm -f "$DBUS_SOCKET"
-	"$DBUS_DAEMON" --system --nofork --nopidfile > /dev/null 2>&1 &
+	"$DBUS_DAEMON" --system --nofork --nopidfile > /dev/null 2>&1 9>&- &
 	printf '%s\n' "$!" > "$DBUS_PID"
 	# bluetoothd needs the bus: wait for its socket, 3 s at most.
 	i=0
@@ -113,12 +158,16 @@ case ${1:-start} in
 start)
 	thimsy_persist persist.thimsy.bluetooth.enabled 0
 	[ "$PERSIST_OUT" = 1 ] || exit 0
+	take_lock
+	# A stop may have run (and the switch gone off) while this waited.
+	thimsy_persist persist.thimsy.bluetooth.enabled 0
+	[ "$PERSIST_OUT" = 1 ] || exit 0
 	thimsy_ro ro.thimsy.device.bluetooth false
 	if [ "$RO_OUT" != true ]; then
 		thimsy_log $TAG "Bluetooth is on, but this device has none (device.json)"
 		exit 3
 	fi
-	pid_alive "$BTD_PID" && exit 0
+	pid_of "$BTD_PID" "$BTD_NAME" && exit 0
 	if ! bluetoothd_path; then
 		thimsy_warn $TAG "Bluetooth is on, but bluetoothd is not on this image"
 		exit 1
@@ -135,16 +184,19 @@ start)
 	chmod 0700 "$STATE_DIR"
 	if ! start_bus; then
 		thimsy_warn $TAG "the D-Bus system bus did not start"
-		stop_pidfile "$DBUS_PID"
+		stop_pidfile "$DBUS_PID" "$DBUS_NAME"
 		exit 1
 	fi
-	"$BTD" -n > /dev/null 2>&1 &
-	printf '%s\n' "$!" > "$BTD_PID"
+	"$BTD" -n > /dev/null 2>&1 9>&- &
+	btd=$!
+	printf '%s\n' "$btd" > "$BTD_PID"
+	wait_exec "$btd" "$BTD_NAME"
 	thimsy_log $TAG "D-Bus and bluetoothd started"
 	;;
 stop)
-	stop_pidfile "$BTD_PID"
-	stop_pidfile "$DBUS_PID"
+	take_lock
+	stop_pidfile "$BTD_PID" "$BTD_NAME"
+	stop_pidfile "$DBUS_PID" "$DBUS_NAME"
 	;;
 *)
 	echo "usage: $0 start|stop" >&2
