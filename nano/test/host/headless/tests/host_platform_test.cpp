@@ -144,6 +144,10 @@ TEST(HostPlatform, CreateWiresTheChannel) {
     ASSERT_TRUE(p->display != nullptr);
     EXPECT_EQ(p->display->startScanout(-1, false, nullptr), -1);
     EXPECT_FALSE(p->display->releaseForChild());
+    // G7-power: the fake power and system actions.
+    ASSERT_TRUE(p->power != nullptr);
+    ASSERT_TRUE(p->actions != nullptr);
+    p->power->powerAction("reboot");
     EXPECT_EQ(property_set("sys.gammaos.nano.launch_app", "com.example"), 0);
     EXPECT_EQ(property_set("persist.gammaos.nano.theme", "xmb"), 0);
     EXPECT_EQ(property_set("debug.unrecorded", "1"), 0);
@@ -151,6 +155,7 @@ TEST(HostPlatform, CreateWiresTheChannel) {
     EXPECT_NE(log.find("{\"ev\":\"start\""), std::string::npos);
     EXPECT_NE(log.find("{\"ev\":\"display\""), std::string::npos);
     EXPECT_NE(log.find("\"op\":\"start\",\"w\":0,\"h\":0"), std::string::npos);
+    EXPECT_NE(log.find("\"op\":\"action\",\"action\":\"reboot\""), std::string::npos);
     EXPECT_NE(log.find("\"key\":\"sys.gammaos.nano.launch_app\",\"value\":\"com.example\""), std::string::npos);
     EXPECT_NE(log.find("\"key\":\"persist.gammaos.nano.theme\",\"value\":\"xmb\""), std::string::npos);
     EXPECT_EQ(log.find("debug.unrecorded"), std::string::npos);

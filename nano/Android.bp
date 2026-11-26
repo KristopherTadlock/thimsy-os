@@ -52,6 +52,8 @@ cc_binary {
         "platform/firmware/Launcher.cpp",  // the firmware platform's Launcher (G7-launch-b)
         "platform/firmware/Audio.cpp",     // the firmware Audio: NanoAudio's AAudio output (G7-audio)
         "platform/firmware/Volumes.cpp",   // the firmware Volumes (G7-volumes)
+        "platform/firmware/Power.cpp",     // the firmware platform's Power (G7-power)
+        "platform/firmware/SystemActions.cpp", // the firmware platform's SystemActions (G7-power)
         "NanoMenu.cpp",
         "NanoLaunchCommit.cpp",            // the launch handshake's writes (G7-launch-a)
         "NanoMenuDrm.cpp",

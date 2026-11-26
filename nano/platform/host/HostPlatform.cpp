@@ -21,8 +21,9 @@
 // write Nano makes (the store keeps the value; the event keeps the order, which the launch
 // handshake's assertions need). It keeps its configuration, and fills NanoPlatform.h's services
 // with the host's fakes: the display (FakeDisplay.h, over DrmHost.cpp), the launcher
-// (FakeLauncher.h: records each launch with a {"ev":"launch"} event) and the Volumes (the
-// config's scripted list of drives, FakeVolumes.h).
+// (FakeLauncher.h: records each launch with a {"ev":"launch"} event), the Volumes (the
+// config's scripted list of drives, FakeVolumes.h), and the power and the system actions
+// (FakePower.h, G7-power).
 
 #define LOG_TAG "NanoHost"
 
@@ -40,6 +41,7 @@
 
 #include "FakeDisplay.h"  // G7-display
 #include "FakeLauncher.h"  // G7-launch-b
+#include "FakePower.h"  // G7-power
 #include "HostConfig.h"
 #include "NanoPlatform.h"
 #include "FakeAudio.h"  // G7-audio
@@ -146,5 +148,7 @@ std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs&
     platform->launcher = createFakeLauncher();  // G7-launch-b
     platform->audio.reset(new FakeAudio());
     platform->volumes = std::move(volumes);   // G7-volumes
+    platform->power = createFakePower();  // G7-power
+    platform->actions = createFakeActions();  // G7-power
     return platform;
 }

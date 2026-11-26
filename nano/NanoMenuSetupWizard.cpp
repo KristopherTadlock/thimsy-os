@@ -44,6 +44,7 @@
 #include "NanoI18n.h"      // trDyn() resource-file translations
 #include "NanoMenuUtils.h" // isQrRomStorageReady() - external-storage readiness gate
 #include "NanoMenuPS3Globe.h" // ps3globe::setTarget - aim the globe at the found zone
+#include "NanoPlatform.h"
 
 namespace android {
 
@@ -460,16 +461,13 @@ void NanoMenu::setSetupClockFormats(int dateIdx, int timeIdx) {
     property_set("persist.gammaos.nano.datetime.date_format", std::to_string(dateIdx).c_str());
     property_set("persist.gammaos.nano.datetime.time_format", h12 ? "0" : "1");
     property_set("persist.gammaos.nano.clock12", h12 ? "1" : "0");
-    std::thread([h12] { system(h12 ? "settings put system time_12_24 12 2>/dev/null"
-                                   : "settings put system time_12_24 24 2>/dev/null"); }).detach();
+    nanoplat::get().actions->setTimeFormat(h12);
 }
 
 // A zone chosen in setup: the system time zone, and the clock formats that go with it.
 void NanoMenu::setupApplyTimezone(const std::string& tz) {
     if (tz.empty()) return;
-    char cmd[256];
-    snprintf(cmd, sizeof(cmd), "setprop persist.sys.timezone %s", tz.c_str());
-    system(cmd);
+    nanoplat::get().actions->setTimeZone(tz);
     ALOGI("NanoMenu: timezone set to %s", tz.c_str());
     applySetupClockFormats(tz);
 }

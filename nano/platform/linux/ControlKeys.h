@@ -21,7 +21,8 @@
 // Linux equivalent:
 //   - a thimsy-session request (sys.thimsy.session.request: dosleep -> sleep, park_restart ->
 //     restart-nano, service.bootanim.nano_action=reboot|shutdown -> reboot|poweroff, the end of
-//     NanoMenu::prepareShutdown);
+//     NanoMenu::prepareShutdown on Android; on Linux prepareShutdown asks through Power.cpp instead
+//     (G7-power), with sessionRequest below, so those two rows serve any other writer of the key);
 //   - the launch handshake (do_launch, or service.bootanim.nano_retroarch) -> the launcher;
 //   - fixedperf -> the family hook (sh /usr/share/thimsy/family/<family>/hook fixedperf-on|off);
 //   - drm_active=1 (Nano's first frame) -> sys.thimsy.nano.first_frame and sys.boot_completed;
@@ -91,6 +92,11 @@ void setLaunchHandler(std::function<void(const LaunchRequest&)> launch);
 // The request the default sessionRequest writes: "<seq>:<verb>", seq one past the number in the
 // key's current value (Nano is its only writer; the session ignores a repeated seq).
 std::string nextRequest(const std::string& current, const std::string& verb);
+
+// One thimsy-session request from elsewhere in the Linux platform (the power actions, G7-power),
+// through the installed handlers' sessionRequest (the default before install()), so every request
+// Nano makes shares one sequence and one lock.
+void sessionRequest(const std::string& verb);
 
 // The keys refused so far (each logged once), for tests.
 std::size_t refusedCount();

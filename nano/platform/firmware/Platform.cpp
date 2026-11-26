@@ -24,6 +24,8 @@
 #include "Display.h"  // G7-display
 #include "Launcher.h"  // G7-launch-b
 #include "Volumes.h"
+#include "Power.h"  // G7-power
+#include "SystemActions.h"  // G7-power
 
 namespace nanofirmware {
 std::unique_ptr<nanoplat::Audio> makeAudio();  // platform/firmware/Audio.cpp (G7-audio)
@@ -36,5 +38,7 @@ std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs&
     platform->launcher = nanofirmware::createLauncher();  // G7-launch-b
     platform->audio = nanofirmware::makeAudio();
     platform->volumes = firmware::makeVolumes();
+    platform->power = nanofirmware::createPower();  // G7-power
+    platform->actions = nanofirmware::createSystemActions();  // G7-power
     return platform;
 }

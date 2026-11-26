@@ -109,6 +109,10 @@ TEST(LinuxPlatform, HasEveryService) {
     EXPECT_TRUE(dynamic_cast<nanolinux::launcher::LinuxLauncher*>(p->launcher.get()) != nullptr);
     EXPECT_FALSE(p->launcher->childRunning());
     EXPECT_FALSE(p->launcher->pollChild().has_value());
+    // G7-power: the power and the system actions (no lights HAL on Linux).
+    ASSERT_TRUE(p->power != nullptr);
+    EXPECT_FALSE(p->power->setBrightnessViaHal(10));
+    EXPECT_TRUE(p->actions != nullptr);
 }
 
 }  // namespace

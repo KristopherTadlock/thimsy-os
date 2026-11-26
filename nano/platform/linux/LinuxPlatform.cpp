@@ -25,6 +25,8 @@
 #include "display/Display.h"  // G7-display
 #include "AudioPull.h"  // G7-audio
 #include "Volumes.h"
+#include "Power.h"  // G7-power
+#include "actions/SystemActions.h"  // G7-power
 
 std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs& /*args*/) {
     std::unique_ptr<Platform> platform(new Platform);
@@ -33,5 +35,7 @@ std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs&
     platform->launcher = nanolinux::launcher::create(platform->display.get());  // G7-launch-b
     platform->audio = nanolinux::makeAudio();
     platform->volumes = nanolinux::makeVolumes();   // /run/thimsy/volumes.json
+    platform->power = nanolinux::power::create();  // G7-power
+    platform->actions = nanolinux::actions::create();  // G7-power
     return platform;
 }
