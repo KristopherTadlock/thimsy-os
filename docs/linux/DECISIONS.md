@@ -281,6 +281,9 @@ The owner's own decisions of 2026-11-25, listed for context. They were not chang
 | D4, D11, D23, D25 | Phase 0 or 2a confirmation | each entry above says what reopens it |
 | Slate (gfix) | Linux's default ES-DE theme. Slate is denied as a whole because ASSETS.md marks its per-system `*/images/logo.svg` ASK (trademark logos); Colorful is not in the export and its `*.webp` art is ASK too, so Linux has no ES-DE theme. Options: (a) the owner answers the trademark ASK: if nominative logo use is acceptable (every ES-DE build ships it), the ASK rows become KEEP and Slate ships whole, the cheapest option; (b) a filtered Slate: `assets_allowlist` denies archive members instead of the whole archive and thimsy-data rebuilds `slate-es-de.zip` reproducibly without the logos (Nano's fallback for a missing logo needs checking); (c) Colorful (Simplified) as Android ships it, with `mods/50-nano.sh`'s theme preparation (Urbanist/Barlow swaps, XML edits, quake.webp removal) moved into a script both builds share, which still needs the same ASK answered for the webp art; (d) no theme, relying on Nano's built-in look, which needs checking that Nano starts on Linux without any theme | the owner's decision, pending; gfix recommends (a) if the owner agrees, else (b) |
 | Android set-up prompt (review device-safety-3) | Android shows 'Unsupported SD card, set up' for a freshly written Thimsy card until Linux's first boot creates the basic-data games entry; tapping set up erases the Thimsy install (not user data). Options: (a) installer and docs warning only (current); (b) the image carries a small formatted basic-data entry (e.g. a FAT THIMSY-README) so vold mounts something and no wizard appears, which changes the layout and gpt_check's vold rule | the owner's decision, pending; recommended (b) if a FAT stub is acceptable on the card, else (a) |
+| Display EGL moves (G7D-2, G7D-3) | readyToRun's headless pbuffer EGL set-up, the SurfaceFlinger window surface and NanoMenuRender.cpp's present stay in core, because they write NanoMenu's private members and NanoMenu.h is frozen; Mesa may need a GBM or surfaceless EGL display there | the owner's decision: allow a G7-display-b step that adds accessors to NanoMenu.h (an Android-surface change), or leave it to G10 if Linux works without it; recommended: decide after G10's first headless and on-device run |
+| Release-build SSH keys (gfix2) | a release build with SSH turned on has no way to install root's authorized_keys (no shell, and the ext4 data partition can't be written from Windows); dev builds' empty password is probably refused by dropbear without -B, so dev logins likely need keys too | the owner's decision: a key-import path (for example a file on the exFAT that D50ssh moves to /root/.ssh once and deletes), or keep release SSH unusable; recommended: the key-import path |
+| AAudio callback pointer lifetime (G7-audio) | the firmware stream object, not the long-lived player, is now AAudio's callback user pointer and is freed right after AAudioStream_close(); on AAudio's legacy path a paused or self-stopped stream's error callback can run on a binder thread, leaving a narrow use-after-free window if close races it | the AOSP review before the G7-audio cherry-pick to nano-144: confirm, or keep the player as the user pointer |
 
 ## Implementation design
 
@@ -625,7 +628,7 @@ Each still-open problem from the reports, once, with who must act. Items a later
 - The init scripts and thimsy-session read ro.thimsy.family and ro.thimsy.modules, but `thimsy-prop boot` writes the family as ro.thimsy.device.family and the device.json schema has no "modules"; the family falls back to the only family directory, the module list has no source (G2e, G1a). *(unassigned; gfix's area)*
 - The device.json `product` and `props` fields `thimsy-prop` reads (G1a-13) are not in G2c's `device.schema.json`; the schema should adopt or rename them (G1a). *(unassigned; gfix's area)*
 - G2e's `board/rk3566/common/README.md` still says the family overlay goes into the tier defconfigs (G2d-16). *(unassigned; gfix's area)*
-- The thimsy-session SSH options SSH_AT_BOOT and SSH_PASSWORD (G2a-6) change nothing, since D50ssh decides by ro.thimsy.build.type; drop them or wire them to D50ssh (G2d, G3b). *(wave 3: G6, with the recipe option names)* — not done in wave 3: both are still in `package/thimsy-session/Config.in`
+- The thimsy-session SSH options SSH_AT_BOOT and SSH_PASSWORD (G2a-6) change nothing, since D50ssh decides by ro.thimsy.build.type; drop them or wire them to D50ssh (G2d, G3b). *(wave 3: G6, with the recipe option names)* — not done in wave 3: both are still in `package/thimsy-session/Config.in` *(wave 4: removed by gfix2, GF2-7)*
 - GPT partition and disk UUIDs are genimage's random ones, so images are not reproducible; pinning them would make two cards from one image collide in an ARC-D (G2b, G8-5). *(owner)*
 - One Mesa build gives identical GPU packs that differ only in `gpu.json`; smaller packs need one Mesa build per driver (G2d). *(G10: measure the sizes)*
 - RetroArch's menu assets (retroarch-assets) are not packaged (G2d). *(G10)*
@@ -891,5 +894,132 @@ Step `integ3` joined wave 3's pieces (merge `ab0bf62`). A review of the whole fo
 
 ### Review findings left open
 
-- **device-safety-2 (re-writing the image over a used card):** every image ends at 2408 MiB, and D60 recreates entry 5 at the same start, so writing the image again over a card that already holds a Thimsy games library makes D60 format that library on the next boot. Only the first 33 sectors are overwritten by the image's backup GPT, so the data was still recoverable until the format. Decided autonomously, being implemented after this review: the image ends with a gap, so the old exFAT boot region survives a re-write, and D60 re-adopts an exFAT labelled THIMSY that it finds at the games start (it recreates the entry over its extent and retypes it basic data without formatting). Anything else is formatted as at a first boot, so second-hand cards still work. For owner audit.
+- **device-safety-2 (re-writing the image over a used card):** every image ends at 2408 MiB, and D60 recreates entry 5 at the same start, so writing the image again over a card that already holds a Thimsy games library makes D60 format that library on the next boot. Only the first 33 sectors are overwritten by the image's backup GPT, so the data was still recoverable until the format. Decided autonomously, being implemented after this review: the image ends with a gap, so the old exFAT boot region survives a re-write, and D60 re-adopts an exFAT labelled THIMSY that it finds at the games start (it recreates the entry over its extent and retypes it basic data without formatting). Anything else is formatted as at a first boot, so second-hand cards still work. For owner audit. *(wave 4: implemented by gfix2 as GF2-1 to GF2-4; the review widened the adoption rule to any complete exFAT whatever its label, REV4-4.)*
 - **device-safety-3 (Android's 'Unsupported SD card' prompt before first boot):** with no vold-visible entry, Android offers to set up (format) a freshly written card. That would erase the Thimsy install, but not user data. I39 and R5's rationale is corrected in IMPLEMENTATION.md E.6, and the installer must tell users not to set the card up. A small formatted basic-data entry in the image would stop the prompt, but it changes the layout and gpt_check's vold rule. The owner decides (Deferred table).
+
+## Wave 4: the G7 seam moves, gfix2, review
+
+Wave 4 moved Android code behind the platform seam one area at a time. Each step's commit on the Android surface is a verbatim move checked with `git diff --color-moved=zebra --color-moved-ws=allow-indentation-change` (H.3) and carries an `android-surface:` line and "Flagged for cherry-pick to nano-144 after the AOSP job." Each step had an adversarial verifier and up to three repair rounds; all eight ended clean. step/g7-merge joined them with gfix2 (union resolutions, no fix commits), every suite including `tests/run.sh cxx` passed, then an Android- and Linux-focused review ran: 5 findings confirmed, 2 rejected, all 5 fixed (REV4). Merged into linux on top of `12173e1`. None of the firmware code has been compiled with the Android toolchain.
+
+Cherry-pick order to nano-144 (after the AOSP job, gated by the AOSP build and the owner's device smoke test, H.7): G9a's `6d6314c`, then G5's NanoPlatform.h/.cpp (`004f1a1`, which G7-main's `6675c1a` depends on but which never had an H.3 listing), then each G7 step's Android-surface commit in merge order (main, display, launch-a, launch-b, audio, volumes, power, input).
+
+### G7-main. Boot sequence and platform install
+
+- **G7-main-1:** One shared `nanoBootSequence(void (*platformSteps)())`; the firmware-only steps between drm_active=0 and new NanoMenu run through the callback (`firmwareBootSteps()` in main.cpp), so the order and thread are exact. `sp<ProcessState> proc` now leaves scope when the callback returns; libbinder keeps the singleton.
+- **G7-main-2:** `install(createPlatform())` is main()'s first statement, before the overlay branch.
+- **G7-main-3:** include_census.py gains SPLIT_PREFIXES: every gammaos-nano src under platform/firmware/ goes to [firmware] and is kept out of [dropped-linux], so a missing createPlatform fails the link instead of being stubbed.
+- **G7-main-4:** The Linux platform is `platform/linux/LinuxPlatform.cpp`; main_linux.cpp keeps its own set-up and installs after it (B.7).
+- **G7-main-5:** test_android_surface: a path changed while off the surface is covered by the annotated commit that brings it onto the surface (surface.py `surface_joins`, `Repo.surface_at`).
+- **G7-main-6:** test_main_linux's fingerprint covers main.cpp from firmwareBootSteps() to the end, plus order checks for main.cpp and nanoBootSequence().
+- **G7-main-7:** run()'s status is not checked on Linux (main.cpp ignores it too). Superseded for exit status by REV4-2.
+
+### G7-display. Display
+
+- **G7D-1:** Display owns readyToRun's DRM splash decision, the hand-off (releaseForChild) and reacquire. Display.cpp stays EGL-free.
+- **G7D-2, G7D-3:** The headless pbuffer EGL set-up, the SurfaceFlinger window surface and NanoMenuRender.cpp's present are not moved (NanoMenu.h is frozen). Deferred to the owner (Deferred table).
+- **G7D-11:** The Linux rotation order follows device.json's panel.rotation_source; the default is DRM property, then device.json, then fbcon, and an explicit `ro.surface_flinger.primary_display_orientation` still wins.
+- **G7D-12:** The GPU finish before drmStop goes through a Kms hook (`finishGpu`), in NanoMenuDrasticPark.cpp's order.
+
+### G7-launch-a and -b. The launch handshake
+
+- **G7-launch-a:** LaunchTuple is an ordered builder (sites disagree on key order). A tuple holds only B.2's handshake writes (plus launch_rom); anything a site does between two writes stays at the site between two commits, so every property write stays in place (69 commit calls). setLaunchRomPath and setLaunchGame are tuple steps. commitLaunch writes with property_set everywhere (one `__system_property_set` on Bionic either way). drop_input is gathered only where it is the launch's drop_input=1; app_launched is not gathered. The test lives in check-headless-0, because Android.bp globs test/unit/*_test.cpp.
+- **G7-launch-b-4 (superseded by REV4-1):** Linux's launch() queues the request and main_linux starts it after the menu thread ends. `nanoExitsOnLaunch()` stays false as the documented contract; nothing reads it yet.
+- **G7-launch-b-11:** The launcher prefers the full value it wrote for each key while the store still holds what it held right after the write; otherwise the store wins.
+- **G7-launch-b-12:** At a launch's end the launcher clears launch_app, launch_intent, launch_core and launch_rom (mirroring nanoStopAppToHome).
+- **G7-launch-b-13:** launch_app "" in a package launch is RetroArch.
+- **G7-launch-b-14:** Only a trigger written inside the launcher's own commit() is a launch; a trigger from another process is logged and refused while Nano runs.
+- **G7-launch-b-15:** The control keys are installed before the platform; the launch handler is set after install() through `controlkeys::setLaunchHandler`.
+
+### G7-audio
+
+- **G7-audio-1:** Audio is a stream factory (`open()` returns an AudioStream), since NanoAudio keeps several streams open at once.
+- **G7-audio-2:** No volume members: the player's gain stays in core, and the system volume (`cmd media_session volume` in NanoControlCenter.cpp) is not this step's. No Linux mixer code yet.
+- **G7-audio-3:** Fill returns int, kFillContinue=0 and kFillStop=1, static_asserted equal to AAudio's values.
+- **G7-audio-4/5:** AudioFormat::name carries the log prefix; the two AAudio builder copies are merged into one moved copy, the SFX's literals becoming AudioFormat fields.
+- **G7-audio-7:** Linux audio is a testable PullAudio core (AudioPull.cpp) plus the ALSA sink (AudioAlsa.cpp, not compiled here: needs alsa-lib headers).
+- **G7-audio-8:** Linux and host pause() return only once no Fill is running (stricter than AAudio's requestPause).
+- **G7-audio-9:** The Android half and the Linux/host half are separate commits, so the Android one can be cherry-picked alone.
+- The AAudio user-pointer lifetime is an AOSP review point (Deferred table).
+
+### G7-volumes
+
+- **G7V-1:** Volumes has cardRoot, isSlot, absent, present and writableFolders, moved from NanoSdMove.cpp's sdCardRoot/sdIsSlot/sdVolumeAbsent and esdeStoreFollowCard's /storage scan. NanoSdMove.cpp keeps one-line forwarders where a function pointer or another caller needs the old name.
+- **G7V-2:** Linux Volumes reads volumes.json written by thimsy-session; the host fake takes a scripted list from host.json.
+- The firmware helpers sit in `nanoplat::firmware::` here and `nanofirmware::` in the other steps; harmless, could be made uniform later.
+
+### G7-power. Power and system actions
+
+- **G7-power-1:** Typed methods named after the call sites (readBattery, setBrightnessViaHal, mirrorBrightness, savedBrightness, powerAction; six SystemActions methods). B.6's Action enum, run(), supported(), sleep() and setBusy() are not declared (rule I27: declare when used).
+- **G7-power-2:** `runCmd` gets external linkage (the anonymous namespace in NanoMenuSettings.cpp is closed and reopened around it) so SystemActions.cpp can call it.
+- **G7-power-3 to -6:** Not moved: NanoControlCenter.cpp (already sysfs; its svc/settings calls are built into shared strings), NanoMenuNet.cpp's poll, sleep (already a session request) and finishSetupWizard's provisioning block (calls a private member).
+- **G7-power-8:** Linux brightness: setBrightnessViaHal returns false (NanoBacklight.h writes sysfs), mirrorBrightness does nothing, savedBrightness reads `persist.gammaos.nano.brightness`. Ends the 2 s brightness re-check loop.
+- **G7-power-9:** Linux powerAction is a thimsy-session request (reboot, poweroff); recovery, safemode and android are logged and refused.
+- **G7-power-10:** A small MIT-licensed wpa_supplicant control-socket client (`actions/WpaCtrl`) instead of vendoring hostap's wpa_ctrl.
+- **G7-power-11/12:** Linux Wi-Fi on/off writes `persist.thimsy.wifi.enabled` and runs `D30net start|stop`; forget uses REMOVE_NETWORK and SAVE_CONFIG; Bluetooth uses bluetoothctl. Slow actions run in order on one worker thread.
+- **G7-power-13:** The Linux time zone rewrites the `/storage/.config/thimsy/localtime` link atomically, writes `persist.sys.timezone`, then setenv("TZ") and tzset(). The review's thread-safety finding about setenv was refuted for glibc (TZ is the only variable Nano sets, and glibc does not free the startup environment).
+
+### G7-input
+
+- **G7-input-1:** InputPolicy is per device (deviceOpened/deviceClosing with a site tag) plus silenceGamePad, because the firmware grabs per fd at open.
+- **G7-input-2/3:** isBuiltInPad and deviceMatchKeys are not declared (I27). The firmware's silenceGamePad does nothing (it silences at open; its home exits on launch).
+- **G7-input-4:** Linux never EVIOCGRABs padd's pad, whatever grab_input says.
+- **G7-input-5/6:** Linux connects to padd's tap before setting intercept "1" (no tap, no intercept: a game keeps the pad rather than a menu without input), clears with "0", and clears a stale "1" at start.
+- **G7-input-7:** The host fake keeps the firmware's grab behaviour, so the boot scenario's expectations are unchanged.
+- **G7-input-8:** The tap reader lives in the Linux class only until the menu-input follow-up wires it into pollInput.
+
+### gfix2. Card re-write safety, root's home, SSH options, licences, regen warning
+
+- **GF2-1:** Every image ends 1 MiB after data (`size = 2409M` in genimage.cfg), and D60 puts games 2 MiB after data (2410 MiB), so the backup GPT of a re-written image ends 1 MiB before the old library. gpt_check requires exactly that tail on images and at least that gap on cards.
+- **GF2-2 (superseded by REV4-4):** re-adoption required the label THIMSY and 64 MiB.
+- **GF2-3:** The re-adopted entry is created typed basic data in one sfdisk write (never reserved first, which a power cut could leave to the format path).
+- **GF2-4:** The extent is the exFAT VolumeLength, clamped to the last usable LBA with a warning.
+- **GF2-5:** Test fakes: the disk's bytes are a sparse dev/<disk>.img; D60 reads through a DD seam.
+- **GF2-6:** Root's home stays on the ext4 data partition, never the exFAT; it is bound only on dev builds or release builds with SSH on; links are refused and 0:0, 0700 and 0600 are set at every boot. This closes gfix-6's root .ssh on the user-writable card.
+- **GF2-7:** The dead SSH_AT_BOOT and SSH_PASSWORD options are removed; the lint refuses them.
+- **GF2-8:** The thimsy-data source tarball carries ATTRIBUTION.md and NOTICE under .thimsy-licences/.
+- **GF2-9:** regen warns on stderr (without failing, `--check` too) when its block includes uncommitted nano/ files, excluding fork-only paths.
+
+### G7-merge
+
+- struct Platform keeps G7-volumes' comment; linuxplatform_test's nano sources stay `NanoPlatform.cpp NanoLaunchCommit.cpp`; each step's Makefile and platform.mk additions stay as their own `+=` blocks.
+
+### Review fixes (REV4)
+
+- **REV4-1:** Linux Nano exits after every launch and leaves the game to the session, the way Android's home exits (`leaveQueued()`, `LinuxLauncher::startAndLeave()`). This fixes the render watchdog and detached workers reading a freed NanoMenu for the whole game (linux-host-impls-1). The resident path stays in the code for later.
+- **REV4-2:** Nano's exit status tells the session how the menu ended: 0 after a launch (started or not), 1 when the menu ended without one. The session restarts Nano at once with no back-off for 0 with no game running, and game run time no longer counts as Nano's uptime (linux-host-impls-6).
+- **REV4-3:** The launcher writes sys.thimsy.game.pid when the child has started and clears it when it reaps it; the session also clears it when the game it watched ends, unless the key changed (linux-host-impls-2: quit, sleep's SIGSTOP and poweroff's TERM need it).
+- **REV4-4:** D60 re-adopts any complete exFAT at the games start (boot sector, allocation bitmap and up-case entries in the first root cluster), whatever its label or size (under 64 MiB with a warning). A read error creates nothing and retries next boot. Only a region with no exFAT, or one whose format was cut before the root directory, is formatted (linux-host-impls-4). This follows the owner's "always reversible and non-destructive" principle; the cost is that a second-hand card's old library is kept, not formatted, and the new owner formats it from a PC. For owner audit.
+- **REV4-5:** The image ships /etc/asound.conf: default is plug over a shared dmix on card ALSA_CARD, which the session sets from device.json audio.card_index (linux-host-impls-3).
+- Rejected: Quick Resume holding the preview on Linux (unreachable: LibretroRunner is firmware-only until Phase 5) and setenv("TZ") races (see G7-power-13).
+
+### Integration fix
+
+- The wave 3 conflict resolution of nano/test/host/Makefile had left a literal `\n` in the nano-headless link rule, which would have broken `make headless` in G10. Fixed on linux (fork-only file).
+
+## Open items from wave 4
+
+### Needs the Android toolchain or the AOSP review
+- None of the G7 firmware code is compiled. G10 or the nano-144 cherry-pick must build gammaos-nano with `-Wall -Werror` and run the owner's device smoke test.
+- Power.cpp includes NanoMenu.h for nanoThreadNormalPriority; no header-level dynamic initialiser was found, unconfirmed without a build.
+- The AAudio user-pointer lifetime (Deferred table).
+
+### Needs headers, packages or G10
+- AudioAlsa.cpp against real alsa-lib headers; main_linux.cpp (includes NanoMenu.h) is compiled by no suite here.
+- The headless scenarios with the merged platform (`make headless`, now that its rule is fixed).
+- The Mesa pbuffer path may need a GBM or surfaceless EGL display (G7D-2).
+
+### Linux behaviour still to do
+- Nothing on Linux sets sys.gammaos.nano.app_launched or app_drawn, so threadLoop's exit path draws "Loading..." for up to about 10 s before the game starts.
+- Linux Wi-Fi and Bluetooth screens (status, lists, scan, connect, pair, Net's poll) still parse Android output the shell gate refuses; they need their own step. BlueZ is not in the image.
+- The PS3 menu's own time, zone, radio and auto-time commands are not moved (G7-caps); the shell gate routes its timezone setprop to the store, but the localtime link is not rewritten.
+- The input tap is not wired into pollInput (an interface member such as menuInputFd()); no site calls silenceGamePad yet; NanoMenu.cpp's exit-time EVIOCGRAB of every fd and its destructor release are still direct ioctls; padd does not grab external pads during intercept.
+- The dead `service.bootanim.nano_action=reboot|shutdown` control-key rows are kept and noted.
+- The drastic launch sites `_exit(0)` after their trigger; a future Linux block for package launches must handle it.
+- A launch that fails at Nano startup on every run would restart Nano with no back-off (not reachable today: no auto-launch at boot).
+- Linux pause and kFillStop drop ALSA's queued frames (snd_pcm_drop); destroying a stream can block on a stalled ALSA device while the player's mutex is held.
+- IMPLEMENTATION.md is stale in B.2 (control keys, nano_action), B.6 (the interface sketches, LaunchRequest, nanoExitsOnLaunch "Linux: false", the vendored wpa_ctrl), B.7 (main_linux's step table), D.3 and I28; main_headless.cpp still mirrors main.cpp by hand and cites old line numbers.
+
+### On a device
+- Rotation direction (sDrmRotationDeg against the device tree's rotation) and touch rotation.
+- The dmix settings (48 kHz, period 512, buffer 2048) and alsa-lib's `@func getenv` card in a plain pcm; D20sound waits for card0 while both ARC device.json files say card_index 1.
+- genimage honouring the image-level size with the backup GPT at its end; busybox dd and od on the target; dropbear key login as root.
