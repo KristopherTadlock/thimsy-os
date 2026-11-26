@@ -1,0 +1,8 @@
+# thimsy-data's downloads besides the asset tarball (Barlow, at the commit
+# mods/50-nano.sh pins, with its hashes). linux/build.sh appends these lines to
+# the hash file it writes for thimsy-data, since Buildroot reads that one.
+sha256  ef5c39de3ac1764a24c7495098672ccc034e39679ccd65d76eed752da59e11e1  BarlowSemiCondensed-Medium.ttf
+sha256  5358c566b2039988c68b4ea2af05270da055110a5d23fbd686d5a11fbecf4e03  BarlowSemiCondensed-SemiBold.ttf
+sha256  186d750eb496a4c17a76385f82be6aea2ac1cf2de074a811d63786cf374ea73f  OFL.txt
+# The licence file, as legal-info finds it in the build directory.
+sha256  186d750eb496a4c17a76385f82be6aea2ac1cf2de074a811d63786cf374ea73f  .thimsy-barlow/OFL.txt

@@ -196,11 +196,15 @@ fi
 
 # -- Source tarballs (E.1) and their hash files. ------------------------------
 # hashfile PKG FILE: Buildroot reads <global patch dir>/<pkg>/<pkg>.hash, and the
-# container adds dl/thimsy-src/hash to BR2_GLOBAL_PATCH_DIR.
+# container adds dl/thimsy-src/hash to BR2_GLOBAL_PATCH_DIR. The lines of
+# package/PKG/extra-downloads.hash (the package's other downloads) go in too.
 hashfile() {
   mkdir -p "$SRC/hash/$1"
   printf '# Written by linux/build.sh for %s at %s\nsha256  %s  %s\n' \
     "$1" "$SHA" "$(sha256 "$SRC/$2")" "$2" >"$SRC/hash/$1/$1.hash"
+  if [ -f "$HERE/package/$1/extra-downloads.hash" ]; then
+    grep -v '^#' "$HERE/package/$1/extra-downloads.hash" >>"$SRC/hash/$1/$1.hash" || true
+  fi
 }
 # archive PKG NAME DIR: git archive of DIR at HEAD as NAME-<sha>.tar.gz.
 archive() {

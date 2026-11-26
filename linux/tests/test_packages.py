@@ -422,6 +422,81 @@ class AssetAllowlist(unittest.TestCase):
         self.assertNotIn(".stamp_extracted", text)
 
 
+    def fake_export(self, tmp: Path, files) -> Path:
+        src = tmp / "src"
+        for f in files:
+            q = src / f
+            q.parent.mkdir(parents=True, exist_ok=True)
+            q.write_bytes(b"x")
+        return src
+
+    def test_install_replaces_akrobat_with_barlow(self):
+        """As mods/50-nano.sh on Android: a denied Akrobat file of the export is installed
+        under its name from Barlow, with Barlow's OFL text beside it (gfix)."""
+        tmp = Path(tempfile.mkdtemp(prefix="thimsy-assets-"))
+        self.addCleanup(shutil.rmtree, str(tmp), True)
+        src = self.fake_export(tmp, ["nano_xmb/fonts/akrobat-semibold.ttf",
+                                     "nano_xmb/fonts/fontawesome-webfont.ttf"])
+        rep = tmp / "barlow"
+        rep.mkdir()
+        for name in ("BarlowSemiCondensed-Medium.ttf", "BarlowSemiCondensed-SemiBold.ttf", "OFL.txt"):
+            (rep / name).write_bytes(name.encode())
+        dest, report = tmp / "dest", tmp / "report.txt"
+        code, _, err = quiet(aa.main, ["install", "--list", str(self.list_path), "--report", str(report),
+                                       "--replacements", str(rep), str(src), str(dest)])
+        self.assertEqual(code, 0, err)
+        got = {q.relative_to(dest).as_posix(): q.read_bytes() for q in dest.rglob("*") if q.is_file()}
+        self.assertEqual(got, {"nano_xmb/fonts/fontawesome-webfont.ttf": b"x",
+                               "nano_xmb/fonts/akrobat-semibold.ttf": b"BarlowSemiCondensed-SemiBold.ttf",
+                               "nano_xmb/fonts/Barlow-OFL.txt": b"OFL.txt"})
+        text = report.read_text(encoding="utf-8")
+        self.assertIn("left out\tnano_xmb/fonts/akrobat-semibold.ttf\tdenied", text)
+        self.assertIn("replaced\tnano_xmb/fonts/akrobat-semibold.ttf\tBarlowSemiCondensed-SemiBold.ttf", text)
+        # Nothing to replace: no Barlow at all, not even its licence.
+        src2 = self.fake_export(tmp / "b", ["nano_xmb/fonts/fontawesome-webfont.ttf"])
+        code, _, err = quiet(aa.main, ["install", "--list", str(self.list_path), "--replacements", str(rep),
+                                       str(src2), str(tmp / "dest2")])
+        self.assertEqual(code, 0, err)
+        self.assertFalse((tmp / "dest2/nano_xmb/fonts/Barlow-OFL.txt").exists())
+        # A replacement that is missing fails the install.
+        (rep / "OFL.txt").unlink()
+        code, _, err = quiet(aa.main, ["install", "--list", str(self.list_path), "--replacements", str(rep),
+                                       str(src), str(tmp / "dest3")])
+        self.assertEqual(code, 1)
+        self.assertIn("no replacement OFL.txt", err)
+
+    def test_replacements_follow_android(self):
+        """thimsy-data's Barlow is mods/50-nano.sh's: the same file for each Akrobat path, the
+        same commit and the same hashes; build.sh writes them into thimsy-data's hash file."""
+        mod = (REPO / "mods/50-nano.sh").read_text(encoding="utf-8")
+        pairs = re.search(r'for pair in ((?:"[^"]+" ?)+); do', mod).group(1)
+        android = {}
+        for pair in re.findall(r'"([^"]+)"', pairs):
+            old, new = pair.split()
+            android["nano_xmb/fonts/" + old] = new
+        self.assertEqual(dict(aa.REPLACEMENTS), android)
+        self.assertIn('"$xmb_fonts/Barlow-OFL.txt"', mod)
+        self.assertEqual(dict(aa.REPLACEMENT_EXTRAS), {"nano_xmb/fonts/Barlow-OFL.txt": "OFL.txt"})
+        commit = re.search(r'BARLOW_URL="https://raw\.githubusercontent\.com/jpt/barlow/([0-9a-f]{40})"', mod).group(1)
+        android_sha = {os.path.basename(m.group(1)): m.group(2)
+                       for m in re.finditer(r'^  "(\S+) ([0-9a-f]{64})"$', mod, re.M)}
+        mk = lp.Recipe(LINUX / "package/thimsy-data/thimsy-data.mk").vars
+        self.assertEqual(mk["THIMSY_DATA_BARLOW_COMMIT"], commit)
+        downloads = [os.path.basename(u) for u in mk["THIMSY_DATA_EXTRA_DOWNLOADS"].split()]
+        wanted = sorted({f for _, f in aa.REPLACEMENTS + aa.REPLACEMENT_EXTRAS})
+        self.assertEqual(sorted(downloads), wanted)
+        hashes = {}
+        for line in (LINUX / "package/thimsy-data/extra-downloads.hash").read_text(encoding="utf-8").splitlines():
+            if line.strip() and not line.startswith("#"):
+                algo, h, name = line.split()
+                hashes[name] = h
+        for name in wanted:
+            self.assertEqual(hashes[name], android_sha[name], name)
+        self.assertIn(".thimsy-barlow/OFL.txt", mk["THIMSY_DATA_LICENSE_FILES"].split())
+        build = (LINUX / "build.sh").read_text(encoding="utf-8")
+        self.assertIn('extra-downloads.hash" >>"$SRC/hash/$1/$1.hash"', build)
+
+
 class AllowlistParsing(unittest.TestCase):
     """assets_allowlist.py's reading of ASSETS.md, on a small table."""
 
