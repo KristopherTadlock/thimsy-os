@@ -80,7 +80,9 @@ class ControlKeys(unittest.TestCase):
             route = r.get("route", "")
             if route.startswith("session:"):
                 verb = route[len("session:"):]
-                self.assertIn("| `%s`" % verb, doc, "%s: verb %s is not in linux/docs/session.md" % (r["match"], verb))
+                # The verb in the first cell of a row of the verb table ("| `poweroff`, `reboot` |").
+                self.assertRegex(doc, r"(?m)^\| [^|\n]*`%s`" % re.escape(verb),
+                                 "%s: verb %s is not in linux/docs/session.md" % (r["match"], verb))
 
     def test_session_keys_are_watched_by_the_session(self):
         """A "session-key" row means thimsy-session reads the key itself (G9-8): session.md's key

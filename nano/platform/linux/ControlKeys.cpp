@@ -63,6 +63,8 @@ const Row kControlRows[] = {
     {"ctl.stop", "", Action::Refuse, "", ""},
     {"ctl.restart", "", Action::Refuse, "", ""},
     {"service.bootanim.nano_action", "", Action::Refuse, "", ""},
+    {"service.bootanim.nano_action", "reboot", Action::Session, "reboot", ""},
+    {"service.bootanim.nano_action", "shutdown", Action::Session, "poweroff", ""},
     {"sys.gammaos.bt.pair_reply", "", Action::Refuse, "", ""},
     {"sys.gammaos.bt.pair_request", "", Action::Refuse, "", ""},
     {"sys.gammaos.bt_autopair", "", Action::Refuse, "", ""},
@@ -180,9 +182,21 @@ Handlers handlers() {
     return gHandlers;
 }
 
+bool isWildcard(const Row& r) { return !*r.value || strcmp(r.value, "*") == 0; }
+
 bool matches(const Row& r, std::string_view value) {
-    if (!*r.value || strcmp(r.value, "*") == 0) return true;
+    if (isWildcard(r)) return true;
     return value == r.value;
+}
+
+// A row for this exact value overrides the key's catch-all row (nano_action=reboot is a request;
+// nano_action=android stays refused).
+bool hasExactRow(std::string_view key, std::string_view value) {
+    for (size_t i = 0; i < kControlRowCount; i++) {
+        const Row& r = kControlRows[i];
+        if (key == r.key && !isWildcard(r) && value == r.value) return true;
+    }
+    return false;
 }
 
 void fireLaunch(const Row& r) {
@@ -225,9 +239,11 @@ void refuse(const Row& r, std::string_view value) {
 }
 
 void onWrite(std::string_view key, std::string_view value) {
+    const bool exact = hasExactRow(key, value);
     for (size_t i = 0; i < kControlRowCount; i++) {
         const Row& r = kControlRows[i];
         if (key != r.key || !matches(r, value)) continue;
+        if (exact && isWildcard(r)) continue;
         if (*r.reset) property_set(r.key, r.reset);
         switch (r.action) {
             case Action::Session:

@@ -20,7 +20,8 @@
 // swallow one); these handlers observe them through nanocompat::addPropertyObserver and do the
 // Linux equivalent:
 //   - a thimsy-session request (sys.thimsy.session.request: dosleep -> sleep, park_restart ->
-//     restart-nano);
+//     restart-nano, service.bootanim.nano_action=reboot|shutdown -> reboot|poweroff, the end of
+//     NanoMenu::prepareShutdown);
 //   - the launch handshake (do_launch, or service.bootanim.nano_retroarch) -> the launcher;
 //   - fixedperf -> the family hook (sh /usr/share/thimsy/family/<family>/hook fixedperf-on|off);
 //   - drm_active=1 (Nano's first frame) -> sys.thimsy.nano.first_frame and sys.boot_completed;
@@ -52,7 +53,7 @@ enum class Action {
 
 struct Row {
     const char* key;
-    const char* value;   // the value that triggers ("" or "*": any value)
+    const char* value;   // the value that triggers ("" or "*": any value not given its own row)
     Action action;
     const char* arg;     // Session: the verb; Hook: the hook's action; else ""
     const char* reset;   // written back first, as the rc's setprop does ("" for none)

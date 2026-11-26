@@ -70,7 +70,11 @@
     {"match": "service.bootanim.exit", "disposition": "store-only",
      "note": "Ends Android's boot animation; Linux has none."},
     {"match": "service.bootanim.nano_action", "disposition": "refused",
-     "note": "Boots into Android, recovery or safe mode: there is no Android on a Thimsy Linux card."},
+     "note": "Any value without its own row: android, recovery or safemode (NanoMenuInput.cpp, the PS3 quick actions) boot into Android, recovery or safe mode, and there is no Android on a Thimsy Linux card."},
+    {"match": "service.bootanim.nano_action=reboot", "disposition": "routed", "route": "session:reboot", "source": "manual",
+     "note": "The last step of NanoMenu::prepareShutdown(\"reboot\") (the menu's Reboot, QA_RESTART); Android's bootanim service reads it. Nano never writes sys.powerctl itself."},
+    {"match": "service.bootanim.nano_action=shutdown", "disposition": "routed", "route": "session:poweroff", "source": "manual",
+     "note": "The last step of NanoMenu::prepareShutdown(\"shutdown\") (the menu's Power Off, QA_POWEROFF, the 7 s power hold, the DRM-sleep timeout)."},
     {"match": "service.bootanim.nano_retroarch", "value": "1", "disposition": "routed", "route": "launcher",
      "note": "The legacy launch trigger (Android's bootanim rc turns it into do_launch): the launcher, debounced with do_launch into one request."},
     {"match": "sys.gammaos.nano.do_launch", "value": "1", "disposition": "routed", "route": "launcher", "source": "manual",
@@ -141,7 +145,7 @@
     {"match": "sys.gammaos.retroarch.cfg_dir", "disposition": "not-reached",
      "note": "Written by the framework's NanoRetroArchConfig; read by Nano."},
     {"match": "sys.gammaos.shutdown_started", "disposition": "store-only",
-     "note": "State Nano writes and reads back; the shutdown itself goes through sys.powerctl."},
+     "note": "State Nano writes and reads back; the shutdown itself is service.bootanim.nano_action=shutdown (or reboot), a session request."},
     {"match": "persist.*", "disposition": "store-only",
      "note": "Settings: kept in persist.props. Their Android readers (SurfaceFlinger, PhoneWindowManager, drastic-nano) have no Linux counterpart; Linux readers use the same store."}
   ]
