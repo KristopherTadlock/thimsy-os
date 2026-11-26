@@ -292,8 +292,10 @@ $(HEADLESS_O)/dropped-stubs.cpp: $(HEADLESS_O)/link.nm $(HEADLESS_DROPPED) $(NAN
 		--decls $(NANO) --include-root $(NANO) --out $@
 $(HEADLESS_O)/dropped-stubs.o: $(HEADLESS_O)/dropped-stubs.cpp | host-guard compat-guard
 	$(COMPAT_CC_RUN) $(CXX) $(UNIT_STD) -Wall $(GCC_SUPPRESS) $(UNIT_FLAGS) $(CORE_CPPFLAGS) -c $< -o $@
-$(HEADLESS_O)/nano-headless: $(HEADLESS_OBJS) $(GLSTUB_OBJS) $(HEADLESS_O)/dropped-stubs.o $(NANOSTUBS_ASAN_LIB) \n		$(COMPAT_ASAN_LIB) $(COMPAT_LIBTHIMSY_ASAN) | host-guard compat-guard
-	$(COMPAT_CC_RUN) $(CXX) $(UNIT_FLAGS) $(HEADLESS_WRAP) $(filter %.o,$^) $(HEADLESS_LDLIBS) $(NANOSTUBS_ASAN_LIB) \n		$(NANOCOMPAT_ASAN_LIBS) -o $@
+$(HEADLESS_O)/nano-headless: $(HEADLESS_OBJS) $(GLSTUB_OBJS) $(HEADLESS_O)/dropped-stubs.o $(NANOSTUBS_ASAN_LIB) \
+		$(COMPAT_ASAN_LIB) $(COMPAT_LIBTHIMSY_ASAN) | host-guard compat-guard
+	$(COMPAT_CC_RUN) $(CXX) $(UNIT_FLAGS) $(HEADLESS_WRAP) $(filter %.o,$^) $(HEADLESS_LDLIBS) $(NANOSTUBS_ASAN_LIB) \
+		$(NANOCOMPAT_ASAN_LIBS) -o $@
 
 ifeq ($(strip $(HEADLESS_MISSING)),)
 headless: host-guard $(HEADLESS_O)/nano-headless
