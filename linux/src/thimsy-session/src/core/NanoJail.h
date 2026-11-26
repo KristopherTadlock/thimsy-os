@@ -10,7 +10,9 @@
 // node for the same device either. The namespace is a slave of the session's (the session makes
 // "/" shared first), so drives the session mounts later still appear in it.
 //
-// planJail() is pure; applyJail() runs in the child between fork and exec.
+// planJail() is pure; applyJail() runs in the child between fork and exec. The plan is made when
+// Nano starts; thimsy-session starts Nano again when eMMC nodes appear later (Session.cpp,
+// checkNanoJail), so a late eMMC is masked too.
 #pragma once
 
 #include <string>

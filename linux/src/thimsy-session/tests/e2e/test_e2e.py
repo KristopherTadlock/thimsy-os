@@ -552,17 +552,56 @@ class BootDrivesKeysAndRequests(SessionCase):
         self.assertIn("thimsy-session: poweroff requested", self.r.read("/dev/kmsg"))
 
 
+class LateEmmc(SessionCase):
+    """An eMMC whose nodes appear after Nano started (a host controller that probes late): Nano is
+    started again, and its new plan masks them (security-3)."""
+
+    saved = {}
+
+    @classmethod
+    def prepare(cls, r: Root) -> None:
+        for n in ("mmcblk0", "mmcblk0boot0", "mmcblk0p1"):
+            p = r.p("/dev/" + n)
+            if os.path.lexists(p):
+                with open(p, "rb") as f:
+                    cls.saved[n] = f.read()
+                os.remove(p)
+
+    def test_nano_is_started_again_with_the_nodes_masked(self):
+        wait_for(lambda: self.ran("thimsy-nano"), what="Nano")
+        wait_for(lambda: os.path.exists(self.r.p("/run/thimsy/session/jail.plan")), what="the first plan")
+        self.assertEqual(self.r.read("/run/thimsy/session/jail.plan").split(), [])
+        time.sleep(0.3)
+        self.assertEqual(len(self.ran("thimsy-nano")), 1)
+        for n, data in self.saved.items():
+            with open(self.r.p("/dev/" + n), "wb") as f:
+                f.write(data)
+        self.uevent("add", "mmcblk0", "disk")
+        wait_for(lambda: len(self.ran("thimsy-nano")) == 2, what="Nano started again")
+        wait_for(lambda: self.r.read("/run/thimsy/session/jail.plan").split() ==
+                 ["/dev/mmcblk0", "/dev/mmcblk0boot0", "/dev/mmcblk0p1"], what="the new plan")
+        self.assertIn("eMMC nodes appeared after Nano started", self.log())
+        self.uevent("add", "mmcblk0p1", "partition")   # already masked: no third start
+        time.sleep(0.5)
+        self.assertEqual(len(self.ran("thimsy-nano")), 2)
+
+
 class RespawnedSession(SessionCase):
     """A session started again by init later in the boot: Nano from the old session is stopped,
-    the deferred services are not run again, and a drive still mounted is adopted, not remounted."""
+    so is a check (fsck) it left running, the deferred services are not run again, and a drive
+    still mounted is adopted, not remounted."""
 
     orphan = None
+    orphan_fsck = None
 
     @classmethod
     def prepare(cls, r: Root) -> None:
         cls.orphan = subprocess.Popen(["thimsy-nano-left-over", "60"], executable="/bin/sleep",
                                       start_new_session=True)
         r.write("/run/thimsy/nano.pid", "%d\n" % cls.orphan.pid)
+        cls.orphan_fsck = subprocess.Popen(["fsck.exfat-left-over", "60"], executable="/bin/sleep",
+                                           start_new_session=True)
+        r.write("/run/thimsy/session/fsck/mmcblk3p1.pid", "%d\n" % cls.orphan_fsck.pid)
         r.write("/run/thimsy/session/deferred-started", "1\n")
         r.write("/run/thimsy/props/sys.thimsy.nano.first_frame", "1")
         r.write("/proc/mounts", "/dev/mmcblk1p3 / erofs ro 0 0\n/dev/mmcblk1p4 /storage ext4 rw 0 0\n"
@@ -574,10 +613,17 @@ class RespawnedSession(SessionCase):
             cls.orphan.kill()
         if cls.orphan:
             cls.orphan.wait()
+        if cls.orphan_fsck and cls.orphan_fsck.poll() is None:
+            cls.orphan_fsck.kill()
+        if cls.orphan_fsck:
+            cls.orphan_fsck.wait()
         super().tearDownClass()
 
     def test_respawn(self):
         self.orphan.wait(timeout=10)  # stopped by the new session
+        self.orphan_fsck.wait(timeout=10)   # and the check it left (device-safety-4)
+        self.assertFalse(os.path.exists(self.r.p("/run/thimsy/session/fsck/mmcblk3p1.pid")))
+        self.assertIn("left by an earlier session", self.log())
         wait_for(lambda: self.ran("thimsy-nano"), what="Nano")
         wait_for(lambda: (self.volume("1234-ABCD") or {}).get("state") == "mounted", what="adopted drive")
         time.sleep(0.3)

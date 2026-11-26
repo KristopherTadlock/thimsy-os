@@ -48,6 +48,8 @@ constexpr const char* kRunDir = "/run/thimsy";
 constexpr const char* kPropsDir = "/run/thimsy/props";
 constexpr const char* kPersistFile = "/storage/.config/thimsy/persist.props";
 constexpr const char* kStateDir = "/run/thimsy/session";
+// <dev>.pid of every running check, so a respawned session can stop what an earlier one left.
+constexpr const char* kFsckDir = "/run/thimsy/session/fsck";
 constexpr const char* kLogDir = "/run/thimsy/log";
 constexpr const char* kVolumesJson = "/run/thimsy/volumes.json";
 constexpr const char* kMediaRwDir = "/run/thimsy/media_rw";
@@ -111,6 +113,8 @@ class Session {
     void loadBootDisk();
     std::vector<std::string> jailPlan() const;
     void killOrphanNano();
+    void killOrphanFsck();
+    void checkNanoJail();
     void addFd(int fd, Tag t);
     void delFd(int fd);
     void registerEvdev();
@@ -161,6 +165,9 @@ class Session {
 
     std::map<pid_t, Child> children_;
     std::map<int, pid_t> fsckPids_;
+    std::map<int, std::string> fsckPidFiles_;   // job -> its file under kFsckDir
+    std::vector<std::string> nanoJail_;          // the eMMC nodes masked in the running Nano's namespace
+    bool jailRestartPending_ = false;            // checkNanoJail asked for a restart that has not spawned yet
     BootDisk boot_;
     std::string family_;
     std::string memSleepPref_;
@@ -312,6 +319,48 @@ void Session::killOrphanNano() {
     if (alive(pid)) kill(-pid, SIGKILL);
 }
 
+// A check (fsck) started by an earlier session that died is still writing to its drive, and a
+// coldplug here would check or mount that drive again under it (device-safety-4). Each check has a
+// pid file; stop every one that still runs, as a clean stop does (SIGTERM to its group), before
+// any drive is looked at. The drive is checked again from the start.
+void Session::killOrphanFsck() {
+    for (const std::string& name : sysfs_.list(kFsckDir)) {
+        std::string file = P(std::string(kFsckDir) + "/" + name);
+        pid_t pid = readPidFile(file);
+        if (pid > 1 && alive(pid) && cmdline(pid).find("fsck") != std::string::npos) {
+            log("stopping the check " + std::to_string(pid) + " (" + name + ") left by an earlier session");
+            kill(-pid, SIGTERM);
+            kill(pid, SIGTERM);
+            for (int i = 0; i < 100 && alive(pid); ++i) usleep(50000);
+            if (alive(pid)) {
+                kill(-pid, SIGKILL);
+                kill(pid, SIGKILL);
+                for (int i = 0; i < 20 && alive(pid); ++i) usleep(50000);
+            }
+        }
+        unlink(file.c_str());
+    }
+}
+
+// Nano's mask is planned when it starts. An eMMC whose host controller probes late (after rcS, on a
+// deferred regulator or clock) gets its nodes later, and they would be open to Nano and its games
+// (security-3). So after every block uevent, and once the uevents are open at start, compare the
+// plan with the running Nano's: new eMMC nodes start Nano again, with a plan that masks them.
+void Session::checkNanoJail() {
+    if (!sup_.nanoRunning() || jailRestartPending_) return;
+    std::vector<std::string> added;
+    for (const std::string& p : jailPlan()) {
+        if (std::find(nanoJail_.begin(), nanoJail_.end(), p) == nanoJail_.end()) added.push_back(p);
+    }
+    if (added.empty()) return;
+    std::string list;
+    for (const std::string& p : added) list += (list.empty() ? "" : " ") + p;
+    log("eMMC nodes appeared after Nano started (" + list + "): starting Nano again so its namespace masks them");
+    kmsg("restarting nano: eMMC nodes appeared after it started");
+    jailRestartPending_ = true;
+    runSup(sup_.restartNano(monoNow()));
+}
+
 void Session::addFd(int fd, Tag t) {
     struct epoll_event e;
     memset(&e, 0, sizeof e);
@@ -372,7 +421,7 @@ bool Session::init() {
     signal(SIGPIPE, SIG_IGN);
     sigfd_ = signalfd(-1, &mask, SFD_NONBLOCK | SFD_CLOEXEC);
 
-    for (const char* d : {kRunDir, kPropsDir, kStateDir, kLogDir, kMediaRwDir}) makeDirs(P(d));
+    for (const char* d : {kRunDir, kPropsDir, kStateDir, kFsckDir, kLogDir, kMediaRwDir}) makeDirs(P(d));
     logFd_ = open(P(std::string(kLogDir) + "/session.log").c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
     log("thimsy-session starting" + std::string(opts_.fakeHw ? " (fake hardware)" : "") +
         (opts_.root.empty() ? "" : ", root " + opts_.root));
@@ -417,6 +466,7 @@ bool Session::init() {
 
     // Nano first: everything else can wait for it.
     killOrphanNano();
+    killOrphanFsck();
     struct stat st;
     bool deferredRan = stat(P(kDeferredMarker).c_str(), &st) == 0;
     pid_t padd = readPidFile(P("/run/thimsy/padd.pid"));
@@ -441,6 +491,7 @@ bool Session::init() {
         log("no uevents: " + uerr);
     }
     registerEvdev();
+    checkNanoJail();   // an eMMC that appeared between Nano's start and the uevent socket
 
     // The volumes file exists from the start, so Nano can read it at once.
     int64_t serial = 0;
@@ -484,6 +535,8 @@ void Session::runSup(const std::vector<SupAction>& acts) {
                     s.preExec = [plan](std::string* err) { return applyJail(plan, err); };
                 }
                 pid_t pid = spawnChild(s, Role::Nano);
+                nanoJail_ = plan;
+                jailRestartPending_ = false;
                 if (pid > 0) {
                     writeFileAtomic(P("/run/thimsy/nano.pid"), std::to_string(pid) + "\n", {0644, false});
                     kmsg("nano started (" + std::to_string(pid) + ", " + std::to_string(plan.size()) +
@@ -586,6 +639,9 @@ void Session::runVol(const std::vector<VolAction>& acts) {
                 log("checking " + a.dev + " (" + a.fs + ", " + a.id + ")");
                 if (pid > 0) {
                     fsckPids_[a.job] = pid;
+                    std::string pf = P(std::string(kFsckDir) + "/" + a.dev + ".pid");
+                    writeFileAtomic(pf, std::to_string(pid) + "\n", {0644, false});
+                    fsckPidFiles_[a.job] = pf;
                 } else {
                     runVol(vols_.onFsckDone(a.job, -1));
                 }
@@ -597,6 +653,11 @@ void Session::runVol(const std::vector<VolAction>& acts) {
                     log("stopping the check of " + a.dev);
                     kill(-it->second, SIGTERM);
                     fsckPids_.erase(it);
+                    auto pf = fsckPidFiles_.find(a.job);
+                    if (pf != fsckPidFiles_.end()) {
+                        unlink(pf->second.c_str());
+                        fsckPidFiles_.erase(pf);
+                    }
                 }
                 break;
             }
@@ -673,6 +734,7 @@ void Session::handleUevent(const Uevent& ev) {
             log("removed " + name);
             runVol(vols_.onRemoved(name));
         } else if (ev.action == "add" || ev.action == "change") {
+            checkNanoJail();
             handleBlock(name, &ev);
             if (ev.action == "change" && ev.devtype == "disk") {
                 // The partition table may have changed: look at the disk's partitions again.
@@ -929,7 +991,14 @@ void Session::reap() {
                 break;
             case Role::Fsck: {
                 auto f = fsckPids_.find(c.job);
-                if (f != fsckPids_.end() && f->second == pid) fsckPids_.erase(f);
+                if (f != fsckPids_.end() && f->second == pid) {
+                    fsckPids_.erase(f);
+                    auto pf = fsckPidFiles_.find(c.job);
+                    if (pf != fsckPidFiles_.end()) {
+                        unlink(pf->second.c_str());
+                        fsckPidFiles_.erase(pf);
+                    }
+                }
                 log("check " + std::to_string(c.job) + " finished (" + how + ")");
                 runVol(vols_.onFsckDone(c.job, exitCodeOf(st)));
                 break;
