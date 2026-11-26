@@ -19,8 +19,8 @@
 // wires the fakes to the runner's channel (HostControl.h): the display the DrmHost substitute shows,
 // the fake input devices, the record-only shell gate, and a {"ev":"prop"} event for every property
 // write Nano makes (the store keeps the value; the event keeps the order, which the launch
-// handshake's assertions need). NanoPlatform.h's Platform has no services yet (G5), so this
-// platform only keeps its configuration.
+// handshake's assertions need). The services are the fakes: the Volumes is the config's scripted
+// list of drives (FakeVolumes.h).
 
 #define LOG_TAG "NanoHost"
 
@@ -134,5 +134,8 @@ std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs&
     event("start", "\"pid\":" + std::to_string(getpid()) + ",\"config\":" + jsonQuote(path));
     ALOGI("nano-headless: host platform up (display %dx%d@%d, %zu input devices, %zu shell rules)",
           cfg.display.width, cfg.display.height, cfg.display.refreshHz, cfg.devices.size(), cfg.shellRules.size());
-    return std::unique_ptr<nanoplat::Platform>(new HostPlatform(std::move(cfg)));
+    std::unique_ptr<nanoplat::Volumes> volumes = makeFakeVolumes(cfg.volumes);   // G7-volumes
+    std::unique_ptr<nanoplat::Platform> platform(new HostPlatform(std::move(cfg)));
+    platform->volumes = std::move(volumes);   // G7-volumes
+    return platform;
 }

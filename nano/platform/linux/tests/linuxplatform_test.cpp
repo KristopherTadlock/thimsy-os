@@ -33,6 +33,7 @@ TEST(LinuxPlatform, CreatesAndInstalls) {
     args.argv = argv;
     std::unique_ptr<nanoplat::Platform> platform = nanoplat::createPlatform(args);
     ASSERT_TRUE(platform != nullptr);
+    EXPECT_TRUE(platform->volumes != nullptr);   // G7-volumes
     nanoplat::Platform* raw = platform.get();
     nanoplat::install(std::move(platform));
     EXPECT_TRUE(&nanoplat::get() == raw);

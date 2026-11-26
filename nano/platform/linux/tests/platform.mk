@@ -12,10 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# The Linux platform's host tests (docs/linux/IMPLEMENTATION.md G9, G7-main): the shell gate, the
-# control keys and the platform's createPlatform (with nano/NanoPlatform.cpp), against Nano's compat
-# shims and libthimsy (nano/test/host/compat/compat.mk), with g++ and make only. The display back end and the EGL wraps need libdrm, GBM and EGL headers and are not
-# built here (G10 runs -fsyntax-only on them).
+# The Linux platform's host tests (docs/linux/IMPLEMENTATION.md G9, G7-main, G7-volumes): the shell
+# gate, the control keys, the Volumes (on data/'s files) and the platform's createPlatform (with
+# nano/NanoPlatform.cpp), against Nano's compat shims and libthimsy (nano/test/host/compat/compat.mk),
+# with g++ and make only. The display back end and the EGL wraps need libdrm, GBM and EGL headers and
+# are not built here (G10 runs -fsyntax-only on them).
 #
 #   nice -n 19 make -f nano/platform/linux/tests/platform.mk -j1 check
 #
@@ -39,13 +40,16 @@ PLAT_WRAP_LDFLAGS := $(foreach s,$(PLAT_WRAPS),-Wl,--wrap=$(s))
 # nano/ for quoted includes only ("NanoPlatform.h"), so no header of nano/ shadows a shim.
 PLAT_CPPFLAGS := $(COMPAT_TEST_CPPFLAGS) -I$(PLAT_DIR) -iquote $(PLAT_NANO_DIR)
 
-PLAT_TESTS := shellgate_test controlkeys_test linuxplatform_test
+PLAT_TESTS := shellgate_test controlkeys_test linuxplatform_test volumes_test
 # PLAT_SRCS_<test>: files of platform/linux; PLAT_NANO_SRCS_<test>: files of nano/.
 PLAT_SRCS_shellgate_test := ShellGate.cpp
 PLAT_SRCS_controlkeys_test := ControlKeys.cpp
-PLAT_SRCS_linuxplatform_test := LinuxPlatform.cpp
+PLAT_SRCS_linuxplatform_test := LinuxPlatform.cpp Volumes.cpp
+PLAT_SRCS_volumes_test := Volumes.cpp
 PLAT_NANO_SRCS_linuxplatform_test := NanoPlatform.cpp
 PLAT_TEST_BINS := $(PLAT_TESTS:%=$(PLAT_O)/test/%)
+# volumes_test reads thimsy-session's own volumes.json files from data/.
+PLAT_TEST_DEFS := -DPLAT_TEST_DATA_DIR='"$(PLAT_TEST_DIR)/data"'
 
 .PHONY: check check-platform-linux platform-linux-clean
 
@@ -59,7 +63,7 @@ $(PLAT_O)/nano-obj/%.o: $(PLAT_NANO_DIR)/%.cpp | compat-guard
 
 $(PLAT_O)/test-obj/%.o: $(PLAT_TEST_DIR)/%.cpp | compat-guard
 	@mkdir -p $(@D)
-	$(COMPAT_CC_RUN) $(CXX) $(COMPAT_STD) $(COMPAT_WARN) $(COMPAT_ASAN_FLAGS) $(PLAT_CPPFLAGS) -MMD -MP -c $< -o $@
+	$(COMPAT_CC_RUN) $(CXX) $(COMPAT_STD) $(COMPAT_WARN) $(COMPAT_ASAN_FLAGS) $(PLAT_CPPFLAGS) $(PLAT_TEST_DEFS) -MMD -MP -c $< -o $@
 
 define PLAT_TEST_RULE
 $(PLAT_O)/test/$(1): $(PLAT_O)/test-obj/$(1).o $(PLAT_SRCS_$(1):%.cpp=$(PLAT_O)/obj/%.o) \

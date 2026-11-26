@@ -1,0 +1,14 @@
+volumes-e2e-*.json: /run/thimsy/volumes.json exactly as thimsy-session wrote it during its own E2E
+run (linux/src/thimsy-session/tests/e2e/test_e2e.py, unchanged, against the sanitized session
+binary; G7-volumes). A wrapper replaced only the test's volumes() reader so that every distinct text
+it read was saved, in order:
+
+  00-boot             at start: the empty list
+  01-coldplug         the second card's FAT drive, 1234-ABCD, mounted
+  02-games-checking   the boot card's exFAT games drive, 9602-C755, being checked
+  03-games-mounted    9602-C755 mounted (boot_disk)
+  04-ejected          1234-ABCD after an eject request
+  05-pulled           the boot card pulled: 9602-C755 gone
+
+volumes_test.cpp parses each one and answers from them. If the session's writer changes
+(VolumeManager::toJson, linux/docs/session.md), capture these again the same way.

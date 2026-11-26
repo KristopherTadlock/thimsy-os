@@ -1728,6 +1728,16 @@
     "nano:platform/host/FakeEvdev.h"
    ]
   },
+  "platform/host/FakeVolumes.cpp": {
+   "includes": [
+    "nano:platform/host/FakeVolumes.h"
+   ]
+  },
+  "platform/host/FakeVolumes.h": {
+   "includes": [
+    "nano:NanoPlatform.h"
+   ]
+  },
   "platform/host/HostConfig.cpp": {
    "includes": [
     "libthimsy:thimsy/json.h",
@@ -1737,6 +1747,7 @@
   "platform/host/HostConfig.h": {
    "includes": [
     "nano:platform/host/FakeEvdev.h",
+    "nano:platform/host/FakeVolumes.h",
     "nano:platform/host/HostControl.h",
     "nano:platform/host/ShellGateHost.h"
    ]
@@ -1770,7 +1781,8 @@
   },
   "platform/linux/LinuxPlatform.cpp": {
    "includes": [
-    "nano:NanoPlatform.h"
+    "nano:NanoPlatform.h",
+    "nano:platform/linux/Volumes.h"
    ]
   },
   "platform/linux/ShellGate.cpp": {
@@ -1778,6 +1790,19 @@
     "nano:platform/linux/ShellGate.h",
     "shim:compat/include/cutils/properties.h",
     "shim:compat/include/log/log.h"
+   ]
+  },
+  "platform/linux/Volumes.cpp": {
+   "includes": [
+    "libthimsy:thimsy/json.h",
+    "nano:platform/linux/Volumes.h",
+    "shim:compat/include/log/log.h",
+    "shim:compat/include/nanocompat/nanocompat.h"
+   ]
+  },
+  "platform/linux/Volumes.h": {
+   "includes": [
+    "nano:NanoPlatform.h"
    ]
   },
   "platform/linux/display/DrmBuffersGbm.cpp": {
@@ -1831,6 +1856,13 @@
    "includes": [
     "missing:ShellGate.h",
     "missing:compat_test_util.h"
+   ]
+  },
+  "platform/linux/tests/volumes_test.cpp": {
+   "includes": [
+    "missing:Volumes.h",
+    "missing:compat_test_util.h",
+    "shim:compat/include/cutils/properties.h"
    ]
   },
   "powerwatch/nano_powerwatch.cpp": {
@@ -2302,6 +2334,14 @@
    "includes": [
     "gtest:gtest/gtest.h",
     "nano:platform/host/FakeEvdev.h",
+    "nano:test/host/headless/tests/headless_test_util.h"
+   ]
+  },
+  "test/host/headless/tests/fake_volumes_test.cpp": {
+   "includes": [
+    "gtest:gtest/gtest.h",
+    "nano:platform/host/FakeVolumes.h",
+    "nano:platform/host/HostConfig.h",
     "nano:test/host/headless/tests/headless_test_util.h"
    ]
   },

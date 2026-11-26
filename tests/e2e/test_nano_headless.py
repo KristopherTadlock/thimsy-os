@@ -137,6 +137,8 @@ class ScenarioFormat(util.TestCase):
             '{"boot": {}}\n{"expect": {"present_count_at_least": 1}, "within_ms": 0}',
             '{"boot": {}}\nnot json',
             '{"boot": {"devices": [{"node": "event0", "keys": ["WARP"]}]}}',
+            '{"boot": {"volumes": {"id": "9602-C755"}}}',
+            '{"boot": {"volumes": [{"kind": "sd"}]}}',
         ]
         for text in bad:
             with self.assertRaises(ScenarioError, msg=text):
@@ -166,6 +168,11 @@ class ScenarioFormat(util.TestCase):
         pad = nano_scenario.host_config({})["devices"][0]
         self.assertIn(0x130, pad["keys"])
         self.assertIn(106, pad["keys"])
+        # The drives (FakeVolumes.h) pass through as written; none by default.
+        self.assertEqual(nano_scenario.host_config({})["volumes"], [])
+        vols = [{"id": "9602-C755", "kind": "sd", "boot_disk": True}, {"id": "1234-ABCD", "state": "ejected"}]
+        boot = nano_scenario.parse(json.dumps({"boot": {"volumes": vols}}))[0]["boot"]
+        self.assertEqual(nano_scenario.host_config(boot)["volumes"], vols)
 
     def test_match_value(self):
         self.assertTrue(nano_scenario.match_value("abc", {"equals": "abc"}))

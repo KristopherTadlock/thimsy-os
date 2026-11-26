@@ -208,6 +208,7 @@ DrasticGpu3d.cpp
 platform/linux/ControlKeys.cpp
 platform/linux/LinuxPlatform.cpp
 platform/linux/ShellGate.cpp
+platform/linux/Volumes.cpp
 platform/linux/display/DrmBuffersGbm.cpp
 platform/linux/display/EglWraps.cpp
 platform/linux/main_linux.cpp
@@ -217,6 +218,7 @@ platform/linux/main_linux.cpp
 [host]
 platform/host/DrmHost.cpp
 platform/host/FakeEvdev.cpp
+platform/host/FakeVolumes.cpp
 platform/host/HostConfig.cpp
 platform/host/HostControl.cpp
 platform/host/HostPlatform.cpp
