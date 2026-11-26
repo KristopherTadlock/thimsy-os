@@ -257,6 +257,45 @@ TEST_F(Captured, StderrGetsOneLinePerLine) {
     EXPECT_TRUE(hasPrefix(got[0], 'W', "LogTest: to stderr")) << err;
 }
 
+// As thimsy-session starts Nano: stdout and stderr appended to the ring file itself.
+TEST_F(Captured, RingFileThatIsStderrGetsEachLineOnceAndKeepsStdio) {
+    compat_test::ScratchDir dir;
+    const std::string path = dir / "nano.log";
+    std::string unused;
+    const int status = runChild(
+        [&path] {
+            const int fd = open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+            dup2(fd, STDOUT_FILENO);
+            dup2(fd, STDERR_FILENO);
+            close(fd);
+            nanocompat::setLogFile(path, 2000);
+            for (int i = 0; i < 100; i++) {
+                ALOGI("line %03d of the ring test", i);
+                dprintf(STDERR_FILENO, "stderr %03d\n", i);   // a child's or stdio's own output
+            }
+            ALOGI("last");
+            dprintf(STDERR_FILENO, "after the last\n");
+        },
+        &unused);
+    ASSERT_TRUE(WIFEXITED(status));
+    const std::string cur = compat_test::readFile(path);
+    const std::string old = compat_test::readFile(path + ".1");
+    const std::string both = old + cur;
+    size_t n = 0;
+    for (size_t at = both.find("line 099 of the ring test"); at != std::string::npos;
+         at = both.find("line 099 of the ring test", at + 1))
+        n++;
+    EXPECT_EQ(n, 1u) << both;
+    // Stderr followed the rotations: its last write is in the current half, and the halves stay
+    // bounded although stdio wrote to them too.
+    EXPECT_NE(cur.find("after the last"), std::string::npos) << cur;
+    struct stat st;
+    ASSERT_EQ(stat(path.c_str(), &st), 0);
+    EXPECT_LE(st.st_size, 1100);
+    ASSERT_EQ(stat((path + ".1").c_str(), &st), 0);
+    EXPECT_LE(st.st_size, 1100);
+}
+
 TEST_F(Captured, AlwaysFatalAborts) {
     std::string err;
     int status = runChild([] { LOG_ALWAYS_FATAL("boom %d", 42); }, &err);
