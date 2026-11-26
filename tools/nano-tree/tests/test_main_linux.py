@@ -53,10 +53,13 @@ class MainLinux(unittest.TestCase):
         text = _read(MAIN_LINUX)
         body = text[text.index("int main("):]
         order = ["nanocompat::setLogFile(", "nanocompat::init(", "nanolinux::controlkeys::install(",
-                 "new NanoMenu()", "->run(\"GammaOSNano\"", "->join()"]
+                 "nanoplat::createPlatform(", "nanoplat::install(", "nanoBootSequence(nullptr)", "->join()"]
         pos = [body.find(s) for s in order]
         self.assertNotIn(-1, pos, "main_linux.cpp lacks one of %s" % order)
         self.assertEqual(pos, sorted(pos), "main_linux.cpp must set up the platform in this order: %s" % order)
+        # main.cpp's steps come from nanoBootSequence(), not from a copy here (G7-main).
+        for copied in ("new NanoMenu", "->run(", "setpriority(", "drm_active"):
+            self.assertNotIn(copied, body, "main_linux.cpp copies a step of nanoBootSequence(): %s" % copied)
         self.assertIn('"/storage/.config/thimsy/persist.props"', text)
         self.assertIn('"/run/thimsy/props"', text)
         self.assertIn('"/run/thimsy/log/nano.log"', text)

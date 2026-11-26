@@ -633,7 +633,7 @@ class LinuxPlatform(Base):
         plat = [p for p in self.src["linux"] + self.src["drm"]
                 if p not in ("platform/linux/main_linux.cpp", "platform/linux/ShellGate.cpp")]
         for p in ("platform/linux/display/DrmBuffersGbm.cpp", "platform/linux/display/EglWraps.cpp",
-                  "platform/linux/ControlKeys.cpp", "NanoMenuDrm.cpp"):
+                  "platform/linux/ControlKeys.cpp", "platform/linux/LinuxPlatform.cpp", "NanoMenuDrm.cpp"):
             self.assertIn(p, plat)
         # NanoPlatform.cpp (install, get) reaches the library through nano_core since G7-main.
         self.assertIn("NanoPlatform.cpp", self.src["core"])

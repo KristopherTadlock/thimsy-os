@@ -1754,6 +1754,11 @@
     "shim:compat/include/nanocompat/nanocompat.h"
    ]
   },
+  "platform/linux/LinuxPlatform.cpp": {
+   "includes": [
+    "nano:NanoPlatform.h"
+   ]
+  },
   "platform/linux/ShellGate.cpp": {
    "includes": [
     "nano:platform/linux/ShellGate.h",
@@ -1785,12 +1790,12 @@
   },
   "platform/linux/main_linux.cpp": {
    "includes": [
+    "nano:NanoBootSequence.h",
     "nano:NanoMenu.h",
+    "nano:NanoPlatform.h",
     "nano:platform/linux/ControlKeys.h",
-    "shim:compat/include/cutils/properties.h",
     "shim:compat/include/log/log.h",
     "shim:compat/include/nanocompat/nanocompat.h",
-    "shim:compat/include/system/thread_defs.h",
     "shim:compat/include/utils/StrongPointer.h",
     "shim:compat/include/utils/Thread.h"
    ]
@@ -1800,6 +1805,12 @@
     "missing:ControlKeys.h",
     "missing:compat_test_util.h",
     "shim:compat/include/cutils/properties.h"
+   ]
+  },
+  "platform/linux/tests/linuxplatform_test.cpp": {
+   "includes": [
+    "gtest:gtest/gtest.h",
+    "nano:NanoPlatform.h"
    ]
   },
   "platform/linux/tests/shellgate_test.cpp": {

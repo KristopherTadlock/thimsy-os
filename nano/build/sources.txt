@@ -204,6 +204,7 @@ DrasticGpu3d.cpp
 # DrmBuffersGbm.cpp and EglWraps.cpp stand in for [firmware]'s NanoMenuDrmBuffers.cpp (B.8).
 [linux]
 platform/linux/ControlKeys.cpp
+platform/linux/LinuxPlatform.cpp
 platform/linux/ShellGate.cpp
 platform/linux/display/DrmBuffersGbm.cpp
 platform/linux/display/EglWraps.cpp

@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# The Linux platform's host tests (docs/linux/IMPLEMENTATION.md G9): the shell gate and the control
-# keys, against Nano's compat shims and libthimsy (nano/test/host/compat/compat.mk), with g++ and
-# make only. The display back end and the EGL wraps need libdrm, GBM and EGL headers and are not
+# The Linux platform's host tests (docs/linux/IMPLEMENTATION.md G9, G7-main): the shell gate, the
+# control keys and the platform's createPlatform (with nano/NanoPlatform.cpp), against Nano's compat
+# shims and libthimsy (nano/test/host/compat/compat.mk), with g++ and make only. The display back end and the EGL wraps need libdrm, GBM and EGL headers and are not
 # built here (G10 runs -fsyntax-only on them).
 #
 #   nice -n 19 make -f nano/platform/linux/tests/platform.mk -j1 check
@@ -36,11 +36,15 @@ include $(PLAT_NANO_DIR)/test/host/compat/compat.mk
 
 PLAT_WRAPS := $(shell sed -e 's/\#.*//' $(PLAT_DIR)/linker-wraps.txt)
 PLAT_WRAP_LDFLAGS := $(foreach s,$(PLAT_WRAPS),-Wl,--wrap=$(s))
-PLAT_CPPFLAGS := $(COMPAT_TEST_CPPFLAGS) -I$(PLAT_DIR)
+# nano/ for quoted includes only ("NanoPlatform.h"), so no header of nano/ shadows a shim.
+PLAT_CPPFLAGS := $(COMPAT_TEST_CPPFLAGS) -I$(PLAT_DIR) -iquote $(PLAT_NANO_DIR)
 
-PLAT_TESTS := shellgate_test controlkeys_test
+PLAT_TESTS := shellgate_test controlkeys_test linuxplatform_test
+# PLAT_SRCS_<test>: files of platform/linux; PLAT_NANO_SRCS_<test>: files of nano/.
 PLAT_SRCS_shellgate_test := ShellGate.cpp
 PLAT_SRCS_controlkeys_test := ControlKeys.cpp
+PLAT_SRCS_linuxplatform_test := LinuxPlatform.cpp
+PLAT_NANO_SRCS_linuxplatform_test := NanoPlatform.cpp
 PLAT_TEST_BINS := $(PLAT_TESTS:%=$(PLAT_O)/test/%)
 
 .PHONY: check check-platform-linux platform-linux-clean
@@ -49,12 +53,17 @@ $(PLAT_O)/obj/%.o: $(PLAT_DIR)/%.cpp | compat-guard
 	@mkdir -p $(@D)
 	$(COMPAT_CC_RUN) $(CXX) $(COMPAT_STD) $(COMPAT_WARN) $(COMPAT_ASAN_FLAGS) $(PLAT_CPPFLAGS) -MMD -MP -c $< -o $@
 
+$(PLAT_O)/nano-obj/%.o: $(PLAT_NANO_DIR)/%.cpp | compat-guard
+	@mkdir -p $(@D)
+	$(COMPAT_CC_RUN) $(CXX) $(COMPAT_STD) $(COMPAT_WARN) $(COMPAT_ASAN_FLAGS) $(PLAT_CPPFLAGS) -MMD -MP -c $< -o $@
+
 $(PLAT_O)/test-obj/%.o: $(PLAT_TEST_DIR)/%.cpp | compat-guard
 	@mkdir -p $(@D)
 	$(COMPAT_CC_RUN) $(CXX) $(COMPAT_STD) $(COMPAT_WARN) $(COMPAT_ASAN_FLAGS) $(PLAT_CPPFLAGS) -MMD -MP -c $< -o $@
 
 define PLAT_TEST_RULE
-$(PLAT_O)/test/$(1): $(PLAT_O)/test-obj/$(1).o $(PLAT_SRCS_$(1):%.cpp=$(PLAT_O)/obj/%.o) $(COMPAT_ASAN_LIB) $(COMPAT_LIBTHIMSY_ASAN) | compat-guard
+$(PLAT_O)/test/$(1): $(PLAT_O)/test-obj/$(1).o $(PLAT_SRCS_$(1):%.cpp=$(PLAT_O)/obj/%.o) \
+		$(PLAT_NANO_SRCS_$(1):%.cpp=$(PLAT_O)/nano-obj/%.o) $(COMPAT_ASAN_LIB) $(COMPAT_LIBTHIMSY_ASAN) | compat-guard
 	@mkdir -p $$(@D)
 	$$(COMPAT_CC_RUN) $$(CXX) $$(COMPAT_ASAN_FLAGS) $$(PLAT_WRAP_LDFLAGS) $$(filter %.o,$$^) $$(NANOCOMPAT_ASAN_LIBS) -o $$@
 endef
@@ -76,6 +85,6 @@ check-platform-linux: compat-guard $(PLAT_TEST_BINS)
 
 platform-linux-clean:
 	@test -n "$(PLAT_O)" && test "$(PLAT_O)" != "/"
-	rm -rf -- "$(PLAT_O)/obj" "$(PLAT_O)/test-obj" "$(PLAT_O)/test" "$(PLAT_O)/log"
+	rm -rf -- "$(PLAT_O)/obj" "$(PLAT_O)/nano-obj" "$(PLAT_O)/test-obj" "$(PLAT_O)/test" "$(PLAT_O)/log"
 
--include $(wildcard $(PLAT_O)/obj/*.d $(PLAT_O)/test-obj/*.d)
+-include $(wildcard $(PLAT_O)/obj/*.d $(PLAT_O)/nano-obj/*.d $(PLAT_O)/test-obj/*.d)
