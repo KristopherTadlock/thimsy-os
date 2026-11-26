@@ -2466,10 +2466,10 @@ index 2ff1dad7970..89bb33a9256 100644
                      } else { close(fd); unlink(tmp.c_str()); }
                  }
 diff --git a/frameworks/base/cmds/gammaos-nano/Android.bp b/frameworks/base/cmds/gammaos-nano/Android.bp
-index 0f747c9a45c..3648d9a27f2 100644
+index 0f747c9a45c..c6725b21d0c 100644
 --- a/frameworks/base/cmds/gammaos-nano/Android.bp
 +++ b/frameworks/base/cmds/gammaos-nano/Android.bp
-@@ -45,8 +45,16 @@ cc_binary {
+@@ -45,8 +45,17 @@ cc_binary {
  
      srcs: [
          "main.cpp",
@@ -2479,6 +2479,7 @@ index 0f747c9a45c..3648d9a27f2 100644
 +        "platform/firmware/Display.cpp",   // the firmware platform's Display (G7-display)
 +        "platform/firmware/Launcher.cpp",  // the firmware platform's Launcher (G7-launch-b)
 +        "platform/firmware/Audio.cpp",     // the firmware Audio: NanoAudio's AAudio output (G7-audio)
++        "platform/firmware/Volumes.cpp",   // the firmware Volumes (G7-volumes)
          "NanoMenu.cpp",
 +        "NanoLaunchCommit.cpp",            // the launch handshake's writes (G7-launch-a)
          "NanoMenuDrm.cpp",
@@ -2486,7 +2487,7 @@ index 0f747c9a45c..3648d9a27f2 100644
          "NanoMenuRgbFollow.cpp",
          "NanoMenuXmb.cpp",
          "NanoMenuShaders.cpp",
-@@ -69,23 +77,31 @@ cc_binary {
+@@ -69,23 +78,31 @@ cc_binary {
          "NanoMenuPS3EmuCatalog.cpp",
          "NanoMenuPS3Folder.cpp",
          "NanoMenuFileExplorer.cpp",
@@ -2519,7 +2520,7 @@ index 0f747c9a45c..3648d9a27f2 100644
          "NanoMenuSetupWizard.cpp",
          "NanoMenuStrings.cpp",
          "NanoBtStable.cpp",
-@@ -111,13 +127,40 @@ cc_binary {
+@@ -111,13 +128,40 @@ cc_binary {
          "NanoAacDec.cpp",
          "NanoCea608.cpp",
          "NanoScraper.cpp",
@@ -2560,7 +2561,7 @@ index 0f747c9a45c..3648d9a27f2 100644
          "LibretroRunner.cpp",
          "FakeJNI.cpp",
          "DrasticRunner.cpp",
-@@ -133,6 +176,7 @@ cc_binary {
+@@ -133,6 +177,7 @@ cc_binary {
          "liba52_nano",   // AC-3 decoder (no AC-3 codec on the device)
          "libtinyxml2",   // XML DOM parser for the ES-DE theme engine (NanoEsdeTheme)
          "libnanosvg_nano",   // SVG rasterizer for ES-DE theme logos (NanoThemeEngine)
@@ -2568,7 +2569,7 @@ index 0f747c9a45c..3648d9a27f2 100644
          // Share storage + credential encoding, shared with the gammaos-sharefs daemon so a share
          // added in the menu is written exactly as the daemon expects to read it.
          "libgammaos_sharecfg",
-@@ -143,14 +187,13 @@ cc_binary {
+@@ -143,14 +188,13 @@ cc_binary {
          "jni_headers",
          "native_headers",   // <android/imagedecoder.h> + <android/bitmap.h> (photo viewer decode)
          "libgammargb_process_headers",   // shared GammaRGB colour pipeline (parity with SF sampler)
@@ -2584,7 +2585,7 @@ index 0f747c9a45c..3648d9a27f2 100644
          "libbinder_ndk",
          "libcutils",
          "liblog",
-@@ -172,21 +215,28 @@ cc_binary {
+@@ -172,21 +216,28 @@ cc_binary {
          "libandroid",   // APerformanceHint (ADPF render-thread hint session)
          "libaaudio",    // GammaEQ audio preview + music player output (AAudio)
          "libmediandk",  // music player decode: AMediaExtractor + AMediaCodec -> PCM
@@ -2617,7 +2618,7 @@ index 0f747c9a45c..3648d9a27f2 100644
          "nano_xmb_icons",
          "nano_xmb_normalmaps",
          "nano_xmb_glass",
-@@ -204,13 +254,64 @@ cc_binary {
+@@ -204,13 +255,64 @@ cc_binary {
          "nano_xmb_photoviewer",
          "nano_xmb_backgrounds",
          "nano_xmb_systemstatus",
@@ -2683,7 +2684,7 @@ index 0f747c9a45c..3648d9a27f2 100644
  // Vendored liba52 (a52dec 0.7.4, GPL-2) - AC-3 decoder. The device has no hardware
  // or software AC-3 codec, so NanoAc3 uses this to decode AC-3 audio in .ts / MKV / VOB.
  // Pure-C generic path (no SIMD / djbfft / memalign); -w because the 2002-era source
-@@ -249,6 +350,7 @@ cc_library_static {
+@@ -249,6 +351,7 @@ cc_library_static {
  // source is not clean under Soong's warning set (same treatment as liba52_nano).
  cc_library_static {
      name: "libnanosvg_nano",
@@ -2691,7 +2692,7 @@ index 0f747c9a45c..3648d9a27f2 100644
      srcs: ["nanosvg/nanosvg_impl.c"],
      local_include_dirs: ["nanosvg"],
      export_include_dirs: ["nanosvg"],
-@@ -323,14 +425,40 @@ sh_binary {
+@@ -323,14 +426,40 @@ sh_binary {
      src: "nano-pmdown.sh",
  }
  
@@ -2733,7 +2734,7 @@ index 0f747c9a45c..3648d9a27f2 100644
  // /system/etc/nano_xmb/<sub_dir>/; the renderer also checks
  // /data/system/nano_xmb/ first so assets can be pushed during development
  // without rebuilding the system image.
-@@ -340,18 +468,6 @@ prebuilt_etc {
+@@ -340,18 +469,6 @@ prebuilt_etc {
      sub_dir: "nano_xmb/fonts",
  }
  
@@ -2752,7 +2753,7 @@ index 0f747c9a45c..3648d9a27f2 100644
  // ES-DE built-in asset SVGs the theme engine falls back to when a theme does not
  // ship its own: the helpsystem button glyphs (the legend icons at the bottom of
  // every view), the per-controller badge icons, and the metadata badge icons.
-@@ -388,12 +504,6 @@ prebuilt_etc {
+@@ -388,12 +505,6 @@ prebuilt_etc {
      sub_dir: "nano_xmb/gradients",
  }
  
@@ -2765,7 +2766,7 @@ index 0f747c9a45c..3648d9a27f2 100644
  prebuilt_etc {
      name: "nano_xmb_icons",
      srcs: ["ps3xmb/icons/*.png"],
-@@ -423,7 +533,27 @@ prebuilt_etc {
+@@ -423,7 +534,27 @@ prebuilt_etc {
  // /data/system/nano_xmb/audio/ first (dev override), else this install path.
  prebuilt_etc {
      name: "nano_xmb_audio",
@@ -2794,7 +2795,7 @@ index 0f747c9a45c..3648d9a27f2 100644
      sub_dir: "nano_xmb/audio",
  }
  
-@@ -510,6 +640,13 @@ prebuilt_etc {
+@@ -510,6 +641,13 @@ prebuilt_etc {
          "ps3xmb/i18n/ar.json",
          "ps3xmb/i18n/tr.json",
          "ps3xmb/i18n/pl.json",
@@ -2808,7 +2809,7 @@ index 0f747c9a45c..3648d9a27f2 100644
      ],
      sub_dir: "gammaos-nano/i18n",
  }
-@@ -543,7 +680,12 @@ prebuilt_etc {
+@@ -543,7 +681,12 @@ prebuilt_etc {
  // first, this is the bundled fallback).
  prebuilt_etc {
      name: "nano_xmb_nds",
@@ -2822,7 +2823,7 @@ index 0f747c9a45c..3648d9a27f2 100644
      sub_dir: "nano_xmb/nds",
  }
  
-@@ -558,6 +700,32 @@ prebuilt_etc {
+@@ -558,6 +701,32 @@ prebuilt_etc {
      sub_dir: "nano_xmb/daijishou",
  }
  
@@ -2855,7 +2856,7 @@ index 0f747c9a45c..3648d9a27f2 100644
  // Source files shared with the drastic-nano binary. drastic-nano
  // reuses the DRM rendering stack, DrasticRunner lifecycle, and
  // FakeJNI shim from gammaos-nano; wrapping them in a filegroup lets
-@@ -567,11 +735,386 @@ filegroup {
+@@ -567,11 +736,386 @@ filegroup {
      name: "drastic_nano_shared_srcs",
      srcs: [
          "NanoMenuDrm.cpp",
@@ -18951,10 +18952,10 @@ index 00000000000..1039fcc3b63
 +    "%EMULATOR_RETROARCH% %EXTRA_CONFIGFILE%=%EXTERNALDATA%/Android/data/%ANDROIDPACKAGE%/files/retroarch.cfg %EXTRA_LIBRETRO%=%INTERNALDATA%/%ANDROIDPACKAGE%/cores/{core}_libretro_android.so %EXTRA_ROM%=%ROM%";
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoEsdeStore.cpp b/frameworks/base/cmds/gammaos-nano/NanoEsdeStore.cpp
 new file mode 100644
-index 00000000000..165dbbd9656
+index 00000000000..5116c12c4d2
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/NanoEsdeStore.cpp
-@@ -0,0 +1,1793 @@
+@@ -0,0 +1,1782 @@
 +/*
 + * Copyright (C) 2026 The Thimsy OS Project
 + *
@@ -18995,6 +18996,7 @@ index 00000000000..165dbbd9656
 +#include "NanoEsdeSystemName.h"
 +#include "NanoI18n.h"
 +#include "NanoJson.h"
++#include "NanoPlatform.h"
 +
 +#include <cutils/properties.h>
 +#include <dirent.h>
@@ -19116,7 +19118,7 @@ index 00000000000..165dbbd9656
 +    const size_t sl = dir.find('/', 9);
 +    const std::string vol = dir.substr(9, sl == std::string::npos ? std::string::npos : sl - 9);
 +    const std::string rel = sl == std::string::npos ? std::string() : dir.substr(sl);
-+    if (vol.empty() || vol == "emulated" || vol == "self" || access(("/storage/" + vol).c_str(), F_OK) == 0) {
++    if (vol.empty() || vol == "emulated" || vol == "self" || nanoplat::get().volumes->present(vol)) {
 +        mEsdeCardGoneMs = 0;
 +        return false;
 +    }
@@ -19125,19 +19127,7 @@ index 00000000000..165dbbd9656
 +    const int64_t now = (int64_t)uptimeMillis();
 +    if (mEsdeCardGoneMs == 0) mEsdeCardGoneMs = now;
 +    if (now < 30000 || now - mEsdeCardGoneMs < 10000) return false;
-+    std::vector<std::string> found;
-+    if (DIR* d = opendir("/storage")) {
-+        while (dirent* e = readdir(d)) {
-+            const std::string n = e->d_name;
-+            if (n == "." || n == ".." || n == "emulated" || n == "self" || n == vol) continue;
-+            const std::string cand = "/storage/" + n + rel;
-+            struct stat st;
-+            if (access(("/mnt/media_rw/" + n).c_str(), F_OK) == 0 && stat(cand.c_str(), &st) == 0 && S_ISDIR(st.st_mode)
-+                && access(cand.c_str(), W_OK) == 0)
-+                found.push_back(cand);
-+        }
-+        closedir(d);
-+    }
++    std::vector<std::string> found = nanoplat::get().volumes->writableFolders(vol, rel);
 +    if (found.empty()) return false;
 +    std::sort(found.begin(), found.end());
 +    char sc[PROPERTY_VALUE_MAX] = {};
@@ -63998,10 +63988,10 @@ index 00000000000..1cf7b6955b2
 +}  // namespace nanoplat
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoPlatform.h b/frameworks/base/cmds/gammaos-nano/NanoPlatform.h
 new file mode 100644
-index 00000000000..94b0825f1a6
+index 00000000000..d4be2f3bbac
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/NanoPlatform.h
-@@ -0,0 +1,197 @@
+@@ -0,0 +1,223 @@
 +/*
 + * Copyright (C) 2026 The Thimsy OS Project
 + *
@@ -64043,6 +64033,7 @@ index 00000000000..94b0825f1a6
 +#include <string>    // Launcher (G7-launch-b)
 +#include <cstdint>     // Audio (G7-audio)
 +#include <functional>  // Audio (G7-audio)
++#include <vector>      // Volumes (G7-volumes)
 +
 +namespace android {
 +struct LaunchTuple;  // NanoLaunchCommit.h (G7-launch-b)
@@ -64172,13 +64163,38 @@ index 00000000000..94b0825f1a6
 +    virtual std::unique_ptr<AudioStream> open(const AudioFormat& format, Fill fill, OnDisconnect onDisconnect) = 0;
 +};
 +
-+// The platform's services. Empty until the first G7 step declares one. Each platform library
-+// derives from it to keep its own state; services added later are members here.
++// --- Volumes (G7-volumes) -------------------------------------------------------------------------
++// The removable volumes, a microSD card or a USB drive, as apps see them: /storage/<id>. What
++// NanoSdMove.cpp's and NanoEsdeStore.cpp's /storage and /mnt/media_rw scans asked the filesystem,
++// moved behind one interface. Any thread. Every call may touch the filesystem (on Linux it also
++// reads /run/thimsy/volumes.json when the session has changed it), so none is for a frame's hot path.
++class Volumes {
++ public:
++    virtual ~Volumes() = default;
++    // The microSD card: the first removable volume Nano can write to (/storage/<id>), the slot's
++    // before a USB drive's; "" when there is none (NanoMenu::sdCardRoot).
++    virtual std::string cardRoot() = 0;
++    // The volume at storagePath (/storage/<id>) is the microSD slot's (an MMC disk), not a USB
++    // drive's (NanoSdMove.cpp's sdIsSlot).
++    virtual bool isSlot(const std::string& storagePath) = 0;
++    // The volume `id` is in: its /storage/<id> is there (NanoMenu::esdeStoreFollowCard).
++    virtual bool present(const std::string& id) = 0;
++    // The volume `id` is not in: neither its raw mount nor /storage/<id> is there (NanoSdMove.cpp's
++    // sdVolumeAbsent).
++    virtual bool absent(const std::string& id) = 0;
++    // /storage/<id><rel> for each removable volume but `vol` where that is a folder Nano can write
++    // to, in no set order (NanoMenu::esdeStoreFollowCard: the ES-DE folder on another card).
++    virtual std::vector<std::string> writableFolders(const std::string& vol, const std::string& rel) = 0;
++};
++
++// The platform's services, one member per G7 area. Each platform library derives from it to keep
++// its own state, and its createPlatform() sets every member, so call sites use them untested.
 +struct Platform {
 +    virtual ~Platform();
 +    std::unique_ptr<Display> display;  // G7-display: never null once createPlatform() returns
 +    std::unique_ptr<Launcher> launcher;  // G7-launch-b: never null once createPlatform() returns
 +    std::unique_ptr<Audio> audio;  // G7-audio: set by every createPlatform(), never null after install()
++    std::unique_ptr<Volumes> volumes;   // G7-volumes
 +};
 +
 +struct PlatformArgs {
@@ -67425,10 +67441,10 @@ index 00000000000..ec40b141ee0
 +}  // namespace android
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoSdMove.cpp b/frameworks/base/cmds/gammaos-nano/NanoSdMove.cpp
 new file mode 100644
-index 00000000000..f6a6dbd8200
+index 00000000000..0a52d74d20e
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/NanoSdMove.cpp
-@@ -0,0 +1,2683 @@
+@@ -0,0 +1,2663 @@
 +/*
 + * Copyright (C) 2026 The Thimsy OS Project
 + *
@@ -67469,6 +67485,7 @@ index 00000000000..f6a6dbd8200
 +#include "NanoEsdeSystemName.h"
 +#include "NanoI18n.h"
 +#include "NanoJson.h"
++#include "NanoPlatform.h"
 +#include "NanoScraper.h"
 +#include "NanoScrapeQueue.h"
 +#include "NanoSdMove.h"
@@ -67826,33 +67843,13 @@ index 00000000000..f6a6dbd8200
 +
 +// The card is the microSD slot's (an MMC disk), not a USB drive.
 +static bool sdIsSlot(const std::string& storagePath) {
-+    struct stat st;
-+    if (stat(("/mnt/media_rw/" + storagePath.substr(storagePath.find_last_of('/') + 1)).c_str(), &st) != 0) return false;
-+    char sys[64], real[PATH_MAX];
-+    snprintf(sys, sizeof sys, "/sys/dev/block/%u:%u", major(st.st_dev), minor(st.st_dev));
-+    return realpath(sys, real) != nullptr && strstr(real, "/mmc") != nullptr;
++    return nanoplat::get().volumes->isSlot(storagePath);
 +}
 +
 +// The microSD card: the first removable volume Nano can write to, as apps see it (/storage/XXXX-XXXX),
 +// the slot's before a USB drive's.
 +std::string NanoMenu::sdCardRoot() {
-+    std::vector<std::string> found;
-+    if (DIR* d = opendir("/storage")) {
-+        while (dirent* e = readdir(d)) {
-+            const std::string n = e->d_name;
-+            if (n == "." || n == ".." || n == "emulated" || n == "self") continue;
-+            const std::string p = "/storage/" + n;
-+            struct stat st;
-+            // A card or USB drive (a removable volume: it has its raw mount), not a network share.
-+            if (access(("/mnt/media_rw/" + n).c_str(), F_OK) == 0 && stat(p.c_str(), &st) == 0 && S_ISDIR(st.st_mode)
-+                && access(p.c_str(), W_OK) == 0)
-+                found.push_back(p);
-+        }
-+        closedir(d);
-+    }
-+    std::sort(found.begin(), found.end());
-+    std::stable_partition(found.begin(), found.end(), sdIsSlot);
-+    return found.empty() ? std::string() : found[0];
++    return nanoplat::get().volumes->cardRoot();
 +}
 +
 +// ---------------------------------------------------------------------------
@@ -69025,8 +69022,7 @@ index 00000000000..f6a6dbd8200
 +
 +// A volume that is not in: its emulator_config is named in settings only because they came from it.
 +static bool sdVolumeAbsent(const std::string& id) {
-+    struct stat st;
-+    return stat(("/mnt/media_rw/" + id).c_str(), &st) != 0 && stat(("/storage/" + id).c_str(), &st) != 0;
++    return nanoplat::get().volumes->absent(id);
 +}
 +
 +// The folder grants settings name that Nano may give again (NanoNetBridge allows these apps only,
@@ -82000,10 +81996,10 @@ index 00000000000..78411de3d83
 +}  // namespace nanofirmware
 diff --git a/frameworks/base/cmds/gammaos-nano/platform/firmware/Platform.cpp b/frameworks/base/cmds/gammaos-nano/platform/firmware/Platform.cpp
 new file mode 100644
-index 00000000000..cd7b8664e3d
+index 00000000000..a5c6bc9e4c7
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/platform/firmware/Platform.cpp
-@@ -0,0 +1,38 @@
+@@ -0,0 +1,40 @@
 +/*
 + * Copyright (C) 2026 The Thimsy OS Project
 + *
@@ -82029,6 +82025,7 @@ index 00000000000..cd7b8664e3d
 +#include "NanoPlatform.h"
 +#include "Display.h"  // G7-display
 +#include "Launcher.h"  // G7-launch-b
++#include "Volumes.h"
 +
 +namespace nanofirmware {
 +std::unique_ptr<nanoplat::Audio> makeAudio();  // platform/firmware/Audio.cpp (G7-audio)
@@ -82040,8 +82037,170 @@ index 00000000000..cd7b8664e3d
 +    platform->display = nanofirmware::createDisplay();  // G7-display
 +    platform->launcher = nanofirmware::createLauncher();  // G7-launch-b
 +    platform->audio = nanofirmware::makeAudio();
++    platform->volumes = firmware::makeVolumes();
 +    return platform;
 +}
+diff --git a/frameworks/base/cmds/gammaos-nano/platform/firmware/Volumes.cpp b/frameworks/base/cmds/gammaos-nano/platform/firmware/Volumes.cpp
+new file mode 100644
+index 00000000000..a4ad8a7fad8
+--- /dev/null
++++ b/frameworks/base/cmds/gammaos-nano/platform/firmware/Volumes.cpp
+@@ -0,0 +1,119 @@
++/*
++ * Copyright (C) 2026 The Thimsy OS Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++// The firmware Volumes (docs/linux/IMPLEMENTATION.md B.6, G7-volumes): the /storage and
++// /mnt/media_rw scans of NanoSdMove.cpp (sdCardRoot, sdIsSlot, sdVolumeAbsent) and NanoEsdeStore.cpp
++// (esdeStoreFollowCard's), moved here verbatim. Android's vold makes /storage/<id> and
++// /mnt/media_rw/<id> while a volume is mounted, so the folders themselves say what is in.
++
++#include "Volumes.h"
++
++#include <dirent.h>
++#include <limits.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <sys/stat.h>
++#include <sys/sysmacros.h>
++#include <unistd.h>
++
++#include <algorithm>
++#include <memory>
++#include <string>
++#include <vector>
++
++#include "NanoPlatform.h"
++
++namespace nanoplat {
++namespace firmware {
++
++namespace {
++
++// The card is the microSD slot's (an MMC disk), not a USB drive.
++bool sdIsSlot(const std::string& storagePath) {
++    struct stat st;
++    if (stat(("/mnt/media_rw/" + storagePath.substr(storagePath.find_last_of('/') + 1)).c_str(), &st) != 0) return false;
++    char sys[64], real[PATH_MAX];
++    snprintf(sys, sizeof sys, "/sys/dev/block/%u:%u", major(st.st_dev), minor(st.st_dev));
++    return realpath(sys, real) != nullptr && strstr(real, "/mmc") != nullptr;
++}
++
++class FirmwareVolumes : public Volumes {
++ public:
++    std::string cardRoot() override;
++    bool isSlot(const std::string& storagePath) override { return sdIsSlot(storagePath); }
++    bool present(const std::string& vol) override;
++    bool absent(const std::string& id) override;
++    std::vector<std::string> writableFolders(const std::string& vol, const std::string& rel) override;
++};
++
++// The microSD card: the first removable volume Nano can write to, as apps see it (/storage/XXXX-XXXX),
++// the slot's before a USB drive's.
++std::string FirmwareVolumes::cardRoot() {
++    std::vector<std::string> found;
++    if (DIR* d = opendir("/storage")) {
++        while (dirent* e = readdir(d)) {
++            const std::string n = e->d_name;
++            if (n == "." || n == ".." || n == "emulated" || n == "self") continue;
++            const std::string p = "/storage/" + n;
++            struct stat st;
++            // A card or USB drive (a removable volume: it has its raw mount), not a network share.
++            if (access(("/mnt/media_rw/" + n).c_str(), F_OK) == 0 && stat(p.c_str(), &st) == 0 && S_ISDIR(st.st_mode)
++                && access(p.c_str(), W_OK) == 0)
++                found.push_back(p);
++        }
++        closedir(d);
++    }
++    std::sort(found.begin(), found.end());
++    std::stable_partition(found.begin(), found.end(), sdIsSlot);
++    return found.empty() ? std::string() : found[0];
++}
++
++bool FirmwareVolumes::present(const std::string& vol) {
++    return access(("/storage/" + vol).c_str(), F_OK) == 0;
++}
++
++// A volume that is not in: its emulator_config is named in settings only because they came from it.
++bool FirmwareVolumes::absent(const std::string& id) {
++    struct stat st;
++    return stat(("/mnt/media_rw/" + id).c_str(), &st) != 0 && stat(("/storage/" + id).c_str(), &st) != 0;
++}
++
++std::vector<std::string> FirmwareVolumes::writableFolders(const std::string& vol, const std::string& rel) {
++    std::vector<std::string> found;
++    if (DIR* d = opendir("/storage")) {
++        while (dirent* e = readdir(d)) {
++            const std::string n = e->d_name;
++            if (n == "." || n == ".." || n == "emulated" || n == "self" || n == vol) continue;
++            const std::string cand = "/storage/" + n + rel;
++            struct stat st;
++            if (access(("/mnt/media_rw/" + n).c_str(), F_OK) == 0 && stat(cand.c_str(), &st) == 0 && S_ISDIR(st.st_mode)
++                && access(cand.c_str(), W_OK) == 0)
++                found.push_back(cand);
++        }
++        closedir(d);
++    }
++    return found;
++}
++
++}  // namespace
++
++std::unique_ptr<Volumes> makeVolumes() {
++    return std::unique_ptr<Volumes>(new FirmwareVolumes);
++}
++
++}  // namespace firmware
++}  // namespace nanoplat
+diff --git a/frameworks/base/cmds/gammaos-nano/platform/firmware/Volumes.h b/frameworks/base/cmds/gammaos-nano/platform/firmware/Volumes.h
+new file mode 100644
+index 00000000000..b912f0d818f
+--- /dev/null
++++ b/frameworks/base/cmds/gammaos-nano/platform/firmware/Volumes.h
+@@ -0,0 +1,30 @@
++/*
++ * Copyright (C) 2026 The Thimsy OS Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++// The firmware platform's Volumes (Volumes.cpp, G7-volumes), for createPlatform() in Platform.cpp.
++#pragma once
++
++#include <memory>
++
++#include "NanoPlatform.h"
++
++namespace nanoplat {
++namespace firmware {
++
++std::unique_ptr<Volumes> makeVolumes();
++
++}  // namespace firmware
++}  // namespace nanoplat
 diff --git a/frameworks/base/cmds/gammaos-nano/powerwatch/nano_powerwatch.cpp b/frameworks/base/cmds/gammaos-nano/powerwatch/nano_powerwatch.cpp
 new file mode 100644
 index 00000000000..84dab5ba8dd

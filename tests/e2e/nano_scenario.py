@@ -56,7 +56,7 @@ SANITIZER_MARKERS = ("ERROR: AddressSanitizer", "ERROR: LeakSanitizer", "WARNING
 STEPS = ("boot", "expect", "expect_prop", "expect_persist", "expect_file", "expect_launch", "expect_no_shell",
          "press", "frames", "barrier", "capture", "wait_ms", "set_prop", "child_exit", "quit")
 MODIFIERS = ("within_ms", "hold_ms", "device", "note")
-BOOT_FIELDS = ("props", "devices", "display", "shell", "barrier", "files", "record_props")
+BOOT_FIELDS = ("props", "devices", "display", "shell", "barrier", "files", "record_props", "volumes")
 EXPECT_FIELDS = ("present_count_at_least", "prop", "event", "exited")
 
 
@@ -165,6 +165,10 @@ def _validate(kind: str, step: Dict[str, Any], where: str, first: bool) -> None:
         files = v.get("files", {})
         if not isinstance(files, dict) or not all(k.startswith("/") and isinstance(x, str) for k, x in files.items()):
             raise ScenarioError("%s: boot.files maps absolute jail paths to their text" % where)
+        vols = v.get("volumes", [])
+        if not isinstance(vols, list) or not all(isinstance(x, dict) and isinstance(x.get("id"), str) and x["id"]
+                                                 for x in vols):
+            raise ScenarioError("%s: boot.volumes lists drives, each with an \"id\" (FakeVolumes.h)" % where)
     elif kind == "expect":
         if not isinstance(v, dict) or not v or set(v) - set(EXPECT_FIELDS):
             raise ScenarioError("%s: expect takes %s" % (where, ", ".join(EXPECT_FIELDS)))
@@ -244,6 +248,7 @@ def host_config(boot: Dict[str, Any]) -> Dict[str, Any]:
                              "stdout": r.get("stdout", "")} for r in shell.get("rules", [])],
                   "default_status": shell.get("default_status", 127)},
         "record_props": boot.get("record_props", [""]),
+        "volumes": boot.get("volumes", []),
     }
     return cfg
 

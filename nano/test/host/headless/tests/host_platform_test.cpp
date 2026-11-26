@@ -123,7 +123,8 @@ TEST(HostPlatform, CreateWiresTheChannel) {
                          (dir / "persist.props") + "\", \"run_dir\": \"" + (dir / "run") +
                          "\", \"log_file\": \"" + (dir / "nano.log") +
                          "\", \"display\": {\"width\": 320, \"height\": 240, \"pace\": false},"
-                         " \"record_props\": [\"sys.gammaos.\", \"persist.\"]}"));
+                         " \"record_props\": [\"sys.gammaos.\", \"persist.\"],"
+                         " \"volumes\": [{\"id\": \"9602-C755\", \"boot_disk\": true}]}"));
     char prog[] = "nano-headless";
     char flag[] = "--host-config";
     std::vector<char> path(cfg.begin(), cfg.end());
@@ -135,6 +136,8 @@ TEST(HostPlatform, CreateWiresTheChannel) {
     std::unique_ptr<nanoplat::Platform> p = nanoplat::createPlatform(args);
     ASSERT_TRUE(p != nullptr);
     EXPECT_TRUE(p->audio != nullptr);  // G7-audio: FakeAudio
+    ASSERT_TRUE(p->volumes != nullptr);   // the config's drives (FakeVolumes.h)
+    EXPECT_EQ(p->volumes->cardRoot(), "/storage/9602-C755");
 
     EXPECT_EQ(displayConfig().width, 320);
     // The services (G7): the fake display, here over host_drm_fake.cpp's HostDrm (no display).

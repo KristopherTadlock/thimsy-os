@@ -38,6 +38,7 @@
 #include "NanoEsdeSystemName.h"
 #include "NanoI18n.h"
 #include "NanoJson.h"
+#include "NanoPlatform.h"
 #include "NanoScraper.h"
 #include "NanoScrapeQueue.h"
 #include "NanoSdMove.h"
@@ -395,33 +396,13 @@ static void sdGamelistPutAltEmu(tinyxml2::XMLDocument& doc, tinyxml2::XMLNode* a
 
 // The card is the microSD slot's (an MMC disk), not a USB drive.
 static bool sdIsSlot(const std::string& storagePath) {
-    struct stat st;
-    if (stat(("/mnt/media_rw/" + storagePath.substr(storagePath.find_last_of('/') + 1)).c_str(), &st) != 0) return false;
-    char sys[64], real[PATH_MAX];
-    snprintf(sys, sizeof sys, "/sys/dev/block/%u:%u", major(st.st_dev), minor(st.st_dev));
-    return realpath(sys, real) != nullptr && strstr(real, "/mmc") != nullptr;
+    return nanoplat::get().volumes->isSlot(storagePath);
 }
 
 // The microSD card: the first removable volume Nano can write to, as apps see it (/storage/XXXX-XXXX),
 // the slot's before a USB drive's.
 std::string NanoMenu::sdCardRoot() {
-    std::vector<std::string> found;
-    if (DIR* d = opendir("/storage")) {
-        while (dirent* e = readdir(d)) {
-            const std::string n = e->d_name;
-            if (n == "." || n == ".." || n == "emulated" || n == "self") continue;
-            const std::string p = "/storage/" + n;
-            struct stat st;
-            // A card or USB drive (a removable volume: it has its raw mount), not a network share.
-            if (access(("/mnt/media_rw/" + n).c_str(), F_OK) == 0 && stat(p.c_str(), &st) == 0 && S_ISDIR(st.st_mode)
-                && access(p.c_str(), W_OK) == 0)
-                found.push_back(p);
-        }
-        closedir(d);
-    }
-    std::sort(found.begin(), found.end());
-    std::stable_partition(found.begin(), found.end(), sdIsSlot);
-    return found.empty() ? std::string() : found[0];
+    return nanoplat::get().volumes->cardRoot();
 }
 
 // ---------------------------------------------------------------------------
@@ -1594,8 +1575,7 @@ static bool sdWriteFileSync(const std::string& path, const std::string& text) {
 
 // A volume that is not in: its emulator_config is named in settings only because they came from it.
 static bool sdVolumeAbsent(const std::string& id) {
-    struct stat st;
-    return stat(("/mnt/media_rw/" + id).c_str(), &st) != 0 && stat(("/storage/" + id).c_str(), &st) != 0;
+    return nanoplat::get().volumes->absent(id);
 }
 
 // The folder grants settings name that Nano may give again (NanoNetBridge allows these apps only,

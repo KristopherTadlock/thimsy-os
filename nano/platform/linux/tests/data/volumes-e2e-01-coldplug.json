@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "volumes": [
+    {
+      "id": "1234-ABCD",
+      "state": "mounted",
+      "path": "/storage/1234-ABCD",
+      "media_rw": "/mnt/media_rw/1234-ABCD",
+      "dev": "/dev/mmcblk2p1",
+      "disk": "mmcblk2",
+      "partition": 1,
+      "fs": "vfat",
+      "label": "CARD2",
+      "kind": "sd",
+      "boot_disk": false,
+      "read_only": false,
+      "size_bytes": 1048576000
+    }
+  ]
+}

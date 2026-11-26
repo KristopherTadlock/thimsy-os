@@ -325,6 +325,9 @@ HL_PLATFORM_SRCS += platform/host/FakeLauncher.cpp NanoLaunchCommit.cpp
 # The fake audio (G7-audio).
 HL_TESTS += fake_audio_test
 HL_PLATFORM_SRCS += platform/host/FakeAudio.cpp
+# The fake volumes (G7-volumes).
+HL_TESTS += fake_volumes_test
+HL_PLATFORM_SRCS += platform/host/FakeVolumes.cpp
 HL_PLATFORM_OBJS := $(patsubst %.cpp,$(HL_O)/obj/%.o,$(HL_PLATFORM_SRCS))
 HL_CPPFLAGS := $(NANOCOMPAT_CPPFLAGS) -I$(LIBTHIMSY)/include -I$(NANO) -I$(LIBTHIMSY)/testing -I$(HL_TEST_DIR)
 HL_WARN := -Wall -Wextra -Werror

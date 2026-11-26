@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "volumes": [
+    {
+      "id": "9602-C755",
+      "state": "mounted",
+      "path": "/storage/9602-C755",
+      "media_rw": "/mnt/media_rw/9602-C755",
+      "dev": "/dev/mmcblk1p5",
+      "disk": "mmcblk1",
+      "partition": 5,
+      "fs": "exfat",
+      "label": "THIMSY",
+      "kind": "sd",
+      "boot_disk": true,
+      "read_only": false,
+      "size_bytes": 1048576000
+    },
+    {
+      "id": "1234-ABCD",
+      "state": "ejected",
+      "path": "/storage/1234-ABCD",
+      "media_rw": "/mnt/media_rw/1234-ABCD",
+      "dev": "/dev/mmcblk2p1",
+      "disk": "mmcblk2",
+      "partition": 1,
+      "fs": "vfat",
+      "label": "CARD2",
+      "kind": "sd",
+      "boot_disk": false,
+      "read_only": false,
+      "size_bytes": 1048576000
+    }
+  ]
+}

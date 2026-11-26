@@ -141,7 +141,7 @@ bool parseHostConfig(std::string_view text, HostConfig* out, std::string* err) {
     Reader r(err);
     const std::string top = "host config";
     if (!r.object(root, top, {"events", "control", "persist_file", "run_dir", "log_file", "display", "barrier",
-                              "devices", "shell", "record_props"}))
+                              "devices", "shell", "record_props", "volumes"}))
         return false;
     HostConfig c = *out;
     if (!r.str(root, "events", top, &c.events) || !r.str(root, "control", top, &c.control) ||
@@ -196,6 +196,22 @@ bool parseHostConfig(std::string_view text, HostConfig* out, std::string* err) {
         for (size_t i = 0; i < rp->size(); ++i) {
             if (!(*rp)[i].isString()) return r.fail(top + ".record_props[" + std::to_string(i) + "]", "not a string");
             c.recordProps.push_back((*rp)[i].asString());
+        }
+    }
+    if (const Value* vols = root.find("volumes")) {
+        if (!vols->isArray()) return r.fail(top + ".volumes", "not an array");
+        c.volumes.clear();
+        for (size_t i = 0; i < vols->size(); ++i) {
+            const std::string w = top + ".volumes[" + std::to_string(i) + "]";
+            const Value& v = (*vols)[i];
+            FakeVolume vol;
+            if (!r.object(v, w, {"id", "path", "kind", "state", "boot_disk", "read_only"}) ||
+                !r.str(v, "id", w, &vol.id) || !r.str(v, "path", w, &vol.path) || !r.str(v, "kind", w, &vol.kind) ||
+                !r.str(v, "state", w, &vol.state) || !r.boolean(v, "boot_disk", w, &vol.bootDisk) ||
+                !r.boolean(v, "read_only", w, &vol.readOnly))
+                return false;
+            if (vol.id.empty()) return r.fail(w + ".id", "missing");
+            c.volumes.push_back(std::move(vol));
         }
     }
     *out = std::move(c);
