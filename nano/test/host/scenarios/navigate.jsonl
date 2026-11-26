@@ -1,0 +1,21 @@
+# Navigate the home with the fake pad: the presses reach Nano through the jail's FIFO device and
+# FakeEvdev's answers, Nano keeps presenting, and nothing launches.
+# TODO(G10): add a check of where the focus ends once the first run shows which state Nano exposes
+# (a property or file written on focus change); today the scenario checks liveness and no launch.
+{"boot": {"props": {"persist.gammaos.nano.theme": "xmb", "persist.gammaos.nano.grab_input": "1"}}}
+{"expect": {"present_count_at_least": 5}, "within_ms": 30000}
+{"press": "DPAD_RIGHT"}
+{"wait_ms": 200}
+{"press": "DPAD_RIGHT"}
+{"wait_ms": 200}
+{"press": "DPAD_DOWN"}
+{"wait_ms": 200}
+{"press": "DPAD_UP"}
+{"wait_ms": 200}
+{"press": "DPAD_LEFT", "hold_ms": 120}
+{"wait_ms": 500}
+{"expect": {"exited": false}}
+{"barrier": true}
+{"frames": 3}
+{"barrier": false}
+{"expect_no_shell": ["am start"]}

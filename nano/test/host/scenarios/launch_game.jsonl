@@ -1,0 +1,19 @@
+# Open a system and launch a game with a libretro core: the launch handshake's keys (B.2's control
+# keys) are written, the launch is committed (do_launch=1, or Nano exits as the firmware does), the
+# game "ends", and Nano comes back with the game recorded as played.
+# TODO(G10): the key sequence below is a first guess at the XMB's layout (the Game column, the SNES
+# system, its first game); fix it, and the played-list file, from the first run's captures and events.
+{"boot": {"props": {"persist.gammaos.nano.theme": "xmb", "persist.gammaos.nano.grab_input": "1"}, "files": {"/storage/1234-ABCD/ROMs/snes/Test Game.sfc": "not a real ROM\n"}, "shell": {"rules": [{"match": "am start", "status": 0}]}}}
+{"expect": {"present_count_at_least": 5}, "within_ms": 30000}
+{"press": "DPAD_RIGHT"}
+{"wait_ms": 300}
+{"press": "A", "hold_ms": 80}
+{"wait_ms": 500}
+{"press": "A", "hold_ms": 80}
+{"expect_launch": {"kind": "Core", "core": "snes9x", "rom_endswith": "/ROMs/snes/Test Game.sfc"}, "within_ms": 10000}
+{"expect_prop": {"key": "sys.gammaos.nano.launch_app", "nonempty": true}}
+{"expect_file": {"path": "/data/system/nano_launch_rom.txt", "contains": "Test Game.sfc"}}
+{"child_exit": {"status": 0, "after_ms": 500}}
+{"expect": {"present_count_at_least": 1}, "within_ms": 30000}
+{"expect_file": {"path": "/data/system/nano_esde_played.txt", "contains": "Test Game"}, "within_ms": 3000}
+{"expect_no_shell": ["settings put", "pm uninstall"]}
