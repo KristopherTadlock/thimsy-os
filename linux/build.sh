@@ -14,7 +14,12 @@
 #              --family=<family>. No --publish, --clean or make targets.
 #   --publish  a public build: only a target marked "publish": true (a release),
 #              from a clean tree at a tagged commit; adds legal-info and a git
-#              archive of the whole repository (decisions D16, I37, I41)
+#              archive of the whole repository (decisions D16, I37, I41).
+#              Implies --clean (and empties images/<target>/). A hardware
+#              pack also needs its tier's images/thimsy-build.stamp to say
+#              the tier was built with --publish at this commit
+#   (every build writes output-<target>/images/thimsy-build.stamp: sha, version,
+#   target, publish, dirty; a hardware pack warns when its tier's differs)
 #   --dry-run  print the steps in order and run none of them
 #   --clean    start from an empty output tree
 #   --force=I-checked-no-android-build-runs
@@ -37,8 +42,9 @@
 # THIMSY_BUILD_DIR (default <work>/build): Buildroot, the output trees, ccache
 #   and the unpacked SDK. ext4 only: never under /mnt/<drive> (plan section 10).
 # THIMSY_PYTHON (default python3) runs tools/defconfig.py.
-# The container exports THIMSY_BUILD_TARGET=<target> (and THIMSY_DEVICES for
-# card) to the post-build and post-image scripts.
+# The container exports THIMSY_BUILD_TARGET=<target>, THIMSY_GIT_SHA,
+# THIMSY_VERSION (the tag with --publish, else git describe) and, for card,
+# THIMSY_DEVICES to the post-build and post-image scripts.
 #
 # Exit status: 0 built (or dry run), 1 the build failed, 2 usage or an unknown
 # target, 3 refused by the guard, 4 refused by the target's checks.
@@ -67,7 +73,7 @@ while [ $# -gt 0 ]; do
     --clean) clean=1 ;;
     --force=*) force="$1" ;;
     --guarded) guarded=1 ;;  # internal: re-run by build_guard.sh, holding the lock
-    -h | --help) sed -n '2,44p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h | --help) sed -n '2,/^# target, 3 refused/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     --) shift; break ;;
     -*) die 2 "unknown option $1 (see --help)" ;;
     *) break ;;
@@ -146,11 +152,36 @@ case "$BUILD_DIR" in
   /mnt/[a-z]/* | /[a-z]/*) check "THIMSY_BUILD_DIR is on a Windows drive ($BUILD_DIR); use ext4" ;;
 esac
 TAG=""
+SHA="$(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo unknown)"
+DIRTY=0
+[ -z "$(git -C "$REPO" status --porcelain 2>/dev/null)" ] || DIRTY=1
 if [ "$publish" = 1 ]; then
-  [ -z "$(git -C "$REPO" status --porcelain 2>/dev/null)" ] ||
-    check "--publish needs a clean tree (git status shows changes)"
+  [ "$DIRTY" = 0 ] || check "--publish needs a clean tree (git status shows changes)"
   TAG="$(git -C "$REPO" describe --exact-match --tags HEAD 2>/dev/null)" ||
     check "--publish needs HEAD to carry a release tag"
+  # Buildroot never removes what an earlier build put in an output tree, so a
+  # public build starts from an empty one (security-2, build-integration-3).
+  clean=1
+fi
+# ro.thimsy.build.version (post-build.d/20-build-props.sh: the container has
+# linux/ only, not the repository's .git).
+VERSION="${TAG:-$(git -C "$REPO" describe --tags --always --dirty 2>/dev/null || echo 0.0.0-dev)}"
+# A hardware pack's cards carry its tier's root (card.sh: output-<sdk_from>/
+# images). The tier writes images/thimsy-build.stamp when it is built; a public
+# hardware pack needs a public tier build of this very commit
+# (build-integration-4, security-2).
+STAMP_NAME="thimsy-build.stamp"
+if [ "$KIND" = hw ]; then
+  stamp="$BUILD_DIR/output-$SDK_FROM/images/$STAMP_NAME"
+  sget() { sed -n "s/^$1=//p" "$stamp" 2>/dev/null | head -n 1; }
+  tsha="$(sget sha)" tpub="$(sget publish)" tdirty="$(sget dirty)"
+  twhy="$SDK_FROM's images ($stamp) are from ${tsha:-an unknown build} (publish=${tpub:-?}, dirty=${tdirty:-?}), HEAD is $SHA"
+  if [ "$publish" = 1 ]; then
+    { [ "$tsha" = "$SHA" ] && [ "$tpub" = 1 ] && [ "$tdirty" = 0 ]; } ||
+      check "--publish $TARGET: $twhy; run linux/build.sh --publish $SDK_FROM first"
+  elif [ "$guarded" = 1 ] && { [ "$tsha" != "$SHA" ] || [ "$tdirty" != 0 ]; }; then
+    say "warning: $twhy: the cards will carry that root"
+  fi
 fi
 if [ -z "$MAKE_TARGETS" ]; then
   if [ "$KIND" = tier ]; then MAKE_TARGETS="all sdk"; else MAKE_TARGETS="all"; fi
@@ -183,7 +214,9 @@ sha256() { sha256sum "$1" | cut -d' ' -f1; }
 DL="$WORK/dl"
 SRC="$DL/thimsy-src"
 IMAGES="$WORK/images/$TARGET"
-SHA="$(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo unknown)"
+# A public build's images directory holds only what this run writes.
+[ "$publish" = 0 ] || step clean "rm -rf images/$TARGET and /build/output-$TARGET (--publish implies --clean)"
+[ "$publish" = 0 ] || run rm -rf "$IMAGES"
 run mkdir -p "$SRC" "$IMAGES" "$BUILD_DIR"
 
 # -- Buildroot itself, checked against its pinned hash. -----------------------
@@ -221,16 +254,21 @@ else
 archive libthimsy libthimsy libthimsy
 archive thimsy-nano nano nano
 # The assets: nano_tree.py's export (tracked files plus the fetched upstream
-# assets, decision I2), packed reproducibly; thimsy-data filters it through the
-# ASSETS.md allowlist (I38).
+# assets, decision I2), filtered through the ASSETS.md allowlist (I38) before
+# it is packed reproducibly: legal-info saves this tarball as thimsy-data's
+# source and --publish publishes it, so it must hold no REPLACE or ASK asset
+# (security-1). thimsy-data's install applies the same list again.
 # export-assets takes its output directory as a positional argument.
-step archive "nano_tree.py export-assets -> dl/thimsy-src/nano-assets-$SHA.tar.gz (package thimsy-data)"
+step archive "nano_tree.py export-assets, filtered by package/thimsy-data/assets.list -> dl/thimsy-src/nano-assets-$SHA.tar.gz (package thimsy-data)"
 if [ "$dry" = 0 ]; then
   [ -f "$REPO/tools/nano-tree/nano_tree.py" ] ||
     die 1 "tools/nano-tree/nano_tree.py is missing (step G0); cannot export the assets"
   assets="$BUILD_DIR/nano-assets-$SHA"
   rm -rf "$assets"
-  "$PY" "$REPO/tools/nano-tree/nano_tree.py" export-assets "$assets/nano-assets-$SHA"
+  "$PY" "$REPO/tools/nano-tree/nano_tree.py" export-assets "$assets/export"
+  "$PY" "$HERE/tools/assets_allowlist.py" filter --list "$HERE/package/thimsy-data/assets.list" \
+    "$assets/export" "$assets/nano-assets-$SHA"
+  rm -rf "$assets/export"
   epoch="$(git -C "$REPO" log -1 --format=%ct HEAD)"
   tar -C "$assets" --sort=name --mtime="@$epoch" --owner=0 --group=0 --numeric-owner \
     -cf - "nano-assets-$SHA" | gzip -9n >"$SRC/nano-assets-$SHA.tar.gz"
@@ -254,6 +292,7 @@ docker run --rm --platform "$PLATFORM" \
   -e BR_VERSION="$BR_VERSION" -e TARGET="$TARGET" -e KIND="$KIND" -e SDK_FROM="$SDK_FROM" \
   -e SDK_NAME="$SDK_NAME" -e MAKE_TARGETS="$MAKE_TARGETS" -e CLEAN="$clean" \
   -e THIMSY_GIT_SHA="$SHA" -e THIMSY_BUILD_TARGET="$TARGET" -e THIMSY_DEVICES="$DEVICES" \
+  -e THIMSY_VERSION="$VERSION" -e THIMSY_DIRTY="$DIRTY" -e PUBLISH="$publish" -e STAMP_NAME="$STAMP_NAME" \
   "$DOCKER_IMAGE" sh -euc '
   export DEBIAN_FRONTEND=noninteractive FORCE_UNSAFE_CONFIGURE=1
   apt-get -qq update >/dev/null
@@ -265,7 +304,7 @@ docker run --rm --platform "$PLATFORM" \
   O="/build/output-$TARGET"
   [ "$CLEAN" = 0 ] || rm -rf "$O"
   # Seen by the post-build and post-image scripts (20-build-props.sh, card.sh).
-  export THIMSY_BUILD_TARGET
+  export THIMSY_BUILD_TARGET THIMSY_GIT_SHA THIMSY_VERSION
   if [ -n "$THIMSY_DEVICES" ]; then
     export THIMSY_DEVICES
     [ -f "$O/.config" ] || { echo "card: $O is not built: run linux/build.sh $TARGET first" >&2; exit 1; }
@@ -283,9 +322,17 @@ docker run --rm --platform "$PLATFORM" \
   gpd="$(sed -n "s/^BR2_GLOBAL_PATCH_DIR=\"\(.*\)\"\$/\1/p" /tmp/defconfig)"
   printf "BR2_GLOBAL_PATCH_DIR=\"%s /dl/thimsy-src/hash\"\n" "$gpd" >>/tmp/defconfig
   make -C "$B" O="$O" BR2_EXTERNAL=/thimsy BR2_DEFCONFIG=/tmp/defconfig defconfig >/dev/null
+  # The stamp says which commit the images are from; it goes first, so a failed
+  # build leaves none (build.sh reads a tier stamp before a hardware pack).
+  [ -n "${THIMSY_DEVICES:-}" ] || rm -f "$O/images/$STAMP_NAME"
   # shellcheck disable=SC2086
   make -C "$B" O="$O" THIMSY_GIT_SHA="$THIMSY_GIT_SHA" THIMSY_SRC_DIR=/dl/thimsy-src \
     $MAKE_TARGETS >/images/build.log 2>&1 || { tail -40 /images/build.log >&2; exit 1; }
+  if [ -z "${THIMSY_DEVICES:-}" ]; then
+    mkdir -p "$O/images"
+    printf "sha=%s\nversion=%s\ntarget=%s\npublish=%s\ndirty=%s\n" "$THIMSY_GIT_SHA" \
+      "$THIMSY_VERSION" "$TARGET" "$PUBLISH" "$THIMSY_DIRTY" >"$O/images/$STAMP_NAME"
+  fi
   cp -r --sparse=never "$O"/images/. /images/
   [ ! -d "$O/legal-info" ] || cp -r "$O/legal-info" /images/
 ' || die 1 "the build failed; log: $IMAGES/build.log"

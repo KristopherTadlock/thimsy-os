@@ -269,6 +269,9 @@ def lint(linux: Path = LINUX, repo: Optional[Path] = REPO, rep: Optional[Report]
         is_repo_tarball = "$(THIMSY_SRC_DIR)" in site
         if is_repo_tarball and version != "$(THIMSY_GIT_SHA)":
             rep.error("%s: a build.sh tarball package's _VERSION must be $(THIMSY_GIT_SHA)" % rel_mk)
+        if method == "local" and "$(BR2_EXTERNAL_THIMSY_PATH)" in site and "$(THIMSY_GIT_SHA)" not in version:
+            rep.error("%s: a local site in this tree needs a _VERSION of $(THIMSY_GIT_SHA), so each "
+                      "commit builds again (Buildroot syncs a local site once per version)" % rel_mk)
         if is_repo_tarball and method != "file":
             rep.error("%s: a build.sh tarball package needs _SITE_METHOD = file (legal-info "
                       "saves no source for a local site)" % rel_mk)

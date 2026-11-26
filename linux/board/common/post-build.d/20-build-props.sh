@@ -5,8 +5,12 @@
 #
 # Reproducible: the date is SOURCE_DATE_EPOCH's when set (Buildroot sets it
 # with BR2_REPRODUCIBLE), and nothing depends on the build host.
-#   THIMSY_VERSION       the release version (build.sh passes it), else
-#                        "git describe" of the external tree, else 0.0.0-dev
+#   THIMSY_VERSION       the version (build.sh passes the tag with --publish,
+#                        else "git describe"), else "git describe" of the
+#                        external tree, else 0.0.0-dev
+#   THIMSY_GIT_SHA       the commit (build.sh passes it: in its container the
+#                        external tree is linux/ alone, with no .git), else
+#                        "git rev-parse" of the external tree
 #   THIMSY_BUILD_TARGET  the targets.json name, else the defconfig's name
 # ro.thimsy.build.type is "release" when root login is off and there is no
 # serial getty (the release fragment, decision I37), else "dev".
@@ -25,10 +29,14 @@ cfg() {
 
 version=${THIMSY_VERSION:-}
 commit=
+case ${THIMSY_GIT_SHA:-} in
+*[!0-9a-f]* | "") ;;  # unset, or build.sh's "unknown"
+*) commit=$(printf '%s' "$THIMSY_GIT_SHA" | cut -c1-12) ;;
+esac
 if [ -n "$ext" ] && command -v git > /dev/null 2>&1 &&
 	git -C "$ext" rev-parse --git-dir > /dev/null 2>&1; then
 	[ -n "$version" ] || version=$(git -C "$ext" describe --tags --always --dirty 2>/dev/null || :)
-	commit=$(git -C "$ext" rev-parse --short=12 HEAD 2>/dev/null || :)
+	[ -n "$commit" ] || commit=$(git -C "$ext" rev-parse --short=12 HEAD 2>/dev/null || :)
 fi
 [ -n "$version" ] || version=0.0.0-dev
 

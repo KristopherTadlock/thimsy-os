@@ -1014,6 +1014,21 @@ class TestPostBuild(unittest.TestCase):
         for k, v in rel.items():
             self.assertLessEqual(len(v), 91, k)
 
+    def test_build_props_in_build_shs_container(self) -> None:
+        """build-integration-2: in build.sh's container the external tree is linux/ alone (no
+        .git), so the version and the commit come from what build.sh passes."""
+        sha = "0123456789abcdef0123456789abcdef01234567"
+        props = self.build_props('# BR2_TARGET_ENABLE_ROOT_LOGIN is not set\n',
+                                 {"THIMSY_VERSION": "v0.1.0-alpha1", "THIMSY_GIT_SHA": sha,
+                                  "BR2_EXTERNAL_THIMSY_PATH": posix(self.tmp), "SOURCE_DATE_EPOCH": "0"})
+        self.assertEqual(props["ro.thimsy.build.version"], "v0.1.0-alpha1")
+        self.assertEqual(props["ro.thimsy.build.commit"], sha[:12])
+        bad = self.build_props("", {"THIMSY_GIT_SHA": "unknown", "SOURCE_DATE_EPOCH": "0"})
+        self.assertEqual(bad["ro.thimsy.build.commit"], "")
+        build = (LINUX / "build.sh").read_text(encoding="utf-8")
+        self.assertIn('-e THIMSY_VERSION="$VERSION"', build)
+        self.assertIn("export THIMSY_BUILD_TARGET THIMSY_GIT_SHA THIMSY_VERSION", build)
+
     @needs_links
     def test_permissions_and_getty(self) -> None:
         target = self.tmp / "target"

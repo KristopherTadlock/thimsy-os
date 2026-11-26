@@ -279,7 +279,8 @@ class ScratchLint(unittest.TestCase):
     def test_local_and_tarball_sites_take_no_hash(self):
         mk = self.MK.format(name="thimsy-bar", P="THIMSY_BAR").replace(
             "THIMSY_BAR_SITE = https://example.org",
-            "THIMSY_BAR_SITE = $(BR2_EXTERNAL_THIMSY_PATH)/src/x\nTHIMSY_BAR_SITE_METHOD = local")
+            "THIMSY_BAR_SITE = $(BR2_EXTERNAL_THIMSY_PATH)/src/x\nTHIMSY_BAR_SITE_METHOD = local").replace(
+            "THIMSY_BAR_VERSION = 1.0", "THIMSY_BAR_VERSION = $(or $(THIMSY_GIT_SHA),dev)")
         self.add("thimsy-bar", mk=mk, hash_text=None)
         mk = self.MK.format(name="thimsy-baz", P="THIMSY_BAZ").replace(
             "THIMSY_BAZ_SITE = https://example.org", "THIMSY_BAZ_SITE = $(THIMSY_SRC_DIR)").replace(
@@ -290,6 +291,15 @@ class ScratchLint(unittest.TestCase):
         self.assertIn("thimsy-baz.mk: a build.sh tarball package's _VERSION must be $(THIMSY_GIT_SHA)", errors)
         self.assertIn("needs _SITE_METHOD = file", errors)
         self.assertIn("takes no .hash file", errors)
+
+    def test_local_site_is_versioned_by_the_commit(self):
+        """build-integration-3: a fixed version would keep a local site's first rsync forever."""
+        mk = self.MK.format(name="thimsy-bar", P="THIMSY_BAR").replace(
+            "THIMSY_BAR_SITE = https://example.org",
+            "THIMSY_BAR_SITE = $(BR2_EXTERNAL_THIMSY_PATH)/src/x\nTHIMSY_BAR_SITE_METHOD = local")
+        self.add("thimsy-bar", mk=mk, hash_text=None)
+        errors = "\n".join(self.lint().errors)
+        self.assertIn("thimsy-bar.mk: a local site in this tree needs a _VERSION of $(THIMSY_GIT_SHA)", errors)
 
     def core_mk(self, version, site="$(call github,libretro,snes9x,$(LIBRETRO_SNES9X_VERSION))"):
         return textwrap.dedent("""\
@@ -464,6 +474,50 @@ class AssetAllowlist(unittest.TestCase):
                                        str(src), str(tmp / "dest3")])
         self.assertEqual(code, 1)
         self.assertIn("no replacement OFL.txt", err)
+
+    def test_filter_leaves_no_denied_file_and_install_still_replaces(self):
+        """security-1: build.sh filters the export before it packs thimsy-data's source tarball,
+        which legal-info publishes; the filtered tree has no REPLACE or ASK file, only their
+        names, and installing it gives what installing the full export gives."""
+        tmp = Path(tempfile.mkdtemp(prefix="thimsy-assets-"))
+        self.addCleanup(shutil.rmtree, str(tmp), True)
+        src = self.fake_export(tmp, ["nano_xmb/fonts/akrobat-semibold.ttf", "nano_xmb/fonts/ps3-rodin-regular.ttf",
+                                     "nano_xmb/fonts/fontawesome-webfont.ttf", "nano_xmb/icons/xmb_icon_psn.png",
+                                     "nano_xmb/controllers/LICENSE", "nano_xmb/unlisted.bin"])
+        filtered = tmp / "filtered"
+        code, _, err = quiet(aa.main, ["filter", "--list", str(self.list_path), str(src), str(filtered)])
+        self.assertEqual(code, 0, err)
+        got = sorted(p.relative_to(filtered).as_posix() for p in filtered.rglob("*") if p.is_file())
+        self.assertEqual(got, [aa.LEFT_OUT, "nano_xmb/controllers/LICENSE", "nano_xmb/fonts/fontawesome-webfont.ttf"])
+        for rel in got:
+            if rel != aa.LEFT_OUT:
+                self.assertTrue(self.allow.decide(rel)[0], rel)
+        names = (filtered / aa.LEFT_OUT).read_text(encoding="utf-8")
+        self.assertIn("nano_xmb/fonts/akrobat-semibold.ttf\tdenied", names)
+        # A second filter into the same place is refused, so nothing stale is packed.
+        code, _, err = quiet(aa.main, ["filter", "--list", str(self.list_path), str(src), str(filtered)])
+        self.assertEqual(code, 1)
+        rep = tmp / "barlow"
+        rep.mkdir()
+        for name in ("BarlowSemiCondensed-Medium.ttf", "BarlowSemiCondensed-SemiBold.ttf", "OFL.txt"):
+            (rep / name).write_bytes(name.encode())
+        want = {}
+        for name, tree in (("full", src), ("filtered", filtered)):
+            dest = tmp / ("dest-" + name)
+            code, _, err = quiet(aa.main, ["install", "--list", str(self.list_path), "--replacements", str(rep),
+                                           str(tree), str(dest)])
+            self.assertEqual(code, 0, err)
+            want[name] = {q.relative_to(dest).as_posix(): q.read_bytes() for q in dest.rglob("*") if q.is_file()}
+        self.assertEqual(want["filtered"], want["full"])
+        self.assertEqual(want["filtered"]["nano_xmb/fonts/akrobat-semibold.ttf"], b"BarlowSemiCondensed-SemiBold.ttf")
+
+    def test_build_sh_packs_the_filtered_export(self):
+        build = (LINUX / "build.sh").read_text(encoding="utf-8")
+        export = build.index("export-assets")
+        filt = build.index("assets_allowlist.py\" filter")
+        pack = build.index('gzip -9n >"$SRC/nano-assets-$SHA.tar.gz"')
+        self.assertLess(export, filt)
+        self.assertLess(filt, pack)
 
     def test_replacements_follow_android(self):
         """thimsy-data's Barlow is mods/50-nano.sh's: the same file for each Akrobat path, the
