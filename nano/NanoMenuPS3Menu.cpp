@@ -39,6 +39,7 @@
 #include "NanoMenuShaders.h" // kEffectNames/kActiveEffects/sActiveEffectIdx for the Wallpaper picker
 #include "NanoMenuDrm.h"   // sDrmGlRotation / sDrmRotationDeg for ticker scissor
 #include "NanoMenuUtils.h" // setLaunchRomPath for the Applications launch
+#include "NanoLaunchCommit.h" // commitLaunch: the launch handshake's writes
 #include "NanoI18n.h"      // trDyn() runtime translation of hardcoded UI strings
 #include "NanoMenuStrings.h" // NanoLocale/LocaleInfo + nanoGetLocale/SetLocale/ApplyLocaleToSystem (System Language picker)
 #include "NanoOtaCheck.h"  // nano::kOnlineOtaEnabled for the System Update dialog
@@ -625,7 +626,7 @@ void NanoMenu::ndsRestoreReturnPath() {
     mPs3DlgActive = mPs3OptActive = mPs3DlgClosing = mPs3OptClosing = false;
     mPs3WizActive = false;
     mLaunchFadeStart = savedFade; mWaitForRelease = savedWait; mExitRequested = savedExit;
-    property_set("sys.gammaos.nano.launched_pkg", savedPkg);
+    commitLaunch(LaunchTuple().launchedPkg(savedPkg));
     mPs3SubAnimStart = -1.0f; mPs3SubAnim = 0.0f; mPs3SubDir = 0;
     mPs3ItemAnimStart = -1.0f; mPs3AnimItem = (float)ps3CurSel();
     mNdsCamera = mNdsAtRoot ? (float)mPs3CatIdx : (float)ps3CurSel();
@@ -2561,12 +2562,13 @@ void NanoMenu::launchAndroidSettings() {
     if (!isLaunchReady()) { showLaunchBusyToast(); return; }
     // Enter the launch handshake now (render thread) so the release fade -> mExitRequested -> hand-off
     // runs; the detached worker resolves the component and writes the intent while that plays out.
-    setLaunchRomPath("");
-    property_set("sys.gammaos.nano.launch_core", "");
+    commitLaunch(LaunchTuple()
+            .romPath("")
+            .core(""));
     property_set("persist.gammaos.nano.qr_prepared", "0");
     property_set("persist.gammaos.nano.qr_core", "");
     property_set("sys.gammaos.nano.return_apps", "1");
-    property_set("sys.gammaos.nano.drop_input", "1");
+    commitLaunch(LaunchTuple().dropInput("1"));
     mWaitForRelease = true;
     std::thread([]{
         std::string pkg, intent;
@@ -2588,15 +2590,17 @@ void NanoMenu::launchAndroidSettings() {
             // is deterministic; launch_app is the resolved package so the hand-off tracks it.
             intent = "-a\tandroid.settings.SETTINGS";
         }
-        property_set("sys.gammaos.nano.launch_app", pkg.c_str());
-        property_set("sys.gammaos.nano.launched_pkg", pkg.c_str());
+        commitLaunch(LaunchTuple()
+                .app(pkg.c_str())
+                .launchedPkg(pkg.c_str()));
         const char* f = "/data/system/nano_launch_intent.txt";
         int ifd = open(f, O_WRONLY | O_CREAT | O_TRUNC, 0666);
         if (ifd >= 0) { ssize_t w = write(ifd, intent.c_str(), intent.size()); (void)w; close(ifd); chmod(f, 0644); }
-        property_set("sys.gammaos.nano.launch_intent", ifd >= 0 ? "file" : "");
-        // Trigger LAST, once the intent file + target props are in place, so the framework hand-off
-        // never observes a half-written launch request.
-        property_set("service.bootanim.nano_retroarch", "1");
+        commitLaunch(LaunchTuple()
+                .intent(ifd >= 0 ? "file" : "")
+                // Trigger LAST, once the intent file + target props are in place, so the framework hand-off
+                // never observes a half-written launch request.
+                .retroarch("1"));
         ALOGI("NanoMenu: launching Settings (%s)", pkg.c_str());
     }).detach();
 }
@@ -5943,12 +5947,13 @@ static std::string nanoSearchUrl(const std::string& query) {
 static void nanoWriteUrlLaunch(const std::string& comp, const std::string& url) {
     const std::string pkg = comp.substr(0, comp.find('/'));
     const std::string intent = "-n\t" + comp + "\t-a\tandroid.intent.action.VIEW\t-d\t" + url;
-    property_set("sys.gammaos.nano.launch_app", pkg.c_str());
-    property_set("sys.gammaos.nano.launched_pkg", pkg.c_str());
+    commitLaunch(LaunchTuple()
+            .app(pkg.c_str())
+            .launchedPkg(pkg.c_str()));
     const char* f = "/data/system/nano_launch_intent.txt";
     int ifd = open(f, O_WRONLY | O_CREAT | O_TRUNC, 0666);
     if (ifd >= 0) { ssize_t w = write(ifd, intent.c_str(), intent.size()); (void)w; close(ifd); chmod(f, 0644); }
-    property_set("sys.gammaos.nano.launch_intent", ifd >= 0 ? "file" : "");
+    commitLaunch(LaunchTuple().intent(ifd >= 0 ? "file" : ""));
 }
 
 void NanoMenu::launchUrl(const std::string& url) {
@@ -5978,13 +5983,14 @@ void NanoMenu::launchUrl(const std::string& url) {
         return;
     }
     if (!isLaunchReady()) { showLaunchBusyToast(); return; }
-    setLaunchRomPath("");
-    property_set("sys.gammaos.nano.launch_core", "");
+    commitLaunch(LaunchTuple()
+            .romPath("")
+            .core(""));
     property_set("persist.gammaos.nano.qr_prepared", "0");
     property_set("persist.gammaos.nano.qr_core", "");
     property_set("sys.gammaos.nano.return_apps", "1");
     if (askAndroid) {
-        property_set("sys.gammaos.nano.drop_input", "1");
+        commitLaunch(LaunchTuple().dropInput("1"));
         mWaitForRelease = true;
         mUrlLaunchPending = true;
         mUrlLaunchUrl = url;
@@ -6000,7 +6006,7 @@ void NanoMenu::launchUrl(const std::string& url) {
     }
     nanoWriteUrlLaunch(comp, url);
     armAppLaunchTrigger();
-    property_set("sys.gammaos.nano.drop_input", "1");
+    commitLaunch(LaunchTuple().dropInput("1"));
     mWaitForRelease = true;   // fade out + exit so the browser is on top
 }
 
@@ -14750,15 +14756,16 @@ void NanoMenu::xmbOptAction(const std::string& act) {
             if (panelLaunch(mPs3OptCtxPayload)) return;
             if (mOverlayMode) { overlayLaunchPackage(mPs3OptCtxPayload); return; }
             if (!isLaunchReady()) { showLaunchBusyToast(); return; }
-            property_set("sys.gammaos.nano.launch_app", mPs3OptCtxPayload.c_str());
-            property_set("sys.gammaos.nano.launched_pkg", mPs3OptCtxPayload.c_str());
-            setLaunchRomPath("");
-            property_set("sys.gammaos.nano.launch_core", "");
+            commitLaunch(LaunchTuple()
+                    .app(mPs3OptCtxPayload.c_str())
+                    .launchedPkg(mPs3OptCtxPayload.c_str())
+                    .romPath("")
+                    .core(""));
             property_set("persist.gammaos.nano.qr_prepared", "0");
             property_set("persist.gammaos.nano.qr_core", "");
             property_set("sys.gammaos.nano.return_apps", "1");
             armAppLaunchTrigger();
-            property_set("sys.gammaos.nano.drop_input", "1");
+            commitLaunch(LaunchTuple().dropInput("1"));
             mWaitForRelease = true;
         }
         return;

@@ -50,6 +50,7 @@
 #include "NanoHotkeys.h"
 #include "NanoDeviceKeys.h"
 #include "NanoLaunch.h"       // shared launch-intent builder, shell quoting, package checks
+#include "NanoLaunchCommit.h" // commitLaunch: the launch handshake's writes
 #include "NanoOverlayRaise.h"
 #include "NanoScreenChoice.h"
 
@@ -1133,9 +1134,10 @@ void NanoMenu::overlayQuitToHome(bool keepApp) {
         // of overlayHide simply revealing it again. app_launched=0 stops the restart from relaunching
         // it via the LAUNCHER fallback.
         property_set("sys.gammaos.nano.app_launched", "0");
-        property_set("sys.gammaos.nano.launch_app", "");
-        property_set("sys.gammaos.nano.launch_intent", "");
-        property_set("sys.gammaos.nano.launch_core", "");
+        commitLaunch(LaunchTuple()
+                .app("")
+                .intent("")
+                .core(""));
         property_set("sys.gammaos.nano.restart", "1");
         ALOGI("overlay: quit -> %s kept alive in background, restarting home XMB", pkg.c_str());
     }
@@ -1231,7 +1233,7 @@ void NanoMenu::overlayKillAll() {
     mOverlayWallpaper = true;
     overlayApplyPresentMode();   // mode flip without hide+show: opaque + vsync lock
     property_set("sys.gammaos.nano.app_launched", "0");
-    property_set("sys.gammaos.nano.launch_app", "");
+    commitLaunch(LaunchTuple().app(""));
     property_set("sys.gammaos.nano.return_apps", "0");
     property_set("persist.gammaos.nano.qr_prepared", "0");
     property_set("persist.gammaos.nano.qr_core", "");
@@ -1351,7 +1353,7 @@ void NanoMenu::overlayLaunchCommand(const std::string& pkg, const std::string& a
         // when this app exits, and PhoneWindowManager's back-long-press exit fires
         // (both gated on app_launched=1).
         if (!pkg.empty())
-            property_set("sys.gammaos.nano.launch_app", pkg.c_str());
+            commitLaunch(LaunchTuple().app(pkg.c_str()));
         property_set("sys.gammaos.nano.app_launched", "1");
         // GammaOS Nano: arm the boot-anim hand-off signal that the DRM-home launch path also sets
         // (NanoMenuInput.cpp launchXmbGame / MENU_RECENT). On minimal_boot, WindowManagerService.
@@ -1364,7 +1366,7 @@ void NanoMenu::overlayLaunchCommand(const std::string& pkg, const std::string& a
         // the overlay launch that followed did not either). Setting it here makes the overlay launch
         // match the DRM-home launch. Quick-Resume / background preloads use a separate path (not this
         // worker), so they are unaffected and the nano home stays in the preload branch.
-        property_set("service.bootanim.nano_retroarch", "1");
+        commitLaunch(LaunchTuple().retroarch("1"));
         // Free the kernel's reclaimable caches for the launching app while the launch
         // effect is still playing (this is the worker thread, off the render loop).
         nanoDropReclaimableCaches();
@@ -1428,8 +1430,9 @@ bool NanoMenu::overlayLaunchPackage(const std::string& pkg) {
     } else {
         // Another app replaces the game: the button map must not take the game's system and ROM
         // for it (an emulator opened on its own menu), as the home's launchInstalledApp does.
-        setLaunchRomPath("");
-        property_set("sys.gammaos.nano.launch_core", "");
+        commitLaunch(LaunchTuple()
+                .romPath("")
+                .core(""));
     }
     // Plain app (Applications submenu): start its LAUNCHER activity. Resolve the
     // component and start it with `am start` rather than `monkey` - monkey cannot take
@@ -2017,8 +2020,8 @@ void NanoMenu::overlayLaunchGame() {
     }
     // What runs now, for the button map over it (RetroArch's own content_history.lpl names its core).
     android::base::SetProperty("sys.gammaos.nano.launch_time", std::to_string((long long)time(nullptr)));
-    setLaunchGame(romDir, romPath,
-                  standalone || coreSo.empty() ? std::string() : "/data/data/com.retroarch.aarch64/cores/" + coreSo);
+    commitLaunch(LaunchTuple().game(romDir, romPath,
+                  standalone || coreSo.empty() ? std::string() : "/data/data/com.retroarch.aarch64/cores/" + coreSo));
     // Quick Resume prime for the overlay-launched game, mirroring the home XMB
     // launch (launchXmbGame). On the Brick the resident overlay IS the home after
     // the first game, so every launch after that comes through here -- and without

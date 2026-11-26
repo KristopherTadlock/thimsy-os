@@ -316,6 +316,7 @@
     "lib:gles:GLES2/gl2.h",
     "nano:NanoI18n.h",
     "nano:NanoLaunch.h",
+    "nano:NanoLaunchCommit.h",
     "nano:NanoMenu.h",
     "nano:NanoMenuShaders.h",
     "nano:NanoMenuStrings.h",
@@ -456,6 +457,13 @@
     "nano:NanoLaunch.h"
    ]
   },
+  "NanoLaunchCommit.cpp": {
+   "includes": [
+    "nano:NanoLaunchCommit.h",
+    "nano:NanoMenuUtils.h",
+    "shim:compat/include/cutils/properties.h"
+   ]
+  },
   "NanoMenu.cpp": {
    "includes": [
     "lib:egl:EGL/eglext.h",
@@ -472,6 +480,7 @@
     "nano:NanoDisplayTargetSf.h",
     "nano:NanoHotkeys.h",
     "nano:NanoI18n.h",
+    "nano:NanoLaunchCommit.h",
     "nano:NanoMenu.h",
     "nano:NanoMenuDrm.h",
     "nano:NanoMenuPS3Bg.h",
@@ -688,6 +697,7 @@
     "nano:NanoBacklight.h",
     "nano:NanoDeviceKeys.h",
     "nano:NanoI18n.h",
+    "nano:NanoLaunchCommit.h",
     "nano:NanoMenu.h",
     "nano:NanoMenuDrm.h",
     "nano:NanoMenuSettingsTree.h",
@@ -835,6 +845,7 @@
     "nano:NanoHotkeys.h",
     "nano:NanoJson.h",
     "nano:NanoLaunch.h",
+    "nano:NanoLaunchCommit.h",
     "nano:NanoMenu.h",
     "nano:NanoMenuPS3.h",
     "nano:NanoMenuPS3Bg.h",
@@ -998,6 +1009,7 @@
     "nano:NanoI18n.h",
     "nano:NanoJson.h",
     "nano:NanoLaunch.h",
+    "nano:NanoLaunchCommit.h",
     "nano:NanoMenu.h",
     "nano:NanoMenuDrm.h",
     "nano:NanoMenuPS3.h",
@@ -1126,6 +1138,7 @@
    "includes": [
     "nano:NanoBidi.h",
     "nano:NanoI18n.h",
+    "nano:NanoLaunchCommit.h",
     "nano:NanoMenu.h",
     "nano:NanoMenuPS3.h",
     "nano:NanoMenuUtils.h",
@@ -1206,6 +1219,7 @@
   "NanoMenuState.cpp": {
    "includes": [
     "nano:NanoI18n.h",
+    "nano:NanoLaunchCommit.h",
     "nano:NanoMenu.h",
     "nano:NanoMenuShaders.h",
     "nano:NanoMenuStrings.h",
@@ -1288,6 +1302,7 @@
     "nano:NanoI18n.h",
     "nano:NanoJson.h",
     "nano:NanoLaunch.h",
+    "nano:NanoLaunchCommit.h",
     "nano:NanoMenu.h",
     "nano:NanoMenuDrm.h",
     "nano:NanoMenuShaders.h",
@@ -2399,6 +2414,15 @@
     "shim:compat/include/cutils/properties.h"
    ]
   },
+  "test/host/headless/tests/launch_commit_test.cpp": {
+   "includes": [
+    "gtest:gtest/gtest.h",
+    "nano:NanoLaunchCommit.h",
+    "nano:test/host/headless/tests/headless_test_util.h",
+    "shim:compat/include/cutils/properties.h",
+    "shim:compat/include/nanocompat/nanocompat.h"
+   ]
+  },
   "test/host/headless/tests/seam_test.cpp": {
    "includes": [
     "gtest:gtest/gtest.h",
@@ -3192,6 +3216,12 @@
    "modules": [
     "gammaos-nano",
     "gammaos_nano_unit_tests"
+   ],
+   "needs": {}
+  },
+  "NanoLaunchCommit.cpp": {
+   "modules": [
+    "gammaos-nano"
    ],
    "needs": {}
   },
@@ -5296,6 +5326,7 @@
    "NanoBootSequence.cpp": "",
    "NanoPlatform.cpp": "",
    "NanoMenu.cpp": "",
+   "NanoLaunchCommit.cpp": "",
    "NanoMenuXmb.cpp": "",
    "NanoMenuShaders.cpp": "",
    "NanoMenuEffects.cpp": "",
