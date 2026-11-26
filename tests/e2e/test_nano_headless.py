@@ -392,8 +392,8 @@ FAKE_NANO = r'''#!/usr/bin/python3
 import json, os, struct, sys, time
 cfg = json.load(open(sys.argv[sys.argv.index("--host-config") + 1]))
 ev = open(cfg["events"], "a", buffering=1)
-def event(kind, **f):
-    f.update({"ev": kind, "t_ms": int(time.monotonic() * 1000)})
+def event(ev_kind, **f):
+    f.update({"ev": ev_kind, "t_ms": int(time.monotonic() * 1000)})
     ev.write(json.dumps(f) + "\n")
 def setprop(k, v):
     open(os.path.join(cfg["run_dir"], k), "w").write(v)
