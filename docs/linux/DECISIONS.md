@@ -336,3 +336,353 @@ A three-lens review (architecture, testing, risk) of `docs/linux/IMPLEMENTATION.
 - **I45, scraper developer credentials:** not in public Linux images, until the owner decides.
 - **I46, secrets in `persist.props`:** mode 0600 and redaction; the plan notes the removable-card exposure.
 - **I47, CMake:** reads `sources.txt` directly.
+
+## Implementation decisions (waves 1 and 2)
+
+Recorded on 2026-11-25 from the step reports of waves 1 and 2, all merged into the `linux` branch (last merge `dfe7a77`). Each id is the step's own; G0 and G1a reported unnumbered lists, so their numbers were given here in the reports' order. Nothing ran on a device and nothing was built for one: Buildroot, genimage, mkimage, CMake, QEMU and the AOSP build were not run, and the C++ was compiled and tested on the host only. Where a step corrected an earlier design entry or another step's choice, the bullet says so.
+
+### G0. Nano as files, `nano_tree.py`
+
+- **G0-1:** `regen` deflates binary sections at `core.compression=1` (git's built-in default), not -1, so its raw output equals the committed patch; copying unchanged binary sections verbatim is only a fallback.
+- **G0-2:** `regen` passes `-c core.abbrev=11` as well as `--abbrev=11`, because git before 2.31 ignores `--abbrev` on `index` lines (WSL wrote 9-character ids without it).
+- **G0-3:** The Python package is `nanotree/`, not `nano_tree/`, so it cannot shadow the `nano_tree.py` script.
+- **G0-4:** Six files carry the executable bit in the index, not four: the patch's four plus two untouched base files (`nano-ce-unlock.sh`, `tools/esde-parsecheck/run.sh`); 100644 there would add mode-change sections.
+- **G0-5:** `regen` reads `nano/` as the index plus the working tree: changed and untracked files are hashed into the cache, modes always come from the index, and untracked files get 100644. (G9a found it treats `git add -N` entries as empty files; see the open items.)
+- **G0-6:** On Windows, `import-tree` takes modes from the index, then the patch, then the base, then 100644; on POSIX it uses the file's mode and also sets the bit on disk.
+- **G0-7:** The merge driver exits 1 whenever it changed `nano/`, because git holds the index lock during a merge and an automatic merge commit would leave those changes out; it prints the steps to finish.
+- **G0-8:** If the incoming branch has its own `nano/` (a merge inside the fork), the driver keeps our patch and asks for `regen --force` after `nano/` is resolved.
+- **G0-9:** `import-patch` with a branch keeps the fork's own sections outside the Nano block, and `merge-patch` takes the incoming side's; `import-patch` with no branch and `--old REV` recovers when git took nano-144's patch without running the driver.
+- **G0-10:** The cache is never left configured as a partial clone: the partial-clone settings are passed with `-c` during a fetch only, and every other git call runs with `GIT_ALLOW_PROTOCOL=none` (git 2.25's `cat-file` otherwise dies when a refused lazy fetch fails).
+- **G0-11:** `fetch --offline` (or `NANO_TREE_OFFLINE=1`) never downloads; `fetch_nano.sh` picks `$PYTHON`, then `python3`, then `py -3`.
+- **G0-12:** `compose` writes a marker file, refuses to clear a directory it did not make, and puts siblings under `OUT/_siblings/`.
+- **G0-13:** `siblings` lists `drastic-nano/DsScreenLayout.{cpp,h}`, `gammaos-sharefs/share_config.h` and `surfaceflinger/gammargb/GammaRgbProcess.h`.
+- **G0-14:** `props.txt` (994 keys) is the string literals in shared C/C++ files that look like property keys under `persist`, `sys`, `ro`, `service`, `init`, `ctl`, `debug`, `vendor` or `dalvik`; the conditional ratchet (budget 0) counts `__ANDROID__` and `NANO_PLATFORM_*` in code only, not in comments or strings.
+- **G0-15:** Ignore checks use `check-ignore --verbose`, because git before 2.27 also reported paths that a `!` rule re-includes.
+- **G0-16:** `test_outside_block_unchanged` uses `git merge-base HEAD nano-144`, so it works on step branches and skips without a local nano-144; the round-trip test is marked slow, while `test_regen_matches` and `test_patch_applies_to_base` stay in the quick suite.
+- **G0-17:** `import-base NEW` needs NEW's blobs in the cache (`fetch --base NEW`); it updates `upstream.json`, regenerates, and warns that the patch's other sections still target the old base.
+
+### G1a. libthimsy and `thimsy-prop`
+
+- **G1a-1:** An empty value means unset, as on Android: `set(k, "")` removes the key and `get` returns the default.
+- **G1a-2:** Key names follow Android's rule (`[A-Za-z0-9_.:@-]`, no leading, trailing or double dot), capped at 255 bytes because a key is also a file name.
+- **G1a-3:** `ro.*` is sealed by the file `<runDir>/ro/.sealed`, which `thimsy-prop boot` writes; before sealing, an `ro.*` key can still be set only once.
+- **G1a-4:** Without the watcher, `get`, `serial` and `list` read the files directly, and `waitChange` checks the file every 20 ms.
+- **G1a-5:** With the watcher on, reads come from a cache that inotify keeps current.
+- **G1a-6:** Observers always see this process's own sets, and other processes' writes only while watching; an exception thrown by an observer is ignored.
+- **G1a-7:** `addObserver` returns an id and there is a `removeObserver`; a pattern ending in `.` or `*` is a prefix, and an empty pattern matches every key.
+- **G1a-8:** Run-dir key files are not fsynced (they live on tmpfs); `persist.props` is written durably, and stale temp files are removed under the flock.
+- **G1a-9:** `isSecretKey` adds `psk`, `apikey` and `credential` to the design's list (`pw`, `pass`, `token`, `secret`, `ssdev`); it errs toward redacting.
+- **G1a-10:** `thimsy-prop get` prints the real value (scripts need it); `list` and `watch` print `<redacted>`; output lines are `key=value` with the persist file's escaping.
+- **G1a-11:** `thimsy-prop boot` reads `build.props`, then `device.json`, then `install.json`; the earliest wins on a conflict, with a warning.
+- **G1a-12:** `install.json` can only add `ro.thimsy.install.*`, because it sits on a partition the user can write.
+- **G1a-13:** From `device.json`, boot writes its `props` object (`ro.*` keys only); `ro.product.*` with its `vendor.` and `odm.` variants and `ro.board.platform` from `product.{manufacturer, model, brand, device, name, platform}`, falling back to the top-level `model`, `id` and `family`; and `ro.thimsy.device.<key>` for each top-level scalar and `ro.thimsy.device.panel.<key>` for panel scalars. The `product` and `props` fields were this step's proposal and are not in G2c's schema (see the open items).
+- **G1a-14:** `build.props` lines are `ro.key=value`; whitespace around the value is trimmed, as Android does.
+- **G1a-15:** Boot exits 0 on success, 2 when it sealed but printed warnings (a missing `install.json` is not a warning), and 1 on failure or a second run in the same boot.
+- **G1a-16:** The JSON reader is strict: it rejects duplicate keys and nesting deeper than 256, and keeps members in file order.
+- **G1a-17:** The gtest stand-in defines a weak `main` (switched off with `THIMSY_GTEST_NO_MAIN`).
+- **G1a-18:** The stand-in uses `#pragma GCC system_header`, so mixing signed and unsigned in `EXPECT_EQ` compiles under `-Werror`, as with real GoogleTest.
+- **G1a-19:** The stand-in prints no timings on `[       OK ]` lines and writes failure details to stderr, so the existing `test_nano_units.py` checks keep passing.
+- **G1a-20:** The Makefile builds in `O ?= ~/.cache/thimsy/libthimsy`, refuses to build when MemAvailable is under 6,000,000 kB, and checks that `prlimit`, `setarch` and `timeout` are installed.
+- **G1a-21:** Compilers run under `prlimit --as=3221225472`, `nice -n 19` and OOM score 1000.
+- **G1a-22:** Sanitized test programs run without the address-space limit (ASan reserves terabytes it doesn't use), under `timeout 300` instead.
+- **G1a-23:** Test programs run under `setarch -R`: GCC 9's ASan looped printing `AddressSanitizer:DEADLYSIGNAL` on WSL2's 6.6 kernel in 8 of 40 runs without it, and in 0 of 40 with it.
+
+### G1b. Nano compat shims
+
+- **G1b-1:** The init call is `nanocompat::init(InitOptions)` (persistFile, runDir, watch=true), not a C `nanocompat_init`. Calling it again replaces the store, replaced stores are kept until exit so a thread holding one stays safe, and a failed init keeps the previous store.
+- **G1b-2:** With no init, the first property call opens a lazy default store that does not watch: `$THIMSY_PROP_ROOT/persist.props` and `$THIMSY_PROP_ROOT/run`, else `ConfigStore::defaultRoots()`. If it can't be opened, every get returns its default and every set returns -1, logged once.
+- **G1b-3:** Property observers (the control-key hook) live in compat, not on the store; they are told after the value is stored and can't veto. Unlike ConfigStore observers (G1a-6) they see every successful set this process makes, even of an unchanged value, as Android's triggers do; other processes' writes reach them only while the store watches; they survive init(), and their exceptions are swallowed.
+- **G1b-4:** `__system_property_find` returns a handle once the key has a value or this process has set it, as on Android, and handles live for the whole process. A key's serial is the store's serial plus this process's own sets plus 1, never 0 (PropEdge relies on a first wait with serial 0 returning at once); the global serial counts the sets and changes this process sees; a per-key wait re-reads the key every 20 ms when the store does not watch and every 1 s when it does.
+- **G1b-5:** cutils and libbase keep their real differences: `property_get_int32` uses strtoimax with base 0 ("12abc" is 12, "010" is 8); `GetIntProperty` uses ParseInt ("12abc" gives the default, "010" is 10).
+- **G1b-6:** LOG_NDEBUG follows Android: 1 with NDEBUG, 0 without. Disabled ALOGV and SLOGV still type-check their arguments but never evaluate them.
+- **G1b-7:** Log lines are `<monotonic ms> <V|D|I|W|E|F> <tag>: msg`, one line per message line and one write() per message; the ring file rotates to `<path>.1` at half its maximum size; the default minimum priority is VERBOSE; fatal macros log at F, then abort().
+- **G1b-8:** `android::Thread` follows libutils exactly: it holds a strong reference only while readyToRun and threadLoop run and a weak one between calls, so an unreferenced Thread ends after its current loop. This corrects B.2's "for the thread's life". The thread name keeps the last 15 bytes, and a priority other than PRIORITY_DEFAULT is applied with setpriority on the thread's tid (a failure is logged once).
+- **G1b-9:** RefBase follows libutils, including that promoting a never-strong object skips onFirstRef. One safety difference: destroying a never-strong object that still has weak references keeps the weak block, so promote returns null instead of reading freed memory; destroying an object with strong references left aborts.
+- **G1b-10:** AImageDecoder gives RGBA_8888 output only; still images scale to any size, filtered in premultiplied space; animated images refuse scaling with INVALID_SCALE, as Nano observed on Android; JPEG EXIF orientation is applied, with header sizes swapped; GIF backgrounds are transparent and frames composited. It needs libpng 1.6 and giflib 5.1 or later, animated WebP needs libwebpdemux, HEIF, AVIF, BMP and any format whose library is missing are UNSUPPORTED, images are capped at 64 Mpx, createFromBuffer does not copy the buffer, and createFromFd reads from the current offset and does not keep the fd.
+- **G1b-11:** `bionic.h` uses Bionic's mallopt values (M_PURGE_ALL -104, M_CACHE_COUNT_MAX -105 and the rest); it adds strlcpy and strlcat only for glibc older than 2.38, gettid only for glibc older than 2.30, and getprogname always outside Bionic. In C it only defines constants and includes nothing.
+- **G1b-12:** Headers beyond B.2's list: `android-base/parseint.h`, `parsebool.h` and `strings.h`, `android/rect.h`, `utils/ThreadDefs.h`; `android_filesystem_config.h` has Android's full table of fixed IDs.
+- **G1b-13:** `compat.mk` run standalone runs libthimsy's check first (off with COMPAT_WITH_LIBTHIMSY=0), builds in `COMPAT_O` (default `~/.cache/thimsy/nano-host/compat`), exports NANOCOMPAT_CPPFLAGS, NANOCOMPAT_ASAN_LIBS, NANOCOMPAT_REL_LIBS, NANOCOMPAT_IMAGE_LDLIBS and the target `nanocompat-libs`, and compiles with `-Wall -Wextra -Werror -Wno-clobbered`. Its tests always use libthimsy's gtest stand-in, because the totals are read from its summary line.
+
+### G2a. BR2_EXTERNAL skeleton, defconfigs, build guard
+
+- **G2a-1:** Buildroot is pinned to 2026.08.2, FlipBase's version and hash, so the subtree merge needs no version move; option names come from FlipBase's working defconfig where they overlap, otherwise from memory of 2025.02, marked "(guess)".
+- **G2a-2:** GCC 14 rather than FlipBase's 15, because GCC 15's C23 default breaks older C cores; kernel headers 6.12 (an LTS no newer than any family's kernel).
+- **G2a-3:** A new `userland.fragment` holds the package set both tiers share; `tier-v8_0` and `tier-v8_2` hold only CPU tuning and BR2_ROOTFS_POST_SCRIPT_ARGS (one list per fact).
+- **G2a-4:** `common.fragment` locks the root password (`# BR2_TARGET_ENABLE_ROOT_LOGIN is not set`) and only `dev.fragment` overrides it, so every target is locked unless it says otherwise.
+- **G2a-5:** A Kconfig choice BR2_THIMSY_FLAVOUR_{RELEASE,DEV} in `linux/Config.in` marks the flavour for post-build and the policy check; it defaults to release.
+- **G2a-6:** SSH policy is two thimsy-session options, SSH_AT_BOOT and SSH_PASSWORD, set only by `dev.fragment`; release keeps dropbear installed but off at boot and key-only. In effect superseded by G2e-11 and G2e-12: D50ssh decides by `ro.thimsy.build.type`, so the two options change nothing in the recipes (G2d's report).
+- **G2a-7:** With BR2_INIT_NONE there is no Buildroot getty, so the dev serial console comes from a second overlay, `board/common/rootfs-overlay-dev`, that only `dev.fragment` adds; the policy check refuses a publish target that uses it or whose overlay inittab starts a getty. G2e-13 adds the getty from `30-permissions.sh` instead, and the dev overlay was never created (see the open items).
+- **G2a-8:** Hardware packs use the tier's SDK as a preinstalled external toolchain at /build/sdk; `hw-common` overrides common's toolchain lines to "not set", and the lint checks GCC and header versions against the `sdk_from` tier.
+- **G2a-9:** `thimsy_rk3566_hw` is publish:true with sdk_from `thimsy_v8_0_release`, because a public card needs its hardware pack; it includes no dev fragment and passes the release policy. The qemu pack is publish:false.
+- **G2a-10:** In a fragment, "# override: <why>" applies to the next setting line; a dangling marker, or one that changes nothing in any target, is an error, and a repeated identical value is allowed.
+- **G2a-11:** `targets.json` has a `pending_paths` map (path to owning step): a missing pending path is a note, a missing unlisted one an error, and a pending entry nothing references an error. A missing pending fragment is skipped and named in the defconfig header, and build.sh refuses that target until it exists.
+- **G2a-12:** build.sh runs its read-only target checks (target exists, defconfig current, files present, `--publish` only for publish targets, clean tree and tag for `--publish`, not on /mnt/<drive>) before the guard; the guard runs before any work and re-runs build.sh under the exclusive lock on fd 9.
+- **G2a-13:** Guard light mode treats the lock, the container, the aosp distro and load as "Android signs": small targets pass, others are refused. Memory floors are 6,000,000 kB for small targets and 9,000,000 kB otherwise; a failing or missing `docker ps` is only noted, and a missing or failing wsl.exe counts as a sign.
+- **G2a-14:** Source tarballs go to `dl/thimsy-src/<name>-<full sha>.tar.gz` and Buildroot hash files to `dl/thimsy-src/hash/<pkg>/<pkg>.hash`; the container appends that directory to BR2_GLOBAL_PATCH_DIR, and recipes get THIMSY_GIT_SHA and THIMSY_SRC_DIR as make variables.
+- **G2a-15:** The nano-assets tarball is built from `nano_tree.py export-assets`, packed reproducibly, not from `git archive`, because the assets are partly fetched rather than tracked (I2). This settles E.1 against E.3.
+- **G2a-16:** `external.mk` includes `package/libretro/libretro.mk` explicitly first, because $(sort) puts "libretro-*/" before "libretro/" and the cores would expand an undefined macro.
+- **G2a-17:** BL31 for RK3566 is rkbin's (with rkbin's DDR blob as TPL) until Phase 0 and D18 settle it; a temporary departure from the owner's D18 ("use the FlipBase TF-A").
+
+### G2b. Card layout checks and the boot FIT
+
+- **G2b-1:** The vold rule covers both types vold mounts (Microsoft basic data and Linux filesystem data, plan 8.2). A written image has neither; a card that has booted (`--mode card`) has at most one, at entry 7 or lower, carrying an exFAT, FAT, NTFS or ext4 signature; the Android meta and expand types are always refused.
+- **G2b-2:** Both boards tile the regions from LBA 16384, each followed by an equal spare, with data right after root's spare (FlipBase's gptslot rule); gpt_check enforces this for the Thimsy layout.
+- **G2b-3:** The QEMU disk keeps the cards' exact table (empty uboot and boot entries), so S00base and D60firstboot see the same entry numbers as on a device.
+- **G2b-4:** Every offset and size in `genimage.cfg` is explicit and the idbloader has an explicit size (8160K), so genimage itself refuses an overrun; test_layout refuses implicit offsets. RK3566: idbloader at 32K, uboot at 8M (8M), boot at 24M (40M), root at 104M (1G), data at 2152M (256M), no games entry.
+- **G2b-5:** The FIT's static bootargs (`init=/init rootfstype=erofs ro rootwait quiet loglevel=3`, no `root=`) go in the configuration node's `bootargs` property; the family's boot script reads them with `fdt get value` and appends `root=PARTUUID=` of entry 3, matching E.5. The DTB is not edited, unlike FlipBase, which uses the DTB's /chosen/bootargs.
+- **G2b-6:** The boot.img header, as read from FlipBase's `board/my355/uboot.env`: an 8-byte magic, a u32 LE FIT sector count at +8, the rest zero, the FIT from the next sector. Thimsy's magic is "THIMSFIT" (FlipBase's "MY355FIT"), isolated in make_header/parse_header and still to be verified against FlipBase's `tools/mkfit.py` at the subtree merge.
+- **G2b-7:** The rk3566 DRAM map follows FlipBase's (without OP-TEE): kernel at 0x02000000, FIT read to 0x0a000000, header at 0x0c000000. fit.py refuses a FIT over 32 MiB, a kernel that decompresses into the FIT, and a boot.img larger than the 40 MiB slot.
+- **G2b-8:** qemu-aarch64-virt has no FIT (it boots with `-kernel`, E.2), and fit.py refuses that family with a clear message.
+- **G2b-9:** Family facts (load addresses, slot size, base bootargs, magic) live in fit.py's FAMILIES table; device facts (device, family, dtb, optional bootargs) come from a device JSON, not yet aligned with the device.json schema (G8-9 works around it).
+- **G2b-10:** GPT attribute bits 62 and 63 are not set: genimage's support for them was not verified, and Windows assigns no drive letter to these non-basic-data types anyway.
+
+### G2c. `thimsy-import`
+
+- **G2c-1:** The importer was built, and its fixtures cut, from ROCKNIX `next` at 0f4806b (a partial clone); `IMITATES.txt` names the path and commit of each fixture file.
+- **G2c-2:** Provenance is a first line `Thimsy-Import-Provenance: ROCKNIX <path> at <commit> (tag <tag>); GPL-2.0, used under ROCKNIX's licence; author not recovered (Q22)`, which patch and git apply skip. The config gets it as a `#` line, a DTS as a `//` line after the SPDX line, and `gpl/generated/<f>/PROVENANCE` lists every file.
+- **G2c-3:** The series is flattened into numbered directories, one per ROCKNIX source directory, named `NN-<scripts/unpack PATCH_DESC label>` (for example `04-device`); file names stay ROCKNIX's, BR2_LINUX_KERNEL_PATCH lists the directories, and `linux/series` records the exact order.
+- **G2c-4:** Patches in a directory are sorted in C byte order; ROCKNIX's bash glob order is assumed to match (guess).
+- **G2c-5:** As in scripts/unpack, `@DEVICE@` and `@TARGET_CPU@` are substituted in non-binary, non-rename patches; a directory applied twice stops the import.
+- **G2c-6:** The PKG_PATCH_DIRS evaluator knows only the shapes ROCKNIX uses (`=`/`+=`, single `[[ ]]` tests with bash's quoted `=~` read as a literal, `==` as a glob); anything else stops the import with exit 2.
+- **G2c-7:** Hash-guarded blocks, ignoring comment-only and blank lines: the family's case-branch body, the top-level PKG_PATCH_DIRS lines, every if/elif branch naming `"<FAMILY>"`, the whole post_patch function, the CFG80211 branches when the base config has CFG80211=y, the scripts/unpack patch loop (recorded as "absent" if missing), and the quirks/package.mk family branches.
+- **G2c-8:** A first run with no `guards.json` records the guards; any later change exits 3 until `--accept-guards`.
+- **G2c-9:** Family blocks the importer does not translate (the generic-dsi copy, unpack-time dependencies, the device_trees install) are listed in `rocknix.json` "handport" for the hardware recipe.
+- **G2c-10:** Firmware licences come only from linux-firmware's WHENCE (`--whence`); wireless-regdb counts as ISC; extra-firmware and unknown packages are excluded, marked fetch_candidate and reported. Without WHENCE no linux-firmware file ships.
+- **G2c-11:** The builtin firmware goes to `generated/<f>/linux-firmware.fragment` as CONFIG_EXTRA_FIRMWARE (shipped files only, sorted, regdb appended) with CONFIG_EXTRA_FIRMWARE_DIR="external-firmware".
+- **G2c-12:** Conformance is a text merge of the base config and the fragment against `kernel-critical.conf`; it fails (exit 4, nothing written) only when a fragment is present (default `<out>/board/<fam>/linux.fragment`), and otherwise only reports.
+- **G2c-13:** Quirk facts are read only from `cat <<EOF >.../profile.d/...` heredocs; values needing the shell (`$`, backtick, arrays) are rejected and reported; accepted facts go to quirk_facts, and the known keys are mapped to fields.
+- **G2c-14:** DEVICE_PWM_MOTOR becomes a top-level `vibrator` object; `pad.rumble` only names the evdev source.
+- **G2c-15:** A model comes from, in order, an out-of-tree DTS, a DTS a patch adds, `--kernel-src`, then a normalised match against quirk, InputPlumber and DTS model strings (marked "name-match", a guess); DTBs with no model are reported and get no device.json.
+- **G2c-16:** A product id is the DTB name with the leading SoC tokens removed (`anbernic-rg-arc-d`).
+- **G2c-17:** InputPlumber composites match by device-tree model; capability-map targets map to kernel codes (Guide to BTN_MODE, keyboard targets to KEY_*); where a code has two targets the first is kept and a note added.
+- **G2c-18:** face_buttons 6 is inferred only when 4 face buttons and both stick clicks are mapped and the map has no axis or non-evdev mappings.
+- **G2c-19:** rocknix-joypad DTS families get producer kernel-joypad, empty buttons meaning pass-through, sticks from amux-count, and no padd inversion (the driver inverts itself); if the DTS names no joypad-name, the family's only one is used and marked a guess.
+- **G2c-20:** Generated device.json files have status "imported", added to the plan's built, boots, works and certified.
+- **G2c-21:** Board device.json files are complete documents, not overrides; `devicejson.merge` (a deep merge) is provided for later use.
+- **G2c-22:** On the ARC the home key (adc-keys-home BTN_BACK) maps to BTN_MODE and is the hotkey (guess), where ROCKNIX maps it to KEY_F1; the face layout is "saturn", and the labels come from the dtsi.
+- **G2c-23:** For QEMU virt, the device-tree model is "linux,dummy-virt", dtb is null, and the virtio keyboard's Enter maps to BTN_SOUTH (E.9).
+- **G2c-24:** A ROCKNIX tree checked out on Windows is undone on read (files that are all CRLF become LF; symlinks stored as text are followed), so Windows and Linux checkouts give identical output.
+- **G2c-25:** The commit is read from `.git` without running git, or given with `--commit`; the two must agree.
+- **G2c-26:** Emit owns `generated/<f>/` and `gpl/generated/<f>/` entirely: it writes atomically, removes stale files, and touches nothing else.
+- **G2c-27:** For an unpatched x.y kernel (H700 7.2) the defconfig fragment carries a Q34 comment but keeps ROCKNIX's value; a non-kernel.org URL (RK3588) becomes CUSTOM_TARBALL; `linux.hash` is written in Buildroot's format.
+
+### G2d. Package recipes, package lint, asset allowlist
+
+- **G2d-1:** libthimsy, thimsy-nano and thimsy-data use a file site at `$(or $(THIMSY_SRC_DIR),$(DL_DIR)/thimsy-src)` with `_VERSION = $(THIMSY_GIT_SHA)`, and a pre-download hook refuses an empty sha; their only hash files are build.sh's hash directory in BR2_GLOBAL_PATCH_DIR. This answers G2a's open question from memory of Buildroot's manual, not checked in a Buildroot tree.
+- **G2d-2:** thimsy-session and thimsy-padd are local sites at `linux/src/<pkg>` (version 1.0), built with CMake and `-DTHIMSY_BUILD_TESTS=OFF`.
+- **G2d-3:** `package/libretro/libretro.mk` defines two infrastructures: `libretro-core-package` builds with the core's own Makefile (flags through the environment; CC, CXX, AR and `platform=` on the command line), and `libretro-cmake-core-package` is used by flycast and melondsds. Both install `/usr/lib/libretro/<core>_libretro.so` and add the core to LIBRETRO_CORE_NAMES.
+- **G2d-4:** Cores with git submodules (picodrive, pcsx_rearmed, fake08, melondsds, flycast) use git sites with `_GIT_SUBMODULES = YES`; the others use the github tarball macro.
+- **G2d-5:** Versions come from the Android build: RetroArch 1.22.2 and PPSSPP v1.20.4 from `mods/10-update-emulators.sh`, ScummVM 2026.3.0 from `mods/added-apps.txt`, and test_packages checks they still match. PPSSPP comes from git with submodules, ScummVM from its own tarball on downloads.scummvm.org.
+- **G2d-6:** RetroArch also downloads libretro-core-info at its own tag and installs only the enabled cores' `.info` files to `/usr/share/libretro/info`; it is configured for KMS, EGL, GLES 3/3.1, ALSA and udev, with no X11, Wayland, Qt, Pulse, SDL, Vulkan, FFmpeg, Discord or online updaters (the flag names are a guess).
+- **G2d-7:** A downloaded package with no hash yet gets a comment-only `.hash` naming its files; lint reports it as pending, and with BR2_DOWNLOAD_FORCE_CHECK_HASHES the build refuses it, so it fails closed. Cores get no `.hash` until they have a commit.
+- **G2d-8:** `mods/retroarch-cores.src.lock` lines are `core repository commit source`: commit is a full commit, `short:<h>` or `pending:<reason>` (not-in-cache, bundled, not-in-android-build, not-in-lock, no-hash, ambiguous, unreadable), and source is `<zip>@<sha256>`.
+- **G2d-9:** `core_sources.py` reads the short hash from the core binary's strings (a version-prefixed hash wins, else a single bare 7 to 12 digit hash, else the core is pending); `--resolve` looks the full commit up through GitHub's API, and a resolved commit is kept while the zip and prefix are unchanged. mupen64plus_next maps to Android's mupen64plus_next_gles3; melondsds is not in the Android build; fake08 is "bundled".
+- **G2d-10:** `lint_packages.py` separates errors from pending items (`--strict` fails on pending too; `--sync-cores` writes each core's `_VERSION` from the source lock). It checks the header block, the variable prefix, exactly one known `$(eval ...)` line at the end, the VERSION, SITE, LICENSE and LICENSE_FILES fields, the hash-file format, that each Config.in is sourced and defines its symbol, each core's commit and repository against the lock, that `assets.list` is fresh and denies every REPLACE and ASK path, and that repository tarballs' licence files exist.
+- **G2d-11:** `assets.list` is generated and committed: keep or deny patterns on installed paths (the `/system/etc` layout), deny always winning. Android.bp is used only to map a Nano path to where it is installed, with Nano's convention (`ps3xmb/X` to `nano_xmb/X`) for a folder Android.bp does not install.
+- **G2d-12:** A sentence "X counts as REPLACE" in ASSETS.md's "Changes since the audit" turns the matching keep paths into deny lines, which today denies Akrobat. A REPLACE or ASK row about files inside an archive denies the whole archive (so `slate-es-de.zip`); a KEEP row about archive members adds nothing.
+- **G2d-13:** Data files ASSETS.md does not cover are kept through a DATA table in the tool with the licences ATTRIBUTION.md gives (i18n, buttonmap, controllers with its LICENSE, daijishou); `install` refuses symlinks and reports every file it left out; thimsy-data installs to `/usr/share/thimsy/system/etc` using host-python3.
+- **G2d-14:** thimsy-gpu-pack is a target-finalize hook running `src/gpu_pack.py`: it moves Mesa's files out of the tier root into `BINARIES_DIR/gpu-<driver>.erofs`, each pack carrying a `gpu.json` with the driver, the environment to set (swrast: `GALLIUM_DRIVER=softpipe`) and the file list; a rebuild that finds the files already gone reuses the earlier packs.
+- **G2d-15:** thimsy-fonts uses Roboto 2.138 and the Noto releases CJK 2.004, Emoji 2.047, Naskh Arabic 2.018, Sans Thai 2.002 and Sans Hebrew 3.001 (versions and URLs a guess), installed to `/usr/share/fonts/thimsy`, with `DroidSans.ttf` a link to `Roboto-Regular.ttf`.
+- **G2d-16:** The family overlay goes into the RK3566 hardware pack (`hw-rk3566.fragment`), not the tier roots, so the tiers stay family-agnostic; both hardware targets get `--family=<family>`. This replaces the "tier defconfigs" note in G2e's `board/rk3566/common/README.md`, which is not yet updated.
+- **G2d-17:** sfdisk comes from `BR2_PACKAGE_UTIL_LINUX_BINARIES` (a guess at the symbol), e2fsck from e2fsprogs' default install, and the BusyBox applets (ip, udhcpc, ntpd, float sleep and related) from `board/common/busybox.fragment` through `BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES`.
+- **G2d-18:** sdl2-compat on SDL3 (I43, Q28) is not done, because it can't be checked offline; ppsspp and scummvm use SDL only through the sdl2 pkg-config module, so the later swap is a Config.in and fragment change, not a recipe change.
+- **G2d-19:** `gpl/package/Config.in` is an empty menu, sourced from `linux/Config.in` (G2a's open item).
+
+### G2e. Init: rcS, the S and D scripts, first boot
+
+- **G2e-1:** S00base finds the boot disk from the mounted root first (`/proc/self/mountinfo` major:minor), then `root=PARTUUID=`, then `root=/dev/NAME`; two cards written from one image share PARTUUIDs, so a PARTUUID that matches two partitions is never guessed. This refines E.5's order.
+- **G2e-2:** Test seams: every path is `"$R/..."` with R=$THIMSY_ROOT, and every program goes through a library variable that `$THIMSY_TOOLDIR/<name>` overrides; rcK sends no signals while THIMSY_ROOT is set.
+- **G2e-3:** S00base saves its result (BOOT_DISK, ROOT_PART, DATA_PART, BOOT_HOW, BOOT_EMMC) in `/run/thimsy/bootdisk` for D60firstboot and thimsy-session.
+- **G2e-4:** An eMMC boot disk, a missing data partition, or a mount that still fails after `e2fsck -p` gives a tmpfs `/storage` for that boot, with a kernel-log warning. e2fsck is the only exception on the rcS path, marked "# rcs-allow:".
+- **G2e-5:** The first-boot tree is made once, guarded by `/storage/.config/thimsy/.tree-v1` written last, and every step can be repeated; `/data/user/0` is the relative link `../data`, as on Android. State files stay in `data/system/` (B.5), not the plan's `state/`.
+- **G2e-6:** D60firstboot puts entry 5 at the first 1 MiB boundary after the end of the last entry, so spare areas are never used, first moving the backup GPT to the card's end when it is more than 1 MiB short; the minimum size is 64 MiB, and it creates the entry with `sfdisk --force -N 5`, because sfdisk refuses a disk in use without `--force`.
+- **G2e-7:** D60firstboot reads its state from `sfdisk --dump` every run: an entry 5 typed Linux reserved and named "games" is always (re)formatted, never probed for a filesystem; basic data means done; any other entry 5 is left alone.
+- **G2e-8:** D10cards mounts nothing: it writes "add" to each non-eMMC block device's uevent, so thimsy-session's single volume policy handles drives present at boot.
+- **G2e-9:** Family hooks are one file per family, `/usr/share/thimsy/family/<family>/hook`, sourced by the init scripts with THIMSY_HOOK=ACTION and run by thimsy-session as "hook ACTION". The family comes from ro.thimsy.family, else the only family directory present, and is written to `/run/thimsy/family`; a new D05family runs the hook's deferred action (governors back from performance after the first frame).
+- **G2e-10:** rcD is the deferred runner, "start" in order and "stop" in reverse; thimsy-session runs `rcD start` after the first frame, and rcK runs `rcD stop`.
+- **G2e-11:** Persistent switches are read straight from `persist.props`: persist.thimsy.wifi.enabled, persist.thimsy.time.ntp, persist.thimsy.ssh.enabled. SSH defaults on for dev builds; release builds start it only when turned on, and then with `-s` (key-only).
+- **G2e-12:** `build.props` lives at `/usr/share/thimsy/build.props`, as B.3 says (not under /etc); ro.thimsy.build.type is "release" when there is no root login and no serial getty; the date comes from SOURCE_DATE_EPOCH.
+- **G2e-13:** `30-permissions.sh` adds the dev serial getty to inittab (marked "# THIMSY_SERIAL", because the overlay's inittab replaces the one Buildroot edits), links `/etc/localtime` and `/root` into `/storage/.config/thimsy`, creates `/storage`, and fails the build if `/dev/block/by-name` exists. The getty here takes over G2a-7's dev overlay; the `/root` link may break Buildroot's makedevs (see the open items).
+- **G2e-14:** `install.json` is read from `/storage/thimsy/install.json`, the data partition's `thimsy/` folder (the plan's card-level `thimsy/` folder). This settles G1a's open question, but `thimsy-prop` still defaults to `/boot/thimsy/install.json` (see the open items).
+- **G2e-15:** The forbidden list for the synchronous rcS path is network and time daemons, SSH, D-Bus, Bluetooth, alsactl, sleep, mdev/udevadm, fsck/mkfs/partitioning tools, find, ldconfig, depmod, sync and wait; it applies to rcS, S*, `lib.sh` and the family hooks, and check_rcs also refuses `/dev/block/by-name` in overlay scripts.
+
+### G3a. `thimsy-padd`
+
+- **G3a-1:** Input code names come from a table generated from `linux/input-event-codes.h` (`tools/gen-input-codes.py`, committed as `InputCodes.inc`): aliases (BTN_A) are read, the name printed for a number is the last plain number defined for it (BTN_SOUTH, not BTN_GAMEPAD), and `*_MAX` and `*_CNT` are left out.
+- **G3a-2:** The pad always declares ABS_X and ABS_Y, centred, even on the stickless ARC, because libudev-zero and SDL's evdev fallback only call a device with both a joystick (guess; checked in Phase 0).
+- **G3a-3:** Output ranges: sticks -32768..32767, triggers (ABS_Z, ABS_RZ) 0..255, hat -1..1; the pad declares fuzz and flat 0, because padd applies the deadzone itself.
+- **G3a-4:** Calibration takes device.json's values first, then the node's EVIOCGABS: the deadzone is `calibration.deadzone`, else `calibration.flat`, else the node's flat; the centre defaults to the middle of the range for a stick and to min for a trigger; inversion mirrors around the centre; `calibration.fuzz` is not used.
+- **G3a-5:** Output is emitted at each source's SYN_REPORT as the difference between the pad's wanted and shown state (keys by code, then axes by code), one SYN_REPORT per device that changed; codes from several sources may share one target, pressed while any of them is held.
+- **G3a-6:** Turning intercept on releases every held button and centres every axis in one batch; events then go to a tap instead of the pad, a SOCK_SEQPACKET socket at `/run/thimsy/padd-tap.sock` with 8-byte {type, code, value} records, one packet per batch. On every switch, buttons held at that moment are suppressed until released, in both directions; axes resume where they are.
+- **G3a-7:** KEY_* targets go to a second uinput device, "Thimsy Keys" (BUS_VIRTUAL, 0x5448, product 0x0002), created only when device.json maps a button to a KEY_*.
+- **G3a-8:** The pad advertises FF_RUMBLE and FF_GAIN with 16 effects; active effects are summed, clamped, scaled by the gain and sent as one FF_RUMBLE effect, re-uploaded each time, to the evdev node `pad.rumble.source` names. Each command's `replay.length` is the time until the soonest active effect ends, so the motor stops by itself if padd dies; padd does not use the top-level `vibrator` object.
+- **G3a-9:** Nodes are found through `/sys/class/input/eventN`, and only those whose `device/name` equals a source's name are opened, so padd never opens other devices, its own pad included. If `/dev/input/eventN` was unlinked by an earlier padd, padd makes a private node in `/run/thimsy/padd`, opens it and unlinks it again.
+- **G3a-10:** The pad appears once every required source is open, or after `--wait-ms` (default 2000) without the missing ones, with a log line; a node that appears later joins the existing pad, whose capabilities are fixed when it is created.
+- **G3a-11:** kernel-joypad pass-through passes the node's EV_KEY codes and its ABS_HAT0X and ABS_HAT0Y, with BTN_DPAD_* becoming the hat; if the node is not open when the pad is created, the pad declares the 13 standard buttons and the hat.
+- **G3a-12:** After SYN_DROPPED, events are dropped until the next SYN_REPORT and the node's whole state is read again (EVIOCGKEY, EVIOCGABS); the same read is done whenever a node is opened.
+- **G3a-13:** padd sets `sys.thimsy.padd.ready=1` while the pad exists and watches `sys.thimsy.padd.intercept` ("1" means on); it does not act on the hotkey or the quit combo, which are thimsy-session's.
+- **G3a-14:** device.json is read from `$THIMSY_DEVICE_JSON`, else `/usr/share/thimsy/device.json` (as `thimsy-prop`); `thimsy-padd --check` validates a pad section, and `make check` runs it on every `board/*/devices/*.json`.
+- **G3a-15:** The trace format goes beyond F.2: header lines `device`, `node` (name, phys, uniq, bus, vendor, product) and `caps`; timed `sync`, `gone` and `ff upload|play|stop|erase|gain` lines; a label is a declared node matched through `pickSource` or a source id, and anything else is ignored and printed as such.
+
+### G3b. `thimsy-session`
+
+- **G3b-1:** The wiring lives in `src/Session.cpp` and `main.cpp` only parses options; the loop is single-threaded and reads the store without libthimsy's watcher thread, watching the props directory itself and calling get() on events.
+- **G3b-2:** Requests are `[<seq>:]<verb>[:<arg>]` in sys.thimsy.session.request, answered in sys.thimsy.session.done as `<seq>:ok|error:<why>`; every write is acted on except a repeat of the last seq. Verbs: sleep, poweroff, reboot, quit-game, eject:<id>, scrape, restart-nano, brightness:<0-100>.
+- **G3b-3:** The session also reads sys.powerctl (shutdown or reboot) and sys.gammaos.nano.scrape_run (any value starts the scraper, I25); G9's control table should map dosleep to sleep and park_restart to restart-nano.
+- **G3b-4:** `volumes.json` is version 1, with per-volume id, state, path, media_rw, dev, disk, partition, fs, label, kind, boot_disk, read_only, size_bytes and error; states are checking, mounted, ejected, check_failed, mount_failed, unsupported, no_id and duplicate. It is written from the start with an empty list, and sys.thimsy.volumes.serial goes up after each write.
+- **G3b-5:** Drive policy: on GPT disks only basic-data and Linux-data types are drives (vold's rule), and Linux reserved and Linux home are never mounted on any disk; on the boot disk only the partition named "games" and typed basic data; with an unreadable table, partitions named uboot, boot, root or data are not drives. Types are read from the disk's own GPT with both CRCs checked, because sysfs has no type.
+- **G3b-6:** The ext4 volume id is the lowercase dashed UUID; FAT and exFAT use XXXX-XXXX; all-zero serials are refused.
+- **G3b-7:** Two drives with the same id: neither is used. A twin already mounted is unmounted normally (not lazily), and if that fails it stays mounted and is flagged duplicate; when one twin goes, the other is checked and mounted.
+- **G3b-8:** exFAT always gets `fsck.exfat -p` (the plan's choice until Phase 0 times it); vfat gets `fsck.fat -a` only when the boot-sector bit or the FAT[1] bit says dirty; ext4 always gets `e2fsck -p`. The drive is mounted after exit 0 or 1 (0 to 3 for e2fsck).
+- **G3b-9:** The `/mnt/media_rw` aliases are made in `/run/thimsy/media_rw/<id>`, because the root is read-only, so `/mnt/media_rw` must be a link to that directory (G8-13 makes it).
+- **G3b-10:** Mount points get the ext4 immutable flag through FS_IOC_SETFLAGS on a device; a failure is only logged.
+- **G3b-11:** A long power press with Nano running bumps a counter in sys.thimsy.key.power_long; with Nano not running it powers off. There is no software hard power-off; that is left to the PMIC.
+- **G3b-12:** Power events stamped within 1 s of a resume are dropped, and so is a release whose press was not seen.
+- **G3b-13:** Volume keys move the level by 5 (default 60), run `amixer -q -c <device.json audio.card_index> sset <ro.thimsy.audio.volume_control|Master> N%`, set sys.thimsy.hud.volume, and save persist.thimsy.audio.volume 1.5 s after the last key.
+- **G3b-14:** Brightness is only set by request (percent of max_brightness) and is not persisted by the session; sleep sets it to 0 and restores it on wake.
+- **G3b-15:** Sleep: power.state=sleeping, STOP the game's group, `D30net stop` when wpa runs, backlight 0, sync, `hook sleep-pre`, mem_sleep (device.json power.mem_sleep, default deep, else s2idle), then mem (else freeze) into state; wake is the reverse; the hook is run as `sh hook ACTION`.
+- **G3b-16:** The game's group is getpgid(sys.thimsy.game.pid), and is never Nano's group, the session's, or 1.
+- **G3b-17:** Nano is restarted at once if it ran for 30 s or more, else after 1 s doubling to 30 s; if Nano exits while its game still runs, it is restarted when the game ends (watched with a pidfd). rcD runs at the first frame, or 30 s after Nano's first start if no frame comes, once per boot (marker `/run/thimsy/session/deferred-started`).
+- **G3b-18:** padd is watched with a pidfd whether S02padd or the session started it, and restarted with the same back-off.
+- **G3b-19:** A respawned session kills a Nano left from the previous session (`nano.pid`, matched by cmdline), scans block devices itself since the marker shows rcD already ran, and adopts `/storage/<id>` mounts found in `/proc/mounts`.
+- **G3b-20:** NanoJail is planned at each Nano start from the `/dev` entries of eMMC disks (the disk, pN, bootN and rpmb): the child runs unshare(NEWNS), makes `/` an rslave, binds `/dev/null` read-only over each node and drops CAP_MKNOD from the bounding set, and fails closed (Nano not started) if any of that fails. The parent makes `/` rshared at start so later mounts reach Nano.
+- **G3b-21:** The input nodes read are those whose sysfs capabilities include KEY_POWER, a volume key or SW_LID, minus gamepads (BTN_GAMEPAD), plus "Thimsy Gamepad" read without a grab; device.json's power.key and volume match names are not used.
+- **G3b-22:** Fake hardware: uevents as text records from the FIFO `<root>/run/fake-hw/uevent` plus a replay file `uevent.replay` read once; keys as `NAME value [ms]` lines on FIFOs `<root>/dev/input/eventN`; mounts through mount and umount programs from the tool directory; the jail plan written to `<root>/run/thimsy/session/jail.plan` instead of applied; THIMSY_ROOT and THIMSY_TOOLDIR passed to every child.
+- **G3b-23:** Logs go to `/run/thimsy/log/session.log`, plus a log per child program; kernel-log markers include `thimsy-session: nano started`, matching E.9.
+
+### G8. Card assembly
+
+- **G8-1:** Cards are put together by post-image.d in the hardware pack's tree. The tier comes from the sibling `output-<sdk_from>` of BASE_DIR (from `targets.json`), or from THIMSY_TIER_DIR or `--tier-dir=`; in a tier tree, `10-erofs.sh` only checks `rootfs.erofs` (the EROFS magic, and that it fits the smallest root slot) and the other parts skip.
+- **G8-2:** Each device's root is the tier's fakeroot-built `rootfs.erofs` unpacked with `fsck.erofs --extract --overwrite`, then `gpu-<driver>.erofs` over it if present, then the hardware pack's `usr/lib/{modules,firmware}`, the family overlay, and the device JSON at `/usr/share/thimsy/device.json`; it is rebuilt with `mkfs.erofs -zlz4hc,LEVEL -C PCLUSTER -T epoch -U uuid5 --all-root`, LEVEL and PCLUSTER read from BR2_CONFIG. Unpacking the GPU pack contradicts thimsy-gpu-pack's Config.in ("mounted over the tier root at boot"; see the open items).
+- **G8-3:** `users.table` defines no user, so everything in the root is owned by root and `--all-root` is correct; adding a user means `10-erofs.sh` must drop `--all-root`.
+- **G8-4:** Each device's `data.ext4` is `mkfs.ext4 -F -q -L thimsy-data -U uuid5 -m 0 -E root_owner=0:0 -d` holding `thimsy/device.json`, sized from `genimage.cfg`, with E2FSPROGS_FAKE_TIME=SOURCE_DATE_EPOCH; S00base still makes the rest of `/storage`.
+- **G8-5:** Filesystem UUIDs are uuid5("thimsy:<id>:<root|data>:<epoch>"), so rebuilds give the same ones; GPT partition UUIDs are still genimage's random ones.
+- **G8-6:** Family facts are in `board/<family>/card.conf`, sourced by the library; for now only CARD_GPU_PACK (panfrost for rk3566, swrast for qemu). A missing GPU pack is a note, and the tier root's own Mesa is used.
+- **G8-7:** The hw fragments pass "hw --family=<family>", since the runner needs `--family=` to run `board/<family>/post-image.d`; the library also accepts "hw FAMILY". The merged fragments carry G2d's form ("hw rk3566 --family=rk3566"), which both read.
+- **G8-8:** RK3566 U-Boot files are `idbloader.img` and `u-boot.itb` from BINARIES_DIR, or cut from `u-boot-rockchip.bin` at 16320 sectors (CONFIG_SPL_PAD_TO 0x7f8000), covering hw-rk3566's FORMAT_CUSTOM_NAME without editing it; they are stored once in `cards/.family/`.
+- **G8-9:** `25-boot-img.sh` passes `fit.py build --device ID --dtb <basename>` explicitly, because device.json's "dtb" carries "rockchip/", which fit.py's `--device-json` refuses; the DTB is looked up in BINARIES_DIR by basename, then by the full path.
+- **G8-10:** genimage runs once per device with `cards/<id>/` as the inputpath; missing inputs are linked in from `cards/.family` or BINARIES_DIR, and a missing one fails before genimage starts. The result is `BINARIES_DIR/thimsy-<id>.img`, plus a `.bmap` when bmaptool is on PATH.
+- **G8-11:** `40-gpt-check.sh` runs `gpt_check.py IMG --mode image --family F --layout thimsy`, adding `--idbloader-size <size of the idbloader.img genimage took>` when the cfg uses an idbloader; any failure fails the build, naming every failing device.
+- **G8-12:** `boot.cmd` reads the FIT from mmc 1 by the partition name "boot", checks the THIMSFIT words 4d494854/54494653 at +0/+4, reads the u32 sector count at +8, takes bootargs from `/configurations/<default>` with `fdt get value`, appends `root=PARTUUID=` of `part uuid mmc 1:3`, then runs bootm. It never reads mmc 0, and every line is a whole command, so it can be joined into one bootcmd.
+- **G8-13:** `10-android-links.sh` makes `/data`, `/sdcard`, `/system/{etc,fonts,bin}` and `/mnt/media_rw -> /run/thimsy/media_rw`, creating the link targets inside the root, empty. It never puts anything under `/storage` (`/storage/self/primary` stays S00base's), replaces empty directories, fails on non-empty ones, and a re-run changes nothing. The design gave this file to G9; G8 wrote it as instructed, and G9 takes it over.
+- **G8-14:** `device.table` makes no device nodes; it sets the modes of `/storage`, `/run`, `/tmp` (1777), `/system` and the link targets, and deliberately does not list `/root`.
+- **G8-15:** `run-qemu.sh` uses E.9's kernel line and devices, boots a sparse copy of the card grown by 1 GiB (`--grow`) so D60firstboot has room for the games partition (`--in-place` boots the card itself), adds `-no-reboot` and virtio-net, and uses KVM on an aarch64 host, TCG `-cpu max` otherwise.
+- **G8-16:** `test_qemu_boot.py` runs only with THIMSY_QEMU=1, a built card, qemu-system-aarch64 and Unix sockets; its Nano markers are environment variables (guesses until Phase 2b), and `run-qemu.sh --dry-run`'s tests always run.
+
+### G9a. DRM buffer back end split, Android-surface test
+
+- **G9a-1:** The split is mechanical: only `drmAllocAhbTarget` moves, to `NanoMenuDrmBuffers.cpp`. The free code (`drmStop`'s `releaseSlot`, `drmSetupZeroCopy`'s unwind loops) and the CPU-read blit path (`AHardwareBuffer_describe`/`_lock`/`_unlock` in `drmFlipRingSlot`) are pieces of KMS functions and stay; a back end that is not AHardwareBuffer defines those four NDK functions itself (link-time substitution). Commit `6d6314c` is flagged for cherry-pick to nano-144 once the AOSP job is done.
+- **G9a-2:** `NanoMenuDrm.cpp`'s `#include` list is left exactly as it was (vndk, `native_handle`, `ui/GraphicBufferMapper.h`, `ui/GraphicTypes.h` included), so the Android file sees the same declarations; the Linux build therefore needs empty stub headers for those four. Where `ioctl()` comes from on Android could not be checked.
+- **G9a-3:** `NanoMenuDrmBuffers.cpp` takes `NanoMenuDrm.cpp`'s licence header (the code is moved), `LOG_TAG "GammaOSNano"`, and `NanoMenuDrm.cpp`'s include list without `<arm_neon.h>`, plus `<sys/ioctl.h>`.
+- **G9a-4:** `NanoMenuDrmBuffers.h` redeclares `drmAllocAhbTarget` and keeps the contract as a comment; `NanoMenuDrm.h` keeps its own declaration, so that header is not edited.
+- **G9a-5:** Mesa lacks the Android EGL gate that `drmSetupZeroCopy` checks first (`eglGetNativeClientBufferANDROID` plus two Android extension names), so Linux links `thimsy-nano` with `--wrap=eglGetProcAddress,--wrap=eglQueryString`, answering only for those names; the fallback is a later P4 move of the gate into the back end.
+- **G9a-6:** B.8 is corrected: the ring is 5 deep, not 3; there is no free function; a target with `drmFbId == 0` is valid on Android only, so a Linux back end fails instead; `sDrmZeroCopy` needs the whole primary ring; and it now states GEM handle ownership and that the gbm device is keyed on the current `sDrmFd` (it changes on re-acquire).
+- **G9a-7:** The Android surface is computed generously from HEAD's git objects: every file or glob named by any string property of any module in `nano/Android.bp`, plus `Android.bp`; the quoted and angle `#include` closure, resolved through the including folder, `nano/` and every `*include_dirs`; every header under `export_include_dirs`; and `nano/` files the patch's other sections include or name by path.
+- **G9a-8:** Every differing surface path must have been changed by a non-merge commit since the merge base whose message matches `^android-surface: G<step> ... review`; any non-merge commit that changed a differing path without that line fails the test, and merges are ignored.
+- **G9a-9:** The logic lives in `tools/nano-tree/nanotree/surface.py`, so `include_census.py` can reuse it; the test only drives it.
+
+## Open items from waves 1 and 2
+
+Each still-open problem from the reports, once, with who must act. Items a later report or the merged `linux` branch shows done were left out: G2d wrote the recipes for libthimsy, thimsy-session, thimsy-padd and thimsy-gpu-pack, sourced `gpl/package/Config.in`, and added the RK3566 overlay, the userland tools and `--family=`; G2e's `rootfs-overlay`, `post-build.sh` and `post-image.sh` exist; G3b installs to `/usr/libexec/thimsy/session`, reads `/run/thimsy/bootdisk`, ignores Linux reserved entries, mounts the games drive on its "change" uevent, restarts padd and acts on sys.powerctl; G8 wrote per-device genimage runs, `--idbloader-size`, `users.table`, `device.table`, the QEMU `linux.fragment` and the `/mnt/media_rw` link; `linux/tests/run.sh` discovers the importer's and init's tests; the merge driver is installed in the main checkout's `.git/config`. Items wave 3 is working on are tagged with its step.
+
+### Android patch and Nano tree
+
+- `regen` treats `git add -N` entries as empty files and `regen --check` agrees; only `test_nano_patch_consistent`'s post-image check catches it. It should hash the file on disk or refuse (G9a). *(wave 3: gfix)*
+- The merge driver exits 1 whenever it changed `nano/` (G0-7), leaving the merge to be finished by hand. *(wave 3: gfix)*
+- When only nano-144 changed the patch since the merge base, git takes nano-144's patch without running the driver; the consistency test and `regen`'s refusal catch it, and the fix is `import-patch --old <previous merge base>` (G0). *(owner, at each nano-144 merge)*
+- `6d6314c` (the DRM buffer split) is to be cherry-picked to nano-144 once the AOSP job is done, and its compile and drastic-nano's link are proven only by the AOSP build of H.7 (G9a). *(owner)*
+- A leak that predates G9a: `drmSetupZeroCopy`'s unwind loops don't RMFB or GEM_CLOSE the earlier slots; recorded in B.8, not fixed, since fixing it changes Android behaviour. *(owner)*
+- The four sibling files' base contents are not in the adopted cache, so `compose` warns until a network `fetch` gets them; drastic-nano's unmodified base sources can't be read offline either, so a Nano header included only by one of them would be missed by the surface test (none is known) (G0, G9a). *(G10)*
+- `nano/NOTICE` and an Apache-2.0 LICENSE in `nano/` don't exist yet (I41; lint reports them pending) (G2d). *(wave 3: gfix)*
+- `tests/run.sh` at the repository root has no `nano` or `linux` mode yet; it should run `tools/nano-tree/tests` (with `test_android_surface.py`) and call `linux/tests/run.sh`; `tests/unit/test_nano_units.py` should point at the new gtest stand-in instead of `tests/fixtures/nano_gtest` (G0, G1a, G2a, G9a). *(wave 3: G1c)*
+
+### Host build, stubs and the Linux platform
+
+- Include `compat.mk` in the host build (setting COMPAT_O first if wanted), use `$(NANOCOMPAT_CPPFLAGS)` and `$(NANOCOMPAT_ASAN_LIBS)`; libthimsy's Makefile and `compat.mk` keep their own MemAvailable guards instead of `linux/tools/build_guard.sh --light` (G1a, G1b). *(wave 3: G1c)*
+- `sources.txt`: `NanoMenuDrmBuffers.cpp` is `[firmware]` and `NanoMenuDrm.cpp` is `[drm]` (G9a). *(wave 3: G1c)*
+- Stubs: the `android/hardware_buffer.h` stub must declare, not define, `AHardwareBuffer_release`/`_describe`/`_lock`/`_unlock`; empty stubs for `vndk/hardware_buffer.h`, `cutils/native_handle.h`, `ui/GraphicBufferMapper.h` and `ui/GraphicTypes.h`; `utils/String8.h`, `String16.h` and the rest of the stub set (G9a, G1b). *(wave 3: G4)*
+- B.2's ratchet on Bionic-only identifiers has no owner in section G (G1b). *(wave 3: G4)*
+- Call `nanocompat::init({"/storage/.config/thimsy/persist.props", "/run/thimsy/props", true})` before any Nano thread starts, and `nanocompat::setLogFile("/run/thimsy/log/nano.log")` (G1b). *(wave 3: G5, G9)*
+- Implement the two EGL wraps (G9a-5) and `DrmBuffersGbm.cpp` per B.8: `ahb` non-null, fail rather than return `drmFbId == 0`, `drmGemHandle` 0 when the gbm buffer owns the handle, define the four AHardwareBuffer functions (G9a). *(wave 3: G9)*
+- ControlKeys registers its handlers with `nanocompat::addPropertyObserver` and maps dosleep to the `sleep` request and park_restart to `restart-nano` (G1b, G3b). *(wave 3: G9)*
+- G9 takes over `post-build.d/10-android-links.sh` from G8 rather than writing it again (G8). *(wave 3: G9)*
+- The nano recipe assumes the CMake options `NANO_PLATFORM=linux`, `NANO_WITH_AC3=OFF`, `NANO_BUILD_TESTS`, `NANO_BUILD_SCRAPE` (G2d). *(wave 3: G6)*
+- The session and padd recipes pass `-DTHIMSY_BUILD_TESTS=OFF` (G2d-2), but the CMakeLists name the options THIMSY_SESSION_BUILD_TESTS and THIMSY_PADD_BUILD_TESTS; and `linux/src/thimsy-session` and `linux/src/thimsy-padd` have no LICENSE file though the recipes name one (G2d). *(wave 3: G6)*
+- The CMake build should link png, jpeg, webp, webpdemux and gif when their headers exist, with the probe `compat.mk` uses (G1b). No CMakeLists.txt has been configured yet (G1a, G3a, G3b). *(wave 3: G6)*
+
+### Linux build and card assembly
+
+- `build.sh` passes `--out` to `nano_tree.py export-assets`, which takes OUT as a positional argument; the asset tarball should also include ATTRIBUTION.md and NOTICE so legal-info has the licence texts (G2a, G2d). *(wave 3: gfix)*
+- `build.sh` should export THIMSY_BUILD_TARGET (it passes BR2_DEFCONFIG=/tmp/defconfig, so `20-build-props.sh` reads the target as "defconfig"), and `build.sh card DEVICE` still dies with "not written yet"; it could re-run the hw target's post-image with THIMSY_DEVICES=DEVICE (G8). *(wave 3: gfix)*
+- `/root` may break the build: Buildroot's `system/device_table.txt` has "/root d 700", and `30-permissions.sh` turns `/root` into a link to a path that doesn't exist at build time, so makedevs' chown may fail (likely, not checked against makedevs' source) (G8). *(wave 3: gfix)*
+- `fit.py --device-json` should read the device.json schema ("id", and a "dtb" with a directory) (G2b-9, G8-9). *(wave 3: gfix)*
+- GPU pack: thimsy-gpu-pack's Config.in says the pack is mounted over the tier root at boot, G8 unpacks it into each card's root; one must change, and if mounted, `gpu.json`'s environment must be applied at boot (G2d, G8). *(wave 3: gfix)*
+- Linux denies Nano's Akrobat files, while Android replaces them with Barlow under the same names (`mods/50-nano.sh`); Linux needs the same, or Nano falls back (G2d). *(wave 3: gfix)*
+- `dev.fragment` still adds `board/common/rootfs-overlay-dev`, which no step created (pending in `targets.json`, so build.sh refuses the dev targets), while G2e-13 already adds the dev getty from `30-permissions.sh`: create the overlay or drop it from `dev.fragment` and `pending_paths` (G2a, G2e). *(unassigned; gfix's area)*
+- `thimsy-prop boot` defaults to `/boot/thimsy/install.json`, but S01props calls it with no arguments and G2e-14 puts the file at `/storage/thimsy/install.json` (G1a, G2e). *(unassigned; gfix's area)*
+- The init scripts and thimsy-session read ro.thimsy.family and ro.thimsy.modules, but `thimsy-prop boot` writes the family as ro.thimsy.device.family and the device.json schema has no "modules"; the family falls back to the only family directory, the module list has no source (G2e, G1a). *(unassigned; gfix's area)*
+- The device.json `product` and `props` fields `thimsy-prop` reads (G1a-13) are not in G2c's `device.schema.json`; the schema should adopt or rename them (G1a). *(unassigned; gfix's area)*
+- G2e's `board/rk3566/common/README.md` still says the family overlay goes into the tier defconfigs (G2d-16). *(unassigned; gfix's area)*
+- The thimsy-session SSH options SSH_AT_BOOT and SSH_PASSWORD (G2a-6) change nothing, since D50ssh decides by ro.thimsy.build.type; drop them or wire them to D50ssh (G2d, G3b). *(wave 3: G6, with the recipe option names)*
+- GPT partition and disk UUIDs are genimage's random ones, so images are not reproducible; pinning them would make two cards from one image collide in an ARC-D (G2b, G8-5). *(owner)*
+- One Mesa build gives identical GPU packs that differ only in `gpu.json`; smaller packs need one Mesa build per driver (G2d). *(G10: measure the sizes)*
+- RetroArch's menu assets (retroarch-assets) are not packaged (G2d). *(G10)*
+
+### Recipes and Buildroot guesses (need a Buildroot tree or the network)
+
+- Hashes for retroarch, ppsspp (including the `-git4` tarball name, a guess), scummvm, thimsy-fonts and the cores; the font URLs and archive layouts (G2d). *(G10)*
+- Core commits: run `scripts/core_sources.py --cache <work/cache>` where the build cache lives, then with `--resolve` once the network is allowed, then `linux/tools/lint_packages.py --sync-cores`; melondsds needs a Linux commit chosen and its CMake FetchContent dependencies pinned as `_EXTRA_DOWNLOADS`; fake08 needs a commit chosen another way (G2d). *(G10)*
+- Buildroot names and behaviours to confirm: MESA3D_GBM, MESA3D_VULKAN_DRIVER_PANFROST, the ROCKCHIP_RKBIN_*_FILENAME options and file names, HOST_BMAP_TOOLS, EROFS_LZ4HC as a bool, GCC 14 and headers 6.12 in 2026.08.2, the SDK tarball name and `relocate-sdk.sh` path, the QEMU kernel 6.12.58 (G2a); UTIL_LINUX_BINARIES, BUSYBOX_CONFIG_FRAGMENT_FILES, `_PKGDIR`, `_PRE_DOWNLOAD_HOOKS`, hash files read from BR2_GLOBAL_PATCH_DIR for file sites, the mkfs.erofs flags (`-zlz4hc`, `-C16384`, `-T`, `--all-root`), the RetroArch, PPSSPP and ScummVM configure and CMake flags, the libretro Makefile names and subfolders (G2a, G2d); BR2_LINUX_KERNEL_CUSTOM_DTS_DIR copying into `arch/arm64/boot/dts/` and INTREE_DTS_NAME building out-of-tree DTS names (G2c). *(G10)*
+- Whether Buildroot 2026.08.2 has its own `package/scummvm` (then ours must be renamed; `defconfig.py --buildroot` reports it), and whether it has sdl3 and sdl2-compat; ppsspp and scummvm select SDL2 until the I43 swap (G2a, G2d). *(G10)*
+- Tool behaviours to confirm: `fsck.erofs --extract=DIR --overwrite` (erofs-utils 1.7 or later) keeping owners as root; mke2fs honouring E2FSPROGS_FAKE_TIME; host-bmap-tools installing `bmaptool`; genimage taking an empty `--rootpath`, partitions with no image (qemu's uboot and boot), and appending the backup GPT itself when the hdimage has no size; the QEMU `linux.fragment` options mostly =y in arm64's defconfig; the real mkimage build and read-back in `test_fit` (G2b, G8). *(G10)*
+- Kernel-log markers are written with no level prefix, so with `quiet loglevel=3` they may not reach the serial console, which the QEMU test reads; its Nano markers ("thimsy-session: nano started", "nano: first frame", "nano: menu opened") are guesses until Phase 2b; the QEMU boot test itself has not run (G2e, G3b, G8). *(G10)*
+- Check that Mesa's `EGL_ANDROID_native_fence_sync` works and that the EGL wraps hold (G9a). *(G10)*
+- Compile and test AImageDecoder's libpng, libjpeg-turbo, libwebp and giflib paths once the -dev packages are installed, and add JPEG (with EXIF orientation) and WebP (still and animated) fixtures (G1b). *(G10)*
+- thimsy-session was not cross-compiled for aarch64, and its `SYS_ioprio_set` fallback numbers are from memory (G3b). *(G10)*
+- padd's input-code name table comes from Ubuntu 20.04's kernel 5.4 header; regenerate it from the image's kernel headers if a device.json needs a newer code (G3a). *(G10)*
+
+### Importer
+
+- Q34 is not applied: the importer can't know a series' last stable point release without the network (G2c). *(G10)*
+- The scripts/unpack patch loop is not in the sparse clone, so the real RK3566 and H700 runs record that guard as "absent" and assume the order; `kernel_config_path`'s order is assumed from `config/functions` and not guarded (G2c). *(Phase 0/2a (device), with a full clone)*
+- The release-image check against ROCKNIX's ikconfig is not built; it needs downloads (G2c). *(G10)*
+- Mainline-only DTBs (most H700 boards, plus rgb10max3) have no model without `--kernel-src` or an overrides file, and `thimsy/<f>/overrides` is not implemented (G2c). *(unassigned; before the H700 wave)*
+- InputPlumber stick and axis maps are not translated, so devices with sticks (for example RG-DS) get no sticks or face_buttons (G2c). *(unassigned; before a wave with sticks)*
+- Excluded proprietary firmware is only reported as fetch_candidate; there is no UI to fetch it from the user's device (D24) (G2c). *(owner; installer, Phase 4)*
+
+### Nano, input and session behaviour
+
+- Nano sets and clears `sys.thimsy.padd.intercept` and reads the menu's input from `/run/thimsy/padd-tap.sock` while it is on (G3a). *(G7-input)*
+- padd does not grab external pads while intercept is on, though plan 5.3 says it can (G3a). *(G7-input)*
+- Nano's volumes and power code implements against `linux/docs/session.md`, including the pre-launch mount check (st_dev comparison, plan 7.3) before a launch (G3b). *(G7-volumes, G7-power)*
+- Not done in the session: a `sync` when a game exits (the session can't see a game exit while Nano runs), a Nano "busy" sleep inhibitor, the exFAT clean-unmount record (plan 7.3's alternative), and re-sleeping when woken with the lid still closed (G3b). *(G7-power)*
+- The jail does not stop a root process with CAP_SYS_ADMIN from mounting a new devtmpfs; dropping SYS_ADMIN needs an audit of Nano (G3b). *(owner)*
+- S02padd has no stop action; padd shuts down cleanly on SIGTERM (G3a). *(unassigned; small)*
+
+### On a device
+
+- The RK3566 files from the Phase 2a hand import and FlipBase's subtree merge, still pending in `targets.json`: `generated/rk3566/defconfig.fragment`, `gpl/generated/rk3566/linux/{config,patches}`, `gpl/board/rk3566/{linux,uboot}/patches`, `board/rk3566/linux.fragment`, `board/rk3566/uboot/uboot.fragment`; whoever adds one drops it from `pending_paths` and re-runs `tools/defconfig.py` (G2a). *(Phase 0/2a (device))*
+- `uboot.fragment` must embed `boot.cmd` (CONFIG_BOOTCOMMAND or a default environment file) and enable CMD_SETEXPR, CMD_FDT, CMD_PART and PARTITION_UUIDS; `bootm` ignores the FIT `bootargs` property, so the `fdt get value` path is required; to check on the device: the SD slot is mmc 1, setexpr's `*ADDR` load form, hex without 0x from part and setexpr; `boot.cmd` does not check the sector count before the FIT read (G2b, G8). *(Phase 0/2a (device))*
+- Verify the FIT header's magic and bytes 12-511 against FlipBase's `tools/mkfit.py` at the subtree merge (G2b-6). *(Phase 0/2a (device))*
+- RK3566 BL31: rkbin's until Phase 0 and D18 settle it (G2a-17). *(Phase 0/2a (device))*
+- padd on the ARC (Q4): whether the always-declared ABS_X and ABS_Y make the pad a joystick under libudev-zero, SDL and RetroArch; EVIOCGRAB, hiding by unlink, the mknod fallback, a real `/dev/uinput` (CONFIG_INPUT_UINPUT), FF on the pwm-vibrator (G3a). *(Phase 0/2a (device))*
+- Guesses in the ARC device.json files: the touch evdev name, the "rk805 pwrkey" name, the ARC-S RAM, the hotkey, the F label (G2c, G3a). *(Phase 0/2a (device))*
+- Audio: the RK817 "Playback Path" values; the ARC's real mixer control name for volume (the family hook has no "volume" action, and `ro.thimsy.audio.volume_control` defaults to Master), to be supplied by device.json props or the hook (G2e, G3b). *(Phase 0/2a (device))*
+- Init on a device: that `sfdisk --force -N 5` adds the entry through BLKPG on the pinned util-linux, that PARTUUID appears in partition uevents (only the fallback needs it), and how long rcS takes; deep sleep depending on the vendor BL31 (Q24) (G2e). *(Phase 0/2a (device))*
+- How long `fsck.exfat -p` takes on every mount (G3b-8 keeps it always until Phase 0 times it) (G3b). *(Phase 0/2a (device))*
+- The session's root-only paths, faked in tests: netlink, mount(2), EVIOCSCLOCKID, pidfd on padd, making `/` shared, and NanoJail's unshare and bind mounts (G3b). *(Phase 0/2a (device))*
+- The hook's sleep-pre writes "deep" to mem_sleep and the session then writes its own choice; they agree on the ARC, and each new family should be checked (G3b). *(Phase 0/2a (device))*
+
+### Assets, owner's choices
+
+- Slate is denied as a whole and the Colorful theme is not in the export, so Linux needs a filtered Slate or another default theme (G2d). *(owner)*
+- ASSETS.md's table still says KEEP for Akrobat, though its "Changes since the audit" says REPLACE (G2d). *(owner)*
+
+### Notes, no action needed
+
+- Test times: `test_nano_tree.py` about 60 s on Windows and 40 s in WSL; `test_rcs.py` 42 s in WSL and 155 s on Windows; `test_post_image.py` about 290 s on Windows and 45 to 120 s in WSL; the linux suite is much faster from a copy under `~/.cache` than from `/mnt/c` (G0, G2c, G2e, G8).
+- WSL git can't resolve a worktree made by Windows git, so WSL runs set GIT_DIR and GIT_WORK_TREE, which the tools honour; index modes are checked on Windows (G0, G2e).
+- The main repository prints "unable to find all commit-graph files" on most git commands; harmless, and older than this work (G0).
+- padd's rocknix-joypad golden reads G2c's generated H700 file; if it changes, run `make golden` and review the diff (G3a).
+- `nano/compat/**` now reaches the patch (inert for Soong), so any later edit there needs a `nano_tree.py regen` commit (G1b).
+- The hw fragments, `targets.json` and the defconfigs conflict whenever two steps regenerate them; re-run `tools/defconfig.py` after a merge (it passes on `linux` today) (G8).
