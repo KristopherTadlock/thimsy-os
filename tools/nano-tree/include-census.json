@@ -1726,6 +1726,68 @@
     "nano:platform/host/ShellGateHost.h"
    ]
   },
+  "platform/linux/ControlKeys.cpp": {
+   "includes": [
+    "nano:platform/linux/ControlKeys.h",
+    "shim:compat/include/cutils/properties.h",
+    "shim:compat/include/log/log.h",
+    "shim:compat/include/nanocompat/nanocompat.h"
+   ]
+  },
+  "platform/linux/ShellGate.cpp": {
+   "includes": [
+    "nano:platform/linux/ShellGate.h",
+    "shim:compat/include/cutils/properties.h",
+    "shim:compat/include/log/log.h"
+   ]
+  },
+  "platform/linux/display/DrmBuffersGbm.cpp": {
+   "includes": [
+    "lib:egl:EGL/egl.h",
+    "lib:egl:EGL/eglext.h",
+    "lib:gbm:gbm.h",
+    "lib:gles:GLES2/gl2.h",
+    "lib:gles:GLES2/gl2ext.h",
+    "lib:libdrm:drm.h",
+    "lib:libdrm:drm_fourcc.h",
+    "lib:libdrm:drm_mode.h",
+    "nano:NanoMenuDrmBuffers.h",
+    "shim:compat/include/log/log.h",
+    "stub:compat/stubs/include/android/hardware_buffer.h"
+   ]
+  },
+  "platform/linux/display/EglWraps.cpp": {
+   "includes": [
+    "lib:egl:EGL/egl.h",
+    "lib:egl:EGL/eglext.h",
+    "shim:compat/include/log/log.h"
+   ]
+  },
+  "platform/linux/main_linux.cpp": {
+   "includes": [
+    "nano:NanoMenu.h",
+    "nano:platform/linux/ControlKeys.h",
+    "shim:compat/include/cutils/properties.h",
+    "shim:compat/include/log/log.h",
+    "shim:compat/include/nanocompat/nanocompat.h",
+    "shim:compat/include/system/thread_defs.h",
+    "shim:compat/include/utils/StrongPointer.h",
+    "shim:compat/include/utils/Thread.h"
+   ]
+  },
+  "platform/linux/tests/controlkeys_test.cpp": {
+   "includes": [
+    "missing:ControlKeys.h",
+    "missing:compat_test_util.h",
+    "shim:compat/include/cutils/properties.h"
+   ]
+  },
+  "platform/linux/tests/shellgate_test.cpp": {
+   "includes": [
+    "missing:ShellGate.h",
+    "missing:compat_test_util.h"
+   ]
+  },
   "powerwatch/nano_powerwatch.cpp": {
    "includes": [
     "shim:compat/include/android-base/properties.h",
