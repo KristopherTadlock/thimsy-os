@@ -17,7 +17,9 @@
     "build/**",
     "CMakeLists.txt",
     "cmake/**",
-    "third_party/wpa_ctrl/**"
+    "third_party/wpa_ctrl/**",
+    "LICENSE",
+    "NOTICE"
   ],
   "siblings": [
     "frameworks/base/cmds/drastic-nano/DsScreenLayout.cpp",

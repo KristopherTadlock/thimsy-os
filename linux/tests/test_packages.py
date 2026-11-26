@@ -143,6 +143,23 @@ class CommittedRecipes(unittest.TestCase):
         self.assertIn("GPL-2.0+ (NanoOskKanji.h", v["THIMSY_NANO_LICENSE"])
         self.assertIn("NanoOskKanji.h", v["THIMSY_NANO_LICENSE_FILES"].split())
 
+    def test_nano_license_and_notice(self):
+        """I41: nano/LICENSE (Apache-2.0) and nano/NOTICE exist, are listed, are fork-only (the
+        Android patch does not carry them) and are no longer reported as pending (gfix)."""
+        v = lp.Recipe(LINUX / "package/thimsy-nano/thimsy-nano.mk").vars
+        files = v["THIMSY_NANO_LICENSE_FILES"].split()
+        for f in ("LICENSE", "NOTICE"):
+            self.assertIn(f, files)
+            self.assertTrue((REPO / "nano" / f).is_file(), f)
+        self.assertIn("Apache License", (REPO / "nano/LICENSE").read_text(encoding="utf-8")[:200])
+        notice = (REPO / "nano/NOTICE").read_text(encoding="utf-8")
+        for part in ("NanoOskKanji.h", "liba52/", "NanoAc3", "nanosvg/", "rcheevos/"):
+            self.assertIn(part, notice)
+        upstream = json.loads((REPO / "tools/nano-tree/upstream.json").read_text(encoding="utf-8"))
+        self.assertIn("LICENSE", upstream["fork_only"])
+        self.assertIn("NOTICE", upstream["fork_only"])
+        self.assertFalse([w for w in self.report.pending if "NOTICE" in w or "nano/LICENSE" in w])
+
     def test_gpl_package_menu_is_sourced(self):
         top = (LINUX / "Config.in").read_text(encoding="utf-8")
         self.assertIn('source "$BR2_EXTERNAL_THIMSY_PATH/gpl/package/Config.in"', top)
