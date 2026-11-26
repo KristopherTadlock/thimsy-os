@@ -564,6 +564,61 @@ class Imports(Base):
         self.assertIn(b"+line3 linux", self.patch())
         self.assertEqual(self.tool("regen", "--check")[0], 0)
 
+    def nano144_with(self, nano_changes, tag):
+        """nano-144's patch: P0 plus NANO_CHANGES, and the outside moved on (other p-TAG)."""
+        c = self.u.commit_from(self.u.p0_commit, nano_changes, outside={"other/file.txt": lines(3, " other " + tag)})
+        return self.u.diff(self.u.base, c)
+
+    def test_fork_only_change_from_nano144_is_a_conflict(self):
+        """android-safety-2: a nano-144 section for a fork-only path is never dropped quietly."""
+        self.make_fork()
+        self.driver()
+        p = self.nano144_with({"build/NOTES.txt": lines(2, " notes"), "a.cpp": edit_line(read(self.nano("a.cpp")), 8, "line8 nano144")}, "p4")
+        self.linux_edit("keep.h", edit_line(read(self.nano("keep.h")), 3, "line3 linux"))   # so git runs the driver
+        self.commit_nano144(p)
+        rc, out, err = self.tool("import-patch", "nano144")
+        self.assertEqual(rc, 1)
+        self.assertIn("CONFLICT nano/build/NOTES.txt: the incoming patch adds this path, but it is fork-only", err)
+        self.g("reset", "-q", "--hard")
+        self.g("clean", "-qfd", "--", "nano")
+        proc = self.merge("nano144")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn(b"fork-only", proc.stderr + proc.stdout)
+        self.g("merge", "--abort")
+
+    def test_regen_refuses_a_block_with_a_fork_only_section(self):
+        self.make_fork()
+        sec = (b"diff --git a/%s/build/x b/%s/build/x\nnew file mode 100644\nindex 00000000000..11111111111\n"
+               b"--- /dev/null\n+++ b/%s/build/x\n@@ -0,0 +1 @@\n+x\n" % ((NANO.encode(),) * 3))
+        data = self.patch()
+        before, block, after = Patch.parse(data).split_block(NANO + "/")
+        write(os.path.join(self.f, "patches", "thimsy", "0001-thimsy.patch"), before + block + sec + after)
+        rc, out, err = self.tool("regen", "--force")
+        self.assertNotEqual(rc, 0)
+        self.assertIn("fork-only paths", out + err)
+
+    def test_merge_driver_refuses_a_dirty_nano(self):
+        """android-safety-4: nano-144's merge regenerates the block from nano/ on disk, so a stray
+        file there would reach the merge commit; the driver stops instead."""
+        self.make_fork()
+        self.driver()
+        self.linux_edit("keep.h", edit_line(read(self.nano("keep.h")), 3, "line3 linux"))   # so git runs the driver
+        write(self.nano("stray_test.cpp"), b"int stray;\n")
+        write(self.nano("platform/linux/fine.cpp"), b"int fine;\n")   # fork-only: never in the patch
+        self.commit_nano144(self.u.p3)
+        before = self.patch()
+        proc = self.merge("nano144")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn(b"nano/ has uncommitted changes or untracked files (stray_test.cpp)", proc.stderr + proc.stdout)
+        self.assertNotIn(b"stray_test.cpp", self.patch())
+        self.assertNotIn(b"int stray", self.patch())
+        self.g("merge", "--abort")
+        self.assertEqual(self.patch(), before)
+        os.remove(self.nano("stray_test.cpp"))
+        proc = self.merge("nano144")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn(b"other p3", self.patch())
+
     def step_branch(self, name, edits, outside=None, start="master"):
         """A step branch from START: EDITS ({nano path: data}) and the patch regenerated."""
         self.g("checkout", "-q", "-b", name, start)
