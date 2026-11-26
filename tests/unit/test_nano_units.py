@@ -1,6 +1,8 @@
 """Nano's USB-C role helper (NanoTypec) and its monitor mode helper (NanoMonitorMode), with their
 AOSP unit tests (test/unit/*_test.cpp), built with g++ and run on the host against a small stand-in
-for GoogleTest (tests/fixtures/nano_gtest). The sources come from the AOSP tree, or without one from
+for GoogleTest: libthimsy/testing's on the fork's linux branch (docs/linux/IMPLEMENTATION.md D.1),
+else tests/fixtures/nano_gtest. Skipped where g++ is missing (Windows). The sources come from the
+AOSP tree, or without one from
 the files patches/thimsy/0001-thimsy.patch creates; on the fork's linux branch, from nano/ first
 (Nano's source as files, docs/linux/IMPLEMENTATION.md A). And nothing in the patch or the mods touches the
 USB controller's mode file in debugfs.
@@ -17,7 +19,11 @@ NANO = "frameworks/base/cmds/gammaos-nano"
 # Nano's source as files (the fork's linux branch); absent on nano-144.
 NANO_FILES = os.path.join(util.ROOT, "nano")
 PATCH = arrangement.PATCH
-GTEST = os.path.join(util.TESTS, "fixtures", "nano_gtest")
+# The GoogleTest stand-in: libthimsy's (the fork's linux branch, where Nano's host build uses it too),
+# else the old one in tests/fixtures (nano-144, which has no libthimsy/).
+GTEST_LIBTHIMSY = os.path.join(util.ROOT, "libthimsy", "testing")
+GTEST = (GTEST_LIBTHIMSY if os.path.isfile(os.path.join(GTEST_LIBTHIMSY, "gtest", "gtest.h"))
+         else os.path.join(util.TESTS, "fixtures", "nano_gtest"))
 # Each program: the helper's sources and its test.
 PROGRAMS = {
     "typec": ("NanoTypec.h", "NanoTypec.cpp", "test/unit/NanoTypec_test.cpp"),

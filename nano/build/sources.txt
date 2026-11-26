@@ -1,0 +1,229 @@
+# nano/build/sources.txt: every file the builds outside Soong compile from nano/, listed once per
+# section (docs/linux/IMPLEMENTATION.md C.1). Paths are relative to nano/. Read by
+# nano/test/host/Makefile (awk), nano/cmake/sources.cmake (G6) and
+# tools/nano-tree/tests/test_nano_sources.py, which checks it against nano/Android.bp with
+# androidbp.py:
+#   - every file in gammaos-nano's srcs is in exactly one of [core], [drm] and [firmware];
+#   - [dropped-linux] is a subset of [firmware];
+#   - [scrape] equals gammaos-nano-scrape's srcs;
+#   - [test-unit]'s production files equal gammaos_nano_unit_tests' srcs, and its tests equal
+#     test/unit/*_test.cpp without DsScreenLayout_test.cpp (drastic-nano's, a sibling's test);
+#   - every listed file exists.
+# Android.bp stays authoritative for Android; this file only partitions it. Fork-only: never in
+# the patch (upstream.json's fork_only has build/**).
+#
+# After editing: py -3.12 tools/nano-tree/include_census.py write   (regenerates unit-closure.txt)
+
+# Shared files compiled on every platform: gammaos-nano's srcs minus [drm] and [firmware], with the
+# media, overlay and SD-move files that compile against the layer-2 stubs (C.1, B.4).
+#
+# FIRST CUT (G1c): [core] and [firmware] are split by the design's list (C.1), not yet by the include
+# census. G4 refines the split from tools/nano-tree/include-census.json (a file reaching an
+# Android-only header that has neither a shim nor a stub, and that G4 decides not to stub, moves to
+# [firmware]), and G10 may move a file after compiling it, with the reason.
+[core]
+NanoMenu.cpp
+NanoMenuXmb.cpp
+NanoMenuShaders.cpp
+NanoMenuEffects.cpp
+NanoMenuInput.cpp
+NanoMenuState.cpp
+NanoMenuSystem.cpp
+NanoMenuNet.cpp
+NanoMenuSettings.cpp
+NanoMenuSettingsTree.cpp
+NanoScreenCal.cpp
+NanoMenuSettingsRender.cpp
+NanoMenuRender.cpp
+NanoMenuOverlay.cpp
+NanoMenuPS3Layout.cpp
+NanoMenuPS3Bg.cpp
+NanoMenuPS3Particles.cpp
+NanoMenuPS3Icons.cpp
+NanoMenuPS3IconGrid.cpp
+NanoMenuPS3EmuCatalog.cpp
+NanoMenuPS3Folder.cpp
+NanoMenuFileExplorer.cpp
+NanoArchive.cpp
+NanoSyncthing.cpp
+NanoMenuSyncthing.cpp
+NanoMenuPS3Menu.cpp
+NanoMenuMinima.cpp
+NanoEsdeTheme.cpp
+NanoEsdeSystemName.cpp
+NanoThemeEngine.cpp
+NanoMenuEsdeMenu.cpp
+NanoMenuPdf.cpp
+NanoMenuPS3Clock.cpp
+NanoControlCenter.cpp
+NanoMenuPS3Globe.cpp
+NanoMenuPS3Boot.cpp
+NanoBootScreen.cpp
+NanoTouch.cpp
+bootscreen/NanoBootArt.cpp
+NanoOtaCheck.cpp
+NanoMenuOta.cpp
+NanoDisplayTarget.cpp
+NanoMonitorMode.cpp
+NanoMenuMonitorMode.cpp
+NanoMenuSetupWizard.cpp
+NanoMenuStrings.cpp
+NanoAudio.cpp
+NanoMenuAudioBands.cpp
+NanoMenuMusic.cpp
+NanoMenuMedia.cpp
+NanoMenuMusicCanyon.cpp
+NanoMenuMusicGlobe.cpp
+NanoMenuPhotos.cpp
+NanoVideo.cpp
+NanoDvbSub.cpp
+NanoTsDescramble.cpp
+NanoTsDemux.cpp
+NanoAviDemux.cpp
+NanoMenuVideo.cpp
+NanoMenuIptv.cpp
+NanoMenuRadio.cpp
+NanoHls.cpp
+NanoIcyDemux.cpp
+NanoMenuSearch.cpp
+NanoAc3.cpp
+NanoAacDec.cpp
+NanoCea608.cpp
+NanoScraper.cpp
+NanoScrapeQueue.cpp
+NanoMenuScraper.cpp
+NanoEsdeStore.cpp
+NanoSdMove.cpp
+NanoAppFiles.cpp
+NanoHakuxSetup.cpp
+NanoScummvmList.cpp
+NanoMenuHakux.cpp
+NanoRaConfig.cpp
+NanoFileJob.cpp
+NanoBiosUi.cpp
+NanoBiosCatalog.cpp
+NanoBiosInstall.cpp
+NanoBiosUtil.cpp
+NanoBiosWorker.cpp
+NanoMenuMtp.cpp
+NanoTypec.cpp
+NanoEmuSync.cpp
+NanoMenuNdsBanner.cpp
+NanoNdsBanner.cpp
+NanoJson.cpp
+NanoLaunch.cpp
+NanoSystemsHeal.cpp
+NanoHotkeys.cpp
+NanoDeviceKeys.cpp
+NanoButtonMap.cpp
+NanoButtonMapReaders.cpp
+NanoButtonMapNav.cpp
+NanoButtonMapArt.cpp
+NanoMenuButtonMap.cpp
+NanoI18n.cpp
+NanoBidi.cpp
+NanoOsk.cpp
+NanoUtf8Case.cpp
+
+# The KMS display code: firmware and Linux (each with its own buffer back end), not the host
+# (platform/host's DrmHost.cpp replaces it).
+[drm]
+NanoMenuDrm.cpp
+
+# Android firmware only (FIRST CUT, see [core]): the entry point; drastic-nano's runner, GPU and
+# settings and the JNI shim; the AHardwareBuffer back end (NanoMenuDrmBuffers.cpp, split out by
+# G9a); the boot chime (tinyalsa); Bluetooth's stability helper; Shares and RGB follow, whose
+# headers live outside Nano's folder (v1 has neither on Linux); the libretro runner (until Phase 5).
+[firmware]
+main.cpp
+NanoMenuDrmBuffers.cpp
+NanoMenuRgbFollow.cpp
+NanoMenuShares.cpp
+NanoBootChime.cpp
+NanoMenuDrasticPark.cpp
+NanoBtStable.cpp
+LibretroRunner.cpp
+FakeJNI.cpp
+DrasticRunner.cpp
+DrasticGpu3d.cpp
+DrasticSettings.cpp
+
+# A subset of [firmware]: the files that define NanoMenu:: methods [core] calls, for which the Linux
+# and host builds link stubs generated at build time (nano/test/host/stubgen, G4). Empty unless a
+# file truly can't compile.
+[dropped-linux]
+
+# The Linux platform (G9): platform/linux/**.cpp and main_linux.cpp. Empty until they exist.
+[linux]
+
+# The host platform (G5): platform/host/**.cpp and test/host/headless/main_headless.cpp. Empty
+# until they exist.
+[host]
+
+# gammaos-nano-scrape's six files, for thimsy-nano-scrape (C.2).
+[scrape]
+NanoScrapeWorker.cpp
+NanoScrapeQueue.cpp
+NanoScraper.cpp
+NanoJson.cpp
+NanoI18n.cpp
+NanoScummvmList.cpp
+
+# The host unit tests: gammaos_nano_unit_tests' production files, then its test/unit/*_test.cpp
+# without DsScreenLayout_test.cpp. Each test builds into its own program with its production-file
+# closure (nano/build/unit-closure.txt, generated by tools/nano-tree/include_census.py).
+[test-unit]
+NanoTouch.cpp
+NanoBidi.cpp
+NanoUtf8Case.cpp
+NanoJson.cpp
+NanoI18n.cpp
+NanoNdsBanner.cpp
+NanoBiosCatalog.cpp
+NanoEsdeTheme.cpp
+NanoEsdeSystemName.cpp
+NanoLaunch.cpp
+NanoAppFiles.cpp
+NanoBiosUtil.cpp
+NanoDeviceKeys.cpp
+NanoButtonMap.cpp
+NanoButtonMapReaders.cpp
+NanoRaConfig.cpp
+NanoHotkeys.cpp
+NanoSystemsHeal.cpp
+NanoHakuxSetup.cpp
+NanoScummvmList.cpp
+NanoDisplayTarget.cpp
+NanoTypec.cpp
+NanoMonitorMode.cpp
+NanoEmuSync.cpp
+test/unit/NanoAppFiles_test.cpp
+test/unit/NanoBidi_test.cpp
+test/unit/NanoBiosCatalog_test.cpp
+test/unit/NanoBiosUtil_test.cpp
+test/unit/NanoButtonMapNano_test.cpp
+test/unit/NanoButtonMapReaders_test.cpp
+test/unit/NanoButtonMap_test.cpp
+test/unit/NanoCatalog_test.cpp
+test/unit/NanoDeviceKeys_test.cpp
+test/unit/NanoDisplayTarget_test.cpp
+test/unit/NanoEmuSync_test.cpp
+test/unit/NanoEsdeSystemName_test.cpp
+test/unit/NanoEsdeTheme_test.cpp
+test/unit/NanoFrameFlag_test.cpp
+test/unit/NanoHakuxSetup_test.cpp
+test/unit/NanoI18n_test.cpp
+test/unit/NanoJson_test.cpp
+test/unit/NanoLaunch_test.cpp
+test/unit/NanoMenuUtils_test.cpp
+test/unit/NanoMonitorMode_test.cpp
+test/unit/NanoNdsBanner_test.cpp
+test/unit/NanoOtaVersion_test.cpp
+test/unit/NanoOverlayRaise_test.cpp
+test/unit/NanoRaConfig_test.cpp
+test/unit/NanoScreenChoice_test.cpp
+test/unit/NanoScummvmList_test.cpp
+test/unit/NanoSystemsHeal_test.cpp
+test/unit/NanoTouch_test.cpp
+test/unit/NanoTypec_test.cpp
+test/unit/NanoUtf8Case_test.cpp
