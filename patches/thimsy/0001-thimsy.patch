@@ -2466,10 +2466,10 @@ index 2ff1dad7970..89bb33a9256 100644
                      } else { close(fd); unlink(tmp.c_str()); }
                  }
 diff --git a/frameworks/base/cmds/gammaos-nano/Android.bp b/frameworks/base/cmds/gammaos-nano/Android.bp
-index 0f747c9a45c..a8ad63f55c4 100644
+index 0f747c9a45c..6506c746f61 100644
 --- a/frameworks/base/cmds/gammaos-nano/Android.bp
 +++ b/frameworks/base/cmds/gammaos-nano/Android.bp
-@@ -45,8 +45,14 @@ cc_binary {
+@@ -45,8 +45,15 @@ cc_binary {
  
      srcs: [
          "main.cpp",
@@ -2477,6 +2477,7 @@ index 0f747c9a45c..a8ad63f55c4 100644
 +        "NanoPlatform.cpp",                // the platform seam: install() and get()
 +        "platform/firmware/Platform.cpp",  // the firmware platform (createPlatform)
 +        "platform/firmware/Display.cpp",   // the firmware platform's Display (G7-display)
++        "platform/firmware/Launcher.cpp",  // the firmware platform's Launcher (G7-launch-b)
          "NanoMenu.cpp",
 +        "NanoLaunchCommit.cpp",            // the launch handshake's writes (G7-launch-a)
          "NanoMenuDrm.cpp",
@@ -2484,7 +2485,7 @@ index 0f747c9a45c..a8ad63f55c4 100644
          "NanoMenuRgbFollow.cpp",
          "NanoMenuXmb.cpp",
          "NanoMenuShaders.cpp",
-@@ -69,23 +75,31 @@ cc_binary {
+@@ -69,23 +76,31 @@ cc_binary {
          "NanoMenuPS3EmuCatalog.cpp",
          "NanoMenuPS3Folder.cpp",
          "NanoMenuFileExplorer.cpp",
@@ -2517,7 +2518,7 @@ index 0f747c9a45c..a8ad63f55c4 100644
          "NanoMenuSetupWizard.cpp",
          "NanoMenuStrings.cpp",
          "NanoBtStable.cpp",
-@@ -111,13 +125,40 @@ cc_binary {
+@@ -111,13 +126,40 @@ cc_binary {
          "NanoAacDec.cpp",
          "NanoCea608.cpp",
          "NanoScraper.cpp",
@@ -2558,7 +2559,7 @@ index 0f747c9a45c..a8ad63f55c4 100644
          "LibretroRunner.cpp",
          "FakeJNI.cpp",
          "DrasticRunner.cpp",
-@@ -133,6 +174,7 @@ cc_binary {
+@@ -133,6 +175,7 @@ cc_binary {
          "liba52_nano",   // AC-3 decoder (no AC-3 codec on the device)
          "libtinyxml2",   // XML DOM parser for the ES-DE theme engine (NanoEsdeTheme)
          "libnanosvg_nano",   // SVG rasterizer for ES-DE theme logos (NanoThemeEngine)
@@ -2566,7 +2567,7 @@ index 0f747c9a45c..a8ad63f55c4 100644
          // Share storage + credential encoding, shared with the gammaos-sharefs daemon so a share
          // added in the menu is written exactly as the daemon expects to read it.
          "libgammaos_sharecfg",
-@@ -143,14 +185,13 @@ cc_binary {
+@@ -143,14 +186,13 @@ cc_binary {
          "jni_headers",
          "native_headers",   // <android/imagedecoder.h> + <android/bitmap.h> (photo viewer decode)
          "libgammargb_process_headers",   // shared GammaRGB colour pipeline (parity with SF sampler)
@@ -2582,7 +2583,7 @@ index 0f747c9a45c..a8ad63f55c4 100644
          "libbinder_ndk",
          "libcutils",
          "liblog",
-@@ -172,21 +213,28 @@ cc_binary {
+@@ -172,21 +214,28 @@ cc_binary {
          "libandroid",   // APerformanceHint (ADPF render-thread hint session)
          "libaaudio",    // GammaEQ audio preview + music player output (AAudio)
          "libmediandk",  // music player decode: AMediaExtractor + AMediaCodec -> PCM
@@ -2615,7 +2616,7 @@ index 0f747c9a45c..a8ad63f55c4 100644
          "nano_xmb_icons",
          "nano_xmb_normalmaps",
          "nano_xmb_glass",
-@@ -204,13 +252,64 @@ cc_binary {
+@@ -204,13 +253,64 @@ cc_binary {
          "nano_xmb_photoviewer",
          "nano_xmb_backgrounds",
          "nano_xmb_systemstatus",
@@ -2681,7 +2682,7 @@ index 0f747c9a45c..a8ad63f55c4 100644
  // Vendored liba52 (a52dec 0.7.4, GPL-2) - AC-3 decoder. The device has no hardware
  // or software AC-3 codec, so NanoAc3 uses this to decode AC-3 audio in .ts / MKV / VOB.
  // Pure-C generic path (no SIMD / djbfft / memalign); -w because the 2002-era source
-@@ -249,6 +348,7 @@ cc_library_static {
+@@ -249,6 +349,7 @@ cc_library_static {
  // source is not clean under Soong's warning set (same treatment as liba52_nano).
  cc_library_static {
      name: "libnanosvg_nano",
@@ -2689,7 +2690,7 @@ index 0f747c9a45c..a8ad63f55c4 100644
      srcs: ["nanosvg/nanosvg_impl.c"],
      local_include_dirs: ["nanosvg"],
      export_include_dirs: ["nanosvg"],
-@@ -323,14 +423,40 @@ sh_binary {
+@@ -323,14 +424,40 @@ sh_binary {
      src: "nano-pmdown.sh",
  }
  
@@ -2731,7 +2732,7 @@ index 0f747c9a45c..a8ad63f55c4 100644
  // /system/etc/nano_xmb/<sub_dir>/; the renderer also checks
  // /data/system/nano_xmb/ first so assets can be pushed during development
  // without rebuilding the system image.
-@@ -340,18 +466,6 @@ prebuilt_etc {
+@@ -340,18 +467,6 @@ prebuilt_etc {
      sub_dir: "nano_xmb/fonts",
  }
  
@@ -2750,7 +2751,7 @@ index 0f747c9a45c..a8ad63f55c4 100644
  // ES-DE built-in asset SVGs the theme engine falls back to when a theme does not
  // ship its own: the helpsystem button glyphs (the legend icons at the bottom of
  // every view), the per-controller badge icons, and the metadata badge icons.
-@@ -388,12 +502,6 @@ prebuilt_etc {
+@@ -388,12 +503,6 @@ prebuilt_etc {
      sub_dir: "nano_xmb/gradients",
  }
  
@@ -2763,7 +2764,7 @@ index 0f747c9a45c..a8ad63f55c4 100644
  prebuilt_etc {
      name: "nano_xmb_icons",
      srcs: ["ps3xmb/icons/*.png"],
-@@ -423,7 +531,27 @@ prebuilt_etc {
+@@ -423,7 +532,27 @@ prebuilt_etc {
  // /data/system/nano_xmb/audio/ first (dev override), else this install path.
  prebuilt_etc {
      name: "nano_xmb_audio",
@@ -2792,7 +2793,7 @@ index 0f747c9a45c..a8ad63f55c4 100644
      sub_dir: "nano_xmb/audio",
  }
  
-@@ -510,6 +638,13 @@ prebuilt_etc {
+@@ -510,6 +639,13 @@ prebuilt_etc {
          "ps3xmb/i18n/ar.json",
          "ps3xmb/i18n/tr.json",
          "ps3xmb/i18n/pl.json",
@@ -2806,7 +2807,7 @@ index 0f747c9a45c..a8ad63f55c4 100644
      ],
      sub_dir: "gammaos-nano/i18n",
  }
-@@ -543,7 +678,12 @@ prebuilt_etc {
+@@ -543,7 +679,12 @@ prebuilt_etc {
  // first, this is the bundled fallback).
  prebuilt_etc {
      name: "nano_xmb_nds",
@@ -2820,7 +2821,7 @@ index 0f747c9a45c..a8ad63f55c4 100644
      sub_dir: "nano_xmb/nds",
  }
  
-@@ -558,6 +698,32 @@ prebuilt_etc {
+@@ -558,6 +699,32 @@ prebuilt_etc {
      sub_dir: "nano_xmb/daijishou",
  }
  
@@ -2853,7 +2854,7 @@ index 0f747c9a45c..a8ad63f55c4 100644
  // Source files shared with the drastic-nano binary. drastic-nano
  // reuses the DRM rendering stack, DrasticRunner lifecycle, and
  // FakeJNI shim from gammaos-nano; wrapping them in a filegroup lets
-@@ -567,11 +733,386 @@ filegroup {
+@@ -567,11 +734,386 @@ filegroup {
      name: "drastic_nano_shared_srcs",
      srcs: [
          "NanoMenuDrm.cpp",
@@ -24765,10 +24766,10 @@ index 00000000000..c5771f81017
 +}  // namespace nanolaunch
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoLaunchCommit.cpp b/frameworks/base/cmds/gammaos-nano/NanoLaunchCommit.cpp
 new file mode 100644
-index 00000000000..7ff8ddf74f8
+index 00000000000..d3a0342a1ca
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/NanoLaunchCommit.cpp
-@@ -0,0 +1,66 @@
+@@ -0,0 +1,56 @@
 +/*
 + * Copyright (C) 2026 GammaOS
 + * Copyright (C) 2026 The Thimsy OS Project
@@ -24789,13 +24790,15 @@ index 00000000000..7ff8ddf74f8
 +// commitLaunch() (NanoLaunchCommit.h): the launch handshake's writes, in the call site's order.
 +// The LOG_TAG is the call sites' (NanoMenu.cpp and the files split from it), for NanoMenuUtils.h's
 +// inline helpers; commitLaunch itself logs nothing.
++// The writes are the platform launcher's (NanoPlatform.h, G7-launch-b): the firmware's are the
++// handshake that was here (platform/firmware/Launcher.cpp, under the same LOG_TAG, with the
++// NanoMenuUtils.h helpers it was defined for); Linux and the host add their own launch. This file no
++// longer includes NanoMenuUtils.h and logs nothing; the LOG_TAG is kept as G7-launch-a left it.
 +
 +#define LOG_TAG "GammaOSNano"
 +
-+#include <cutils/properties.h>
-+
 +#include "NanoLaunchCommit.h"
-+#include "NanoMenuUtils.h"   // setLaunchRomPath, setLaunchGame
++#include "NanoPlatform.h"
 +
 +namespace android {
 +
@@ -24819,28 +24822,16 @@ index 00000000000..7ff8ddf74f8
 +}
 +
 +void commitLaunch(const LaunchTuple& tuple) {
-+    for (const LaunchTuple::Write& w : tuple.writes) {
-+        switch (w.key) {
-+            case LaunchKey::RomPath:
-+                setLaunchRomPath(w.value);
-+                break;
-+            case LaunchKey::Game:
-+                setLaunchGame(w.value, w.rom, w.core);
-+                break;
-+            default:
-+                property_set(launchKeyProperty(w.key), w.value.c_str());
-+                break;
-+        }
-+    }
++    nanoplat::get().launcher->commit(tuple);
 +}
 +
 +}  // namespace android
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoLaunchCommit.h b/frameworks/base/cmds/gammaos-nano/NanoLaunchCommit.h
 new file mode 100644
-index 00000000000..4b50609f2fb
+index 00000000000..dafc3384a6f
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/NanoLaunchCommit.h
-@@ -0,0 +1,92 @@
+@@ -0,0 +1,94 @@
 +/*
 + * Copyright (C) 2026 GammaOS
 + * Copyright (C) 2026 The Thimsy OS Project
@@ -24930,6 +24921,8 @@ index 00000000000..4b50609f2fb
 +// Writes the tuple's writes in order, on the calling thread: each key with property_set, RomPath
 +// and Game through setLaunchRomPath and setLaunchGame. Nothing is skipped, merged or reordered,
 +// and an empty value is written as the empty string, as the call sites did.
++// The installed platform's launcher does it (nanoplat::get().launcher->commit, NanoPlatform.h;
++// G7-launch-b).
 +void commitLaunch(const LaunchTuple& tuple);
 +
 +}  // namespace android
@@ -63779,10 +63772,10 @@ index 00000000000..1cf7b6955b2
 +}  // namespace nanoplat
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoPlatform.h b/frameworks/base/cmds/gammaos-nano/NanoPlatform.h
 new file mode 100644
-index 00000000000..58dcf309172
+index 00000000000..8739efca925
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/NanoPlatform.h
-@@ -0,0 +1,95 @@
+@@ -0,0 +1,157 @@
 +/*
 + * Copyright (C) 2026 The Thimsy OS Project
 + *
@@ -63820,6 +63813,12 @@ index 00000000000..58dcf309172
 +#pragma once
 +
 +#include <memory>
++#include <optional>  // Launcher (G7-launch-b)
++#include <string>    // Launcher (G7-launch-b)
++
++namespace android {
++struct LaunchTuple;  // NanoLaunchCommit.h (G7-launch-b)
++}  // namespace android
 +
 +namespace nanoplat {
 +
@@ -63853,11 +63852,67 @@ index 00000000000..58dcf309172
 +};
 +// --- end Display ---------------------------------------------------------------------------------
 +
++// --- Launcher (G7-launch-b) ----------------------------------------------------------------------
++// Starting a game or an app. Every call site's launch handshake goes through commitLaunch()
++// (NanoLaunchCommit.h), which hands its tuple to commit(). The firmware's commit is today's
++// handshake, moved (platform/firmware/Launcher.cpp): the property writes in the call site's order,
++// which Android's framework turns into an activity start as Nano exits. Linux's writes the same
++// keys, and the handshake's trigger starts the game (platform/linux/Launcher.cpp, through the
++// control keys); the host's writes them and records each launch (platform/host/FakeLauncher.cpp).
++
++// Nano's stored launch, as the handshake's keys hold it when its trigger (do_launch=1 or
++// service.bootanim.nano_retroarch=1) is written.
++struct LaunchRequest {
++    enum class Kind { Core, Package };
++    Kind kind = Kind::Core;    // Core when the handshake names a RetroArch core, else Package
++    std::string package;       // launch_app
++    std::string core;          // launch_core: the core's Android path; "" for a package
++    std::string rom;           // launch_rom, else launch_game (a standalone's game); may be ""
++    std::string system;        // launch_system: the ROM folder's system id; may be ""
++    std::string intent;        // launch_intent ("file": the intent file was written)
++    std::string trigger;       // the key whose write fired the launch
++};
++
++struct ChildExit {
++    int pid = 0;
++    int status = 0;            // the exit status, or the signal number when signaled
++    bool signaled = false;
++};
++
++class Launcher {
++ public:
++    virtual ~Launcher() = default;
++
++    // Whether a launched game runs only once Nano has exited: the firmware's true (Android starts
++    // the activity, and the panel is freed, as the home exits); Linux's false (Nano hands the panel
++    // to the child). The value states the intended contract, not today's behaviour: nothing reads
++    // it yet, Nano's launch sites still exit after a launch on every platform, and until threadLoop
++    // polls the child the Linux launcher holds the game until Nano's menu has ended.
++    virtual bool nanoExitsOnLaunch() const = 0;
++
++    // commitLaunch(): one call site's handshake writes, in its order, on the calling thread.
++    virtual void commit(const android::LaunchTuple& tuple) = 0;
++
++    // Starts `request` as a child in its own session and process group, after handing the panel
++    // over (Display::releaseForChild). False, with *error, when it can't be started. The firmware
++    // launches only through the handshake, so its launch() always returns false; Linux's checks the
++    // request and queues it until Nano's menu has ended (platform/linux/Launcher.h).
++    virtual bool launch(const LaunchRequest& request, std::string* error) = 0;
++    // A child was started and pollChild() has not yet reported its end.
++    virtual bool childRunning() const = 0;
++    // Non-blocking: the child's end, reported once, after it has ended.
++    virtual std::optional<ChildExit> pollChild() = 0;
++    // Asks the child to quit: SIGTERM to its process group.
++    virtual void requestChildQuit() = 0;
++};
++// --- end Launcher --------------------------------------------------------------------------------
++
 +// The platform's services. Empty until the first G7 step declares one. Each platform library
 +// derives from it to keep its own state; services added later are members here.
 +struct Platform {
 +    virtual ~Platform();
 +    std::unique_ptr<Display> display;  // G7-display: never null once createPlatform() returns
++    std::unique_ptr<Launcher> launcher;  // G7-launch-b: never null once createPlatform() returns
 +};
 +
 +struct PlatformArgs {
@@ -81428,12 +81483,131 @@ index 00000000000..4b2f2dbe02c
 +std::unique_ptr<nanoplat::Display> createDisplay();
 +
 +}  // namespace nanofirmware
+diff --git a/frameworks/base/cmds/gammaos-nano/platform/firmware/Launcher.cpp b/frameworks/base/cmds/gammaos-nano/platform/firmware/Launcher.cpp
+new file mode 100644
+index 00000000000..a1938d53013
+--- /dev/null
++++ b/frameworks/base/cmds/gammaos-nano/platform/firmware/Launcher.cpp
+@@ -0,0 +1,79 @@
++/*
++ * Copyright (C) 2026 GammaOS
++ * Copyright (C) 2026 The Thimsy OS Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++// The firmware's nanoplat::Launcher (NanoPlatform.h; docs/linux/IMPLEMENTATION.md B.6): the launch
++// handshake's writes, moved verbatim from commitLaunch() in NanoLaunchCommit.cpp. The class sits in
++// namespace android, as the moved lines did, and the file has NanoLaunchCommit.cpp's LOG_TAG
++// "GammaOSNano" (NanoMenu.cpp's) for NanoMenuUtils.h's inline helpers; commit itself logs nothing.
++// Android's framework starts the activity from the handshake as Nano exits, so this launcher never
++// starts a child: launch() refuses, and there is never a child to poll or to quit.
++
++#define LOG_TAG "GammaOSNano"
++
++#include <memory>
++#include <optional>
++#include <string>
++
++#include <cutils/properties.h>
++
++#include "Launcher.h"
++#include "NanoLaunchCommit.h"
++#include "NanoMenuUtils.h"   // setLaunchRomPath, setLaunchGame
++#include "NanoPlatform.h"
++
++namespace android {
++namespace {
++
++class FirmwareLauncher : public nanoplat::Launcher {
++ public:
++    bool nanoExitsOnLaunch() const override { return true; }
++
++    void commit(const LaunchTuple& tuple) override {
++        for (const LaunchTuple::Write& w : tuple.writes) {
++            switch (w.key) {
++                case LaunchKey::RomPath:
++                    setLaunchRomPath(w.value);
++                    break;
++                case LaunchKey::Game:
++                    setLaunchGame(w.value, w.rom, w.core);
++                    break;
++                default:
++                    property_set(launchKeyProperty(w.key), w.value.c_str());
++                    break;
++            }
++        }
++    }
++
++    bool launch(const nanoplat::LaunchRequest& /*request*/, std::string* error) override {
++        if (error) *error = "the firmware launches through the handshake";
++        return false;
++    }
++    bool childRunning() const override { return false; }
++    std::optional<nanoplat::ChildExit> pollChild() override { return std::nullopt; }
++    void requestChildQuit() override {}
++};
++
++}  // namespace
++}  // namespace android
++
++namespace nanofirmware {
++
++std::unique_ptr<nanoplat::Launcher> createLauncher() {
++    return std::unique_ptr<nanoplat::Launcher>(new android::FirmwareLauncher);
++}
++
++}  // namespace nanofirmware
+diff --git a/frameworks/base/cmds/gammaos-nano/platform/firmware/Launcher.h b/frameworks/base/cmds/gammaos-nano/platform/firmware/Launcher.h
+new file mode 100644
+index 00000000000..78411de3d83
+--- /dev/null
++++ b/frameworks/base/cmds/gammaos-nano/platform/firmware/Launcher.h
+@@ -0,0 +1,28 @@
++/*
++ * Copyright (C) 2026 The Thimsy OS Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++// The firmware's nanoplat::Launcher (platform/firmware/Launcher.cpp), made by Platform.cpp.
++#pragma once
++
++#include <memory>
++
++#include "NanoPlatform.h"
++
++namespace nanofirmware {
++
++std::unique_ptr<nanoplat::Launcher> createLauncher();
++
++}  // namespace nanofirmware
 diff --git a/frameworks/base/cmds/gammaos-nano/platform/firmware/Platform.cpp b/frameworks/base/cmds/gammaos-nano/platform/firmware/Platform.cpp
 new file mode 100644
-index 00000000000..7a32b615204
+index 00000000000..5e091afdbfd
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/platform/firmware/Platform.cpp
-@@ -0,0 +1,31 @@
+@@ -0,0 +1,33 @@
 +/*
 + * Copyright (C) 2026 The Thimsy OS Project
 + *
@@ -81458,11 +81632,13 @@ index 00000000000..7a32b615204
 +
 +#include "NanoPlatform.h"
 +#include "Display.h"  // G7-display
++#include "Launcher.h"  // G7-launch-b
 +
 +std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs& /*args*/) {
 +    std::unique_ptr<Platform> platform(new Platform);
 +    // The services, one line each (G7 steps).
 +    platform->display = nanofirmware::createDisplay();  // G7-display
++    platform->launcher = nanofirmware::createLauncher();  // G7-launch-b
 +    return platform;
 +}
 diff --git a/frameworks/base/cmds/gammaos-nano/powerwatch/nano_powerwatch.cpp b/frameworks/base/cmds/gammaos-nano/powerwatch/nano_powerwatch.cpp

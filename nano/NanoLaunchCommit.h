@@ -87,6 +87,8 @@ struct LaunchTuple {
 // Writes the tuple's writes in order, on the calling thread: each key with property_set, RomPath
 // and Game through setLaunchRomPath and setLaunchGame. Nothing is skipped, merged or reordered,
 // and an empty value is written as the empty string, as the call sites did.
+// The installed platform's launcher does it (nanoplat::get().launcher->commit, NanoPlatform.h;
+// G7-launch-b).
 void commitLaunch(const LaunchTuple& tuple);
 
 }  // namespace android

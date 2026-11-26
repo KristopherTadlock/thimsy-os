@@ -20,7 +20,8 @@
 // the fake input devices, the record-only shell gate, and a {"ev":"prop"} event for every property
 // write Nano makes (the store keeps the value; the event keeps the order, which the launch
 // handshake's assertions need). It keeps its configuration, and fills NanoPlatform.h's services
-// with the host's fakes: the display (FakeDisplay.h, over DrmHost.cpp).
+// with the host's fakes: the display (FakeDisplay.h, over DrmHost.cpp) and the launcher
+// (FakeLauncher.h: records each launch with a {"ev":"launch"} event).
 
 #define LOG_TAG "NanoHost"
 
@@ -37,6 +38,7 @@
 #include <nanocompat/nanocompat.h>
 
 #include "FakeDisplay.h"  // G7-display
+#include "FakeLauncher.h"  // G7-launch-b
 #include "HostConfig.h"
 #include "NanoPlatform.h"
 
@@ -137,5 +139,6 @@ std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs&
           cfg.display.width, cfg.display.height, cfg.display.refreshHz, cfg.devices.size(), cfg.shellRules.size());
     std::unique_ptr<nanoplat::Platform> platform(new HostPlatform(std::move(cfg)));
     platform->display = createFakeDisplay(createHostDrm());  // G7-display
+    platform->launcher = createFakeLauncher();  // G7-launch-b
     return platform;
 }

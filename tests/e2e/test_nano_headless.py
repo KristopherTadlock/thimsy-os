@@ -386,13 +386,14 @@ class JailRun(util.TestCase):
 
 # A stand-in for nano-headless that speaks its protocol (HostControl.h) from Python inside the jail,
 # so the scenario runner is tested end to end without Nano: presents, the barrier, captures, the
-# control FIFO, input from the device FIFO, property writes, a launch and the exit that follows it.
+# control FIFO, input from the device FIFO, property writes, a launch (the handshake's writes and the
+# fake launcher's "launch" event, FakeLauncher.h) and the exit that follows it.
 FAKE_NANO = r'''#!/usr/bin/python3
 import json, os, struct, sys, time
 cfg = json.load(open(sys.argv[sys.argv.index("--host-config") + 1]))
 ev = open(cfg["events"], "a", buffering=1)
-def event(kind, **f):
-    f.update({"ev": kind, "t_ms": int(time.monotonic() * 1000)})
+def event(ev_kind, **f):
+    f.update({"ev": ev_kind, "t_ms": int(time.monotonic() * 1000)})
     ev.write(json.dumps(f) + "\n")
 def setprop(k, v):
     open(os.path.join(cfg["run_dir"], k), "w").write(v)
@@ -440,6 +441,10 @@ while True:
             if os.environ.get("FAKE_CRASH_BEFORE_DO_LAUNCH"):
                 os.abort()
             setprop("sys.gammaos.nano.do_launch", "1")
+            event("launch", kind="Core", package="com.retroarch.aarch64",
+                  core="/data/data/com.retroarch.aarch64/cores/snes9x_libretro_android.so",
+                  rom="/storage/1234-ABCD/ROMs/snes/Test Game.sfc", system="snes", intent="",
+                  trigger="sys.gammaos.nano.do_launch")
             launched = time.monotonic()
     if launched and time.monotonic() - launched > 0.2:
         open("/data/system/nano_esde_played.txt", "a").write("Test Game\n")
@@ -548,30 +553,48 @@ class RunnerChecks(util.TestCase):
               {"ev": "prop", "key": "sys.gammaos.nano.launch_core", "value": "/cores/snes9x_libretro_android.so"},
               {"ev": "prop", "key": "sys.gammaos.nano.launch_rom", "value": "/ROMs/a.sfc"},
               {"ev": "prop", "key": "sys.gammaos.nano.launch_app", "value": "com.retroarch.aarch64"}]
+    LAUNCH_EVENT = {"ev": "launch", "kind": "Core", "package": "com.retroarch.aarch64",
+                    "core": "/cores/snes9x_libretro_android.so", "rom": "/ROMs/a.sfc", "system": "snes",
+                    "intent": "", "trigger": "sys.gammaos.nano.do_launch"}
+    SNES = {"kind": "Core", "core": "snes9x", "rom_endswith": "/a.sfc"}
 
-    def test_a_crash_after_launch_app_is_no_commit(self):
-        run = self.run_over(self.LAUNCH)
-        run.proc = _Proc(-6)   # SIGABRT (abort_on_error=1)
-        self.assertFalse(run.launch_state()[1])
-        run.proc = _Proc(0)    # the firmware's hand-off: a clean exit
-        self.assertTrue(run.launch_state()[1])
-        run.proc = _Proc(None)
-        self.assertFalse(run.launch_state()[1])
+    def test_the_handshake_alone_is_no_launch(self):
+        """G7-launch-b: a launch is the fake launcher's event; keys written, or a clean exit after
+        them (the firmware's hand-off), are not one, and a crash never is (test-quality-3)."""
+        run = self.run_over(self.LAUNCH + [{"ev": "prop", "key": "sys.gammaos.nano.do_launch", "value": "1"},
+                                           {"ev": "exit", "code": 0}])
+        for status in (-6, 0, None):
+            run.proc = _Proc(status)
+            self.assertFalse(run._launched(self.SNES))
+        self.assertEqual(run.handshake()["launch_rom"], "/ROMs/a.sfc")
+        run.events.all.append(dict(self.LAUNCH_EVENT))
+        self.assertTrue(run._launched(self.SNES))
+        self.assertEqual(run.launch_matched, len(run.events.all) - 1)
+
+    def test_the_launch_must_match(self):
+        run = self.run_over(self.LAUNCH + [dict(self.LAUNCH_EVENT)])
+        self.assertTrue(run._launched({"kind": "Core"}))
+        self.assertTrue(run._launched({"kind": "Core", "package": "com.retroarch.aarch64"}))
+        self.assertFalse(run._launched({"kind": "Package"}))
+        self.assertFalse(run._launched({"kind": "Core", "core": "mgba"}))
+        self.assertFalse(run._launched({"kind": "Core", "rom_endswith": "/b.sfc"}))
+        self.assertTrue(run._launched({"rom_endswith": "a.sfc"}))   # kind defaults to Core
+        pkg = dict(self.LAUNCH_EVENT, kind="Package", core="", package="org.ppsspp.ppsspp", rom="/ROMs/b.iso")
+        run.events.all.append(pkg)
+        self.assertTrue(run._launched({"kind": "Package", "package": "org.ppsspp.ppsspp", "rom_endswith": ".iso"}))
 
     def test_an_earlier_processs_launch_does_not_count_again(self):
         """test-quality-6"""
-        run = self.run_over(self.LAUNCH + [{"ev": "prop", "key": "sys.gammaos.nano.do_launch", "value": "1"},
-                                           {"ev": "exit", "code": 0}, {"ev": "start"}])
+        run = self.run_over(self.LAUNCH + [dict(self.LAUNCH_EVENT), {"ev": "exit", "code": 0}, {"ev": "start"}])
         run.proc = _Proc(None)
-        self.assertTrue(run.launch_state()[1])        # before the restart's bookkeeping
+        self.assertTrue(run._launched(self.SNES))     # before the restart's bookkeeping
         run.start_index = run.launch_from = 6         # what start() sets for the second process
-        keys, committed = run.launch_state()
-        self.assertFalse(committed)
-        self.assertEqual(keys["launch_rom"], "/ROMs/a.sfc")   # the store's values still show
-        run.events.all.append({"ev": "prop", "key": "sys.gammaos.nano.do_launch", "value": "1"})
-        self.assertTrue(run.launch_state()[1])
-        run.launch_from = len(run.events.all)         # an expect_launch matched it
-        self.assertFalse(run.launch_state()[1])
+        self.assertFalse(run._launched(self.SNES))
+        self.assertEqual(run.handshake()["launch_rom"], "/ROMs/a.sfc")   # the store's values still show
+        run.events.all.append(dict(self.LAUNCH_EVENT))
+        self.assertTrue(run._launched(self.SNES))
+        run.launch_from = run.launch_matched + 1      # an expect_launch matched it
+        self.assertFalse(run._launched(self.SNES))
 
     def test_exit_statuses_and_sanitizer_reports(self):
         run = self.run_over([{"ev": "start"}])

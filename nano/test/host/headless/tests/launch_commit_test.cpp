@@ -17,11 +17,16 @@
 // commitLaunch() (nano/NanoLaunchCommit.cpp, G7-launch-a): the launch handshake's writes reach the
 // property store in the tuple's order, every one of them, as the compat layer's property observers
 // (the control keys' hook, B.2) see each set. The sequences below are the call sites' own.
+// Since G7-launch-b commitLaunch hands the tuple to the installed platform's launcher: this program
+// installs a platform with the firmware's (platform/firmware/Launcher.cpp, the moved writes), so
+// the same sequences check the move.
 
 #include <string.h>
 
+#include <memory>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <cutils/properties.h>
@@ -29,7 +34,9 @@
 #include <nanocompat/nanocompat.h>
 
 #include "NanoLaunchCommit.h"
+#include "NanoPlatform.h"
 #include "headless_test_util.h"
+#include "platform/firmware/Launcher.h"
 
 using android::LaunchKey;
 using android::LaunchTuple;
@@ -37,9 +44,20 @@ using android::commitLaunch;
 
 namespace {
 
+// The firmware platform's launcher, installed once for the program (install() is once per process).
+void installFirmwareLauncher() {
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+    std::unique_ptr<nanoplat::Platform> p(new nanoplat::Platform);
+    p->launcher = nanofirmware::createLauncher();
+    nanoplat::install(std::move(p));
+}
+
 class LaunchCommit : public ::testing::Test {
  protected:
     void SetUp() override {
+        installFirmwareLauncher();
         nanocompat::InitOptions o;
         o.persistFile = dir / "persist.props";
         o.runDir = dir / "run";
@@ -204,6 +222,21 @@ TEST_F(LaunchCommit, ValuesAreTakenWhenTheTupleIsBuilt) {
     strcpy(pkg, "changed");
     commitLaunch(t);
     EXPECT_EQ(take(), "launch_app=com.example.app\nlaunched_pkg=com.example.app\n");
+}
+
+// The firmware launches only through the handshake: launch() refuses, and there is no child.
+TEST_F(LaunchCommit, TheFirmwareLauncherOnlyCommits) {
+    nanoplat::Launcher& l = *nanoplat::get().launcher;
+    EXPECT_TRUE(l.nanoExitsOnLaunch());
+    nanoplat::LaunchRequest r;
+    r.package = "com.retroarch.aarch64";
+    std::string err;
+    EXPECT_FALSE(l.launch(r, &err));
+    EXPECT_FALSE(err.empty());
+    EXPECT_FALSE(l.childRunning());
+    EXPECT_FALSE(l.pollChild().has_value());
+    l.requestChildQuit();
+    EXPECT_EQ(take(), "");  // none of it writes a key
 }
 
 }  // namespace

@@ -34,7 +34,8 @@
 //   init and QR watcher; binder's thread pool         no binder)
 //   IPCThreadState::joinThreadPool()                  NanoMenu::join(): on Android the process ends
 //                                                     in threadLoop's stopProcess(); here main
-//                                                     returns when the thread ends
+//                                                     returns when the thread ends, after the game
+//                                                     a launch started has ended (G7-launch-b)
 //
 // tools/nano-tree/tests/test_main_linux.py fingerprints main.cpp's main() and firmwareBootSteps(),
 // so a change there is reviewed against this list.
@@ -45,7 +46,9 @@
 #include <string.h>
 
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 
 #include <log/log.h>
 #include <nanocompat/nanocompat.h>
@@ -53,6 +56,7 @@
 #include <utils/Thread.h>
 
 #include "ControlKeys.h"
+#include "Launcher.h"
 #include "NanoBootSequence.h"
 #include "NanoMenu.h"
 #include "NanoPlatform.h"
@@ -85,6 +89,8 @@ int main(int argc, char** argv) {
         // default settings is better than no menu.
         ALOGE("property store %s, %s: %s", kPersistFile, kRunDir, err.c_str());
     }
+    // The observers now; the launch handler once the platform is installed (it reaches the platform's
+    // launcher), so a trigger written in between is only logged (G7-launch-b).
     nanolinux::controlkeys::install();
 
     nanoplat::PlatformArgs args;
@@ -97,6 +103,7 @@ int main(int argc, char** argv) {
         return 2;
     }
     nanoplat::install(std::move(platform));
+    nanolinux::controlkeys::setLaunchHandler(nanolinux::launcher::launchFromHandshake);  // G7-launch-b
 
     for (int i = 1; i < argc; i++) {
         if (argv[i] && strcmp(argv[i], "--overlay") == 0) {
@@ -110,6 +117,14 @@ int main(int argc, char** argv) {
     // run()'s status is not returned (main.cpp ignores it too): when the thread did not start
     // (logged by run()), join() returns at once and main exits as after a normal end.
     nano->join();
+    // A launch ends the menu thread (Nano's launch sites still exit); the launcher has queued the
+    // game. Drop the menu first (~NanoMenu lets go of the pads threadLoop grabbed on its way out
+    // and closes them), then start the game in its own session and wait for it, so nothing Nano
+    // does after the trigger runs beside the game and the session's restart of Nano never takes the
+    // panel or the pad from it (G7-launch-b).
+    nano.clear();
+    if (std::optional<nanoplat::ChildExit> e = nanolinux::launcher::runQueued())
+        ALOGI("Thimsy Nano: the launched game (pid %d) ended", e->pid);
     ALOGI("Thimsy Nano: menu thread ended, exiting");
     nanolinux::controlkeys::uninstall();
     return 0;

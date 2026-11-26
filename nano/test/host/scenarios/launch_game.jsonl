@@ -1,6 +1,7 @@
 # Open a system and launch a game with a libretro core: the launch handshake's keys (B.2's control
-# keys) are written, the launch is committed (do_launch=1, or Nano exits as the firmware does), the
-# game "ends", and Nano comes back with the game recorded as played.
+# keys) are written, the fake launcher records the launch at the trigger (its "launch" event,
+# G7-launch-b), Nano exits as the firmware does, the game "ends", and Nano comes back with the game
+# recorded as played.
 # TODO(G10): the key sequence below is a first guess at the XMB's layout (the Game column, the SNES
 # system, its first game); fix it, and the played-list file, from the first run's captures and events.
 {"boot": {"props": {"persist.gammaos.nano.theme": "xmb", "persist.gammaos.nano.grab_input": "1"}, "files": {"/storage/1234-ABCD/ROMs/snes/Test Game.sfc": "not a real ROM\n"}, "shell": {"rules": [{"match": "am start", "status": 0}]}}}

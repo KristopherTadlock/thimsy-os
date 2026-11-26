@@ -35,6 +35,12 @@
 #pragma once
 
 #include <memory>
+#include <optional>  // Launcher (G7-launch-b)
+#include <string>    // Launcher (G7-launch-b)
+
+namespace android {
+struct LaunchTuple;  // NanoLaunchCommit.h (G7-launch-b)
+}  // namespace android
 
 namespace nanoplat {
 
@@ -68,11 +74,67 @@ class Display {
 };
 // --- end Display ---------------------------------------------------------------------------------
 
+// --- Launcher (G7-launch-b) ----------------------------------------------------------------------
+// Starting a game or an app. Every call site's launch handshake goes through commitLaunch()
+// (NanoLaunchCommit.h), which hands its tuple to commit(). The firmware's commit is today's
+// handshake, moved (platform/firmware/Launcher.cpp): the property writes in the call site's order,
+// which Android's framework turns into an activity start as Nano exits. Linux's writes the same
+// keys, and the handshake's trigger starts the game (platform/linux/Launcher.cpp, through the
+// control keys); the host's writes them and records each launch (platform/host/FakeLauncher.cpp).
+
+// Nano's stored launch, as the handshake's keys hold it when its trigger (do_launch=1 or
+// service.bootanim.nano_retroarch=1) is written.
+struct LaunchRequest {
+    enum class Kind { Core, Package };
+    Kind kind = Kind::Core;    // Core when the handshake names a RetroArch core, else Package
+    std::string package;       // launch_app
+    std::string core;          // launch_core: the core's Android path; "" for a package
+    std::string rom;           // launch_rom, else launch_game (a standalone's game); may be ""
+    std::string system;        // launch_system: the ROM folder's system id; may be ""
+    std::string intent;        // launch_intent ("file": the intent file was written)
+    std::string trigger;       // the key whose write fired the launch
+};
+
+struct ChildExit {
+    int pid = 0;
+    int status = 0;            // the exit status, or the signal number when signaled
+    bool signaled = false;
+};
+
+class Launcher {
+ public:
+    virtual ~Launcher() = default;
+
+    // Whether a launched game runs only once Nano has exited: the firmware's true (Android starts
+    // the activity, and the panel is freed, as the home exits); Linux's false (Nano hands the panel
+    // to the child). The value states the intended contract, not today's behaviour: nothing reads
+    // it yet, Nano's launch sites still exit after a launch on every platform, and until threadLoop
+    // polls the child the Linux launcher holds the game until Nano's menu has ended.
+    virtual bool nanoExitsOnLaunch() const = 0;
+
+    // commitLaunch(): one call site's handshake writes, in its order, on the calling thread.
+    virtual void commit(const android::LaunchTuple& tuple) = 0;
+
+    // Starts `request` as a child in its own session and process group, after handing the panel
+    // over (Display::releaseForChild). False, with *error, when it can't be started. The firmware
+    // launches only through the handshake, so its launch() always returns false; Linux's checks the
+    // request and queues it until Nano's menu has ended (platform/linux/Launcher.h).
+    virtual bool launch(const LaunchRequest& request, std::string* error) = 0;
+    // A child was started and pollChild() has not yet reported its end.
+    virtual bool childRunning() const = 0;
+    // Non-blocking: the child's end, reported once, after it has ended.
+    virtual std::optional<ChildExit> pollChild() = 0;
+    // Asks the child to quit: SIGTERM to its process group.
+    virtual void requestChildQuit() = 0;
+};
+// --- end Launcher --------------------------------------------------------------------------------
+
 // The platform's services. Empty until the first G7 step declares one. Each platform library
 // derives from it to keep its own state; services added later are members here.
 struct Platform {
     virtual ~Platform();
     std::unique_ptr<Display> display;  // G7-display: never null once createPlatform() returns
+    std::unique_ptr<Launcher> launcher;  // G7-launch-b: never null once createPlatform() returns
 };
 
 struct PlatformArgs {
