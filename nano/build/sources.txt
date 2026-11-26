@@ -27,7 +27,10 @@
 # header of the Nano folder's siblings, or a header that resolves nowhere. Compiling decides nothing
 # until G10, which may move a file and records why.
 [core]
+NanoBootSequence.cpp
+NanoPlatform.cpp
 NanoMenu.cpp
+NanoLaunchCommit.cpp
 NanoMenuXmb.cpp
 NanoMenuShaders.cpp
 NanoMenuEffects.cpp
@@ -135,7 +138,8 @@ NanoUtf8Case.cpp
 [drm]
 NanoMenuDrm.cpp
 
-# Android firmware only: the entry point; drastic-nano's runner, GPU and settings and the JNI shim;
+# Android firmware only: the entry point and the firmware platform (platform/firmware, B.6);
+# drastic-nano's runner, GPU and settings and the JNI shim;
 # the AHardwareBuffer back end (NanoMenuDrmBuffers.cpp, split out by G9a); the boot chime
 # (tinyalsa); Bluetooth's stability helper; Shares and RGB follow, whose headers live outside Nano's
 # folder (v1 has neither on Linux); the libretro runner (until Phase 5). Each file's reason is the
@@ -143,6 +147,22 @@ NanoMenuDrm.cpp
 [firmware]
 # main.cpp: reaches binder/ProcessState.h (not stubbed: Android's entry point (main.cpp) starts the binder thread pool; Linux has its own main); jni.h (not stubbed: the JNI shim of drastic-nano's runner (the DS player, not on Linux v1) and main.cpp's)
 main.cpp
+# platform/firmware/Platform.cpp: the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)
+platform/firmware/Platform.cpp
+# platform/firmware/Display.cpp: the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)
+platform/firmware/Display.cpp
+# platform/firmware/Launcher.cpp: the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)
+platform/firmware/Launcher.cpp
+# platform/firmware/Audio.cpp: the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)
+platform/firmware/Audio.cpp
+# platform/firmware/Volumes.cpp: the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)
+platform/firmware/Volumes.cpp
+# platform/firmware/Power.cpp: the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)
+platform/firmware/Power.cpp
+# platform/firmware/SystemActions.cpp: the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)
+platform/firmware/SystemActions.cpp
+# platform/firmware/InputPolicy.cpp: the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)
+platform/firmware/InputPolicy.cpp
 # NanoMenuDrmBuffers.cpp: the AHardwareBuffer render-target back end (G9a); Linux links platform/linux/display/DrmBuffersGbm.cpp instead
 NanoMenuDrmBuffers.cpp
 # NanoMenuRgbFollow.cpp: reaches GammaRgbProcess.h (a header outside Nano's folder (upstream.json siblings): v1 has neither Shares nor RGB follow on Linux)
@@ -193,25 +213,43 @@ DrasticRunner.cpp
 DrasticGpu3d.cpp
 
 # The Linux platform (G9): every platform/linux/**.cpp except platform/linux/tests/ (the platform's
-# own test programs, built by platform/linux/tests/platform.mk), plus NanoPlatform.cpp (as in [host],
-# until G7-main moves it to [core]). nano/CMakeLists.txt builds main_linux.cpp as thimsy-nano's main,
-# ShellGate.cpp as nano_shellgate, and the rest (with [drm]) as nano_platform_linux; DrmBuffersGbm.cpp
-# and EglWraps.cpp stand in for [firmware]'s NanoMenuDrmBuffers.cpp (B.8).
+# own test programs, built by platform/linux/tests/platform.mk). NanoPlatform.cpp is in [core] since
+# G7-main added it to gammaos-nano's srcs. nano/CMakeLists.txt builds main_linux.cpp as thimsy-nano's
+# main, ShellGate.cpp as nano_shellgate, and the rest (with [drm]) as nano_platform_linux;
+# DrmBuffersGbm.cpp and EglWraps.cpp stand in for [firmware]'s NanoMenuDrmBuffers.cpp (B.8).
 [linux]
-NanoPlatform.cpp
+platform/linux/AudioAlsa.cpp
+platform/linux/AudioPull.cpp
 platform/linux/ControlKeys.cpp
+platform/linux/Launcher.cpp
+platform/linux/InputPolicy.cpp
+platform/linux/LinuxPlatform.cpp
+platform/linux/Power.cpp
 platform/linux/ShellGate.cpp
+platform/linux/actions/Run.cpp
+platform/linux/actions/SystemActions.cpp
+platform/linux/actions/WpaCtrl.cpp
+platform/linux/display/Display.cpp
+platform/linux/display/DisplayKms.cpp
+platform/linux/Volumes.cpp
 platform/linux/display/DrmBuffersGbm.cpp
 platform/linux/display/EglWraps.cpp
+platform/linux/display/PanelOrientation.cpp
 platform/linux/main_linux.cpp
 
-# The host platform (G5): platform/host/**.cpp and test/host/headless/main_headless.cpp, plus
-# NanoPlatform.cpp (install and get), which moves to [core] when G7-main adds it to gammaos-nano's
-# srcs; until then each platform section lists it ([linux] too, G9).
+# The host platform (G5): platform/host/**.cpp and test/host/headless/main_headless.cpp
+# (NanoPlatform.cpp, install and get, is in [core] since G7-main).
 [host]
-NanoPlatform.cpp
 platform/host/DrmHost.cpp
+platform/host/FakeActions.cpp
+platform/host/FakeDisplay.cpp
+platform/host/FakeDisplayDrm.cpp
+platform/host/FakeAudio.cpp
 platform/host/FakeEvdev.cpp
+platform/host/FakeLauncher.cpp
+platform/host/FakeVolumes.cpp
+platform/host/FakePower.cpp
+platform/host/FakeInput.cpp
 platform/host/HostConfig.cpp
 platform/host/HostControl.cpp
 platform/host/HostPlatform.cpp

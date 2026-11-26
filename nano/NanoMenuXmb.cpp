@@ -48,6 +48,7 @@
 #include "NanoMenuShaders.h"
 #include "NanoJson.h"
 #include "NanoLaunch.h"
+#include "NanoLaunchCommit.h"   // commitLaunch: the launch handshake's writes
 #include "NanoSystemsHeal.h"
 #include "NanoBiosUtil.h"
 #include "NanoScummvmList.h"
@@ -3600,13 +3601,14 @@ void NanoMenu::launchInstalledApp(const std::string& pkg, bool returnToApps) {
     if (!mPanelApp.empty() && pkg == mPanelApp) { panelAppToMonitor(); return; }   // it moves there
     if (mOverlayMode) { overlayLaunchPackage(pkg); return; }
     ALOGI("ps3menu: launching app %s", pkg.c_str());
-    property_set("sys.gammaos.nano.launch_app", pkg.c_str());
-    property_set("sys.gammaos.nano.launched_pkg", pkg.c_str());
-    setLaunchRomPath("");
-    property_set("sys.gammaos.nano.launch_core", "");
+    commitLaunch(LaunchTuple()
+            .app(pkg.c_str())
+            .launchedPkg(pkg.c_str())
+            .romPath("")
+            .core(""));
     property_set("sys.gammaos.nano.return_apps", returnToApps ? "1" : "0");
     armAppLaunchTrigger();
-    property_set("sys.gammaos.nano.drop_input", "1");
+    commitLaunch(LaunchTuple().dropInput("1"));
     mWaitForRelease = true;
 }
 
@@ -3759,7 +3761,7 @@ bool NanoMenu::launchSelectedAppShortcut() {
         property_set("sys.gammaos.nano.xmb_return_sys", buf);
         snprintf(buf, sizeof(buf), "%d", fromSystem ? g : 0);
         property_set("sys.gammaos.nano.xmb_return_game", buf);
-        property_set("sys.gammaos.nano.return_recent", "0");
+        commitLaunch(LaunchTuple().returnRecent("0"));
     }
     mSearchActive = false; mOskActive = false;
     launchInstalledApp(pkg, false);
@@ -3878,14 +3880,15 @@ void NanoMenu::launchXmbGame() {
         }
 
         if (re.standalone) {
-            android::base::SetProperty("sys.gammaos.nano.launch_app", re.launchPkg);
+            commitLaunch(LaunchTuple().app(re.launchPkg));
             { const char* f = "/data/system/nano_launch_intent.txt";
               int ifd = open(f, O_WRONLY|O_CREAT|O_TRUNC, 0666);
               if (ifd >= 0) { write(ifd, tabIntent.c_str(), tabIntent.size()); close(ifd); chmod(f, 0644); }
-              android::base::SetProperty("sys.gammaos.nano.launch_intent", "file"); }
-            setLaunchRomPath("");
-            setLaunchGame(recentSystemIndex(re) >= 0 ? mXmbSystems[recentSystemIndex(re)].romDir : re.romDir, re.romPath);
-            android::base::SetProperty("sys.gammaos.nano.launch_core", "");
+              commitLaunch(LaunchTuple().intent("file")); }
+            commitLaunch(LaunchTuple()
+                    .romPath("")
+                    .game(recentSystemIndex(re) >= 0 ? mXmbSystems[recentSystemIndex(re)].romDir : re.romDir, re.romPath)
+                    .core(""));
 
             // GammaOS: Drastic quick-resume prime (recent-played path).
             if (re.launchPkg == "com.dsemu.drastic" && drasticNanoAvailable()) {
@@ -3939,12 +3942,13 @@ void NanoMenu::launchXmbGame() {
             }
         } else {
             std::string corePath = "/data/data/com.retroarch.aarch64/cores/" + re.coreSo;
-            setLaunchRomPath(re.romPath);
-            setLaunchGame(recentSystemIndex(re) >= 0 ? mXmbSystems[recentSystemIndex(re)].romDir : re.romDir, re.romPath,
-                          corePath);
-            android::base::SetProperty("sys.gammaos.nano.launch_core", corePath);
-            android::base::SetProperty("sys.gammaos.nano.launch_app", "com.retroarch.aarch64");
-            android::base::SetProperty("sys.gammaos.nano.launch_intent", "");
+            commitLaunch(LaunchTuple()
+                    .romPath(re.romPath)
+                    .game(recentSystemIndex(re) >= 0 ? mXmbSystems[recentSystemIndex(re)].romDir : re.romDir, re.romPath,
+                          corePath)
+                    .core(corePath)
+                    .app("com.retroarch.aarch64")
+                    .intent(""));
             retroarchConfigFile();   // sys.gammaos.retroarch.cfg_dir as of now, for the launch
             property_set("sys.gammaos.nano.cache_ready", "0");
             property_set("sys.gammaos.nano.cache_op", "populate");
@@ -3972,10 +3976,10 @@ void NanoMenu::launchXmbGame() {
         mSearchActive = false; mOskActive = false;
         property_set("sys.gammaos.nano.xmb_return_sys", "-1");
         property_set("sys.gammaos.nano.xmb_return_game", "0");
-        property_set("sys.gammaos.nano.return_recent", "0");
+        commitLaunch(LaunchTuple().returnRecent("0"));
         property_set("sys.gammaos.nano.return_apps", "0");
         armAppLaunchTrigger();
-        property_set("sys.gammaos.nano.drop_input", "1");
+        commitLaunch(LaunchTuple().dropInput("1"));
         struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
         int64_t fenceNs = (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec;
         char buf[32]; snprintf(buf, sizeof(buf), "%" PRId64, fenceNs);
@@ -4060,7 +4064,7 @@ void NanoMenu::launchXmbGame() {
         }
         ALOGI("NanoMenu XMB: standalone launch %s uri=%s",
               sys.launchPkg.c_str(), contentUri.c_str());
-        android::base::SetProperty("sys.gammaos.nano.launch_app", sys.launchPkg);
+        commitLaunch(LaunchTuple().app(sys.launchPkg));
         {
             const char* intentFile = "/data/system/nano_launch_intent.txt";
             int ifd = open(intentFile, O_WRONLY | O_CREAT | O_TRUNC, 0666);
@@ -4068,15 +4072,16 @@ void NanoMenu::launchXmbGame() {
                 write(ifd, tabIntent.c_str(), tabIntent.size());
                 close(ifd);
                 chmod(intentFile, 0644);
-                android::base::SetProperty("sys.gammaos.nano.launch_intent", "file");
+                commitLaunch(LaunchTuple().intent("file"));
             } else {
                 ALOGE("NanoMenu: failed to write intent file: %s", strerror(errno));
-                android::base::SetProperty("sys.gammaos.nano.launch_intent", "");
+                commitLaunch(LaunchTuple().intent(""));
             }
         }
-        setLaunchRomPath("");
-        setLaunchGame(sys.romDir, sys.roms[gameIdx]);
-        android::base::SetProperty("sys.gammaos.nano.launch_core", "");
+        commitLaunch(LaunchTuple()
+                .romPath("")
+                .game(sys.romDir, sys.roms[gameIdx])
+                .core(""));
 
         if (sys.launchPkg == "com.dsemu.drastic" && drasticNanoAvailable()) {
             if (mQuickResumeEnabled) {
@@ -4136,11 +4141,12 @@ void NanoMenu::launchXmbGame() {
         // RetroArch core
         std::string corePath = "/data/data/com.retroarch.aarch64/cores/" + sys.coreSo;
         ALOGI("NanoMenu XMB: launching %s core=%s", romPath.c_str(), corePath.c_str());
-        setLaunchRomPath(romPath);
-        setLaunchGame(sys.romDir, romPath, corePath);
-        android::base::SetProperty("sys.gammaos.nano.launch_core", corePath);
-        android::base::SetProperty("sys.gammaos.nano.launch_app", "com.retroarch.aarch64");
-        android::base::SetProperty("sys.gammaos.nano.launch_intent", "");
+        commitLaunch(LaunchTuple()
+                .romPath(romPath)
+                .game(sys.romDir, romPath, corePath)
+                .core(corePath)
+                .app("com.retroarch.aarch64")
+                .intent(""));
         retroarchConfigFile();   // sys.gammaos.retroarch.cfg_dir as of now, for the launch
         property_set("sys.gammaos.nano.cache_ready", "0");
         property_set("sys.gammaos.nano.cache_op", "populate");
@@ -4189,10 +4195,10 @@ void NanoMenu::launchXmbGame() {
         }
     }
 
-    property_set("sys.gammaos.nano.return_recent", "0");
+    commitLaunch(LaunchTuple().returnRecent("0"));
     property_set("sys.gammaos.nano.return_apps", "0");
     armAppLaunchTrigger();
-    property_set("sys.gammaos.nano.drop_input", "1");
+    commitLaunch(LaunchTuple().dropInput("1"));
 
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);

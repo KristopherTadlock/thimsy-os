@@ -48,7 +48,11 @@ refused and `s2idle` stays. Nothing is needed after resume yet (`sleep-post`).
   `HP_NO_MIC`, `SPK_HP` *(from ROCKNIX's RK3566 quirks and the driver; check
   on the unit)*.
 - No ALSA UCM profile is shipped for the alpha: Nano and RetroArch open
-  `default` and the path is set once. ROCKNIX's UCM files are GPL-2.0 and
+  `default` and the path is set once. `default` is the common overlay's
+  `/etc/asound.conf`: plug over a dmix on card `ALSA_CARD` (the session sets
+  it from device.json's `audio.card_index`), so Nano's streams and the game's
+  mix; its rate (48 kHz), period (512) and buffer (2048) are unchecked on a
+  unit. ROCKNIX's UCM files are GPL-2.0 and
   would be imported, not copied by hand, if a later step needs them (plan
   3.2).
 - The mixer state is saved by `D20sound stop` (from `rcK`) to

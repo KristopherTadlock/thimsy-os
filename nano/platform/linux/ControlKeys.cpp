@@ -126,10 +126,9 @@ void defaultLaunch(const LaunchRequest& r) {
         if (!desc.empty()) desc += ' ';
         desc += kv.first.substr(strlen("sys.gammaos.nano.")) + "=" + kv.second;
     }
-    // TODO(G7-launch): the Linux launcher. Until then Nano exits after a launch and the session
-    // starts it again.
-    ALOGW("launch requested by %s, but this build has no Linux launcher yet: %s", r.trigger.c_str(),
-          desc.c_str());
+    // thimsy-nano's main gives launcher::launchFromHandshake (Launcher.h, G7-launch-b); without it,
+    // only this line.
+    ALOGW("launch requested by %s, but no launcher was given: %s", r.trigger.c_str(), desc.c_str());
 }
 
 std::string familyHookPath() {
@@ -280,6 +279,15 @@ std::string nextRequest(const std::string& current, const std::string& verb) {
     return std::to_string(seq + 1) + ":" + verb;
 }
 
+void sessionRequest(const std::string& verb) {
+    Handlers h = handlers();
+    if (h.sessionRequest) {
+        h.sessionRequest(verb);
+    } else {
+        defaultSessionRequest(verb);
+    }
+}
+
 void install(Handlers h) {
     uninstall();
     std::set<std::string> keys;
@@ -291,6 +299,11 @@ void install(Handlers h) {
     gLastLaunchMs = -1;
     gLastLaunch = LaunchRequest();
     for (const std::string& k : keys) gObserverIds.push_back(nanocompat::addPropertyObserver(k, onWrite));
+}
+
+void setLaunchHandler(std::function<void(const LaunchRequest&)> launch) {
+    std::lock_guard<std::mutex> l(gMu);
+    gHandlers.launch = launch ? std::move(launch) : defaultLaunch;
 }
 
 void uninstall() {

@@ -19,8 +19,11 @@
 // wires the fakes to the runner's channel (HostControl.h): the display the DrmHost substitute shows,
 // the fake input devices, the record-only shell gate, and a {"ev":"prop"} event for every property
 // write Nano makes (the store keeps the value; the event keeps the order, which the launch
-// handshake's assertions need). NanoPlatform.h's Platform has no services yet (G5), so this
-// platform only keeps its configuration.
+// handshake's assertions need). It keeps its configuration, and fills NanoPlatform.h's services
+// with the host's fakes: the display (FakeDisplay.h, over DrmHost.cpp), the launcher
+// (FakeLauncher.h: records each launch with a {"ev":"launch"} event), the Volumes (the
+// config's scripted list of drives, FakeVolumes.h), and the power and the system actions
+// (FakePower.h, G7-power).
 
 #define LOG_TAG "NanoHost"
 
@@ -36,8 +39,13 @@
 #include <log/log.h>
 #include <nanocompat/nanocompat.h>
 
+#include "FakeDisplay.h"  // G7-display
+#include "FakeLauncher.h"  // G7-launch-b
+#include "FakePower.h"  // G7-power
+#include "FakeInput.h"  // G7-input
 #include "HostConfig.h"
 #include "NanoPlatform.h"
+#include "FakeAudio.h"  // G7-audio
 
 namespace nanohost {
 
@@ -134,5 +142,15 @@ std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs&
     event("start", "\"pid\":" + std::to_string(getpid()) + ",\"config\":" + jsonQuote(path));
     ALOGI("nano-headless: host platform up (display %dx%d@%d, %zu input devices, %zu shell rules)",
           cfg.display.width, cfg.display.height, cfg.display.refreshHz, cfg.devices.size(), cfg.shellRules.size());
-    return std::unique_ptr<nanoplat::Platform>(new HostPlatform(std::move(cfg)));
+    std::unique_ptr<nanoplat::Volumes> volumes = makeFakeVolumes(cfg.volumes);   // G7-volumes
+    std::unique_ptr<nanoplat::Platform> platform(new HostPlatform(std::move(cfg)));
+    // The services, one line each (G7 steps).
+    platform->display = createFakeDisplay(createHostDrm());  // G7-display
+    platform->launcher = createFakeLauncher();  // G7-launch-b
+    platform->audio.reset(new FakeAudio());
+    platform->volumes = std::move(volumes);   // G7-volumes
+    platform->power = createFakePower();  // G7-power
+    platform->actions = createFakeActions();  // G7-power
+    platform->input = createFakeInput();  // G7-input
+    return platform;
 }

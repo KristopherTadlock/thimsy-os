@@ -18,6 +18,14 @@ and ``$THIMSY_ROOT/dev/<partition>`` is {"kind": "part", "disk", "n"}.
 ``sync_kernel_view`` writes the matching /sys/class/block tree, as the
 kernel does at boot and, through BLKPG, when sfdisk adds an entry.
 
+A disk may also have bytes: ``$THIMSY_ROOT/dev/<disk>.img``, a sparse file
+as large as the disk. Then the sh fake ``dd`` reads it for ``if=<disk>``,
+the fake mkfs.exfat writes a small exFAT (boot regions and a root
+directory with the volume label) at the partition's start, and the fake
+sfdisk, when it creates an entry, records the exFAT it finds at the start
+in the entry's "fs" (what the kernel would see there). D60firstboot's
+re-adoption of an old library is tested this way (device-safety-2).
+
 Power cuts. THIMSY_FAKE_POWERCUT="STEP:MODE" cuts the power at the first
 call of STEP (relocate, create, mkfs, retype): MODE "before" drops the
 call's effect, "after" keeps it, "torn" (mkfs only) leaves a filesystem
@@ -31,6 +39,7 @@ from __future__ import annotations
 
 import json
 import os
+import struct
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -114,6 +123,118 @@ def sync_kernel_view(root: Path, disk: str) -> None:
             _write(base / "size", f"{p['size'] * ssz // 512}\n")
             _write(base / "uevent", ue)
         _write(root / "dev" / name, json.dumps({"kind": "part", "disk": disk, "n": n}))
+
+
+# --- bytes: sparse disk images and a small exFAT ---------------------------------
+
+def image_path(root: Path, disk: str) -> Path:
+    return root / "dev" / (disk + ".img")
+
+
+def make_sparse(path: Path, size: int) -> bool:
+    """Create PATH as a sparse file of SIZE bytes. False when it can't be sparse
+    (writing far into it would then fill it with zeros)."""
+    with open(str(path), "wb") as f:
+        if os.name == "nt":
+            import ctypes
+            import msvcrt
+            from ctypes import wintypes
+            k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            k32.DeviceIoControl.argtypes = [
+                wintypes.HANDLE, wintypes.DWORD, wintypes.LPVOID, wintypes.DWORD,
+                wintypes.LPVOID, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD),
+                wintypes.LPVOID]
+            done = wintypes.DWORD()
+            fsctl_set_sparse = 0x000900C4
+            if not k32.DeviceIoControl(msvcrt.get_osfhandle(f.fileno()), fsctl_set_sparse,
+                                       None, 0, None, 0, ctypes.byref(done), None):
+                return False
+            # Python's truncate() on Windows (_chsize) writes the zeros out; a
+            # write at the end of a sparse file does not.
+            f.seek(size - 1)
+            f.write(bytes(1))
+        else:
+            f.truncate(size)
+    return True
+
+
+def patch_bytes(path: Path, offset: int, data: bytes) -> None:
+    with open(str(path), "r+b") as f:
+        f.seek(offset)
+        f.write(data)
+
+
+def read_bytes(path: Path, offset: int, length: int) -> bytes:
+    with open(str(path), "rb") as f:
+        f.seek(offset)
+        return f.read(length)
+
+
+EXFAT_HEAP = 256          # ClusterHeapOffset, in volume sectors
+EXFAT_ROOT_CLUSTER = 4
+
+
+def exfat_boot_sector(volume_bytes: int, bpss: int = 9, spcs: int = 3,
+                      root_cluster: int = EXFAT_ROOT_CLUSTER) -> bytes:
+    """An exFAT main boot sector (Microsoft's exFAT specification, 3.1)."""
+    b = bytearray(1 << bpss)
+    b[0:3] = b"\xeb\x76\x90"
+    b[3:11] = b"EXFAT   "
+    vol = volume_bytes >> bpss
+    heap = EXFAT_HEAP
+    clusters = max(0, (vol - heap) >> spcs)
+    struct.pack_into("<QQIIIIIIHHBBBB", b, 64, 0, vol, 128, 128, heap, clusters,
+                     root_cluster, 0x1234ABCD, 0x0100, 0, bpss, spcs, 1, 0x80)
+    b[510:512] = b"\x55\xaa"
+    return bytes(b)
+
+
+def exfat_label_entry(label: str) -> bytes:
+    e = bytearray(32)
+    e[0] = 0x83
+    e[1] = len(label)
+    enc = label.encode("utf-16-le")
+    e[2:2 + len(enc)] = enc
+    return bytes(e)
+
+
+def write_exfat(path: Path, offset: int, volume_bytes: int, label: str, *,
+                bpss: int = 9, spcs: int = 3, complete: bool = True) -> None:
+    """A small exFAT at byte OFFSET of PATH: the main and backup boot sectors
+    (sectors 0 and 12) and, when complete, the root directory's first entries
+    (volume label, allocation bitmap, up-case table)."""
+    ss = 1 << bpss
+    boot = exfat_boot_sector(volume_bytes, bpss, spcs)
+    patch_bytes(path, offset, boot)
+    patch_bytes(path, offset + 12 * ss, boot)
+    if not complete:
+        return
+    root = EXFAT_HEAP + ((EXFAT_ROOT_CLUSTER - 2) << spcs)
+    entries = (exfat_label_entry(label) if label else bytes([0x03]) + bytes(31))
+    entries += bytes([0x81]) + bytes(31) + bytes([0x82]) + bytes(31)
+    patch_bytes(path, offset + root * ss, entries.ljust(1 << (bpss + spcs), b"\0"))
+
+
+def sniff_exfat(path: Path, offset: int) -> Optional[Dict[str, Any]]:
+    """The exFAT at byte OFFSET as the fake kernel's "fs" record, or None."""
+    boot = read_bytes(path, offset, 512)
+    if len(boot) < 512 or boot[3:11] != b"EXFAT   " or boot[510:512] != b"\x55\xaa":
+        return None
+    heap, = struct.unpack_from("<I", boot, 88)
+    root_cluster, = struct.unpack_from("<I", boot, 96)
+    bpss, spcs = boot[108], boot[109]
+    root = heap + ((root_cluster - 2) << spcs)
+    d = read_bytes(path, offset + (root << bpss), 4096)
+    label = ""
+    seen = set()
+    for i in range(0, len(d) - 31, 32):
+        if d[i] == 0:
+            break
+        seen.add(d[i])
+        if d[i] == 0x83:
+            label = d[i + 2:i + 2 + 2 * d[i + 1]].decode("utf-16-le")
+    # Complete: the root directory has its allocation bitmap and up-case table.
+    return {"type": "exfat", "label": label, "complete": {0x81, 0x82} <= seen}
 
 
 # --- tools ------------------------------------------------------------------------
@@ -225,10 +346,12 @@ def sfdisk(args: List[str]) -> int:
         size = int(fields["size"]) if fields.get("size") else end - start
         mode = cut_point("create")
         if mode != "before":
+            img = image_path(root, disk)
+            fs = sniff_exfat(img, start * d["sector_size"]) if img.exists() else None
             d["parts"][n] = {"start": start, "size": size,
                              "type": fields.get("type", "").upper(),
                              "uuid": "c0ffee00-0000-4000-8000-%012d" % int(n),
-                             "name": fields.get("name", ""), "fs": None}
+                             "name": fields.get("name", ""), "fs": fs}
             save_disk(root, d)
             sync_kernel_view(root, disk)  # BLKPG: the kernel learns the entry
         if mode:
@@ -247,11 +370,18 @@ def mkfs_exfat(args: List[str]) -> int:
     info = node(target)
     d = load_disk(root, info["disk"])
     mode = cut_point("mkfs")
+    p = d["parts"][str(info["n"])]
+    img = image_path(root, info["disk"])
+    if mode in ("torn", None, "after") and img.exists():
+        ss = d["sector_size"]
+        write_exfat(img, p["start"] * ss, p["size"] * ss, label,
+                    bpss=ss.bit_length() - 1, spcs=3 if ss == 512 else 0,
+                    complete=mode != "torn")
     if mode == "torn":
-        d["parts"][str(info["n"])]["fs"] = {"type": "exfat", "label": label, "complete": False}
+        p["fs"] = {"type": "exfat", "label": label, "complete": False}
         save_disk(root, d)
     elif mode != "before":
-        d["parts"][str(info["n"])]["fs"] = {"type": "exfat", "label": label, "complete": True}
+        p["fs"] = {"type": "exfat", "label": label, "complete": True}
         save_disk(root, d)
     if mode:
         power_cut()

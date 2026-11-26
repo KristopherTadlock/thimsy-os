@@ -60,6 +60,8 @@ extern "C" uint32_t __system_property_serial(const prop_info* __pi);
 #include "NanoMenuDrm.h"
 #include "NanoMenuShaders.h"
 #include "NanoMenuUtils.h"
+#include "NanoLaunchCommit.h"   // commitLaunch: the launch handshake's writes
+#include "NanoPlatform.h"       // nanoplat::get().input: the devices' grab (G7-input)
 #include "NanoMenuStrings.h"   // LOCALE_COUNT (DSi language picker touch)
 #include "NanoAbxy.h"
 #include "NanoI18n.h"
@@ -82,17 +84,8 @@ void NanoMenu::openInputDevices() {
         int fd = open(path, O_RDONLY | O_NONBLOCK);
         nanoabxy::forget(fd);
         if (fd >= 0) {
-            // Exclusive grab: prevent Android InputReader from stealing events.
-            // Gated by property — disable when preload is off to avoid input
-            // ownership issues during app transitions.
-            if (android::base::GetBoolProperty("persist.gammaos.nano.grab_input", false)) {
-                if (ioctl(fd, EVIOCGRAB, 1) < 0) {
-                    ALOGW("EVIOCGRAB failed for %s: %s", path, strerror(errno));
-                }
-                ALOGD("Opened + grabbed input device: %s", path);
-            } else {
-                ALOGD("Opened input device (no grab): %s", path);
-            }
+            // The grab (EVIOCGRAB): NanoPlatform.h's InputPolicy, platform/firmware/InputPolicy.cpp.
+            nanoplat::get().input->deviceOpened(fd, path, nanoplat::InputPolicy::Opened::AtStart);
             mInputFds.push_back(fd);
             mOpenedDevices.insert(entry->d_name);
             // Cache the device name per-fd so the Control Center can route the BOTTOM touch
@@ -155,7 +148,7 @@ void NanoMenu::checkInputHotplug() {
                                         (fdPath[wantLen] == '\0' ||
                                          fdPath[wantLen] == ' ')) {
                                     inputEventsLost(*it);
-                                    ioctl(*it, EVIOCGRAB, 0);
+                                    nanoplat::get().input->deviceClosing(*it);
                                     mInputFdNames.erase(*it);   // drop the fd->name entry so CC pollers
                                                                 // (key / top / bottom digitizer) never match
                                                                 // a stale closed fd after a device re-seize
@@ -178,14 +171,7 @@ void NanoMenu::checkInputHotplug() {
                     int fd = open(path, O_RDONLY | O_NONBLOCK);
                     nanoabxy::forget(fd);
                     if (fd >= 0) {
-                        // Home-mode grab only (persist.gammaos.nano.grab_input).
-                        // The overlay does NOT grab: it isolates the app's input
-                        // via the framework drop_input prop, not EVIOCGRAB.
-                        if (android::base::GetBoolProperty("persist.gammaos.nano.grab_input", false)) {
-                            if (ioctl(fd, EVIOCGRAB, 1) < 0) {
-                                ALOGW("EVIOCGRAB failed for hotplugged %s: %s", path, strerror(errno));
-                            }
-                        }
+                        nanoplat::get().input->deviceOpened(fd, path, nanoplat::InputPolicy::Opened::Hotplugged);
                         mInputFds.push_back(fd);
                         mOpenedDevices.insert(ev->name);
                         char nm[128] = {0};   // re-cache the device name so CC pollers keep routing by name
@@ -237,7 +223,7 @@ void NanoMenu::checkInputHotplug() {
                     ALOGI("Sweep: dropped stale fd %s", fdPath);
                 }
                 inputEventsLost(*it);
-                ioctl(*it, EVIOCGRAB, 0);
+                nanoplat::get().input->deviceClosing(*it);
                 mInputFdNames.erase(*it);   // keep the fd->name map free of stale closed fds (CC pollers)
                 touchPanelGone(*it);   // its fd number may come back
                 mPollSkipFd.erase(*it);
@@ -261,12 +247,7 @@ void NanoMenu::checkInputHotplug() {
         int fd = open(path, O_RDONLY | O_NONBLOCK);
         nanoabxy::forget(fd);
         if (fd >= 0) {
-            // Home-mode grab only; the overlay isolates via drop_input, not grab.
-            if (android::base::GetBoolProperty("persist.gammaos.nano.grab_input", false)) {
-                if (ioctl(fd, EVIOCGRAB, 1) < 0) {
-                    ALOGW("EVIOCGRAB failed for swept %s: %s", path, strerror(errno));
-                }
-            }
+            nanoplat::get().input->deviceOpened(fd, path, nanoplat::InputPolicy::Opened::Swept);
             mInputFds.push_back(fd);
             mOpenedDevices.insert(entry->d_name);
             char nm[128] = {0};   // re-cache the device name so CC pollers keep routing by name
@@ -430,14 +411,15 @@ void NanoMenu::handleSelect() {
         const auto& entry = mRecentEntries[mRecentSelectedIndex];
         ALOGI("NanoMenu: launching game: %s core: %s",
               entry.romPath.c_str(), entry.corePath.c_str());
-        setLaunchRomPath(entry.romPath);
-        setLaunchGame("", entry.romPath, entry.corePath);
-        android::base::SetProperty("sys.gammaos.nano.launch_core", entry.corePath);
+        commitLaunch(LaunchTuple()
+                .romPath(entry.romPath)
+                .game("", entry.romPath, entry.corePath)
+                .core(entry.corePath));
         // Track launched package so NanoMenu can force-stop it on next restart
         {
             char launchApp[PROPERTY_VALUE_MAX] = {};
             property_get("sys.gammaos.nano.launch_app", launchApp, "com.retroarch.aarch64");
-            android::base::SetProperty("sys.gammaos.nano.launched_pkg", launchApp);
+            commitLaunch(LaunchTuple().launchedPkg(launchApp));
         }
         // Trigger DE cache populate (ROM first, then delta sync everything)
         property_set("sys.gammaos.nano.cache_ready", "0");
@@ -452,11 +434,11 @@ void NanoMenu::handleSelect() {
             property_set("persist.gammaos.nano.qr_prepared", "1");
         }
         // Flag so next nano menu restart returns to Recently Played
-        property_set("sys.gammaos.nano.return_recent", "1");
+        commitLaunch(LaunchTuple().returnRecent("1"));
         armAppLaunchTrigger();
         // Tell InputDispatcher to drop events immediately — prevents a fast
         // double-press A from queuing a second event before the transition.
-        property_set("sys.gammaos.nano.drop_input", "1");
+        commitLaunch(LaunchTuple().dropInput("1"));
         // Set a timestamp fence — InputDispatcher drops any events with
         // eventTime <= this value, covering the race where the A-DOWN was
         // queued before drop_input was set.
@@ -489,12 +471,13 @@ void NanoMenu::handleSelect() {
         // Launch the selected app
         const auto& app = mAppEntries[mAppSelectedIndex];
         ALOGI("NanoMenu: launching app: %s", app.packageName.c_str());
-        android::base::SetProperty("sys.gammaos.nano.launch_app", app.packageName);
-        // Track launched package so NanoMenu can force-stop it on next restart
-        android::base::SetProperty("sys.gammaos.nano.launched_pkg", app.packageName);
-        // Clear any ROM/core properties so RootWindowContainer uses generic launch
-        setLaunchRomPath("");
-        android::base::SetProperty("sys.gammaos.nano.launch_core", "");
+        commitLaunch(LaunchTuple()
+                .app(app.packageName)
+                // Track launched package so NanoMenu can force-stop it on next restart
+                .launchedPkg(app.packageName)
+                // Clear any ROM/core properties so RootWindowContainer uses generic launch
+                .romPath("")
+                .core(""));
         // Clear any stale Quick Resume priming: the user is launching a
         // non-drastic/non-retroarch app, so a leftover qr_prepared=1 from an
         // earlier game would otherwise auto-resume that game on the next
@@ -504,7 +487,7 @@ void NanoMenu::handleSelect() {
         // Flag so next nano menu restart returns to Applications
         property_set("sys.gammaos.nano.return_apps", "1");
         armAppLaunchTrigger();
-        property_set("sys.gammaos.nano.drop_input", "1");
+        commitLaunch(LaunchTuple().dropInput("1"));
         mWaitForRelease = true;
         return;
     }
@@ -521,7 +504,7 @@ void NanoMenu::handleSelect() {
             return;
         }
         armAppLaunchTrigger("com.retroarch.aarch64");
-        property_set("sys.gammaos.nano.drop_input", "1");
+        commitLaunch(LaunchTuple().dropInput("1"));
         mWaitForRelease = true;
     } else if (mSelectedIndex == 1) { // Recently Played
         if (!mStorageReady) return; // greyed out, ignore
@@ -2586,7 +2569,7 @@ void NanoMenu::armAppLaunchTrigger(const std::string& syncPkg) {
     if (!mOverlayMode)
         emuSettingsSyncLaunch(!syncPkg.empty() ? syncPkg : android::base::GetProperty("sys.gammaos.nano.launch_app", ""));
     if (!mOverlayMode && !sDrmActive) { mLaunchTriggerDeferred = true; return; }
-    property_set("service.bootanim.nano_retroarch", "1");
+    commitLaunch(LaunchTuple().retroarch("1"));
 }
 
 // The grabbing home's power hold: the Power menu opens at 1.5 s, and a hold to 7 s shuts down, as
@@ -2673,7 +2656,7 @@ void NanoMenu::pollInput() {
         // effect (armAppLaunchTrigger); fire it now that the effect has completed.
         if (mLaunchTriggerDeferred) {
             mLaunchTriggerDeferred = false;
-            property_set("service.bootanim.nano_retroarch", "1");
+            commitLaunch(LaunchTuple().retroarch("1"));
         }
         mExitRequested = true;
     }

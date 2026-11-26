@@ -17,6 +17,11 @@ What it checks in an image:
     and ending before the first partition;
   - the Thimsy layout (E.6): entries 1 to 4 named uboot, boot, root, data with
     their types, tiled from LBA 16384 with a spare as large as each region;
+  - the tail (E.6, device-safety-2): a written image ends IMAGE_TAIL_MIB after
+    the 1 MiB boundary that ends its last entry, and games starts
+    GAMES_GAP_MIB after that boundary, so the image's backup GPT ends at least
+    1 MiB before games and writing the image again over a used card leaves
+    the old library's boot region (its first 24 sectors) intact;
   - the vold rule: Android's vold makes a public volume of every entry typed
     Microsoft basic data or Linux filesystem data. A written image has none
     (the games entry is made at first boot, I39); a card that has booted has
@@ -69,6 +74,12 @@ THIMSY_LAYOUT: List[Tuple[str, str]] = [
 ]
 THIMSY_GAMES = ("games", GUID_BASIC_DATA)
 LAYOUT_BASE_LBA = 16384      # the SPL finds uboot by name; FlipBase pins 16384
+# device-safety-2: the written image ends IMAGE_TAIL_MIB after its last entry
+# (genimage.cfg's image size; the backup GPT is its last 33 sectors), and
+# D60firstboot's games entry starts GAMES_GAP_MIB after it (its GAP_MIB).
+IMAGE_TAIL_MIB = 1
+GAMES_GAP_MIB = 2
+assert (GAMES_GAP_MIB - IMAGE_TAIL_MIB) * MIB >= MIB
 TILED_REGIONS = ("uboot", "boot", "root")   # each followed by an equal spare
 
 # Per family: where the raw first-stage loader sits (in 512-byte sectors).
@@ -235,6 +246,34 @@ def check_layout(parts: List[Part], ss: int, rep: Report, *, mode: str,
     if thimsy:
         check_thimsy_layout(parts, ss, rep, mode=mode)
     check_vold(parts, rep, mode=mode)
+
+
+def align_up(lba: int, ss: int) -> int:
+    a = MIB // ss
+    return (lba + a - 1) // a * a
+
+
+def check_tail(parts: List[Part], ss: int, rep: Report, *, mode: str,
+               image_sectors: Optional[int]) -> None:
+    """device-safety-2: the image's end, and in a card the games entry's start."""
+    written = [p for p in parts if p.name in dict(THIMSY_LAYOUT)]
+    if not written:
+        return
+    end = align_up(max(p.last_lba for p in written) + 1, ss)
+    tail = IMAGE_TAIL_MIB * MIB // ss
+    games_start = end + GAMES_GAP_MIB * MIB // ss
+    if mode == "image" and image_sectors is not None and image_sectors != end + tail:
+        rep.error("the image is %d sectors; it must end %d MiB after its last entry, at "
+                  "%d sectors, so its backup GPT ends 1 MiB before games (LBA %d) and a "
+                  "re-written image leaves the old library's boot region intact "
+                  "(device-safety-2)" % (image_sectors, IMAGE_TAIL_MIB, end + tail, games_start))
+    if mode == "card":
+        for p in parts:
+            if p.name == THIMSY_GAMES[0] and p.first_lba < games_start:
+                rep.error("%s starts at LBA %d; games starts at LBA %d or later, %d MiB after "
+                          "the last image entry, so a re-written image's backup GPT misses "
+                          "its boot region (device-safety-2)"
+                          % (p.label(), p.first_lba, games_start, GAMES_GAP_MIB))
 
 
 def check_thimsy_layout(parts: List[Part], ss: int, rep: Report, *, mode: str) -> None:
@@ -545,6 +584,8 @@ def _check_image(img: Image, rep: Report, *, mode: str, family: Optional[str],
     check_layout(parts, ss, rep, mode=mode, family=family, thimsy=thimsy,
                  last_usable=prim["last_usable_lba"], entries_end_lba=entries_end,
                  idbloader=idb)
+    if thimsy:
+        check_tail(parts, ss, rep, mode=mode, image_sectors=n_sectors)
 
 
 # --------------------------------------------------------------------------
@@ -654,6 +695,7 @@ def genimage_layout(text: str, ss: int = 512) -> Tuple[List[Dict[str, Any]], Lis
         if not hd:
             continue
         opts = {k: v for k, _, v in hd[0] if not isinstance(v, list)}
+        image_opts = {k: v for k, _, v in body if not isinstance(v, list)}
         parts: List[Dict[str, Any]] = []
         for k, ptitle, pbody in body:
             if k != "partition":
@@ -669,7 +711,8 @@ def genimage_layout(text: str, ss: int = 512) -> Tuple[List[Dict[str, Any]], Lis
             entry["type"] = p.get("partition-type-uuid", "").upper()
             entry["image"] = p.get("image")
             parts.append(entry)
-        images.append({"name": title, "hdimage": opts, "partitions": parts})
+        images.append({"name": title, "hdimage": opts, "partitions": parts,
+                       "size": parse_size(image_opts["size"]) if "size" in image_opts else None})
     return images, problems
 
 
@@ -728,6 +771,14 @@ def check_genimage(path: str, *, family: Optional[str] = None, thimsy: bool = Tr
         # The primary GPT of 128 entries ends at LBA 33 (genimage's layout).
         check_layout(parts, ss, rep, mode="image", family=family, thimsy=thimsy,
                      entries_end_lba=33, idbloader=idb)
+        if thimsy:
+            if im["size"] is None:
+                rep.error("image %s has no explicit size: it must end %d MiB after its last "
+                          "entry (device-safety-2)" % (im["name"], IMAGE_TAIL_MIB))
+            elif im["size"] % ss:
+                rep.error("image %s: size is not sector-aligned" % im["name"])
+            else:
+                check_tail(parts, ss, rep, mode="image", image_sectors=im["size"] // ss)
         rep.info["images"].append({
             "name": im["name"],
             "entries": [p.as_dict(ss) for p in parts],

@@ -126,6 +126,10 @@ def image_parts(uuid_prefix: str) -> Dict[str, Dict[str, Any]]:
 
 
 IMAGE_END = 16 * MIB + 8 * MIB + 8 * MIB + 40 * MIB + 40 * MIB + 1024 * MIB * 2 + 256 * MIB
+# The written image ends 1 MiB after data (genimage.cfg's size: 2409 MiB, its
+# backup GPT in the last 33 sectors) and games starts 2 MiB after data.
+IMAGE_SECTORS = IMAGE_END + MIB
+GAMES_START = IMAGE_END + 2 * MIB
 
 
 class World:
@@ -133,7 +137,8 @@ class World:
 
     PY_TOOLS = ["sfdisk", "mkfs.exfat"]
     SH_TOOLS = ["mount", "umount", "e2fsck", "sync", "modprobe", "thimsy-prop",
-                "thimsy-padd", "amixer", "alsactl"]
+                "thimsy-padd", "amixer", "alsactl", "dd", "chown", "dropbear",
+                "dropbearkey"]
     # The trivial fakes: log the call (as rcs_fake_tool.log_call does), fail
     # without an effect after a power cut, and do the little each one does.
     SH_FAKE = r"""#!/bin/sh
@@ -149,6 +154,33 @@ mount)
 	case " ${THIMSY_FAKE_FAIL:-} " in
 	*" mount-ext4 "*) [ "$1 $2" = "-t ext4" ] && exit 32 ;;
 	esac
+	;;
+dd)
+	# The disk's bytes are dev/<disk>.img (rcs_fake_tool.py); none: a blank
+	# disk (zeros). THIMSY_FAKE_FAIL=dd: a read error.
+	case " ${THIMSY_FAKE_FAIL:-} " in
+	*" dd "*) exit 1 ;;
+	esac
+	n=$#
+	while [ "$n" -gt 0 ]; do
+		a=$1
+		shift
+		n=$((n - 1))
+		case $a in
+		if=*)
+			a=if=${a#if=}.img
+			[ -f "${a#if=}" ] || a=if=/dev/zero
+			;;
+		esac
+		set -- "$@" "$a"
+	done
+	exec dd "$@"
+	;;
+dropbearkey)
+	while [ "$#" -gt 1 ]; do
+		[ "$1" = -f ] && { printf 'key\n' > "$2"; break; }
+		shift
+	done
 	;;
 thimsy-prop)
 	if [ "${1:-}" = boot ]; then
@@ -230,9 +262,9 @@ exit 0
             pos += 64 * MIB
         self.add_disk("mmcblk0", 0, "MMC", emmc, 64 * 1024 * MIB)
         self.add_disk("mmcblk1", 16, "SD", image_parts("11111111"), 16 * 1024 * MIB,
-                      last_lba=IMAGE_END + MIB - 34)
+                      last_lba=IMAGE_SECTORS - 34)
         self.add_disk("mmcblk2", 32, "SD", image_parts("11111111" if clone else "22222222"),
-                      32 * 1024 * MIB, last_lba=IMAGE_END + MIB - 34)
+                      32 * 1024 * MIB, last_lba=IMAGE_SECTORS - 34)
 
     def cmdline(self, text: str) -> None:
         self.write("proc/cmdline", text + "\n")
@@ -508,15 +540,87 @@ class TestS00Base(WorldCase):
         self.assertNotIn("/storage", targets)
         self.assertNotIn("/root", targets)
 
+    def binds(self) -> List[List[str]]:
+        return [c["args"] for c in self.w.calls() if c["tool"] == "mount" and "--bind" in c["args"]]
+
+    def build_type(self, typ: str) -> None:
+        self.w.write("usr/share/thimsy/build.props", "ro.thimsy.build.type=%s\n" % typ)
+
     def test_root_home_bound_from_storage(self) -> None:
+        self.build_type("dev")
         self.w.mounted_root("179:19")
         self.w.run(INITD + "/S00base", "start")
-        binds = [c["args"] for c in self.w.calls() if c["tool"] == "mount" and "--bind" in c["args"]]
+        binds = self.binds()
         self.assertEqual(len(binds), 1, binds)
         self.assertEqual(binds[0][-1], "/root")
-        self.assertTrue(binds[0][-2].endswith("/storage/.config/thimsy/home/root"), binds[0])
+        # the data partition (ext4, mounted at /storage), never the games exFAT
+        self.assertEqual(binds[0][-2], "/storage/.config/thimsy/home/root")
         seq = [c["args"][-1] for c in self.w.calls() if c["tool"] == "mount"]
         self.assertLess(seq.index("/storage"), seq.index("/root"))
+        chown = [c["args"] for c in self.w.calls() if c["tool"] == "chown"]
+        self.assertEqual(chown, [["0:0", "/storage/.config/thimsy/home/root",
+                                  "/storage/.config/thimsy/home/root/.ssh"]])
+
+    def test_root_home_modes_every_boot(self) -> None:
+        """gfix2: dropbear refuses keys others can write; the modes are set at every boot."""
+        self.build_type("dev")
+        self.w.mounted_root("179:19")
+        self.w.run(INITD + "/S00base", "start")
+        home = self.w.root / "storage/.config/thimsy/home/root"
+        keys = home / ".ssh" / "authorized_keys"
+        keys.write_text("ssh-ed25519 AAAA test\n", encoding="utf-8")
+        os.chmod(str(keys), 0o666)
+        os.chmod(str(home / ".ssh"), 0o777)
+        os.chmod(str(home), 0o755)
+        self.w.clear_calls()
+        self.w.reboot()
+        self.w.run(INITD + "/S00base", "start")
+        self.assertEqual(len(self.binds()), 1)
+        self.assertEqual(home.stat().st_mode & 0o777, 0o700)
+        self.assertEqual((home / ".ssh").stat().st_mode & 0o777, 0o700)
+        self.assertEqual(keys.stat().st_mode & 0o777, 0o600)
+        chown = [c["args"] for c in self.w.calls() if c["tool"] == "chown"]
+        self.assertEqual(chown[0][-1], "/storage/.config/thimsy/home/root/.ssh/authorized_keys")
+
+    def test_release_without_ssh_keeps_the_empty_root(self) -> None:
+        for props in (None, "release"):
+            with self.subTest(build_props=props):
+                p = self.w.root / "usr/share/thimsy/build.props"
+                if props is None:
+                    if p.exists():
+                        p.unlink()
+                else:
+                    self.build_type(props)
+                self.w.clear_calls()
+                self.w.reboot()
+                self.w.mounted_root("179:19")
+                self.w.run(INITD + "/S00base", "start")
+                self.assertEqual(self.binds(), [])
+                self.assertEqual([c for c in self.w.calls() if c["tool"] == "chown"], [])
+                self.assertIn("SSH off: /root stays", self.w.boot_log())
+
+    def test_release_with_ssh_turned_on_binds(self) -> None:
+        self.build_type("release")
+        self.w.write("storage/.config/thimsy/persist.props", "persist.thimsy.ssh.enabled=1\n")
+        self.w.mounted_root("179:19")
+        self.w.run(INITD + "/S00base", "start")
+        self.assertEqual([b[-1] for b in self.binds()], ["/root"])
+
+    def test_root_home_link_is_not_followed(self) -> None:
+        self.build_type("dev")
+        self.w.mounted_root("179:19")
+        self.w.run(INITD + "/S00base", "start")
+        ssh = self.w.root / "storage/.config/thimsy/home/root/.ssh"
+        os.rmdir(str(ssh))
+        elsewhere = self.w.root / "storage/emulated/0/keys"
+        elsewhere.mkdir(parents=True)
+        os.symlink(str(elsewhere), str(ssh))
+        self.w.clear_calls()
+        self.w.reboot()
+        self.w.run(INITD + "/S00base", "start")
+        self.assertEqual(self.binds(), [])
+        self.assertEqual([c for c in self.w.calls() if c["tool"] == "chown"], [])
+        self.assertIn("is a link: root's home is not bound", self.w.read("dev/kmsg"))
 
     def test_partuuid_when_root_is_not_seen(self) -> None:
         self.w.cmdline("root=PARTUUID=11111111-0000-4000-8000-000000000003 ro")
@@ -762,6 +866,67 @@ class TestPropsAndFamily(WorldCase):
         self.assertEqual(self.w.read("run/thimsy/family"), "rk3566\n")
 
 
+# --- D50ssh -----------------------------------------------------------------------
+
+@needs_sh
+class TestD50Ssh(WorldCase):
+    """gfix2: SSH follows ro.thimsy.build.type alone (the Config.in options are gone): dev
+    images start dropbear by default and accept passwords; release images start it only when
+    persist.thimsy.ssh.enabled=1, and then key-only (-s)."""
+
+    D50 = INITD + "/deferred/D50ssh"
+
+    def start(self, build_type: Optional[str], ssh: Optional[str]) -> List[List[str]]:
+        p = self.w.root / "usr/share/thimsy/build.props"
+        if build_type is None:
+            if p.exists():
+                p.unlink()
+        else:
+            self.w.write("usr/share/thimsy/build.props", "ro.thimsy.build.type=%s\n" % build_type)
+        props = self.w.root / "storage/.config/thimsy/persist.props"
+        if ssh is None:
+            if props.exists():
+                props.unlink()
+        else:
+            self.w.write("storage/.config/thimsy/persist.props",
+                         "persist.thimsy.ssh.enabled=%s\n" % ssh)
+        self.w.clear_calls()
+        self.w.run(self.D50, "start")
+        return [c["args"] for c in self.w.calls() if c["tool"] == "dropbear"]
+
+    def test_policy(self) -> None:
+        key = "/storage/.config/thimsy/ssh/dropbear_ed25519_host_key"
+        pid = "/run/dropbear.pid"
+        for build_type, ssh, want in (
+                ("dev", None, [["-r", key, "-P", pid]]),
+                ("dev", "1", [["-r", key, "-P", pid]]),
+                ("dev", "0", []),
+                ("release", None, []),
+                ("release", "0", []),
+                ("release", "1", [["-r", key, "-P", pid, "-s"]]),
+                (None, None, []),                       # no build.props: as release
+                (None, "1", [["-r", key, "-P", pid, "-s"]])):
+            with self.subTest(build_type=build_type, ssh=ssh):
+                self.assertEqual(self.start(build_type, ssh), want)
+
+    def test_host_key_made_once(self) -> None:
+        self.start("dev", None)
+        keys = [c for c in self.w.calls() if c["tool"] == "dropbearkey"]
+        self.assertEqual(len(keys), 1)
+        self.assertTrue((self.w.root / "storage/.config/thimsy/ssh/dropbear_ed25519_host_key")
+                        .is_file())
+        self.start("dev", None)
+        self.assertEqual([c for c in self.w.calls() if c["tool"] == "dropbearkey"], [])
+
+    def test_no_build_option_left(self) -> None:
+        cfg = (LINUX / "package/thimsy-session/Config.in").read_text(encoding="utf-8")
+        for sym in ("SSH_AT_BOOT", "SSH_PASSWORD"):
+            self.assertNotIn(sym, cfg)
+            for frag in (LINUX / "configs").rglob("*"):
+                if frag.is_file():
+                    self.assertNotIn(sym, frag.read_text(encoding="utf-8"), frag)
+
+
 # --- D60firstboot -----------------------------------------------------------------
 
 class TestTornGpt(unittest.TestCase):
@@ -791,7 +956,9 @@ class TestTornGpt(unittest.TestCase):
 
 
 @needs_sh
-class TestD60FirstBoot(WorldCase):
+class D60Case(WorldCase):
+    """D60firstboot's world: the standard disks, booted from mmcblk1."""
+
     D60 = INITD + "/deferred/D60firstboot"
 
     def setUp(self) -> None:
@@ -829,6 +996,8 @@ class TestD60FirstBoot(WorldCase):
         self.assertEqual(p5["fs"], {"type": "exfat", "label": "THIMSY", "complete": True})
         self.assertGreaterEqual(p5["start"], data["start"] + data["size"])
         self.assertEqual(p5["start"] % MIB, 0)
+        # GAP_MIB after data: the image ends 1 MiB after data (device-safety-2).
+        self.assertEqual(p5["start"], GAMES_START)
         self.assertEqual(d["last_lba"], d["size_sectors"] - 34)
         card_end = (d["size_sectors"] - 34 + 1) // MIB * MIB
         self.assertEqual(p5["start"] + p5["size"], card_end)  # the rest of the card
@@ -837,6 +1006,9 @@ class TestD60FirstBoot(WorldCase):
             self.assertIsNone(d["parts"][k]["fs"])
         self.assert_others_untouched()
 
+
+@needs_sh
+class TestD60FirstBoot(D60Case):
     def test_first_boot(self) -> None:
         self.w.run(self.D60, "start")
         self.assert_done()
@@ -955,6 +1127,217 @@ class TestD60FirstBoot(WorldCase):
         self.assertEqual(d["parts"]["5"]["type"], BASICDATA)
         self.assertEqual(d["parts"]["5"]["start"] % 256, 0)  # 1 MiB in 4 KiB sectors
         self.assertIn(["-L", "THIMSY", "/dev/sda5"], self.writes())
+
+
+@needs_sh
+class TestD60Readopt(D60Case):
+    """device-safety-2: the image written again over a used Thimsy card. The card's bytes are a
+    sparse file (rcs_fake_tool.image_path) that the fake dd reads and the fake mkfs.exfat
+    writes a small exFAT into."""
+
+    MARK = b"a saved game, not to be lost"
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.img = self.with_bytes(self.w)
+
+    def with_bytes(self, w: "World") -> Path:
+        img = fake.image_path(w.root, "mmcblk1")
+        if not fake.make_sparse(img, w.disk("mmcblk1")["size_sectors"] * 512):
+            self.skipTest("this filesystem cannot make sparse files")
+        return img
+
+    def steps(self) -> List[str]:
+        kinds = {"--relocate": "relocate", "-N": "create", "-L": "mkfs", "--part-type": "retype"}
+        return [next(kinds[a] for a in args if a in kinds) for args in self.writes()]
+
+    def rewrite_image(self, w: Optional["World"] = None) -> None:
+        """Write the image again: entries 1 to 4 and the backup GPT at the image's end, in
+        its last 33 sectors; every byte after the image stays as it was."""
+        w = w or self.w
+        d = w.disk("mmcblk1")
+        d["parts"] = image_parts("11111111")
+        d["last_lba"] = IMAGE_SECTORS - 34
+        fake.save_disk(w.root, d)
+        fake.patch_bytes(fake.image_path(w.root, "mmcblk1"), (IMAGE_SECTORS - 33) * 512,
+                         b"\xa5" * 33 * 512)
+        w.clear_calls()
+        w.reboot()
+
+    def library(self, w: Optional["World"] = None) -> Dict[str, Any]:
+        """A first boot that makes the library, and a saved game in it."""
+        w = w or self.w
+        w.run(self.D60, "start")
+        p5 = w.disk("mmcblk1")["parts"]["5"]
+        fake.patch_bytes(fake.image_path(w.root, "mmcblk1"),
+                         (p5["start"] + 300 * MIB) * 512, self.MARK)
+        return p5
+
+    def assert_kept(self, p5: Dict[str, Any], w: Optional["World"] = None) -> None:
+        w = w or self.w
+        img = fake.image_path(w.root, "mmcblk1")
+        now = w.disk("mmcblk1")["parts"]["5"]
+        self.assertEqual((now["start"], now["size"], now["type"], now["name"]),
+                         (p5["start"], p5["size"], BASICDATA, "games"))
+        self.assertEqual(fake.read_bytes(img, (p5["start"] + 300 * MIB) * 512, len(self.MARK)),
+                         self.MARK)
+        self.assertEqual(fake.sniff_exfat(img, p5["start"] * 512),
+                         {"type": "exfat", "label": "THIMSY", "complete": True})
+
+    def test_layout_leaves_the_boot_region(self) -> None:
+        """The image's last byte is 1 MiB before games, so its backup GPT misses the exFAT's
+        main and backup boot regions (sectors 0 to 23)."""
+        self.assertEqual(IMAGE_SECTORS, IMAGE_END + MIB)
+        self.assertLessEqual(IMAGE_SECTORS + MIB, GAMES_START)
+        p5 = self.library()
+        boot = fake.read_bytes(self.img, p5["start"] * 512, 24 * 512)
+        self.rewrite_image()
+        self.assertEqual(fake.read_bytes(self.img, p5["start"] * 512, 24 * 512), boot)
+
+    def test_rewritten_card_keeps_its_library(self) -> None:
+        p5 = self.library()
+        self.assertEqual(self.steps(), ["relocate", "create", "mkfs", "retype"])
+        self.rewrite_image()
+        self.assertNotIn("5", self.w.disk("mmcblk1")["parts"])
+        self.w.run(self.D60, "start")
+        self.assertEqual(self.steps(), ["relocate", "create"])  # no mkfs, no retype
+        create = [c for c in self.w.calls() if c["tool"] == "sfdisk" and "-N" in c["args"]]
+        self.assertEqual(len(create), 1)
+        self.assert_kept(p5)
+        self.assert_done()
+        self.assert_invariant()
+        self.assertIn("re-adopting", self.w.boot_log())
+        self.assertIn("mmcblk1p5 re-adopted", self.w.read("dev/kmsg"))
+        self.assertEqual(self.w.read("sys/class/block/mmcblk1p5/uevent"), "change\n")
+        self.assertFalse((self.w.root / "run/thimsy/firstboot.probe").exists())
+        # and nothing more at the next boot
+        self.w.clear_calls()
+        self.w.reboot()
+        self.w.run(self.D60, "start")
+        self.assertEqual(self.writes(), [])
+
+    def test_rewritten_twice(self) -> None:
+        p5 = self.library()
+        for _ in range(2):
+            self.rewrite_image()
+            self.w.run(self.D60, "start")
+            self.assertNotIn("mkfs", self.steps())
+            self.assert_kept(p5)
+
+    def test_power_cut_while_adopting(self) -> None:
+        for step, mode in [(s, m) for s in ("relocate", "create") for m in ("before", "after")]:
+            with self.subTest(step=step, mode=mode):
+                w = World(Path(tempfile.mkdtemp(prefix="test-rcs-adopt-")))
+                self.addCleanup(shutil.rmtree, str(w.tmp), True)
+                self.w = w
+                w.standard()
+                w.cmdline("root=PARTUUID=11111111-0000-4000-8000-000000000003")
+                w.mounted_root("179:19")
+                self.others = {n: w.disk_bytes(n) for n in ("mmcblk0", "mmcblk2")}
+                self.with_bytes(w)
+                p5 = self.library(w)
+                self.rewrite_image(w)
+                w.run(self.D60, "start", env={"THIMSY_FAKE_POWERCUT": "%s:%s" % (step, mode)},
+                      check=False)
+                self.assertTrue((w.root / ".powercut").exists(), "the cut did not happen")
+                self.assert_invariant()
+                w.reboot()
+                w.run(self.D60, "start")
+                self.assertNotIn("mkfs", self.steps())
+                self.assert_kept(p5, w)
+                self.assert_done()
+                self.assert_invariant()
+
+    def world(self, prefix: str) -> Path:
+        """A fresh world for a subtest, booted from mmcblk1; the card's bytes' path."""
+        w = World(Path(tempfile.mkdtemp(prefix=prefix)))
+        self.addCleanup(shutil.rmtree, str(w.tmp), True)
+        self.w = w
+        w.standard()
+        w.cmdline("root=PARTUUID=11111111-0000-4000-8000-000000000003")
+        w.mounted_root("179:19")
+        self.others = {n: w.disk_bytes(n) for n in ("mmcblk0", "mmcblk2")}
+        return self.with_bytes(w)
+
+    def test_no_complete_exfat_is_formatted(self) -> None:
+        """A second-hand card gets a fresh library: a boot sector without its root directory
+        (a cut format), another filesystem, or nothing at all."""
+        for case in ("torn", "ntfs", "zeros"):
+            with self.subTest(case=case):
+                img = self.world("test-rcs-other-")
+                off = GAMES_START * 512
+                if case == "torn":
+                    fake.write_exfat(img, off, 4 * 1024 * MIB * 512, "THIMSY", complete=False)
+                elif case == "ntfs":
+                    fake.patch_bytes(img, off + 3, b"NTFS    ")
+                self.w.run(self.D60, "start")
+                self.assertEqual(self.steps(), ["relocate", "create", "mkfs", "retype"])
+                self.assert_done()
+                self.assertEqual(fake.sniff_exfat(img, off),
+                                 {"type": "exfat", "label": "THIMSY", "complete": True})
+
+    def test_a_renamed_or_small_library_is_adopted(self) -> None:
+        """REV4 (linux-host-impls-4): a complete exFAT at the games start is the old library
+        whatever its label (the user renamed or cleared it on a PC) or size: adopted, not
+        formatted."""
+        for case, label, mib, what in (("label OTHER", "OTHER", 4 * 1024, 'an exFAT labelled "OTHER"'),
+                                       ("no label", "", 4 * 1024, "an exFAT without a label"),
+                                       ("short volume", "THIMSY", 32, "exFAT THIMSY")):
+            with self.subTest(case=case):
+                img = self.world("test-rcs-renamed-")
+                off = GAMES_START * 512
+                fake.write_exfat(img, off, mib * MIB * 512, label)
+                fake.patch_bytes(img, off + 20 * MIB * 512, self.MARK)
+                self.w.run(self.D60, "start")
+                self.assertEqual(self.steps(), ["relocate", "create"])  # no mkfs, no retype
+                p5 = self.w.disk("mmcblk1")["parts"]["5"]
+                self.assertEqual((p5["start"], p5["size"], p5["type"], p5["name"]),
+                                 (GAMES_START, mib * MIB, BASICDATA, "games"))
+                self.assertEqual(fake.read_bytes(img, off + 20 * MIB * 512, len(self.MARK)), self.MARK)
+                self.assertEqual(fake.sniff_exfat(img, off), {"type": "exfat", "label": label, "complete": True})
+                self.assertIn(what + " found at sector %d: re-adopting" % GAMES_START, self.w.boot_log())
+                if case == "short volume":
+                    self.assertIn("under 64 MiB; it is kept", self.w.boot_log())
+                self.assert_invariant()
+                self.assert_others_untouched()
+
+    def test_a_read_error_formats_nothing(self) -> None:
+        """REV4 (linux-host-impls-4): when the games start can't be read, no entry is made and
+        nothing is formatted; the next boot reads it and adopts the library."""
+        p5 = self.library()
+        self.rewrite_image()
+        r = self.w.run(self.D60, "start", env={"THIMSY_FAKE_FAIL": "dd"}, check=False)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertEqual(self.steps(), ["relocate"])  # no create, no mkfs
+        self.assertNotIn("5", self.w.disk("mmcblk1")["parts"])
+        self.assertIn("could not read mmcblk1 at sector %d" % GAMES_START, self.w.boot_log())
+        self.assertNotIn("creating entry 5 failed", self.w.boot_log())
+        self.w.clear_calls()
+        self.w.reboot()
+        self.w.run(self.D60, "start")
+        self.assertEqual(self.steps(), ["create"])
+        self.assert_kept(p5)
+        self.assert_done()
+
+    def test_library_longer_than_the_card_is_clamped(self) -> None:
+        fake.write_exfat(self.img, GAMES_START * 512, 64 * 1024 * MIB * 512, "THIMSY")
+        self.w.run(self.D60, "start")
+        self.assertEqual(self.steps(), ["relocate", "create"])
+        d = self.w.disk("mmcblk1")
+        p5 = d["parts"]["5"]
+        self.assertEqual(p5["start"], GAMES_START)
+        self.assertEqual(p5["start"] + p5["size"], d["last_lba"] + 1)
+        self.assertEqual(p5["type"], BASICDATA)
+        self.assertIn("runs past the card", self.w.boot_log())
+
+    def test_library_extent_is_its_volume_length(self) -> None:
+        """A library smaller than the free space keeps its own size."""
+        fake.write_exfat(self.img, GAMES_START * 512, 4 * 1024 * MIB * 512, "THIMSY")
+        self.w.run(self.D60, "start")
+        self.assertEqual(self.steps(), ["relocate", "create"])
+        p5 = self.w.disk("mmcblk1")["parts"]["5"]
+        self.assertEqual((p5["start"], p5["size"]), (GAMES_START, 4 * 1024 * MIB))
+        self.assert_invariant()
 
 
 # --- post-build -------------------------------------------------------------------

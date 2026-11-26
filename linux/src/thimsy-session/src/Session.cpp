@@ -135,6 +135,7 @@ class Session {
 
     int gamePid() const;
     int gamePgid() const;
+    void gameEnded(Ms now);
     void doSleep();
     void execStep(const Step& s);
     void stepVolume(int dir);
@@ -160,6 +161,7 @@ class Session {
     int paddPidfd_ = -1;
     int gamePidfd_ = -1;
     int gamePollPid_ = 0;
+    int gameWatchPid_ = 0;   // the game Nano left running (WatchGame), until it ends
     Ms gamePollAt_ = kNever;
     int logFd_ = -1;
 
@@ -525,6 +527,8 @@ void Session::runSup(const std::vector<SupAction>& acts) {
                 SpawnSpec s;
                 s.argv = {tool(opts_.nanoPath)};
                 s.env = gpuEnv_;   // the games Nano starts inherit it
+                // The card /etc/asound.conf's "default" mixes on, for Nano and its games.
+                s.env.push_back("ALSA_CARD=" + audioCard_);
                 s.logFile = P(std::string(kLogDir) + "/nano.log");
                 std::vector<std::string> plan = jailPlan();
                 if (opts_.fakeHw) {
@@ -592,6 +596,7 @@ void Session::runSup(const std::vector<SupAction>& acts) {
                 }
                 gamePollPid_ = 0;
                 gamePollAt_ = kNever;
+                gameWatchPid_ = a.pid;
                 log("Nano left game " + std::to_string(a.pid) + " running; it starts again when the game ends");
                 gamePidfd_ = pidfdOpen(a.pid);
                 if (gamePidfd_ >= 0) {
@@ -600,7 +605,7 @@ void Session::runSup(const std::vector<SupAction>& acts) {
                     gamePollPid_ = a.pid;
                     gamePollAt_ = now + 1000;
                 } else {
-                    runSup(sup_.gameExited(now));
+                    gameEnded(now);
                 }
                 break;
             }
@@ -753,6 +758,14 @@ int Session::gamePid() const {
     if (!parseInt64(store_->get(kKeyGamePid), &v) || v <= 1) return 0;
     pid_t pid = static_cast<pid_t>(v);
     return alive(pid) ? pid : 0;
+}
+
+// The game Nano left running has ended: its pid is no longer the game's (another process may get it
+// next), so the key Nano wrote is cleared unless a later launch has changed it; then Nano comes back.
+void Session::gameEnded(Ms now) {
+    if (gameWatchPid_ > 0 && store_->get(kKeyGamePid) == std::to_string(gameWatchPid_)) store_->set(kKeyGamePid, "");
+    gameWatchPid_ = 0;
+    runSup(sup_.gameExited(now));
 }
 
 int Session::gamePgid() const {
@@ -978,7 +991,8 @@ void Session::reap() {
                 int game = gamePid();
                 if (game == pid) game = 0;
                 kmsg("nano exited (" + how + ")");
-                runSup(sup_.nanoExited(now, game));
+                // Exit 0: its menu ended for a launch (thimsy-nano's kExitLaunchOver), not a crash.
+                runSup(sup_.nanoExited(now, game, WIFEXITED(st) && WEXITSTATUS(st) == 0));
                 break;
             }
             case Role::Padd:
@@ -1043,7 +1057,7 @@ void Session::tick() {
         } else {
             gamePollPid_ = 0;
             gamePollAt_ = kNever;
-            runSup(sup_.gameExited(now));
+            gameEnded(now);
         }
     }
 }
@@ -1115,7 +1129,7 @@ int Session::loop() {
                     close(gamePidfd_);
                     gamePidfd_ = -1;
                     log("the game Nano left running ended");
-                    runSup(sup_.gameExited(monoNow()));
+                    gameEnded(monoNow());
                     break;
             }
         }

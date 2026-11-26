@@ -4,6 +4,7 @@
   nano_tree.py fetch [--from-cache DIR] [--base SHA]   make the base cache work/nano-base/
   nano_tree.py compose OUT                     write the applied Nano folder (base assets + nano/)
   nano_tree.py regen [--check] [--force]       rebuild the patch's Nano block from nano/
+                                               (warns when it includes uncommitted nano/ files)
   nano_tree.py import-tree DIR                 copy an applied AOSP Nano folder into nano/
   nano_tree.py import-patch [REF] [--old REV]  three-way import of REF's Nano patch changes
   nano_tree.py merge-patch O A B P             the `nanopatch` merge driver (run by git)
@@ -292,7 +293,8 @@ def main(argv=None) -> int:
     p = sub.add_parser("compose", help="write the applied Nano folder")
     p.add_argument("out")
     p.set_defaults(fn=cmd_compose)
-    p = sub.add_parser("regen", help="regenerate the patch's Nano block from nano/")
+    p = sub.add_parser("regen", help="regenerate the patch's Nano block from nano/ (warns when the block includes "
+                       "untracked or uncommitted nano/ files)")
     p.add_argument("--check", action="store_true", help="compare instead of writing")
     p.add_argument("--force", action="store_true", help="overwrite a block changed outside regen")
     p.set_defaults(fn=cmd_regen)

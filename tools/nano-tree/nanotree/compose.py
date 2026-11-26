@@ -78,6 +78,20 @@ def worktree_entries(fork: Fork, cache: Cache, root: str, nano_dir: str = "nano"
     return entries
 
 
+def dirty_nano(fork: Fork, cfg: Upstream) -> List[str]:
+    """nano/'s paths (relative to it) with uncommitted changes, staged, unstaged or untracked;
+    fork-only paths, which never reach the patch, are left out."""
+    out = fork.git("status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all", "--", "nano/")
+    dirty = []
+    for rec in out.split(b"\0"):
+        if len(rec) < 4:
+            continue
+        path = rec[3:].decode("utf-8", "surrogateescape")
+        if path.startswith("nano/") and not cfg.is_fork_only(path[len("nano/"):]):
+            dirty.append(path[len("nano/"):])
+    return sorted(dirty)
+
+
 def composed_entries(cfg: Upstream, base_tree: Entries, nano: Entries) -> Entries:
     """The applied folder: base files under the asset globs (unless deleted), overlaid by nano/."""
     result: Entries = {}

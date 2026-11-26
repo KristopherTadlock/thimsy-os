@@ -21,7 +21,8 @@
 // Linux equivalent:
 //   - a thimsy-session request (sys.thimsy.session.request: dosleep -> sleep, park_restart ->
 //     restart-nano, service.bootanim.nano_action=reboot|shutdown -> reboot|poweroff, the end of
-//     NanoMenu::prepareShutdown);
+//     NanoMenu::prepareShutdown on Android; on Linux prepareShutdown asks through Power.cpp instead
+//     (G7-power), with sessionRequest below, so those two rows serve any other writer of the key);
 //   - the launch handshake (do_launch, or service.bootanim.nano_retroarch) -> the launcher;
 //   - fixedperf -> the family hook (sh /usr/share/thimsy/family/<family>/hook fixedperf-on|off);
 //   - drm_active=1 (Nano's first frame) -> sys.thimsy.nano.first_frame and sys.boot_completed;
@@ -69,8 +70,9 @@ struct LaunchRequest {
 };
 
 struct Handlers {
-    // Defaults: the session request key with a sequence number; a log line (no Linux launcher
-    // until G7-launch); the family hook, run in the background.
+    // Defaults: the session request key with a sequence number; a log line (main_linux.cpp gives
+    // the Linux launcher's, launcher::launchFromHandshake in Launcher.h, through setLaunchHandler);
+    // the family hook, run in the background.
     std::function<void(const std::string& verb)> sessionRequest;
     std::function<void(const LaunchRequest&)> launch;
     std::function<void(const std::string& action)> runHook;
@@ -82,9 +84,19 @@ struct Handlers {
 void install(Handlers handlers = Handlers());
 void uninstall();
 
+// Replaces the launch handler (nullptr: the default's log line). thimsy-nano's main registers the
+// observers before the platform exists and gives the launcher's handler once the platform is
+// installed, so no launch reaches nanoplat::get() before install() (G7-launch-b).
+void setLaunchHandler(std::function<void(const LaunchRequest&)> launch);
+
 // The request the default sessionRequest writes: "<seq>:<verb>", seq one past the number in the
 // key's current value (Nano is its only writer; the session ignores a repeated seq).
 std::string nextRequest(const std::string& current, const std::string& verb);
+
+// One thimsy-session request from elsewhere in the Linux platform (the power actions, G7-power),
+// through the installed handlers' sessionRequest (the default before install()), so every request
+// Nano makes shares one sequence and one lock.
+void sessionRequest(const std::string& verb);
 
 // The keys refused so far (each logged once), for tests.
 std::size_t refusedCount();

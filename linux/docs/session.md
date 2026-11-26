@@ -100,7 +100,7 @@ A malformed numbered request is answered `<seq>:error:<why>`; a malformed unnumb
 |---|---|---|
 | `sys.thimsy.nano.first_frame` | Nano | `1` once its first frame is on screen: the session starts the deferred services. |
 | `sys.boot_completed` | Nano | `1` at the same moment (its control keys, G9-11): Nano gates sleep and its idle work on it. The session never writes it. |
-| `sys.thimsy.game.pid` | Nano | The pid of the game it launched (the game is its process group leader). The session stops, continues and quits that group. |
+| `sys.thimsy.game.pid` | Nano | The pid of the game it launched (the game is its process group leader), written when the game starts. The session stops, continues and quits that group; when Nano has exited and left the game running, the session clears the key once that game ends. |
 | `sys.powerctl` | Nano (Android's key) | `shutdown[,reason]` or `reboot[,reason]`: as the `poweroff` and `reboot` requests. |
 | `sys.gammaos.nano.scrape_run` | Nano | Any new value starts the scraper (decision I25), as `gammaos-nano.rc`'s trigger does. |
 | `sys.thimsy.volumes.serial` | session | Bumped after each write of `volumes.json`. |
@@ -125,7 +125,9 @@ requests: `sys.gammaos.nano.dosleep=1` into `sleep`, `sys.gammaos.nano.park_rest
    GPU pack's `/usr/share/thimsy/gpu.json` (`thimsy-gpu-pack`): its `"env"` object (for the swrast
    pack `GALLIUM_DRIVER=softpipe`) is added to Nano's environment, and so to every game Nano starts.
    Entries whose name is not a shell variable name or whose value is not a string are left out and
-   logged; no file, or a bad one, means no GPU environment.
+   logged; no file, or a bad one, means no GPU environment. Nano's environment also gets
+   `ALSA_CARD=<audio.card_index>` (0 without one): the card `/etc/asound.conf`'s `default` (plug over
+   a dmix) and its control use, so Nano's streams and its games' share the card.
 2. Makes `/` a shared mount (so drives mounted later reach Nano's namespace), stops a Nano left over
    by an earlier session (`/run/thimsy/nano.pid`), and **starts Nano at once** (`thimsy-session: nano
    started` in the kernel log). Nano's output goes to `/run/thimsy/log/nano.log`.
@@ -140,7 +142,11 @@ requests: `sys.gammaos.nano.dosleep=1` into `sleep`, `sys.gammaos.nano.park_rest
 
 Restarted when it exits: at once if it ran 30 s or more, else after 1, 2, 4 ... up to 30 s. If it
 exits while the game it launched still runs (as Android's home exits when it starts a game), it is
-started again when that game ends. After `poweroff` or `reboot` nothing is started again.
+started again when that game ends, without a back-off. Nano exits after every launch: it starts the
+game, leaves it running and exits 0. An exit 0 with no game running (the game ended at once, or the
+launch could not start) is not a crash either: Nano is started again at once and the back-off is
+reset. A Nano whose menu ends with no launch exits 1, which counts as a crash. After `poweroff` or
+`reboot` nothing is started again.
 
 Nano runs in its own mount namespace (B.5, decision I40): every node of an internal-storage disk
 (`mmcblkN` whose `device/type` is `MMC`, its partitions, `bootN` and `rpmb`) has `/dev/null` bound

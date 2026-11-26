@@ -39,6 +39,7 @@
 #include "NanoMenuShaders.h"
 #include "NanoMenuStrings.h"
 #include "NanoI18n.h"
+#include "NanoLaunchCommit.h"   // commitLaunch: the launch handshake's writes
 
 namespace android {
 
@@ -78,7 +79,7 @@ void NanoMenu::buildMenu() {
     // minimal-boot home-launch decision -> RetroArch auto-launches on every boot.
     // The overlay is never the launcher, so it must leave launch_app alone.
     if (!mOverlayMode) {
-        property_set("sys.gammaos.nano.launch_app", "com.retroarch.aarch64");
+        commitLaunch(LaunchTuple().app("com.retroarch.aarch64"));
     }
 
     mMenuItems.clear();
@@ -99,7 +100,7 @@ void NanoMenu::buildMenu() {
     char returnRecent[PROPERTY_VALUE_MAX] = {};
     property_get("sys.gammaos.nano.return_recent", returnRecent, "0");
     if (!strcmp(returnRecent, "1")) {
-        property_set("sys.gammaos.nano.return_recent", "0");
+        commitLaunch(LaunchTuple().returnRecent("0"));
         mSelectedIndex = 1; // "Recently Played"
         // Try loading playlist; if storage isn't ready yet, the render loop
         // will keep polling and auto-load when available

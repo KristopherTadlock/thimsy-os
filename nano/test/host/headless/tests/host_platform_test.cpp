@@ -26,8 +26,10 @@
 #include <cutils/properties.h>
 #include <gtest/gtest.h>
 
+#include "NanoLaunchCommit.h"
 #include "NanoPlatform.h"
 #include "headless_test_util.h"
+#include "platform/host/FakeLauncher.h"
 #include "platform/host/HostConfig.h"
 
 using namespace nanohost;
@@ -121,7 +123,8 @@ TEST(HostPlatform, CreateWiresTheChannel) {
                          (dir / "persist.props") + "\", \"run_dir\": \"" + (dir / "run") +
                          "\", \"log_file\": \"" + (dir / "nano.log") +
                          "\", \"display\": {\"width\": 320, \"height\": 240, \"pace\": false},"
-                         " \"record_props\": [\"sys.gammaos.\", \"persist.\"]}"));
+                         " \"record_props\": [\"sys.gammaos.\", \"persist.\"],"
+                         " \"volumes\": [{\"id\": \"9602-C755\", \"boot_disk\": true}]}"));
     char prog[] = "nano-headless";
     char flag[] = "--host-config";
     std::vector<char> path(cfg.begin(), cfg.end());
@@ -132,13 +135,28 @@ TEST(HostPlatform, CreateWiresTheChannel) {
     args.argv = argv;
     std::unique_ptr<nanoplat::Platform> p = nanoplat::createPlatform(args);
     ASSERT_TRUE(p != nullptr);
+    EXPECT_TRUE(p->audio != nullptr);  // G7-audio: FakeAudio
+    ASSERT_TRUE(p->volumes != nullptr);   // the config's drives (FakeVolumes.h)
+    EXPECT_EQ(p->volumes->cardRoot(), "/storage/9602-C755");
 
     EXPECT_EQ(displayConfig().width, 320);
+    // The services (G7): the fake display, here over host_drm_fake.cpp's HostDrm (no display).
+    ASSERT_TRUE(p->display != nullptr);
+    EXPECT_EQ(p->display->startScanout(-1, false, nullptr), -1);
+    EXPECT_FALSE(p->display->releaseForChild());
+    // G7-power: the fake power and system actions.
+    ASSERT_TRUE(p->power != nullptr);
+    ASSERT_TRUE(p->actions != nullptr);
+    p->power->powerAction("reboot");
+    EXPECT_TRUE(p->input != nullptr);  // G7-input: the fake input policy
     EXPECT_EQ(property_set("sys.gammaos.nano.launch_app", "com.example"), 0);
     EXPECT_EQ(property_set("persist.gammaos.nano.theme", "xmb"), 0);
     EXPECT_EQ(property_set("debug.unrecorded", "1"), 0);
     std::string log = headless_test::readFile(events);
     EXPECT_NE(log.find("{\"ev\":\"start\""), std::string::npos);
+    EXPECT_NE(log.find("{\"ev\":\"display\""), std::string::npos);
+    EXPECT_NE(log.find("\"op\":\"start\",\"w\":0,\"h\":0"), std::string::npos);
+    EXPECT_NE(log.find("\"op\":\"action\",\"action\":\"reboot\""), std::string::npos);
     EXPECT_NE(log.find("\"key\":\"sys.gammaos.nano.launch_app\",\"value\":\"com.example\""), std::string::npos);
     EXPECT_NE(log.find("\"key\":\"persist.gammaos.nano.theme\",\"value\":\"xmb\""), std::string::npos);
     EXPECT_EQ(log.find("debug.unrecorded"), std::string::npos);
@@ -153,8 +171,21 @@ TEST(HostPlatform, CreateWiresTheChannel) {
     EXPECT_TRUE(waitFor([&] { return headless_test::readFile(events).find("\"token\":\"p1\"") != std::string::npos; }));
     close(w);
 
+    // The fake launcher (G7-launch-b): installed, a call site's commit reaches it and a trigger is
+    // a launch event.
+    ASSERT_TRUE(p->launcher != nullptr);
+    EXPECT_FALSE(p->launcher->childRunning());
     nanoplat::install(std::move(p));
     (void)nanoplat::get();
+    android::commitLaunch(android::LaunchTuple()
+                                  .core("/data/data/com.retroarch.aarch64/cores/snes9x_libretro_android.so")
+                                  .app("com.retroarch.aarch64")
+                                  .doLaunch("1"));
+    log = headless_test::readFile(events);
+    EXPECT_NE(log.find("\"key\":\"sys.gammaos.nano.do_launch\",\"value\":\"1\""), std::string::npos);
+    EXPECT_NE(log.find("{\"ev\":\"launch\""), std::string::npos) << log;
+    EXPECT_NE(log.find("\"kind\":\"Core\""), std::string::npos);
+    ASSERT_EQ(launchRecord().requests.size(), 1u);
 }
 
 TEST(HostPlatform, BadConfigFails) {

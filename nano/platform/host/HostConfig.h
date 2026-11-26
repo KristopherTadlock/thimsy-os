@@ -32,7 +32,9 @@
 //                 "props": []}],
 //    "shell": {"rules": [{"match": "am start", "exact": false, "status": 0, "stdout": ""}],
 //              "default_status": 127},
-//    "record_props": [""]}                               key prefixes logged as {"ev":"prop"}
+//    "record_props": [""],                               key prefixes logged as {"ev":"prop"}
+//    "volumes": [{"id": "9602-C755", "path": "", "kind": "sd", "state": "mounted",
+//                 "boot_disk": false, "read_only": false}]}  the drives (FakeVolumes.h)
 #pragma once
 
 #include <string>
@@ -40,6 +42,7 @@
 #include <vector>
 
 #include "FakeEvdev.h"
+#include "FakeVolumes.h"
 #include "HostControl.h"
 #include "ShellGateHost.h"
 
@@ -57,6 +60,7 @@ struct HostConfig {
     std::vector<shell::Rule> shellRules;
     int shellDefaultStatus = 127;
     std::vector<std::string> recordProps = {""};
+    std::vector<FakeVolume> volumes;
 };
 
 // Parses `text` over the defaults in *out. false, with *err naming the member, on a syntax error,

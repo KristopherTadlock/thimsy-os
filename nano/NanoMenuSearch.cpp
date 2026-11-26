@@ -9,6 +9,7 @@
 #include "NanoBidi.h"
 #include "NanoMenuPS3.h"
 #include "NanoMenuUtils.h"   // setLaunchRomPath for the Applications launch
+#include "NanoLaunchCommit.h"   // commitLaunch: the launch handshake's writes
 
 #include <algorithm>
 #include <string.h>
@@ -272,15 +273,16 @@ void NanoMenu::gsearchActivate() {
             if (panelLaunch(r.payload)) return;   // dual screen: on the Cube's screen
             if (mOverlayMode) { overlayLaunchPackage(r.payload); return; }
             if (!isLaunchReady()) { showLaunchBusyToast(); return; }
-            property_set("sys.gammaos.nano.launch_app", r.payload.c_str());
-            property_set("sys.gammaos.nano.launched_pkg", r.payload.c_str());
-            setLaunchRomPath("");
-            property_set("sys.gammaos.nano.launch_core", "");
+            commitLaunch(LaunchTuple()
+                    .app(r.payload.c_str())
+                    .launchedPkg(r.payload.c_str())
+                    .romPath("")
+                    .core(""));
             property_set("persist.gammaos.nano.qr_prepared", "0");
             property_set("persist.gammaos.nano.qr_core", "");
             property_set("sys.gammaos.nano.return_apps", "1");
             armAppLaunchTrigger(r.payload);
-            property_set("sys.gammaos.nano.drop_input", "1");
+            commitLaunch(LaunchTuple().dropInput("1"));
             mWaitForRelease = true;
             return;
         }

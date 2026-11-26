@@ -28,3 +28,12 @@ CONFIG_UMOUNT=y
 CONFIG_SYNC=y
 CONFIG_KILL=y
 CONFIG_MODPROBE=y
+CONFIG_CHOWN=y
+CONFIG_CHMOD=y
+
+# D60firstboot reads the old library's exFAT boot sector and root directory
+# ("dd if=DISK bs=512 skip=N count=M", "od -A n -t u1 -v -j OFF -N LEN";
+# od's -A, -t, -j and -N need the full od, CONFIG_DESKTOP).
+CONFIG_DD=y
+CONFIG_OD=y
+CONFIG_DESKTOP=y

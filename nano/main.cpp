@@ -47,9 +47,11 @@
 
 #include "DrasticRunner.h"
 #include "FakeJNI.h"
+#include "NanoBootSequence.h"
 #include "NanoMenu.h"
 #include "NanoMenuDrm.h"
 #include "NanoMenuUtils.h"
+#include "NanoPlatform.h"
 
 using namespace android;
 
@@ -941,7 +943,47 @@ static void startDrasticLibPreloadThread() {
     }).detach();
 }
 
+// The firmware's boot steps between sys.gammaos.nano.drm_active=0 and NanoMenu, which
+// nanoBootSequence() runs there: DraStic's library patch, preload, init and QR watcher,
+// and binder's thread pool.
+static void firmwareBootSteps() {
+    // SYNCHRONOUSLY patch libdrastic_arm64.so in the cache BEFORE
+    // any other drastic work. The patch short-circuits drastic's
+    // initialize_audio function to a single `ret`, which prevents
+    // the 15-second boot-time stall caused by slCreateEngine's
+    // binder waitForService("media.audio_flinger"). See the
+    // patchDrasticAudioInit() comment block for the full rationale.
+    //
+    // Must happen on the main thread before the smoke-test (or the
+    // preload thread) can possibly dlopen libdrastic_arm64.so —
+    // otherwise bionic will mmap the unpatched .text segment and
+    // the patch won't take effect until the next populate cycle.
+    // None of it without drastic-nano (drasticNanoAvailable): DraStic's library is not there.
+    const bool drasticNano = drasticNanoAvailable();
+    if (drasticNano) patchDrasticAudioInit();
+
+    // Kick the drastic library preload in the background to warm
+    // the rest of the dependency chain (libandroid, libxml2, power
+    // HIDL, libdrastic itself, and sync prefetch of BIOS/ROM files).
+    // These are safe to load in parallel with the main thread's
+    // NanoMenu boot path.
+    if (drasticNano) startDrasticLibPreloadThread();
+
+    if (drasticNano) runDrasticInitIfNeeded();
+    // Unblock the preload thread's deferred libOpenSLES warm: every
+    // boot-critical dlopen (libdrastic, when QR is primed) is done now.
+    sDrasticEarlyInitDone.store(true, std::memory_order_release);
+    if (drasticNano) startDrasticQrTestWatcher();
+
+    sp<ProcessState> proc(ProcessState::self());
+    ProcessState::self()->startThreadPool();
+}
+
 int main(int argc, char** argv) {
+    // The platform first (docs/linux/IMPLEMENTATION.md B.6): before any thread and before
+    // either NanoMenu (the overlay's too). The firmware platform never fails to start.
+    nanoplat::install(nanoplat::createPlatform(nanoplat::PlatformArgs{argc, argv}));
+
     // Overlay XMB mode: invoked as `gammaos-nano --overlay` by the
     // gammaos-nano-overlay init service. This instance runs in the
     // full-Android context (SurfaceFlinger + WindowManager up) as a
@@ -1167,50 +1209,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    setpriority(PRIO_PROCESS, 0, ANDROID_PRIORITY_DISPLAY);
-
-    ALOGI("GammaOS Nano starting... (earlyDrmFd=%d)", gEarlyDrmFd);
-
-    property_set("sys.gammaos.nano.drm_active", "0");
-
-    // SYNCHRONOUSLY patch libdrastic_arm64.so in the cache BEFORE
-    // any other drastic work. The patch short-circuits drastic's
-    // initialize_audio function to a single `ret`, which prevents
-    // the 15-second boot-time stall caused by slCreateEngine's
-    // binder waitForService("media.audio_flinger"). See the
-    // patchDrasticAudioInit() comment block for the full rationale.
-    //
-    // Must happen on the main thread before the smoke-test (or the
-    // preload thread) can possibly dlopen libdrastic_arm64.so —
-    // otherwise bionic will mmap the unpatched .text segment and
-    // the patch won't take effect until the next populate cycle.
-    // None of it without drastic-nano (drasticNanoAvailable): DraStic's library is not there.
-    const bool drasticNano = drasticNanoAvailable();
-    if (drasticNano) patchDrasticAudioInit();
-
-    // Kick the drastic library preload in the background to warm
-    // the rest of the dependency chain (libandroid, libxml2, power
-    // HIDL, libdrastic itself, and sync prefetch of BIOS/ROM files).
-    // These are safe to load in parallel with the main thread's
-    // NanoMenu boot path.
-    if (drasticNano) startDrasticLibPreloadThread();
-
-    if (drasticNano) runDrasticInitIfNeeded();
-    // Unblock the preload thread's deferred libOpenSLES warm: every
-    // boot-critical dlopen (libdrastic, when QR is primed) is done now.
-    sDrasticEarlyInitDone.store(true, std::memory_order_release);
-    if (drasticNano) startDrasticQrTestWatcher();
-
-    sp<ProcessState> proc(ProcessState::self());
-    ProcessState::self()->startThreadPool();
-
-    sp<NanoMenu> nano = new NanoMenu();
-
-    // waitForSurfaceFlinger() removed: on the DRM boot path, SF is not
-    // needed at all (headless EGL + DRM direct).  On restart (boot_completed=1),
-    // readyToRun() creates SurfaceComposerClient which waits internally.
-
-    nano->run("GammaOSNano", PRIORITY_DISPLAY);
+    sp<NanoMenu> nano = nanoBootSequence(firmwareBootSteps);
 
     ALOGI("GammaOS Nano running. Joining thread pool.");
 

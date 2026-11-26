@@ -7,7 +7,9 @@
 //   Nano      started at once. When it exits it is started again: at once if it ran for at least
 //             minUptimeMs, else after a back-off that doubles from backoffStartMs to backoffMaxMs.
 //             If it exits while the game it launched still runs (as Android's home exits when it
-//             starts a game), it is started again when that game ends, without a back-off.
+//             starts a game), it is started again when that game ends, without a back-off. If it
+//             says it exited for a launch (exit status 0) and no game runs (the game ended at once,
+//             or the launch could not start), it is started again at once, the back-off reset.
 //   deferred  "rcD start" once per boot: at Nano's first frame (sys.thimsy.nano.first_frame=1), or
 //             deferredFallbackMs after Nano was first started if no first frame came, so a broken
 //             Nano still gets SSH and the drives. Never twice: a respawned session that finds the
@@ -67,8 +69,9 @@ class Supervisor {
     std::vector<SupAction> paddStarted(Ms now, int pid);
     void scrapeStarted(int pid);
 
-    // gamePid: the game Nano launched if it still runs, else 0.
-    std::vector<SupAction> nanoExited(Ms now, int gamePid);
+    // gamePid: the game Nano launched if it still runs, else 0. launchOver: Nano exited for a launch
+    // (status 0), not a crash.
+    std::vector<SupAction> nanoExited(Ms now, int gamePid, bool launchOver = false);
     std::vector<SupAction> gameExited(Ms now);
     std::vector<SupAction> paddExited(Ms now);
     void scrapeExited();

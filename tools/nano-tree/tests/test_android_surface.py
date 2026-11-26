@@ -10,8 +10,10 @@ committed: nanotree/surface.py surface_diffs). Every difference must come from a
 
   android-surface: <step id> <what changed> (review: <how it was reviewed>)
 
-and no commit without such a line may have changed a differing path. Changes nano-144 made are on
-both sides of the comparison. Skips without nano/ or without a local nano-144 branch. Fork-only;
+and no commit without such a line may have changed a differing path while it was on the surface of
+that commit's tree; a path that reached the patch off the surface and joined it later is covered by
+the annotated commit that put it there (nanotree/surface.py surface_joins, G7-main). Changes nano-144
+made are on both sides of the comparison. Skips without nano/ or without a local nano-144 branch. Fork-only;
 run with
 
   python3 -m unittest discover -s tools/nano-tree/tests -t tools/nano-tree/tests
@@ -30,7 +32,7 @@ from nanotree.androidbp import Blueprint  # noqa: E402
 from nanotree.config import Upstream  # noqa: E402
 from nanotree.surface import (Commit, Repo, blueprint_surface, compute_surface, coverage,  # noqa: E402
                               includes_of, module_sources, outside_sections, resolve_include,
-                              surface_diffs)
+                              surface_diffs, surface_joins)
 
 NANO = os.path.join(ROOT, "nano")
 HAVE = os.path.isdir(NANO) and os.path.isfile(os.path.join(TOOL_DIR, "upstream.json"))
@@ -125,6 +127,26 @@ class SurfaceUnit(unittest.TestCase):
                          [("2" * 40, ["X.cpp"]), ("3" * 40, ["Y.cpp"])])
         self.assertEqual(coverage(set(), [bare]), ([], []))
 
+    def test_surface_joins(self):
+        """G7-main: P.cpp reached the patch off the surface (G5) and joined it in an annotated
+        commit; Q.cpp joined it in an unannotated one; R.cpp was changed bare while on it."""
+        g5 = Commit("1" * 40, "Add P, Q and R\n", {"P.cpp", "Q.cpp", "R.cpp"})
+        joins = Commit("2" * 40, "Compile P\n\nandroid-surface: G7-main add P (review: color-moved clean)\n",
+                       {"Android.bp"})
+        bare = Commit("3" * 40, "Compile Q\n", {"Android.bp"})
+        surfaces = {"1" * 40: {"Android.bp", "R.cpp"}, "2" * 40: {"Android.bp", "R.cpp", "P.cpp"},
+                    "3" * 40: {"Android.bp", "R.cpp", "P.cpp", "Q.cpp"}}
+        commits = [g5, joins, bare]
+        missing, unannotated = coverage({"P.cpp", "Q.cpp", "R.cpp"}, commits)
+        self.assertEqual(missing, ["P.cpp", "Q.cpp", "R.cpp"])
+        left, still = surface_joins(missing, unannotated, commits, surfaces.get)
+        self.assertEqual(left, ["Q.cpp", "R.cpp"])
+        self.assertEqual([(c.sha, ps) for c, ps in still], [("1" * 40, ["R.cpp"])])
+        # Without a surface for a commit (no nano/ there), nothing is relieved.
+        left, still = surface_joins(missing, unannotated, commits, lambda sha: None)
+        self.assertEqual(left, ["P.cpp", "Q.cpp", "R.cpp"])
+        self.assertEqual([(c.sha, ps) for c, ps in still], [("1" * 40, ["P.cpp", "Q.cpp", "R.cpp"])])
+
     def test_surface_diffs_see_paths_gone_from_nano(self):
         """android-safety-1: a deleted file, a dropped asset and a section with no committed file
         are compared, though HEAD's surface (from nano/ at HEAD) cannot list them."""
@@ -213,6 +235,9 @@ class AndroidSurface(unittest.TestCase):
             return
         commits = self.repo.surface_commits(mb, "HEAD", self.prefix, diffs)
         missing, unannotated = coverage(diffs, commits)
+        if missing or unannotated:
+            missing, unannotated = surface_joins(missing, unannotated, commits,
+                                                 lambda sha: self.repo.surface_at(sha, self.prefix))
         msg = []
         for p in missing:
             msg.append("%s differs from nano-144 (merge base %s) and no commit with an android-surface "

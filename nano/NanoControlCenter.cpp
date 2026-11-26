@@ -20,6 +20,7 @@
 #include "NanoLaunch.h"        // shellQuote, isValidPackageName
 #include "NanoMenuStrings.h"   // nanoGetLocale (the cache rebakes per language)
 #include "NanoMenuUtils.h"     // setLaunchRomPath
+#include "NanoLaunchCommit.h"  // commitLaunch: the launch handshake's writes
 #include <cutils/properties.h>
 #include <sys/system_properties.h>
 #include <GLES2/gl2.h>
@@ -1080,8 +1081,9 @@ void NanoMenu::ccOnSettingsTap(float px, float py) {
 // An app replacing the top app: the button map over it must not take the last game's system and ROM,
 // as overlayLaunchPackage and launchInstalledApp do.
 static void clearLaunchedGame() {
-    setLaunchRomPath("");
-    property_set("sys.gammaos.nano.launch_core", "");
+    commitLaunch(LaunchTuple()
+            .romPath("")
+            .core(""));
 }
 
 // Launch a chosen app on the BOTTOM panel (its own display), hiding the CC so the app owns the screen.
@@ -1103,7 +1105,7 @@ void NanoMenu::ccLaunchBottomApp(const std::string& pkg) {
         property_get("sys.gammaos.nano.launch_app", topApp, "");
         std::string cur = nanolaunch::isValidPackageName(topApp) ? topApp : "";
         if (cur != pkg) clearLaunchedGame();
-        property_set("sys.gammaos.nano.launch_app", pkg.c_str());
+        commitLaunch(LaunchTuple().app(pkg.c_str()));
         property_set("sys.gammaos.nano.app_launched", "1");
         ccSetFocusDisplay(-1);
         mCcPage = 0;
@@ -1151,8 +1153,9 @@ void NanoMenu::ccLaunchBottomApp(const std::string& pkg) {
             mCcForceVisible = false;       // launching dismisses the KEY_ALL_APPLICATIONS overlay
             int td = property_get_int32("persist.gammaos.nano.cc.topdisplay", 2);   // top panel = display 2 (RG DS)
             clearLaunchedGame();
-            property_set("sys.gammaos.nano.launch_app", pkg.c_str());
-            property_set("sys.gammaos.nano.launched_pkg", pkg.c_str());
+            commitLaunch(LaunchTuple()
+                    .app(pkg.c_str())
+                    .launchedPkg(pkg.c_str()));
             property_set("sys.gammaos.nano.app_launched", "1");
             property_set("sys.gammaos.nano.cc.bottomapp", "");
             property_set("sys.gammaos.nano.drop_input", "0");   // let touch reach the new top app + the CC's bottom digitizer

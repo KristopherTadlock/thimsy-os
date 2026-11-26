@@ -633,10 +633,13 @@ class LinuxPlatform(Base):
         plat = [p for p in self.src["linux"] + self.src["drm"]
                 if p not in ("platform/linux/main_linux.cpp", "platform/linux/ShellGate.cpp")]
         for p in ("platform/linux/display/DrmBuffersGbm.cpp", "platform/linux/display/EglWraps.cpp",
-                  "platform/linux/ControlKeys.cpp", "NanoPlatform.cpp", "NanoMenuDrm.cpp"):
+                  "platform/linux/ControlKeys.cpp", "platform/linux/LinuxPlatform.cpp", "NanoMenuDrm.cpp"):
             self.assertIn(p, plat)
-        # Android's back end and entry point never: the GBM back end and main_linux stand in for them.
-        for p in ("NanoMenuDrmBuffers.cpp", "main.cpp"):
+        # NanoPlatform.cpp (install, get) reaches the library through nano_core since G7-main.
+        self.assertIn("NanoPlatform.cpp", self.src["core"])
+        # Android's back end, entry point and platform never: the GBM back end, main_linux and the
+        # Linux platform stand in for them.
+        for p in ("NanoMenuDrmBuffers.cpp", "main.cpp", "platform/firmware/Platform.cpp"):
             self.assertNotIn(p, plat)
             self.assertIn(p, self.src["firmware"])
         self.assertEqual([p for p in plat if "/tests/" in p], [])

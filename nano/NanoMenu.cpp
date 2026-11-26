@@ -97,6 +97,8 @@ extern "C" uint32_t __system_property_serial(const prop_info* __pi);
 #include "NanoOtaCheck.h"   // otaDropStalePackage at startup
 #include "NanoBtStable.h"
 #include "NanoMenuPS3Bg.h"   // ps3bg::themeFading() for the adaptive idle frame-rate
+#include "NanoPlatform.h"   // nanoplat::get().display: readyToRun's splash
+#include "NanoLaunchCommit.h"   // commitLaunch: threadLoop's launch handshake writes
 
 extern int gEarlyDrmFd;
 
@@ -645,39 +647,9 @@ status_t NanoMenu::readyToRun() {
     startupPreloadStart();
     if (!mOverlayMode && !sDrasticQrFastPath) esdePrebuildStart();
 
-    // GammaOS: Nano mode is confirmed active (skip_nano check passed).
-    // Run DRM splash now - before any SF/HWC setup. This replaces the
-    // bootloader logo with NanoMenu's DRM direct rendering. Skip on
-    // restarts (returning from app) since HWC is already active.
-    {
-        char bootDone[PROPERTY_VALUE_MAX] = {};
-        property_get("sys.boot_completed", bootDone, "0");
-        // force_drm=1 re-grabs DRM master post-boot for drastic nano
-        // mode (XMB -> drastic nano restart path).
-        char forceDrm[PROPERTY_VALUE_MAX] = {};
-        property_get("sys.gammaos.nano.force_drm", forceDrm, "0");
-        // Overlay mode never grabs DRM master: it coexists with SurfaceFlinger
-        // and the running app as a translucent layer. Force the SF path.
-        if (mOverlayMode || nanoForceSfPath()) {
-            ALOGI("NanoMenu: %s, skipping DRM splash (SF path)",
-                  mOverlayMode ? "overlay mode" : "force-SF home");
-        } else if (strcmp(bootDone, "1") != 0 || strcmp(forceDrm, "1") == 0) {
-            if (strcmp(forceDrm, "1") == 0) {
-                ALOGW("NanoMenu: force_drm=1, grabbing DRM master "
-                      "post-boot for drastic nano");
-            }
-            drmEarlySplash(earlyDrmFd);
-            earlyDrmFd = -1;
-        } else {
-            ALOGI("NanoMenu: skipping DRM splash (already booted)");
-        }
-    }
-    if (earlyDrmFd >= 0 && !sDrmActive) {
-        // DRM splash failed - release the fd so HWC can use it
-        ioctl(earlyDrmFd, DRM_IOCTL_DROP_MASTER, 0);
-        close(earlyDrmFd);
-        earlyDrmFd = -1;
-    }
+    // The panel, through the platform's Display (NanoPlatform.h): DRM master and the splash,
+    // unless this process presents through SurfaceFlinger.
+    earlyDrmFd = nanoplat::get().display->startScanout(earlyDrmFd, mOverlayMode, nanoForceSfPath);
     tlog("drmEarlySplash done");
 
     // Diagnostic: write DRM splash result to file (logcat overflows)
@@ -2044,21 +2016,22 @@ bool NanoMenu::threadLoop() {
                 // normal SF launch (the mDrasticNanoPending block ~3352). It fires
                 // start_sf and the overlay stays up as the SF panel keeper; the exit
                 // flow drops DRM master and the DRM-boot-path waits for app_launched.
-                android::base::SetProperty("sys.gammaos.nano.launch_app", "com.gammaos.drasticsf");
-                android::base::SetProperty("sys.gammaos.nano.launched_pkg", "com.gammaos.drasticsf");
-                android::base::SetProperty("sys.gammaos.nano.launch_intent", "");
-                setLaunchRomPath("");
-                android::base::SetProperty("sys.gammaos.nano.launch_core", "");
-                property_set("sys.gammaos.nano.return_recent", "1");
-                property_set("service.bootanim.nano_retroarch", "1");
-                property_set("sys.gammaos.nano.drop_input", "1");
+                commitLaunch(LaunchTuple()
+                        .app("com.gammaos.drasticsf")
+                        .launchedPkg("com.gammaos.drasticsf")
+                        .intent("")
+                        .romPath("")
+                        .core("")
+                        .returnRecent("1")
+                        .retroarch("1")
+                        .dropInput("1"));
                 mExitRequested = true;
             } else {
                 // auto: the normal DRM handshake. The start trigger stops nano and
                 // starts the binary, which grabs DRM master (RG DS) or falls back to
                 // own-layer SF (pure-SF panel). Mirrors the normal launch's else
                 // branch (~3415). Exiting releases DRM master for the binary / SF.
-                property_set("sys.gammaos.nano.drop_input", "1");
+                commitLaunch(LaunchTuple().dropInput("1"));
                 property_set("sys.gammaos.drastic_nano.start", "1");
                 _exit(0);
             }
@@ -2392,9 +2365,7 @@ bool NanoMenu::threadLoop() {
                         if (t >= 1.0f) {
                             ALOGI("drastic QR: fade-out complete, "
                                   "exiting preview");
-                            property_set(
-                                "service.bootanim.nano_retroarch",
-                                "1");
+                            commitLaunch(LaunchTuple().retroarch("1"));
                             mExitRequested = true;
                             break;
                         }
@@ -3007,8 +2978,7 @@ if (sRingPrimedCount >= 2) {
                                 "sys.gammaos.drastic_nano.qr_resume", "1");
                             property_set(
                                 "sys.gammaos.drastic_nano.start", "1");
-                            property_set(
-                                "sys.gammaos.nano.drop_input", "1");
+                            commitLaunch(LaunchTuple().dropInput("1"));
                             mExitRequested = true;
                             break;
                         }
@@ -3060,15 +3030,11 @@ if (sRingPrimedCount >= 2) {
                                       "LAUNCHER", src);
                             }
                         }
-                        android::base::SetProperty(
-                                "sys.gammaos.nano.launch_app",
-                                "com.dsemu.drastic");
-                        android::base::SetProperty(
-                                "sys.gammaos.nano.launch_intent", "file");
-                        android::base::SetProperty(
-                                "sys.gammaos.nano.launch_rom", "");
-                        android::base::SetProperty(
-                                "sys.gammaos.nano.launch_core", "");
+                        commitLaunch(LaunchTuple()
+                                .app("com.dsemu.drastic")
+                                .intent("file")
+                                .rom("")
+                                .core(""));
                         // mXmbSystems is empty under the fast path so
                         // we can't compute a precise return position;
                         // default to recently-played (sys=-1).
@@ -3076,10 +3042,9 @@ if (sRingPrimedCount >= 2) {
                                 "sys.gammaos.nano.xmb_return_sys", "-1");
                         property_set(
                                 "sys.gammaos.nano.xmb_return_game", "0");
-                        property_set(
-                                "sys.gammaos.nano.return_recent", "0");
-                        property_set(
-                                "sys.gammaos.nano.drop_input", "1");
+                        commitLaunch(LaunchTuple()
+                                .returnRecent("0")
+                                .dropInput("1"));
                         // Fire both the direct do_launch trigger and
                         // the legacy nano_retroarch property. The
                         // direct trigger is the primary mechanism;
@@ -3095,12 +3060,10 @@ if (sRingPrimedCount >= 2) {
                         // it=1 when DraSticEmuActivity reports drawn.
                         property_set(
                                 "sys.gammaos.nano.app_drawn", "0");
-                        property_set(
-                                "sys.gammaos.nano.handoff_fired", "1");
-                        property_set(
-                                "sys.gammaos.nano.pending_exit", "0");
-                        property_set(
-                                "sys.gammaos.nano.do_launch", "1");
+                        commitLaunch(LaunchTuple()
+                                .handoffFired("1")
+                                .pendingExit("0")
+                                .doLaunch("1"));
                         nanoDropReclaimableCaches();   // hand the launching app the dentry/inode cache RAM
                         // Hold off setting service.bootanim.nano_retroarch
                         // until drastic's game window is actually drawn.
@@ -3516,10 +3479,9 @@ if (sRingPrimedCount >= 2) {
                             nativeLaunch = true;
 
                             // Set properties for RetroArch handoff
-                            android::base::SetProperty(
-                                    "sys.gammaos.nano.launch_rom", qrRom);
-                            android::base::SetProperty(
-                                    "sys.gammaos.nano.launch_core", qrCore);
+                            commitLaunch(LaunchTuple()
+                                    .rom(qrRom)
+                                    .core(qrCore));
                             property_set("sys.gammaos.nano.cache_ready", "0");
                             property_set("sys.gammaos.nano.cache_op", "populate");
 
@@ -3747,26 +3709,28 @@ if (sRingPrimedCount >= 2) {
                                             // Mark handoff done so respawned NanoMenu instances
                                             // skip QR (sys prop: auto-clears on reboot, survives
                                             // respawn) and open the startHomeOnTaskDisplayArea gate.
-                                            property_set("sys.gammaos.nano.handoff_fired", "1");
-                                            // Clear pending_exit defensively so the relaunch
-                                            // monitor does not take the force-stop cleanup branch
-                                            // (which would kill the launching RetroArch -> black).
-                                            property_set("sys.gammaos.nano.pending_exit", "0");
+                                            commitLaunch(LaunchTuple()
+                                                    .handoffFired("1")
+                                                    // Clear pending_exit defensively so the relaunch
+                                                    // monitor does not take the force-stop cleanup branch
+                                                    // (which would kill the launching RetroArch -> black).
+                                                    .pendingExit("0"));
                                             { char buf[32];
                                               snprintf(buf, sizeof(buf), "%d", returnSysIdx);
                                               property_set("sys.gammaos.nano.xmb_return_sys", buf);
                                               snprintf(buf, sizeof(buf), "%d", returnGameIdx);
                                               property_set("sys.gammaos.nano.xmb_return_game", buf);
                                             }
-                                            property_set("sys.gammaos.nano.return_recent", "0");
-                                            property_set("sys.gammaos.nano.drop_input", "1");
+                                            commitLaunch(LaunchTuple()
+                                                    .returnRecent("0")
+                                                    .dropInput("1"));
                                             emuSettingsSyncLaunch(android::base::GetProperty("sys.gammaos.nano.launch_app", ""));
                                             // Direct: trigger the relaunch monitor immediately.
-                                            property_set("sys.gammaos.nano.do_launch", "1");
+                                            commitLaunch(LaunchTuple().doLaunch("1"));
                                             nanoDropReclaimableCaches();   // hand the launching app the dentry/inode cache RAM
                                             // Also set legacy nano_retroarch for init side-effects
                                             // (service.bootanim.exit, etc) but don't depend on it.
-                                            property_set("service.bootanim.nano_retroarch", "1");
+                                            commitLaunch(LaunchTuple().retroarch("1"));
                                             // Snapshot state + SRAM NOW so RetroArch resumes from
                                             // the correct auto-state; the in-process core keeps
                                             // running (not shut down) so the preview stays live.
@@ -3901,10 +3865,9 @@ if (sRingPrimedCount >= 2) {
                     // Fallback: normal RetroArch APK launch (only if native
                     // didn't launch and user didn't cancel)
                     if (!nativeLaunch && !qrCancelled) {
-                        android::base::SetProperty(
-                                "sys.gammaos.nano.launch_rom", qrRom);
-                        android::base::SetProperty(
-                                "sys.gammaos.nano.launch_core", qrCore);
+                        commitLaunch(LaunchTuple()
+                                .rom(qrRom)
+                                .core(qrCore));
                         property_set("sys.gammaos.nano.cache_ready", "0");
                         property_set("sys.gammaos.nano.cache_op", "populate");
                         // Set return navigation to matching system/game
@@ -3914,7 +3877,7 @@ if (sRingPrimedCount >= 2) {
                           snprintf(buf, sizeof(buf), "%d", returnGameIdx);
                           property_set("sys.gammaos.nano.xmb_return_game", buf);
                         }
-                        property_set("sys.gammaos.nano.return_recent", "0");
+                        commitLaunch(LaunchTuple().returnRecent("0"));
 
                         // Never exit frame-less. This branch used to set the
                         // launch props and quit immediately: the panel stayed
@@ -4038,13 +4001,14 @@ if (sRingPrimedCount >= 2) {
                         // nano_retroarch prop keeps its init side effects
                         // (bootanim exit).
                         retroarchConfigFile();
-                        property_set("sys.gammaos.nano.handoff_fired", "1");
-                        property_set("sys.gammaos.nano.pending_exit", "0");
-                        property_set("sys.gammaos.nano.drop_input", "1");
+                        commitLaunch(LaunchTuple()
+                                .handoffFired("1")
+                                .pendingExit("0")
+                                .dropInput("1"));
                         emuSettingsSyncLaunch(android::base::GetProperty("sys.gammaos.nano.launch_app", ""));
-                        property_set("sys.gammaos.nano.do_launch", "1");
+                        commitLaunch(LaunchTuple().doLaunch("1"));
                         nanoDropReclaimableCaches();   // hand the launching app the dentry/inode cache RAM
-                        property_set("service.bootanim.nano_retroarch", "1");
+                        commitLaunch(LaunchTuple().retroarch("1"));
                         mExitRequested = true;
                     }
             } else {
@@ -4658,16 +4622,15 @@ if (sRingPrimedCount >= 2) {
                 // ROM so RootWindowContainer does a plain generic LAUNCHER start
                 // of DrasticSf -- otherwise it relaunches stock DraStic from the
                 // stale intent file (the "original drastic launches" bug).
-                android::base::SetProperty("sys.gammaos.nano.launch_app",
-                                           "com.gammaos.drasticsf");
-                android::base::SetProperty("sys.gammaos.nano.launched_pkg",
-                                           "com.gammaos.drasticsf");
-                android::base::SetProperty("sys.gammaos.nano.launch_intent", "");
-                setLaunchRomPath("");
-                android::base::SetProperty("sys.gammaos.nano.launch_core", "");
-                property_set("sys.gammaos.nano.return_recent", "1");
-                property_set("service.bootanim.nano_retroarch", "1");
-                property_set("sys.gammaos.nano.drop_input", "1");
+                commitLaunch(LaunchTuple()
+                        .app("com.gammaos.drasticsf")
+                        .launchedPkg("com.gammaos.drasticsf")
+                        .intent("")
+                        .romPath("")
+                        .core("")
+                        .returnRecent("1")
+                        .retroarch("1")
+                        .dropInput("1"));
                 mDrasticNanoPending = false;
                 // Drive the SAME graceful DRM->SurfaceFlinger handoff a normal app
                 // launch uses, but kick it off directly. A button-press launch sets
@@ -4715,11 +4678,12 @@ if (sRingPrimedCount >= 2) {
             // auto-launch STOCK DraStic in the background ("normal drastic runs on
             // wake"). Mirror the SF branch above. (RootWindowContainer also guards on
             // drastic_nano.session, so this is defense in depth.)
-            android::base::SetProperty("sys.gammaos.nano.launch_app", "com.gammaos.drasticsf");
-            android::base::SetProperty("sys.gammaos.nano.launched_pkg", "com.gammaos.drasticsf");
-            android::base::SetProperty("sys.gammaos.nano.launch_intent", "");
-            setLaunchRomPath("");
-            android::base::SetProperty("sys.gammaos.nano.launch_core", "");
+            commitLaunch(LaunchTuple()
+                    .app("com.gammaos.drasticsf")
+                    .launchedPkg("com.gammaos.drasticsf")
+                    .intent("")
+                    .romPath("")
+                    .core(""));
             // setDrasticNanoRomPath() already wrote the ROM file; pull the trigger.
             // Resident home: park in-process for the session and come back on
             // the same menu state (no cold start after the game).

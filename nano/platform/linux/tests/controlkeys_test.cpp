@@ -133,6 +133,21 @@ TEST_F(ControlKeysTest, LaunchHandshakeIsOneRequest) {
     EXPECT_EQ(launches.size(), 3u);
 }
 
+TEST_F(ControlKeysTest, SetLaunchHandlerReplacesOnlyTheLaunch) {
+    std::vector<std::string> other;
+    setLaunchHandler([&](const LaunchRequest& r) { other.push_back(r.trigger); });
+    property_set("sys.gammaos.nano.do_launch", "1");
+    EXPECT_TRUE(launches.empty());
+    EXPECT_EQ(other, (std::vector<std::string>{"sys.gammaos.nano.do_launch"}));
+    property_set("sys.gammaos.nano.dosleep", "1");
+    EXPECT_EQ(requests, (std::vector<std::string>{"sleep"}));  // the other handlers stay
+    setLaunchHandler(nullptr);   // the default: a log line
+    now += 5000;
+    property_set("service.bootanim.nano_retroarch", "1");
+    EXPECT_EQ(other.size(), 1u);
+    EXPECT_TRUE(launches.empty());
+}
+
 TEST_F(ControlKeysTest, FirstFrameOnce) {
     property_set("sys.gammaos.nano.drm_active", "0");
     EXPECT_EQ(get("sys.thimsy.nano.first_frame"), std::string());

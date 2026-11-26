@@ -78,7 +78,7 @@
     {"match": "service.bootanim.nano_retroarch", "value": "1", "disposition": "routed", "route": "launcher",
      "note": "The legacy launch trigger (Android's bootanim rc turns it into do_launch): the launcher, debounced with do_launch into one request."},
     {"match": "sys.gammaos.nano.do_launch", "value": "1", "disposition": "routed", "route": "launcher", "source": "manual",
-     "note": "The direct launch trigger, watched by GammaOS base framework code the patch does not show. The handshake's keys (launch_app, launch_core, launch_rom, ...) are read when it fires (B.2). TODO(G7-launch): the Linux launcher."},
+     "note": "The direct launch trigger, watched by GammaOS base framework code the patch does not show. The handshake's keys (launch_app, launch_core, launch_rom, ...) are read when it fires (B.2) and go to the Linux launcher (nano/platform/linux/Launcher.cpp, G7-launch-b)."},
     {"match": "sys.powerctl", "disposition": "routed", "route": "session-key",
      "note": "thimsy-session acts on shutdown[,reason] and reboot[,reason] (linux/docs/session.md)."},
 

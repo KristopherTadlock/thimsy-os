@@ -39,7 +39,9 @@ GOOD = [
     ("data", HOME, 16384 + 6 * MIB_S, MIB_S),
 ]
 DATA_END = 16384 + 7 * MIB_S          # first LBA after data
-TOTAL = DATA_END + 2 * MIB_S + 33     # room for games, then the backup GPT
+TOTAL = DATA_END + MIB_S              # a written image: a 1 MiB tail ending in the backup GPT
+GAMES = DATA_END + 2 * MIB_S          # where D60firstboot puts games (device-safety-2)
+CARD = GAMES + 4 * MIB_S              # a card that has booted
 
 
 def crc(b: bytes) -> int:
@@ -261,13 +263,13 @@ class GptCheckTest(unittest.TestCase):
     # -- the vold rule
 
     def test_written_image_with_basic_data(self):
-        write_image(self.img, GOOD + [("games", BASIC, DATA_END, MIB_S)])
+        write_image(self.img, GOOD + [("games", BASIC, GAMES, MIB_S)], CARD)
         self.assertFails(self.check(), "Microsoft basic data, which vold mounts",
                          "has 5 entries")
 
     def test_written_image_with_formatted_basic_data_still_fails(self):
-        write_image(self.img, GOOD + [("games", BASIC, DATA_END, MIB_S)],
-                    fs={DATA_END: exfat_boot_sector()})
+        write_image(self.img, GOOD + [("games", BASIC, GAMES, MIB_S)], CARD,
+                    fs={GAMES: exfat_boot_sector()})
         self.assertFails(self.check(), "which vold mounts")
 
     def test_linux_filesystem_type_is_vold_visible(self):
@@ -277,34 +279,66 @@ class GptCheckTest(unittest.TestCase):
         self.assertFails(self.check(thimsy=False), "Linux filesystem data, which vold mounts")
 
     def test_android_expand_type(self):
-        parts = GOOD + [("x", "193D1EA4-B3CA-11E4-B075-10604B889DCF", DATA_END, MIB_S)]
-        write_image(self.img, parts)
+        parts = GOOD + [("x", "193D1EA4-B3CA-11E4-B075-10604B889DCF", GAMES, MIB_S)]
+        write_image(self.img, parts, CARD)
         self.assertFails(self.check(thimsy=False), "adopt")
 
     def test_card_with_formatted_games(self):
-        last_usable = TOTAL - 34
-        parts = GOOD + [("games", BASIC, DATA_END, last_usable - DATA_END + 1)]
-        write_image(self.img, parts, fs={DATA_END: exfat_boot_sector()})
+        last_usable = CARD - 34
+        parts = GOOD + [("games", BASIC, GAMES, last_usable - GAMES + 1)]
+        write_image(self.img, parts, CARD, fs={GAMES: exfat_boot_sector()})
         rep = self.check(mode="card")
         self.assertEqual(rep.errors, [])
         self.assertEqual(rep.info["entries"][4]["filesystem"], "exfat")
 
     def test_card_with_unformatted_games(self):
-        parts = GOOD + [("games", BASIC, DATA_END, MIB_S)]
-        write_image(self.img, parts)
+        parts = GOOD + [("games", BASIC, GAMES, MIB_S)]
+        write_image(self.img, parts, CARD)
         self.assertFails(self.check(mode="card"), "carries no filesystem")
 
     def test_card_with_games_past_entry_7(self):
-        parts = GOOD + [("games", BASIC, DATA_END, MIB_S)]
-        write_image(self.img, parts, slots=[0, 1, 2, 3, 7], fs={DATA_END: exfat_boot_sector()})
+        parts = GOOD + [("games", BASIC, GAMES, MIB_S)]
+        write_image(self.img, parts, CARD, slots=[0, 1, 2, 3, 7], fs={GAMES: exfat_boot_sector()})
         self.assertFails(self.check(mode="card", thimsy=False), "entries 1 to 7")
 
     def test_card_with_two_public_volumes(self):
-        parts = GOOD + [("games", BASIC, DATA_END, MIB_S),
-                        ("more", BASIC, DATA_END + MIB_S, MIB_S)]
-        write_image(self.img, parts, fs={DATA_END: exfat_boot_sector(),
-                                         DATA_END + MIB_S: exfat_boot_sector()})
+        parts = GOOD + [("games", BASIC, GAMES, MIB_S),
+                        ("more", BASIC, GAMES + MIB_S, MIB_S)]
+        write_image(self.img, parts, CARD, fs={GAMES: exfat_boot_sector(),
+                                               GAMES + MIB_S: exfat_boot_sector()})
         self.assertFails(self.check(mode="card", thimsy=False), "exactly one")
+
+    # -- the tail (device-safety-2)
+
+    def test_image_without_tail(self):
+        """The old layout: the image ended at data's end, so its backup GPT landed on the
+        first 33 sectors of games, the old library's boot region."""
+        write_image(self.img, total=DATA_END + 33)
+        self.assertFails(self.check(), "device-safety-2", "1 MiB before games")
+
+    def test_image_tail_too_long(self):
+        write_image(self.img, total=TOTAL + MIB_S)
+        self.assertFails(self.check(), "device-safety-2")
+
+    def test_backup_gpt_ends_a_mib_before_games(self):
+        write_image(self.img)
+        rep = self.check()
+        self.assertEqual(rep.errors, [])
+        backup_end = rep.info["image"]["sectors"]          # first LBA after the backup GPT
+        self.assertLessEqual(backup_end + MIB_S, GAMES)
+        self.assertGreaterEqual(backup_end - 33, DATA_END)  # the backup is the last 33 sectors
+
+    def test_card_games_too_early(self):
+        for start in (DATA_END, DATA_END + MIB_S):
+            with self.subTest(start=start):
+                last_usable = CARD - 34
+                parts = GOOD + [("games", BASIC, start, last_usable - start + 1)]
+                write_image(self.img, parts, CARD, fs={start: exfat_boot_sector()})
+                self.assertFails(self.check(mode="card"), "device-safety-2")
+
+    def test_card_mode_ignores_the_image_size(self):
+        write_image(self.img, total=CARD)
+        self.assertEqual(self.check(mode="card").errors, [])
 
     def test_sniff_ext4(self):
         head = bytearray(4096)
@@ -335,7 +369,7 @@ class GptCheckTest(unittest.TestCase):
                          ["uboot", "boot", "root", "data"])
 
     def test_sfdisk_basic_data(self):
-        self.sfdisk_image("start=%d, size=%d, type=%s, name=games\n" % (DATA_END, MIB_S, BASIC))
+        self.sfdisk_image("start=%d, size=%d, type=%s, name=games\n" % (DATA_END, MIB_S // 2, BASIC))
         self.assertFails(self.check(family="qemu-aarch64-virt"), "which vold mounts")
 
     # -- the command line
@@ -356,7 +390,7 @@ class GptCheckTest(unittest.TestCase):
         self.assertEqual(len(data["entries"]), 4)
         self.assertEqual(data["gpt"]["entries"], 128)
 
-        write_image(self.img, GOOD + [("games", BASIC, DATA_END, MIB_S)])
+        write_image(self.img, GOOD + [("games", BASIC, GAMES, MIB_S)], CARD)
         rc, out = self.run_cli(self.img, "--family", "rk3566")
         self.assertEqual(rc, 1)
         self.assertIn("FAIL:", out)

@@ -9,25 +9,10 @@ config BR2_PACKAGE_THIMSY_SESSION
 	  volume keys, sleep, the quit hotkey and the deferred start
 	  of services (IMPLEMENTATION.md F.1). MIT.
 
-if BR2_PACKAGE_THIMSY_SESSION
-
-config BR2_PACKAGE_THIMSY_SESSION_SSH_AT_BOOT
-	bool "start SSH at boot"
-	depends on BR2_PACKAGE_DROPBEAR
-	help
-	  Start dropbear from the deferred services at every boot.
-	  For development images only: release images leave SSH off
-	  until the user turns it on (decision I37).
-
-config BR2_PACKAGE_THIMSY_SESSION_SSH_PASSWORD
-	bool "allow SSH password logins"
-	depends on BR2_PACKAGE_DROPBEAR
-	help
-	  Run dropbear without -s, so passwords are accepted. For
-	  development images only: otherwise dropbear runs key-only
-	  (-s -g) whenever it is started (decision I37).
-
-endif
+	  SSH has no option here: D50ssh (board/common/rootfs-overlay)
+	  decides by ro.thimsy.build.type. Dev images start dropbear
+	  by default; release images only when the user turns SSH on,
+	  and then key-only (decision I37).
 
 comment "thimsy-session needs a toolchain w/ C++, threads, gcc >= 7"
 	depends on !BR2_INSTALL_LIBSTDCPP || !BR2_TOOLCHAIN_HAS_THREADS || \

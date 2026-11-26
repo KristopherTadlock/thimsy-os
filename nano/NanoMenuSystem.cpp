@@ -49,6 +49,7 @@
 #include "NanoMenu.h"
 #include "NanoMenuShaders.h"
 #include "NanoMenuUtils.h"   // setQrRomPath / readPathFile for the QR arming sync
+#include "NanoPlatform.h"
 #include "NanoSdMove.h"
 #include "NanoSliderHud.h"
 
@@ -111,38 +112,7 @@ void NanoMenu::writeSysfsInt(const char* path, int value) {
 // Set backlight brightness via the ILights AIDL HAL (portable across devices).
 // Returns true if HAL call succeeded, false if HAL not available yet.
 bool NanoMenu::setBrightnessViaHal(int brightness) {
-    using aidl::android::hardware::light::ILights;
-    using aidl::android::hardware::light::HwLight;
-    using aidl::android::hardware::light::HwLightState;
-    using aidl::android::hardware::light::LightType;
-
-    ndk::SpAIBinder binder(
-            AServiceManager_checkService("android.hardware.light.ILights/default"));
-    if (!binder.get()) {
-        return false;
-    }
-    std::shared_ptr<ILights> hal = ILights::fromBinder(binder);
-    if (!hal) {
-        return false;
-    }
-
-    std::vector<HwLight> lights;
-    hal->getLights(&lights);
-    // Drive EVERY backlight light, not just the first: dual-panel devices
-    // (RG DS) can expose one HwLight per panel, and stopping at the first
-    // left the second panel unblanked across sleep and untouched by the
-    // brightness HUD.
-    bool any = false;
-    for (const auto& light : lights) {
-        if (light.type == LightType::BACKLIGHT) {
-            HwLightState state{};
-            // Standard Android convention: brightness in alpha channel of ARGB
-            state.color = 0xFF000000 | (brightness << 16) | (brightness << 8) | brightness;
-            hal->setLightState(light.id, state);
-            any = true;
-        }
-    }
-    return any;
+    return nanoplat::get().power->setBrightnessViaHal(brightness);
 }
 
 void NanoMenu::adjustBrightness(int direction) {
@@ -175,40 +145,11 @@ void NanoMenu::syncBrightnessToAndroid() {
     char buf[16];
     snprintf(buf, sizeof(buf), "%d", mBrightness);
     property_set("persist.gammaos.nano.brightness", buf);
-    static std::atomic<int> sPending{-1};      // latest level to push (-1 none)
-    static std::atomic<int> sPushed{-1};       // last level handed to `settings put`
-    static std::atomic<bool> sRunning{false};
-    if (sPushed.load() == mBrightness && sPending.load() < 0) return;   // already mirrored
-    sPending.store(mBrightness);
-    if (sRunning.exchange(true)) return;       // the worker drains sPending before it exits
-    std::thread([]() {
-        nanoThreadNormalPriority();
-        for (;;) {
-            const int lvl = sPending.exchange(-1);
-            if (lvl < 0) break;
-            sPushed.store(lvl);
-            char cmd[128];
-            snprintf(cmd, sizeof(cmd), "settings put system screen_brightness %d 2>/dev/null", lvl);
-            (void)system(cmd);
-        }
-        sRunning.store(false);
-        // A level queued between the last exchange and the flag clear is picked up by the next
-        // call (it sees sPending >= 0 and starts a new worker).
-    }).detach();
+    nanoplat::get().power->mirrorBrightness(mBrightness);
 }
 
 int NanoMenu::readAndroidBrightness() {
-    FILE* fp = popen("settings get system screen_brightness 2>/dev/null", "r");
-    if (!fp) return -1;
-    char buf[32] = {};
-    if (fgets(buf, sizeof(buf), fp)) {
-        pclose(fp);
-        int val = atoi(buf);
-        if (val >= 1 && val <= 255) return val;
-    } else {
-        pclose(fp);
-    }
-    return -1;
+    return nanoplat::get().power->savedBrightness();
 }
 
 // DSi / Minima themed slider HUD. Reuses the shared NanoSliderHud geometry + procedural icons so
@@ -542,118 +483,6 @@ void NanoMenu::renderLaunchBusyToast() {
 // Battery indicator
 // ---------------------------------------------------------------------------
 
-// Try the framework's IHealth AIDL HAL for battery state. This is the same
-// source of truth BatteryService reads, so values stay in sync with the
-// rest of Android (settings, system UI, apps). Returns true on success.
-// The cached std::shared_ptr<IHealth> avoids re-resolving the binder every
-// second; if the service restarts, isOk() will fail and we drop the handle.
-static bool queryHealthHal(int* outPercent, bool* outCharging) {
-    using aidl::android::hardware::health::BatteryStatus;
-    using aidl::android::hardware::health::IHealth;
-
-    static std::shared_ptr<IHealth> sHal;
-    if (!sHal) {
-        ndk::SpAIBinder binder(AServiceManager_checkService(
-                "android.hardware.health.IHealth/default"));
-        if (!binder.get()) return false;
-        sHal = IHealth::fromBinder(binder);
-        if (!sHal) return false;
-    }
-
-    int32_t cap = -1;
-    auto s1 = sHal->getCapacity(&cap);
-    if (!s1.isOk()) {
-        sHal.reset();
-        return false;
-    }
-    if (cap < 0) cap = 0;
-    if (cap > 100) cap = 100;
-    *outPercent = cap;
-
-    BatteryStatus status = BatteryStatus::UNKNOWN;
-    auto s2 = sHal->getChargeStatus(&status);
-    // If status query fails we still return a valid percent; charging stays
-    // whatever it was. Better than dropping the whole reading.
-    if (s2.isOk()) {
-        *outCharging = (status == BatteryStatus::CHARGING
-                        || status == BatteryStatus::FULL);
-    }
-    return true;
-}
-
-// HIDL @2.0 fallback: the TrimUI Brick (and other A14 vendor stacks) register
-// android.hardware.health@2.0::IHealth/default, not the newer AIDL HAL. This is
-// still the framework health HAL (BatteryService's source), not raw sysfs.
-static bool queryHealthHidl(int* outPercent, bool* outCharging) {
-    namespace H2 = android::hardware::health::V2_0;
-    namespace H1 = android::hardware::health::V1_0;   // BatteryStatus lives here
-    static android::sp<H2::IHealth> sHidl;
-    if (sHidl == nullptr) {
-        sHidl = H2::IHealth::getService("default");
-        if (sHidl == nullptr) return false;
-    }
-    int cap = -1;
-    auto r1 = sHidl->getCapacity([&](H2::Result res, int32_t v) {
-        if (res == H2::Result::SUCCESS) cap = v;
-    });
-    if (!r1.isOk()) { sHidl = nullptr; return false; }
-    if (cap < 0) return false;
-    if (cap > 100) cap = 100;
-    *outPercent = cap;
-    sHidl->getChargeStatus([&](H2::Result res, H1::BatteryStatus st) {
-        if (res == H2::Result::SUCCESS)
-            *outCharging = (st == H1::BatteryStatus::CHARGING
-                            || st == H1::BatteryStatus::FULL);
-    });
-    return true;
-}
-
-// Raw power_supply sysfs fallback. The IHealth HAL is the framework source of
-// truth, but it is not always reachable from every process context (e.g. the
-// resident nano overlay in the bootanim domain, or a minimal boot before the
-// HAL registers). The kernel power_supply nodes are always present once the
-// battery driver is up, so this keeps the indicator live when the binder path
-// returns nothing. Scans /sys/class/power_supply/* for the first node that
-// carries a capacity file and is of type "Battery".
-static bool queryHealthSysfs(int* outPercent, bool* outCharging) {
-    static const char* kBases[] = {
-        "/sys/class/power_supply/battery",
-        "/sys/class/power_supply/cw2015-battery",
-        "/sys/class/power_supply/bat",
-    };
-    auto readInt = [](const char* path, int* out) -> bool {
-        FILE* f = fopen(path, "r");
-        if (!f) return false;
-        int v = -1;
-        int n = fscanf(f, "%d", &v);
-        fclose(f);
-        if (n != 1) return false;
-        *out = v;
-        return true;
-    };
-    char path[256];
-    for (const char* base : kBases) {
-        snprintf(path, sizeof(path), "%s/capacity", base);
-        int cap = -1;
-        if (!readInt(path, &cap)) continue;
-        if (cap < 0) cap = 0;
-        if (cap > 100) cap = 100;
-        *outPercent = cap;
-        // status: "Charging"/"Full"/"Discharging"/"Not charging"/"Unknown"
-        snprintf(path, sizeof(path), "%s/status", base);
-        FILE* f = fopen(path, "r");
-        if (f) {
-            char st[32] = {};
-            if (fgets(st, sizeof(st), f))
-                *outCharging = (strncmp(st, "Charging", 8) == 0
-                                || strncmp(st, "Full", 4) == 0);
-            fclose(f);
-        }
-        return true;
-    }
-    return false;
-}
-
 // Read battery percentage and charging state. IHealth HAL is the primary
 // source (matches what BatteryService exposes to the rest of the system);
 // sysfs is the fallback if the HAL is not reachable (e.g. during early
@@ -664,25 +493,7 @@ void NanoMenu::pollBattery() {
     if (--mBatteryPollTicks > 0) return;
     mBatteryPollTicks = 60; // ~1s at 60fps
 
-    // Battery comes ONLY from the framework health HAL (BatteryService's source).
-    // We deliberately do NOT read power_supply sysfs directly: in minimal boot the
-    // HAL may not be registered yet, in which case the percentage stays unknown
-    // (-1, indicator hidden) until the framework comes online and reports it.
-    int pct = -1;
-    bool charging = false;
-    if (queryHealthHal(&pct, &charging) || queryHealthHidl(&pct, &charging)
-        || queryHealthSysfs(&pct, &charging)) {
-        mBatteryPercent = pct;
-        mBatteryCharging = charging;
-    }
-    // Charging status: the IHealth getChargeStatus query is unreliable on this device (it
-    // can leave the flag false while the charger is connected, so the DSi battery never
-    // turns green). The power_supply sysfs "status" node is the kernel truth, so always
-    // override the charging flag from it when it is readable (percentage still prefers the
-    // HAL above). This makes plug/unplug reflect within the 1s poll.
-    { int p2 = -1; bool c2 = false;
-      if (queryHealthSysfs(&p2, &c2)) mBatteryCharging = c2; }
-    // else: leave the last known value (or -1) until a source is reachable.
+    nanoplat::get().power->readBattery(mBatteryPercent, mBatteryCharging);
 }
 
 // Keep the DSi status-bar volume icon current with the REAL system volume. mVolume is only
@@ -1011,8 +822,7 @@ void NanoMenu::prepareShutdown(const char* action) {
     // the user has exited RetroArch, so priming here would cause a stale
     // game to auto-launch on the next boot.
 
-    // Proceed with the requested action
-    property_set("service.bootanim.nano_action", action);
+    nanoplat::get().power->powerAction(action);
 }
 
 } // namespace android

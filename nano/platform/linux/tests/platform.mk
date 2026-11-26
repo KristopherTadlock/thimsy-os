@@ -12,10 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# The Linux platform's host tests (docs/linux/IMPLEMENTATION.md G9): the shell gate and the control
-# keys, against Nano's compat shims and libthimsy (nano/test/host/compat/compat.mk), with g++ and
-# make only. The display back end and the EGL wraps need libdrm, GBM and EGL headers and are not
-# built here (G10 runs -fsyntax-only on them).
+# The Linux platform's host tests (docs/linux/IMPLEMENTATION.md G9, G7-main, G7-display, G7-launch-b,
+# G7-audio, G7-volumes, G7-power): the shell gate, the control keys, the display
+# (display/Display.cpp and PanelOrientation.cpp over fakes), the launcher (Launcher.cpp, with real
+# children), the platform's createPlatform (with nano/NanoPlatform.cpp), the audio streams' threads
+# (AudioPull.cpp), the Volumes (on data/'s files), the power (Power.cpp over a fake sysfs) and the
+# system actions (actions/, over a fake wpa_supplicant), against Nano's compat shims and libthimsy
+# (nano/test/host/compat/compat.mk), with g++ and make only. The display back end, the EGL wraps
+# and the display's KMS binding (display/DisplayKms.cpp) need libdrm, GBM and EGL headers, and
+# AudioAlsa.cpp alsa-lib's: they are not built here (G10 runs -fsyntax-only on them); the
+# kernel's DRM uapi headers (drm.h, drm_mode.h) are found in PLAT_DRM_UAPI, after the system's own
+# include directories.
 #
 #   nice -n 19 make -f nano/platform/linux/tests/platform.mk -j1 check
 #
@@ -36,12 +43,38 @@ include $(PLAT_NANO_DIR)/test/host/compat/compat.mk
 
 PLAT_WRAPS := $(shell sed -e 's/\#.*//' $(PLAT_DIR)/linker-wraps.txt)
 PLAT_WRAP_LDFLAGS := $(foreach s,$(PLAT_WRAPS),-Wl,--wrap=$(s))
-PLAT_CPPFLAGS := $(COMPAT_TEST_CPPFLAGS) -I$(PLAT_DIR)
+# nano/ for quoted includes only ("NanoPlatform.h"), so no header of nano/ shadows a shim.
+# The kernel's DRM uapi headers (linux-libc-dev) for <drm.h> and <drm_mode.h>, as libdrm's include
+# directory gives them on the image.
+PLAT_DRM_UAPI ?= /usr/include/drm
+PLAT_CPPFLAGS := $(COMPAT_TEST_CPPFLAGS) -I$(PLAT_DIR) -iquote $(PLAT_NANO_DIR) -idirafter $(PLAT_DRM_UAPI)
 
-PLAT_TESTS := shellgate_test controlkeys_test
+PLAT_TESTS := shellgate_test controlkeys_test linuxplatform_test display_test launcher_test audiopull_test volumes_test
+PLAT_TESTS += power_test actions_test  # G7-power
+# PLAT_SRCS_<test>: files of platform/linux; PLAT_NANO_SRCS_<test>: files of nano/.
 PLAT_SRCS_shellgate_test := ShellGate.cpp
 PLAT_SRCS_controlkeys_test := ControlKeys.cpp
+PLAT_SRCS_linuxplatform_test := LinuxPlatform.cpp display/Display.cpp display/PanelOrientation.cpp Launcher.cpp ShellGate.cpp AudioPull.cpp Volumes.cpp
+PLAT_SRCS_display_test := display/Display.cpp display/PanelOrientation.cpp
+PLAT_SRCS_audiopull_test := AudioPull.cpp
+PLAT_SRCS_volumes_test := Volumes.cpp
+# The launcher (G7-launch-b) runs children: it links the shell gate for its execve (--wrap), and
+# commitLaunch (NanoLaunchCommit.cpp) and the control keys for the path from a commit to a child.
+PLAT_SRCS_launcher_test := Launcher.cpp ControlKeys.cpp ShellGate.cpp
+PLAT_NANO_SRCS_linuxplatform_test := NanoPlatform.cpp NanoLaunchCommit.cpp
+PLAT_NANO_SRCS_launcher_test := NanoPlatform.cpp NanoLaunchCommit.cpp
+# G7-power: the power (with the control keys' request sequence) and the system actions.
+PLAT_POWER_SRCS := Power.cpp ControlKeys.cpp actions/SystemActions.cpp actions/Run.cpp actions/WpaCtrl.cpp
+PLAT_SRCS_linuxplatform_test += $(PLAT_POWER_SRCS)
+PLAT_SRCS_power_test := Power.cpp ControlKeys.cpp
+PLAT_SRCS_actions_test := actions/SystemActions.cpp actions/Run.cpp actions/WpaCtrl.cpp
+# G7-input: the input policy (padd's intercept and tap).
+PLAT_TESTS += inputpolicy_test
+PLAT_SRCS_inputpolicy_test := InputPolicy.cpp
+PLAT_SRCS_linuxplatform_test += InputPolicy.cpp
 PLAT_TEST_BINS := $(PLAT_TESTS:%=$(PLAT_O)/test/%)
+# volumes_test reads thimsy-session's own volumes.json files from data/.
+PLAT_TEST_DEFS := -DPLAT_TEST_DATA_DIR='"$(PLAT_TEST_DIR)/data"'
 
 .PHONY: check check-platform-linux platform-linux-clean
 
@@ -49,12 +82,17 @@ $(PLAT_O)/obj/%.o: $(PLAT_DIR)/%.cpp | compat-guard
 	@mkdir -p $(@D)
 	$(COMPAT_CC_RUN) $(CXX) $(COMPAT_STD) $(COMPAT_WARN) $(COMPAT_ASAN_FLAGS) $(PLAT_CPPFLAGS) -MMD -MP -c $< -o $@
 
-$(PLAT_O)/test-obj/%.o: $(PLAT_TEST_DIR)/%.cpp | compat-guard
+$(PLAT_O)/nano-obj/%.o: $(PLAT_NANO_DIR)/%.cpp | compat-guard
 	@mkdir -p $(@D)
 	$(COMPAT_CC_RUN) $(CXX) $(COMPAT_STD) $(COMPAT_WARN) $(COMPAT_ASAN_FLAGS) $(PLAT_CPPFLAGS) -MMD -MP -c $< -o $@
 
+$(PLAT_O)/test-obj/%.o: $(PLAT_TEST_DIR)/%.cpp | compat-guard
+	@mkdir -p $(@D)
+	$(COMPAT_CC_RUN) $(CXX) $(COMPAT_STD) $(COMPAT_WARN) $(COMPAT_ASAN_FLAGS) $(PLAT_CPPFLAGS) $(PLAT_TEST_DEFS) -MMD -MP -c $< -o $@
+
 define PLAT_TEST_RULE
-$(PLAT_O)/test/$(1): $(PLAT_O)/test-obj/$(1).o $(PLAT_SRCS_$(1):%.cpp=$(PLAT_O)/obj/%.o) $(COMPAT_ASAN_LIB) $(COMPAT_LIBTHIMSY_ASAN) | compat-guard
+$(PLAT_O)/test/$(1): $(PLAT_O)/test-obj/$(1).o $(PLAT_SRCS_$(1):%.cpp=$(PLAT_O)/obj/%.o) \
+		$(PLAT_NANO_SRCS_$(1):%.cpp=$(PLAT_O)/nano-obj/%.o) $(COMPAT_ASAN_LIB) $(COMPAT_LIBTHIMSY_ASAN) | compat-guard
 	@mkdir -p $$(@D)
 	$$(COMPAT_CC_RUN) $$(CXX) $$(COMPAT_ASAN_FLAGS) $$(PLAT_WRAP_LDFLAGS) $$(filter %.o,$$^) $$(NANOCOMPAT_ASAN_LIBS) -o $$@
 endef
@@ -76,6 +114,6 @@ check-platform-linux: compat-guard $(PLAT_TEST_BINS)
 
 platform-linux-clean:
 	@test -n "$(PLAT_O)" && test "$(PLAT_O)" != "/"
-	rm -rf -- "$(PLAT_O)/obj" "$(PLAT_O)/test-obj" "$(PLAT_O)/test" "$(PLAT_O)/log"
+	rm -rf -- "$(PLAT_O)/obj" "$(PLAT_O)/nano-obj" "$(PLAT_O)/test-obj" "$(PLAT_O)/test" "$(PLAT_O)/log"
 
--include $(wildcard $(PLAT_O)/obj/*.d $(PLAT_O)/test-obj/*.d)
+-include $(wildcard $(PLAT_O)/obj/*.d $(PLAT_O)/obj/*/*.d $(PLAT_O)/nano-obj/*.d $(PLAT_O)/test-obj/*.d)
