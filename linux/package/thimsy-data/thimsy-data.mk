@@ -27,10 +27,12 @@ THIMSY_DATA_SITE = $(or $(THIMSY_SRC_DIR),$(DL_DIR)/thimsy-src)
 THIMSY_DATA_SITE_METHOD = file
 THIMSY_DATA_SOURCE = nano-assets-$(THIMSY_DATA_VERSION).tar.gz
 THIMSY_DATA_LICENSE = CC-BY-4.0 (RetroArch icons), CC-BY-NC-4.0 (controller drawings), OFL-1.1 (fonts, Barlow Semi Condensed in place of Akrobat), MIT (ES-DE icons), Apache-2.0, Public Domain (NASA maps), Pixabay Content License (preview.wav)
-# TODO(G2a, build.sh): the export carries no licence texts except the
-# controllers' LICENSE; build.sh should add the repository's ATTRIBUTION.md and
-# NOTICE to the tarball so legal-info can save them.
-THIMSY_DATA_LICENSE_FILES = nano_xmb/controllers/LICENSE .thimsy-barlow/OFL.txt
+# The export carries no licence texts except the controllers' LICENSE, so
+# build.sh adds the repository's ATTRIBUTION.md and NOTICE (at HEAD) to the
+# tarball under .thimsy-licences/ ("assets_allowlist.py filter --licence"),
+# where legal-info finds them; the install skips .thimsy- files.
+THIMSY_DATA_LICENSE_FILES = nano_xmb/controllers/LICENSE .thimsy-barlow/OFL.txt \
+	.thimsy-licences/ATTRIBUTION.md .thimsy-licences/NOTICE
 THIMSY_DATA_DEPENDENCIES = host-python3
 
 THIMSY_DATA_BARLOW_COMMIT = 697600fcece1685b0ba409eb82868546def9a84e

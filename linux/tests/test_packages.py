@@ -519,6 +519,53 @@ class AssetAllowlist(unittest.TestCase):
         self.assertLess(export, filt)
         self.assertLess(filt, pack)
 
+    def test_source_tarball_carries_the_licence_texts(self):
+        """gfix2: thimsy-data's source tarball, which legal-info saves, carries the repository's
+        ATTRIBUTION.md and NOTICE (at HEAD), and LICENSE_FILES names them there."""
+        build = (LINUX / "build.sh").read_text(encoding="utf-8")
+        filt = build.index("assets_allowlist.py\" filter")
+        pack = build.index('gzip -9n >"$SRC/nano-assets-$SHA.tar.gz"')
+        self.assertIn('for f in ATTRIBUTION.md NOTICE; do', build)
+        self.assertLess(build.index('git -C "$REPO" show "HEAD:$f"'), filt)
+        call = build[filt:pack]
+        for f in ("ATTRIBUTION.md", "NOTICE"):
+            self.assertIn('--licence "$assets/licences/%s"' % f, call)
+            self.assertTrue((REPO / f).is_file(), f)
+        mk = lp.Recipe(LINUX / "package/thimsy-data/thimsy-data.mk").vars
+        files = mk["THIMSY_DATA_LICENSE_FILES"].split()
+        for f in ("ATTRIBUTION.md", "NOTICE"):
+            self.assertIn(aa.LICENCES + "/" + f, files)
+
+        tmp = Path(tempfile.mkdtemp(prefix="thimsy-assets-"))
+        self.addCleanup(shutil.rmtree, str(tmp), True)
+        src = self.fake_export(tmp, ["nano_xmb/controllers/LICENSE",
+                                     "nano_xmb/fonts/fontawesome-webfont.ttf"])
+        lic = tmp / "licences"
+        lic.mkdir()
+        for f in ("ATTRIBUTION.md", "NOTICE"):
+            (lic / f).write_bytes((REPO / f).read_bytes())
+        filtered = tmp / "filtered"
+        code, _, err = quiet(aa.main, ["filter", "--list", str(self.list_path),
+                                       "--licence", str(lic / "ATTRIBUTION.md"),
+                                       "--licence", str(lic / "NOTICE"), str(src), str(filtered)])
+        self.assertEqual(code, 0, err)
+        for f in ("ATTRIBUTION.md", "NOTICE"):
+            self.assertEqual((filtered / aa.LICENCES / f).read_bytes(), (REPO / f).read_bytes())
+        # Buildroot's legal-info copies each LICENSE_FILES entry from the extracted source.
+        for f in files:
+            if not f.startswith(".thimsy-barlow/"):   # copied in at post-extract
+                self.assertTrue((filtered / f).is_file(), f)
+        # The install leaves them out of the image.
+        dest = tmp / "dest"
+        code, _, err = quiet(aa.main, ["install", "--list", str(self.list_path), str(filtered), str(dest)])
+        self.assertEqual(code, 0, err)
+        self.assertFalse(any(aa.LICENCES in p.as_posix() for p in dest.rglob("*")))
+        # A missing licence file fails the filter.
+        code, _, err = quiet(aa.main, ["filter", "--list", str(self.list_path), "--licence",
+                                       str(lic / "MISSING"), str(src), str(tmp / "f2")])
+        self.assertEqual(code, 1)
+        self.assertIn("no licence file", err)
+
     def test_replacements_follow_android(self):
         """thimsy-data's Barlow is mods/50-nano.sh's: the same file for each Akrobat path, the
         same commit and the same hashes; build.sh writes them into thimsy-data's hash file."""
@@ -735,7 +782,8 @@ class Fragments(unittest.TestCase):
                     'busybox.fragment"'):
             self.assertIn(sym, text)
         bb = (LINUX / "board" / "common" / "busybox.fragment").read_text(encoding="utf-8")
-        for opt in ("CONFIG_IP=y", "CONFIG_UDHCPC=y", "CONFIG_NTPD=y", "CONFIG_FEATURE_FLOAT_SLEEP=y"):
+        for opt in ("CONFIG_IP=y", "CONFIG_UDHCPC=y", "CONFIG_NTPD=y", "CONFIG_FEATURE_FLOAT_SLEEP=y",
+                    "CONFIG_DD=y", "CONFIG_OD=y", "CONFIG_DESKTOP=y", "CONFIG_CHOWN=y"):
             self.assertIn(opt, bb)
 
     def test_rk3566_overlay_and_family(self):
