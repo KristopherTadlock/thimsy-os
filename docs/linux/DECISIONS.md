@@ -280,6 +280,7 @@ The owner's own decisions of 2026-11-25, listed for context. They were not chang
 | Q10 tests | core speed, builds and save round trips | section 6.2's core tests, Phases 2 and 3 |
 | D4, D11, D23, D25 | Phase 0 or 2a confirmation | each entry above says what reopens it |
 | Slate (gfix) | Linux's default ES-DE theme. Slate is denied as a whole because ASSETS.md marks its per-system `*/images/logo.svg` ASK (trademark logos); Colorful is not in the export and its `*.webp` art is ASK too, so Linux has no ES-DE theme. Options: (a) the owner answers the trademark ASK: if nominative logo use is acceptable (every ES-DE build ships it), the ASK rows become KEEP and Slate ships whole, the cheapest option; (b) a filtered Slate: `assets_allowlist` denies archive members instead of the whole archive and thimsy-data rebuilds `slate-es-de.zip` reproducibly without the logos (Nano's fallback for a missing logo needs checking); (c) Colorful (Simplified) as Android ships it, with `mods/50-nano.sh`'s theme preparation (Urbanist/Barlow swaps, XML edits, quake.webp removal) moved into a script both builds share, which still needs the same ASK answered for the webp art; (d) no theme, relying on Nano's built-in look, which needs checking that Nano starts on Linux without any theme | the owner's decision, pending; gfix recommends (a) if the owner agrees, else (b) |
+| Android set-up prompt (review device-safety-3) | Android shows 'Unsupported SD card, set up' for a freshly written Thimsy card until Linux's first boot creates the basic-data games entry; tapping set up erases the Thimsy install (not user data). Options: (a) installer and docs warning only (current); (b) the image carries a small formatted basic-data entry (e.g. a FAT THIMSY-README) so vold mounts something and no wizard appears, which changes the layout and gpt_check's vold rule | the owner's decision, pending; recommended (b) if a FAT stub is acceptable on the card, else (a) |
 
 ## Implementation design
 
@@ -851,3 +852,44 @@ Each still-open problem from the wave 3 reports, once, with who acts: integ3 (th
 - Run `regen` again if a merge touches `nano/` outside the fork-only paths (G5); `regen --check` needs `work/nano-base` from `fetch --from-cache`, and `work/nano-base` and `work/nano-composed` are gitignored (G1c, G9).
 - Every Makefile relinks its unit programs on each run, because `compat.mk`'s libthimsy targets are phony; the cost is small (G1c).
 - In the Git Bash used by the agents, heredocs written through the Bash tool turned `\\` into `\` (and `\b` into a backspace) and dropped the backslash in `\\[`, `\\.` and `\\{`; write scripts, CMake and regex files with Write or Edit; `test_nano_cmake.py` guards the CMake files against this (G4, G6).
+
+## Integration and review after wave 3
+
+Step `integ3` joined wave 3's pieces (merge `ab0bf62`). A review of the whole fork then ran in six dimensions (Android build safety, device and data safety, C++ correctness, security, build integration, test quality). Each finding was checked by a second agent told to refute it: 23 were confirmed and 4 rejected. Of the 23, 21 were fixed with tests and 2 are left for the owner (below and in the Deferred table).
+
+### Integration (INT)
+
+- **INT-1:** [linux] is every platform/linux/**.cpp except tests/, plus NanoPlatform.cpp; test_nano_sources holds both platform sections equal to their folders.
+- **INT-2:** Whatever [core] needs a real value for is defined by the platform, never by stubgen: gEarlyDrmFd=-1 in each main, nanoRgbFollowSample() as a no-op in DrmHost.cpp and DrmBuffersGbm.cpp.
+- **INT-3:** The GBM back end keeps its own NDK usage-bit constants instead of growing the stub header, whose budget only shrinks.
+- **INT-4:** CMake refuses a Linux configure whose [linux] lacks EglWraps.cpp, because linker-wraps.txt wraps the two EGL symbols it defines.
+- **INT-5:** tests/run.sh cxx also runs the Linux platform's platform.mk suite, under check-compat's guard class; stubs and headless-0 run under check-unit-0's.
+- **INT-6:** The session applies gpu.json's "env" only to Nano (games inherit it), reads it once at start, and skips names that are not shell variable names or values that are not strings.
+- **INT-7:** The family property is ro.thimsy.family, written by thimsy-prop from device.json "family"; ro.thimsy.device.family stays as the generic mapping.
+- **INT-8:** ro.thimsy.modules comes from a new optional device.json "modules" array (pattern [A-Za-z0-9_-]+, unique), space-joined by thimsy-prop.
+- **INT-9:** install.json lives at /storage/thimsy/install.json. S01props passes all three paths to thimsy-prop explicitly, and thimsy-prop's defaults match them.
+- **INT-10:** device.schema.json gains product (manufacturer, model, brand, device, name, platform) and props (ro.* keys with scalar values), the fields thimsy-prop reads.
+- **INT-11:** The dev overlay holds only etc/motd. The serial getty stays Buildroot's BR2_TARGET_GENERIC_GETTY written by 30-permissions.sh; adbd's USB gadget set-up is deferred.
+- **INT-12:** S02padd stop signals only a process whose /proc/<pid>/comm is thimsy-padd.
+- **INT-13:** fixedperf-on/-off use the same governors as boot/deferred; the hook skips bad files and returns 0.
+- **INT-14:** The ASSETS.md Akrobat rows are changed in place (same line count), so the assets.list line references stay stable.
+
+### Review fixes (REV)
+
+- **REV-1:** A control-key row for an exact value overrides that key's catch-all row (ControlKeys::onWrite). nano_action reboot and shutdown go through session requests, not sys.powerctl.
+- **REV-2:** nanocompat's log ring owns stdout and stderr when they are the same file: no stderr copy, fstat-based size, dup2 on rotation.
+- **REV-3:** The thimsy-data source tarball is the allowlist-filtered export plus `.thimsy-left-out.txt` (names only).
+- **REV-4:** `--publish` implies `--clean` and empties images/<target>/. Every build writes images/thimsy-build.stamp. A hardware `--publish` requires a published, clean tier stamp at HEAD.
+- **REV-5:** Local-site packages in this tree are versioned by THIMSY_GIT_SHA, enforced by lint_packages.py.
+- **REV-6:** The C++ test runs hold /tmp/thimsy-cxx.lock for the whole run and use per-checkout copies and build trees keyed by cksum of the checkout path.
+- **REV-7:** The scenario runner fails on any nano-headless exit other than 0 and on any sanitizer marker in its log.
+- **REV-8:** A fork-only path changed by an incoming patch is a merge conflict, and regen refuses fork-only sections. The nano-144 merge driver refuses a dirty nano/.
+- **REV-9:** The surface test counts a block difference for any path that is not a file of nano/ at HEAD.
+- **REV-10:** The kernel command line carries `gpt`. D60 ignores TERM while it holds its lock, and rcK waits up to 10 s for that lock.
+- **REV-11:** A respawned session stops orphaned fsck checks through pid files before coldplug.
+- **REV-12:** eMMC nodes that appear after Nano started cause a single Nano restart with a new mask (no setns into Nano's namespace).
+
+### Review findings left open
+
+- **device-safety-2 (re-writing the image over a used card):** every image ends at 2408 MiB, and D60 recreates entry 5 at the same start, so writing the image again over a card that already holds a Thimsy games library makes D60 format that library on the next boot. Only the first 33 sectors are overwritten by the image's backup GPT, so the data was still recoverable until the format. Decided autonomously, being implemented after this review: the image ends with a gap, so the old exFAT boot region survives a re-write, and D60 re-adopts an exFAT labelled THIMSY that it finds at the games start (it recreates the entry over its extent and retypes it basic data without formatting). Anything else is formatted as at a first boot, so second-hand cards still work. For owner audit.
+- **device-safety-3 (Android's 'Unsupported SD card' prompt before first boot):** with no vold-visible entry, Android offers to set up (format) a freshly written card. That would erase the Thimsy install, but not user data. I39 and R5's rationale is corrected in IMPLEMENTATION.md E.6, and the installer must tell users not to set the card up. A small formatted basic-data entry in the image would stop the prompt, but it changes the layout and gpt_check's vold rule. The owner decides (Deferred table).
