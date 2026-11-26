@@ -559,6 +559,23 @@ class GpuPack(unittest.TestCase):
         self.assertTrue((self.dir / "images/gpu-swrast.erofs").is_file())
 
 
+    def test_pack_is_unpacked_into_each_card_not_mounted(self):
+        """Config.in, gpu_pack.py and card assembly agree: 10-erofs.sh unpacks the family's
+        gpu-<driver>.erofs into each card's root; nothing mounts it at boot (gfix)."""
+        texts = {p: (LINUX / p).read_text(encoding="utf-8") for p in (
+            "package/thimsy-gpu-pack/Config.in", "package/thimsy-gpu-pack/src/gpu_pack.py")}
+        for p, text in texts.items():
+            flat = " ".join(text.split())
+            self.assertNotIn("mounted over", flat, p)
+            self.assertIn("10-erofs.sh", flat, p)
+        erofs = (LINUX / "board/common/post-image.d/10-erofs.sh").read_text(encoding="utf-8")
+        self.assertRegex(erofs, r'fsck\.erofs --extract="\$stage" --overwrite "\$pack"')
+        initd = LINUX / "board/common/rootfs-overlay/etc/init.d"
+        for f in sorted(initd.rglob("*")):
+            if f.is_file():
+                self.assertNotIn("gpu-", f.read_text(encoding="utf-8", errors="replace"), f)
+
+
 class Fragments(unittest.TestCase):
     """The userland and hardware-pack additions the init scripts need (G2e's open items)."""
 
