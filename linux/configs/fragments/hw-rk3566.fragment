@@ -1,7 +1,7 @@
 # The RK3566 hardware pack (wave 0: the RG ARC-D and ARC-S). The kernel version,
 # DTB list and firmware come from generated/rk3566/defconfig.fragment, written
 # by hand in Phase 2a and by thimsy-import later (plan 3.2).
-BR2_ROOTFS_POST_SCRIPT_ARGS="hw rk3566"
+BR2_ROOTFS_POST_SCRIPT_ARGS="hw --family=rk3566"
 
 # Kernel: ROCKNIX's RK3566 config and patches (gpl/generated/rk3566/), then
 # FlipBase's RK3566-generic patches and Thimsy's (gpl/board/rk3566/), then

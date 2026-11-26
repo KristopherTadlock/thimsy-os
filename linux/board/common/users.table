@@ -1,0 +1,11 @@
+# users.table: users Buildroot adds to the root (BR2_ROOTFS_USERS_TABLES,
+# makeusers format: username uid group gid password home shell groups comment).
+# SPDX-License-Identifier: MIT
+#
+# None. Everything on Thimsy's root runs as root (IMPLEMENTATION B.5: Nano
+# runs as root and is fenced off the eMMC by thimsy-session's mount
+# namespace, not by a user), and every file in the root is owned by root:
+# post-image.d/10-erofs.sh writes each card's root with --all-root, which
+# is only right while this table adds no user. A service that should drop
+# privileges adds its user here and its files' owners in device.table, and
+# then 10-erofs.sh must stop passing --all-root.

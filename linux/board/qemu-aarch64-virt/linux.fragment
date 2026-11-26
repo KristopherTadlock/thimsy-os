@@ -1,0 +1,48 @@
+# Thimsy's kernel fragment for the QEMU aarch64 virt test disk, on top of
+# mainline's arm64 defconfig (hw-qemu-aarch64.fragment; IMPLEMENTATION E.2,
+# decision I8). Everything the boot needs is built in: nothing loads modules
+# before Nano (plan 9.3), and the disk carries no initramfs.
+# SPDX-License-Identifier: MIT
+#
+# Most of these are already =y in arm64's defconfig (guess, from memory of
+# 6.12); stating them keeps the test disk bootable if the defconfig changes.
+
+# No initramfs: the kernel mounts the EROFS root itself (root=/dev/vda3).
+CONFIG_INITRAMFS_SOURCE=""
+CONFIG_LOCALVERSION="-thimsy-qemu"
+
+# virtio: the disk, the GPU Nano draws on, the keyboard padd reads, the
+# network, entropy.
+CONFIG_VIRTIO=y
+CONFIG_VIRTIO_PCI=y
+CONFIG_VIRTIO_MMIO=y
+CONFIG_VIRTIO_BLK=y
+CONFIG_VIRTIO_NET=y
+CONFIG_VIRTIO_INPUT=y
+CONFIG_HW_RANDOM_VIRTIO=y
+CONFIG_DRM=y
+CONFIG_DRM_VIRTIO_GPU=y
+
+# The card: GPT with PARTUUIDs, the EROFS root (lz4, as mkfs.erofs -zlz4hc
+# writes it), the ext4 data partition, the exFAT games partition D60firstboot
+# makes.
+CONFIG_PARTITION_ADVANCED=y
+CONFIG_EFI_PARTITION=y
+CONFIG_EROFS_FS=y
+CONFIG_EROFS_FS_XATTR=y
+CONFIG_EROFS_FS_POSIX_ACL=y
+CONFIG_EROFS_FS_ZIP=y
+CONFIG_EXT4_FS=y
+CONFIG_EXFAT_FS=y
+CONFIG_DEVTMPFS=y
+CONFIG_TMPFS=y
+
+# Input: evdev for padd, uinput for the virtual pad it creates.
+CONFIG_INPUT_EVDEV=y
+CONFIG_INPUT_UINPUT=y
+
+# The serial console the boot test reads (ttyAMA0), the RTC.
+CONFIG_SERIAL_AMBA_PL011=y
+CONFIG_SERIAL_AMBA_PL011_CONSOLE=y
+CONFIG_RTC_CLASS=y
+CONFIG_RTC_DRV_PL031=y
