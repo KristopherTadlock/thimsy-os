@@ -750,7 +750,9 @@ Partition types per plan 8.2 and open question 8; names and the data type decide
 | 2 | `boot` | Linux reserved | `8DA63339-0007-60C0-C436-083AC8230908` | 40 MiB (40 MiB) |
 | 3 | `root` | Linux root (arm64) | `B921B045-1DF0-41C3-AF44-4C6F280D3FAE` | 1 GiB (1 GiB) *(guess)* |
 | 4 | `data` | Linux home | `933AC7E1-2EB4-4F13-B844-0E14E2AEF915` | 256 MiB *(guess)* |
-| 5 | `games` | Microsoft basic data | `EBD0A0A2-B9E5-4433-87C0-68B6B72699C7` | not in the written image: created at first boot over the free space, with exFAT `THIMSY` |
+| 5 | `games` | Microsoft basic data | `EBD0A0A2-B9E5-4433-87C0-68B6B72699C7` | not in the written image (which ends 1 MiB after `data`): created at first boot from 2 MiB after `data` over the free space, with exFAT `THIMSY`, or re-adopted from an earlier install |
+
+**The image's tail** (review finding device-safety-2): the written image ends 1 MiB after `data` (RK3566: at 2409 MiB, `size` in `genimage.cfg`), its backup GPT in its last 33 sectors, and `D60firstboot` starts `games` 2 MiB after `data` (2410 MiB). Writing the image again over a used card therefore leaves the old library's exFAT whole, and D60 re-adopts an exFAT labelled `THIMSY` that it finds at that start (entry 5 over its extent, basic data, no format); anything else there is formatted. `gpt_check.py` refuses an image that does not end exactly 1 MiB after its last entry, and a booted card whose games entry starts earlier. `linux/docs/init.md` has the details.
 
 Spares stay unallocated until an update writes them (plan 5.2). The exFAT filesystem is made on the device, because exFAT can't be grown and creating it on the PC is what the installer avoids (plan 8.2); the name `games` and label `THIMSY` are Phase 3's to confirm (plan 7: the data-partition label).
 

@@ -13,7 +13,7 @@
 #   /usr/libexec/thimsy/android-bin  the curated /system/bin (B.5)
 # /root is Buildroot's own line ("/root d 700" in system/device_table.txt): it
 # stays a directory, and S00base bind-mounts /storage/.config/thimsy/home/root
-# over it at boot.
+# over it at boot on dev builds and on release builds with SSH turned on.
 #
 # name                               type mode uid gid major minor start inc count
 /storage                             d    755  0   0   -     -     -     -   -

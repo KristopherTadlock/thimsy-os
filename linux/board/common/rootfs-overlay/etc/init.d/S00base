@@ -110,11 +110,41 @@ first_boot_tree() {
 	: > "$stamp"
 }
 
-# /root is a directory of the read-only root; root's home lives on /storage.
+# /root is an empty 0700 directory of the read-only root. Root's home is
+# bound over it from the data partition (ext4, so its modes hold; never the
+# games exFAT) only where something can log in as root: dev builds, and
+# release builds once the user has turned SSH on (D50ssh: key-only). A
+# release build with SSH off has no root login at all, so it keeps the empty
+# read-only /root and nothing on the card can plant keys or a profile there.
+# The modes and owner are set again at every boot, not only by the first-boot
+# tree, and a home that is a link is not followed: dropbear refuses keys that
+# others can write, and the card can be edited on a PC.
 bind_home() {
 	is_mounted /root && return 0
-	mkdir -p "$THIMSY_CONFIG/home/root" || return 1
-	"$MOUNT" --bind "$THIMSY_CONFIG/home/root" "$R/root"
+	thimsy_build_prop ro.thimsy.build.type release
+	if [ "$BUILD_PROP_OUT" != dev ]; then
+		thimsy_persist persist.thimsy.ssh.enabled 0
+		if [ "$PERSIST_OUT" != 1 ]; then
+			thimsy_log $TAG "release build, SSH off: /root stays the root's empty directory"
+			return 0
+		fi
+	fi
+	home=$THIMSY_CONFIG/home/root
+	for _p in "$THIMSY_CONFIG/home" "$home" "$home/.ssh" "$home/.ssh/authorized_keys"; do
+		if [ -L "$_p" ]; then
+			thimsy_warn $TAG "${_p#"$R"} is a link: root's home is not bound"
+			return 0
+		fi
+	done
+	mkdir -p "$home/.ssh" || return 1
+	set -- "$home" "$home/.ssh"
+	[ -f "$home/.ssh/authorized_keys" ] && set -- "$@" "$home/.ssh/authorized_keys"
+	"$CHOWN" 0:0 "$@" || return 1
+	chmod 0700 "$home" "$home/.ssh" || return 1
+	if [ -f "$home/.ssh/authorized_keys" ]; then
+		chmod 0600 "$home/.ssh/authorized_keys" || return 1
+	fi
+	"$MOUNT" --bind "$home" "$R/root"
 }
 
 case ${1:-start} in

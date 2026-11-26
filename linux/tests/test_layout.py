@@ -8,20 +8,24 @@ entry is made at first boot, I39).
 from __future__ import annotations
 
 import os
+import re
 import sys
 import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-LINUX = os.path.dirname(HERE)
-sys.path.insert(0, os.path.join(LINUX, "tools"))
+LINUX_DIR = os.path.dirname(HERE)
+sys.path.insert(0, os.path.join(LINUX_DIR, "tools"))
 
 import gpt_check  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+LINUX = Path(LINUX_DIR)
 
 MIB = 1024 * 1024
 BOARDS = {
-    "rk3566": os.path.join(LINUX, "board", "rk3566", "genimage.cfg"),
-    "qemu-aarch64-virt": os.path.join(LINUX, "board", "qemu-aarch64-virt", "genimage.cfg"),
+    "rk3566": os.path.join(LINUX_DIR, "board", "rk3566", "genimage.cfg"),
+    "qemu-aarch64-virt": os.path.join(LINUX_DIR, "board", "qemu-aarch64-virt", "genimage.cfg"),
 }
 # E.6's table: name, type GUID, offset, size.
 E6 = [
@@ -129,12 +133,40 @@ class LayoutTest(unittest.TestCase):
     def test_refuses_games_entry(self):
         games = ('\tpartition games {\n'
                  '\t\tpartition-type-uuid = "EBD0A0A2-B9E5-4433-87C0-68B6B72699C7"\n'
-                 '\t\toffset = 2408M\n\t\tsize = 64M\n\t}\n}\n')
+                 '\t\toffset = 2410M\n\t\tsize = 64M\n\t}\n}\n')
         text, _, _ = load("rk3566")
         end = text.rindex("}")
         rep = self.mutated("rk3566", text, text[:end] + games)
         self.assertFalse(rep.ok)
         self.assertTrue(any("vold mounts" in e for e in rep.errors), rep.errors)
+
+    def test_image_ends_a_mib_after_data(self):
+        """device-safety-2: the image's backup GPT (its last 33 sectors) ends 1 MiB before
+        the games start D60firstboot computes, so a re-written image leaves the old
+        library's boot region (its first 24 sectors) intact."""
+        d60 = (LINUX / "board/common/rootfs-overlay/etc/init.d/deferred/D60firstboot"
+               ).read_text(encoding="utf-8")
+        m = re.search(r"^GAP_MIB=(\d+)$", d60, re.M)
+        self.assertIsNotNone(m, "D60firstboot has no GAP_MIB")
+        gap = int(m.group(1))
+        self.assertEqual(gap, gpt_check.GAMES_GAP_MIB)
+        for fam in BOARDS:
+            with self.subTest(family=fam):
+                _, images, _ = load(fam)
+                im = images[0]
+                end = max(p["offset"] + p["size"] for p in im["partitions"] if p["in_table"])
+                end = (end + MIB - 1) // MIB * MIB
+                self.assertEqual(im["size"], end + gpt_check.IMAGE_TAIL_MIB * MIB)
+                games = end + gap * MIB
+                self.assertLessEqual(im["size"] + MIB, games)
+                self.assertEqual(games, 2410 * MIB)   # E.6, init.md
+
+    def test_refuses_missing_or_short_image_size(self):
+        for old, new in (("\tsize = 2409M\n", ""), ("size = 2409M", "size = 2408M"),
+                         ("size = 2409M", "size = 2410M")):
+            with self.subTest(new=new):
+                rep = self.mutated("rk3566", old, new)
+                self.assertTrue(any("device-safety-2" in e for e in rep.errors), rep.errors)
 
     def test_refuses_linux_filesystem_type(self):
         rep = self.mutated("qemu-aarch64-virt", "933AC7E1-2EB4-4F13-B844-0E14E2AEF915",

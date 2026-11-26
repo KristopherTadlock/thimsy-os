@@ -30,6 +30,8 @@ thimsy_tool PADD thimsy-padd
 thimsy_tool FSCK_EXT4 e2fsck
 thimsy_tool SFDISK sfdisk
 thimsy_tool MKFS_EXFAT mkfs.exfat
+thimsy_tool DD dd
+thimsy_tool CHOWN chown
 thimsy_tool SYNC sync
 thimsy_tool ALSACTL alsactl
 thimsy_tool AMIXER amixer
