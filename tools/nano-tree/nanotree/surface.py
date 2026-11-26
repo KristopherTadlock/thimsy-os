@@ -246,6 +246,43 @@ def coverage(diffs: Set[str], commits: Sequence[Commit]) -> Tuple[List[str], Lis
     return sorted(diffs - covered), unannotated
 
 
+def surface_joins(missing: Sequence[str], unannotated: Sequence[Tuple[Commit, List[str]]],
+                  commits: Sequence[Commit],
+                  surface_of: Callable[[str], Optional[Set[str]]]) -> Tuple[List[str], List[Tuple[Commit, List[str]]]]:
+    """coverage()'s result, less what was off the surface when it changed (G7-main). A file can reach
+    the patch while no module compiles it and no surface file includes it (G5's NanoPlatform.cpp),
+    and join the surface later (G7-main adds it to gammaos-nano's srcs). Then:
+    - an unannotated commit that changed it while it was off the surface of that commit's tree is
+      not a violation;
+    - a differing path that no annotated commit changed is covered when the first commit of COMMITS
+      (oldest first) after its last change whose tree has it on the surface is annotated: the
+      commit that put it there (an Android.bp or include change, so a patch change, so in COMMITS)
+      says so.
+    SURFACE_OF(sha) is the surface of that commit's tree, or None when it can't be computed (no
+    nano/Android.bp there); then nothing is relieved for that commit."""
+    cache: Dict[str, Optional[Set[str]]] = {}
+
+    def on(sha: str, path: str) -> Optional[bool]:
+        if sha not in cache:
+            cache[sha] = surface_of(sha)
+        s = cache[sha]
+        return None if s is None else path in s
+
+    still: List[Tuple[Commit, List[str]]] = []
+    for c, paths in unannotated:
+        kept = [p for p in paths if on(c.sha, p) is not False]
+        if kept:
+            still.append((c, kept))
+    flagged = {p for _, ps in still for p in ps}
+    left: List[str] = []
+    for p in missing:
+        last = max((i for i, c in enumerate(commits) if p in c.changed), default=-1)
+        joined = next((c for c in commits[last + 1:] if on(c.sha, p)), None) if last >= 0 else None
+        if joined is None or not joined.annotated or p in flagged:
+            left.append(p)
+    return left, still
+
+
 # -- git
 
 class Repo:
@@ -344,3 +381,18 @@ class Repo:
             changed = {p for p in paths if after.get(p) != before.get(p)}
             commits.append(Commit(sha, msg, changed))
         return commits
+
+    def surface_at(self, rev: str, prefix: str) -> Optional[Set[str]]:
+        """compute_surface() of REV's tree (nano/ and the patch), from git objects; None when REV
+        has no nano/Android.bp."""
+        tree = self.ls_tree(rev, "nano")
+        if "Android.bp" not in tree:
+            return None
+
+        def read(rel: str) -> bytes:
+            data = self.cat(tree[rel])
+            return data if data is not None else b""
+
+        blob = self.patch_blob(rev)
+        patch = self.cat(blob) if blob else None
+        return compute_surface(sorted(tree), read, prefix, outside_sections(patch, prefix) if patch else ())
