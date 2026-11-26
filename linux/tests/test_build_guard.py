@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 try:
@@ -322,9 +323,68 @@ class BuildSh(unittest.TestCase):
         code, _, err = self.build("--dry-run", "no_such_target")
         self.assertEqual(code, 2)
         self.assertIn("known: thimsy_v8_0", err)
-        code, _, err = self.build("card", "rg-arc-d")
+        code, _, err = self.build("card")
         self.assertEqual(code, 2)
-        self.assertIn("G8", err)
+        self.assertIn("no device given", err)
+
+    def test_card_runs_the_hardware_packs_post_image_for_its_devices(self):
+        code, out, err = self.build("--dry-run", "card", "qemu-virt")
+        self.assertEqual(code, 0, err)
+        self.assertIn("make O=/build/output-thimsy_qemu_aarch64_hw thimsy_qemu_aarch64_hw_defconfig", out)
+        self.assertIn("then make target-post-image (log: images/thimsy_qemu_aarch64_hw/build.log; "
+                      'environment THIMSY_BUILD_TARGET=thimsy_qemu_aarch64_hw THIMSY_DEVICES="qemu-virt")', out)
+        steps = [line.split(":", 1)[0] for line in out.splitlines()]
+        self.assertLess(steps.index("guard"), steps.index("card"))
+        self.assertNotIn("archive", steps)  # nothing is rebuilt, so no sources
+        self.assertNotIn("buildroot", steps)
+        self.assertFalse(self.work.exists(), "a dry run must not write")
+        code, out, err = self.build("--dry-run", "card", "anbernic-rg-arc-s", "anbernic-rg-arc-d",
+                                    "anbernic-rg-arc-s")
+        self.assertEqual(code, 0, err)
+        self.assertIn('then make target-post-image (log: images/thimsy_rk3566_hw/build.log; environment '
+                      'THIMSY_BUILD_TARGET=thimsy_rk3566_hw THIMSY_DEVICES="anbernic-rg-arc-s anbernic-rg-arc-d")', out)
+
+    def test_card_argument_errors(self):
+        for args, text in ((("card", "no-such-device"), "no board/*/devices/no-such-device.json"),
+                           (("card", "../x"), "bad device id"),
+                           (("card", "Qemu-Virt"), "bad device id"),
+                           (("card", "qemu-virt", "anbernic-rg-arc-d"), "one family per run"),
+                           (("--publish", "card", "qemu-virt"), "--publish"),
+                           (("--clean", "card", "qemu-virt"), "--clean")):
+            with self.subTest(args=args):
+                code, out, err = self.build("--dry-run", *args)
+                self.assertEqual(code, 2, err)
+                self.assertIn(text, err)
+                self.assertEqual(out, "")
+
+    def test_targets_export_the_build_target(self):
+        code, out, err = self.build("--dry-run", "thimsy_v8_2")
+        self.assertEqual(code, 0, err)
+        self.assertIn("then make all sdk (log: images/thimsy_v8_2/build.log; environment "
+                      "THIMSY_BUILD_TARGET=thimsy_v8_2)", out)
+        self.assertNotIn("THIMSY_DEVICES", out)
+        text = BUILD.read_text(encoding="utf-8")
+        self.assertIn('-e THIMSY_BUILD_TARGET="$TARGET"', text)
+        self.assertIn("export THIMSY_BUILD_TARGET", text)
+
+    def test_export_assets_is_called_as_the_tool_takes_it(self):
+        """nano_tree.py export-assets OUT: build.sh's call must parse with the tool's own parser."""
+        import re
+        text = BUILD.read_text(encoding="utf-8")
+        calls = re.findall(r'nano_tree\.py" export-assets (.*)', text)
+        self.assertEqual(len(calls), 1, calls)
+        args = calls[0].split()
+        self.assertFalse([a for a in args if a.startswith("-")], args)
+        sys.path.insert(0, str(LINUX.parent / "tools" / "nano-tree"))
+        try:
+            import nano_tree
+        finally:
+            sys.path.pop(0)
+        seen = {}
+        with unittest.mock.patch.object(nano_tree, "cmd_export_assets",
+                                        lambda a: seen.setdefault("out", a.out) and 0):
+            nano_tree.main(["export-assets"] + [a.strip('"') for a in args])
+        self.assertEqual(seen["out"], args[0].strip('"'))
 
     def test_help(self):
         code, out, _ = self.build("--help")

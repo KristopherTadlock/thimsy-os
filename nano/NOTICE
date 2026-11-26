@@ -1,0 +1,29 @@
+Nano (this directory)
+Copyright (C) 2026 The Thimsy OS Project
+
+Nano is GammaOS Next's frontend (frameworks/base/cmds/gammaos-nano in
+https://github.com/TheGammaSqueeze/GammaOSNextDistribution-14, by
+TheGammaSqueeze), licensed under the Apache License, Version 2.0 (LICENSE in
+this directory), with the Thimsy OS project's changes under the same license.
+The repository's top-level NOTICE and ATTRIBUTION.md cover the rest of
+Thimsy OS and the assets Nano draws.
+
+This directory also holds parts under other licenses:
+
+- NanoOskKanji.h: the on-screen keyboard's kana-to-kanji table, generated
+  from SKK-JISYO (the SKK dictionary), which is licensed under the GNU General
+  Public License, version 2 or later. A Nano binary built with it is a
+  combination distributed under the GPL's terms, and its complete source is
+  published with every release that ships it (docs/linux/DECISIONS.md, I41).
+
+- liba52/: liba52 from a52dec 0.7.4 (Aaron Holtzman, Michel Lespinasse and
+  contributors), licensed under the GNU General Public License, version 2 or
+  later; liba52/COPYING has the license text. NanoAc3.cpp and NanoAc3.h wrap
+  it. They are built only when AC-3 decoding is enabled (NANO_WITH_AC3=ON on
+  Linux, which the Thimsy Base leaves off).
+
+- nanosvg/: NanoSVG by Mikko Mononen, under the zlib license (the notice at
+  the top of nanosvg/nanosvg.h and nanosvg/nanosvgrast.h).
+
+- rcheevos/: rcheevos by RetroAchievements.org, under the MIT license
+  (rcheevos/LICENSE).

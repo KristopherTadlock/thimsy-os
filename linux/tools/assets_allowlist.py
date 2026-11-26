@@ -7,9 +7,10 @@ Usage:
                       write package/thimsy-data/assets.list
   assets_allowlist.py --check [...]
                       exit 1 if the committed list differs from a fresh one
-  assets_allowlist.py install --list FILE [--report FILE] SRC DEST
+  assets_allowlist.py install --list FILE [--report FILE] [--replacements DIR] SRC DEST
                       copy the files of SRC (an asset export, laid out as
-                      /system/etc) that the list allows into DEST
+                      /system/etc) that the list allows into DEST, and the
+                      replacements of denied files (below) from DIR
 
 The list is generated, never written by hand, and never mirrors Android.bp's
 prebuilt_etc modules: what ships is what ASSETS.md marks KEEP. Every row of
@@ -47,6 +48,14 @@ PATTERN an installed path under /system/etc in which '*' stays inside one
 folder. "install" copies a file only if a keep pattern matches it and no deny
 pattern does; it lists in --report every file it left out, and refuses a
 symlink or a path that leaves SRC.
+
+Some denied assets have a free replacement that Android installs under the
+same name (mods/50-nano.sh): Nano's two Akrobat files become Barlow Semi
+Condensed Medium and SemiBold, with Barlow's OFL text beside them, because
+Nano opens those paths for theme text with no fontPath. REPLACEMENTS maps
+them. With --replacements DIR (thimsy-data's downloads), each such path that
+SRC has, and the list denies, is installed from DIR instead, as Android does
+it; without it the path is only left out.
 
 Exit status: 0 done, 1 an error or (--check) a stale list, 2 usage.
 Standard library only; Python 3.8 and later. Generating needs the repository
@@ -87,6 +96,17 @@ DATA: Tuple[Tuple[str, str], ...] = (
     ("ps3xmb/controllers/LICENSE", "data: the controller drawings' licence"),
     ("ps3xmb/controllers/svg/*.svg", "data: controller drawings (CC BY-NC 4.0, ATTRIBUTION.md)"),
     ("ps3xmb/daijishou/*.json", "data: Daijishou's platform definitions (MIT, ATTRIBUTION.md)"),
+)
+
+# Denied assets installed under the same name from a free replacement, as
+# mods/50-nano.sh does on Android: (installed path, file in --replacements DIR).
+# REPLACEMENT_EXTRAS go in beside them when any of them is installed.
+REPLACEMENTS: Tuple[Tuple[str, str], ...] = (
+    ("nano_xmb/fonts/akrobat-regular.ttf", "BarlowSemiCondensed-Medium.ttf"),
+    ("nano_xmb/fonts/akrobat-semibold.ttf", "BarlowSemiCondensed-SemiBold.ttf"),
+)
+REPLACEMENT_EXTRAS: Tuple[Tuple[str, str], ...] = (
+    ("nano_xmb/fonts/Barlow-OFL.txt", "OFL.txt"),
 )
 
 CHANGES_HEADING = "changes since the audit"
@@ -421,9 +441,11 @@ def overlaps(entries: Sequence[Entry]) -> List[str]:
 
 # -- install -----------------------------------------------------------------
 
-def install(list_path: Path, src: Path, dest: Path, report: Optional[Path]) -> int:
+def install(list_path: Path, src: Path, dest: Path, report: Optional[Path],
+            replacements: Optional[Path] = None) -> int:
     al = Allowlist(read_list(list_path))
-    installed, left = [], []
+    installed, left, replaced = [], [], []
+    denied = set()
     src = src.resolve()
     for dirpath, dirs, files in os.walk(str(src)):
         dirs.sort()
@@ -438,14 +460,30 @@ def install(list_path: Path, src: Path, dest: Path, report: Optional[Path]) -> i
             ok, why = al.decide(rel)
             if not ok:
                 left.append("%s\t%s" % (rel, why))
+                denied.add(rel)
                 continue
             target = dest / rel
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(str(p), str(target))
             os.chmod(str(target), 0o644)
             installed.append(rel)
-    print("assets_allowlist: installed %d files into %s, left out %d"
-          % (len(installed), dest, len(left)))
+    if replacements is not None:
+        todo = [(rel, f) for rel, f in REPLACEMENTS if rel in denied]
+        if todo:
+            todo += list(REPLACEMENT_EXTRAS)
+        for rel, f in todo:
+            p = replacements / f
+            if not p.is_file() or p.is_symlink():
+                print("assets_allowlist: no replacement %s in %s (for %s)" % (f, replacements, rel),
+                      file=sys.stderr)
+                return 1
+            target = dest / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(str(p), str(target))
+            os.chmod(str(target), 0o644)
+            replaced.append("%s\t%s" % (rel, f))
+    print("assets_allowlist: installed %d files into %s, left out %d, %d from replacements"
+          % (len(installed), dest, len(left), len(replaced)))
     if report is not None:
         report.parent.mkdir(parents=True, exist_ok=True)
         with open(str(report), "w", encoding="utf-8", newline="\n") as f:
@@ -453,6 +491,8 @@ def install(list_path: Path, src: Path, dest: Path, report: Optional[Path]) -> i
                 f.write("installed\t%s\n" % rel)
             for line in left:
                 f.write("left out\t%s\n" % line)
+            for line in replaced:
+                f.write("replaced\t%s\n" % line)
     return 0
 
 
@@ -470,11 +510,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         ap = argparse.ArgumentParser(prog="assets_allowlist.py install")
         ap.add_argument("--list", required=True, type=Path)
         ap.add_argument("--report", type=Path)
+        ap.add_argument("--replacements", type=Path,
+                        help="the files REPLACEMENTS names (thimsy-data's downloads)")
         ap.add_argument("src", type=Path)
         ap.add_argument("dest", type=Path)
         args = ap.parse_args(argv[1:])
         try:
-            return install(args.list, args.src, args.dest, args.report)
+            return install(args.list, args.src, args.dest, args.report, args.replacements)
         except (OSError, ValueError) as e:
             print("assets_allowlist: %s" % e, file=sys.stderr)
             return 1

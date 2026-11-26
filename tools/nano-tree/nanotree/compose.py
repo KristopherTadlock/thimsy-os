@@ -41,7 +41,8 @@ def tracked_entries(fork: Fork, nano_dir: str = "nano") -> Entries:
 
 def worktree_entries(fork: Fork, cache: Cache, root: str, nano_dir: str = "nano") -> Entries:
     """nano/ as it is in the working tree: the index's entries with their modes, files changed
-    since staging re-hashed (into the cache's object store), deleted files left out, untracked
+    since staging re-hashed (into the cache's object store), intent-to-add entries (`git add -N`)
+    hashed from the file on disk, deleted files left out, untracked
     files that are not ignored added with mode 100644. Modes always come from the index, never
     from the filesystem (Windows checkouts lose executable bits)."""
     entries = tracked_entries(fork, nano_dir)
@@ -62,7 +63,9 @@ def worktree_entries(fork: Fork, cache: Cache, root: str, nano_dir: str = "nano"
             entries.setdefault(rel, ("100644", ""))
         elif y == "D" or (x == "D" and y == " "):
             entries.pop(rel, None)
-        elif y in "MTU" or x == "U" or xy in ("AA", "DU", "UD"):
+        elif y in "MTUA" or x == "U" or xy in ("AA", "DU", "UD"):
+            # " A" is an intent-to-add entry (`git add -N`): the index holds the empty blob, so
+            # the file on disk is what counts.
             if os.path.isfile(os.path.join(root, nano_dir, *rel.split("/"))):
                 dirty.append(rel)
                 entries.setdefault(rel, ("100644", ""))

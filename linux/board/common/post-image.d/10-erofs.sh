@@ -75,7 +75,8 @@ if [ -n "${CARD_GPU_PACK:-}" ]; then
 		fsck.erofs --extract="$stage" --overwrite "$pack" ||
 			card_die "fsck.erofs could not unpack $pack"
 	else
-		# thimsy-gpu-pack is not written yet: the tier root keeps Mesa.
+		# The tier was built without thimsy-gpu-pack (or without this
+		# driver): its root still has Mesa.
 		card_say "no gpu-$CARD_GPU_PACK.erofs in the tier; the tier root's own Mesa is used"
 	fi
 fi

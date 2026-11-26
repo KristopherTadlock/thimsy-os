@@ -11,7 +11,9 @@
 #   /run, /tmp tmpfs mount points (S00base mounts them 0755 and 1777)
 #   /system and the link targets of post-build.d/10-android-links.sh
 #   /usr/libexec/thimsy/android-bin  the curated /system/bin (B.5)
-# Not /root: post-build.d/30-permissions.sh makes it a link into /storage.
+# /root is Buildroot's own line ("/root d 700" in system/device_table.txt): it
+# stays a directory, and S00base bind-mounts /storage/.config/thimsy/home/root
+# over it at boot.
 #
 # name                               type mode uid gid major minor start inc count
 /storage                             d    755  0   0   -     -     -     -   -

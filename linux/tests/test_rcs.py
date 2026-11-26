@@ -498,11 +498,23 @@ class TestS00Base(WorldCase):
     def test_already_mounted_not_remounted(self) -> None:
         self.w.mounted_root("179:19")
         self.w.write("proc/mounts", "/dev/root / erofs ro 0 0\ntmpfs /run tmpfs rw 0 0\n"
-                     "/dev/mmcblk1p4 /storage ext4 rw 0 0\n")
+                     "/dev/mmcblk1p4 /storage ext4 rw 0 0\n"
+                     "/dev/mmcblk1p4 /root ext4 rw 0 0\n")
         self.w.run(INITD + "/S00base", "start")
         targets = [c["args"][-1] for c in self.w.calls() if c["tool"] == "mount"]
         self.assertNotIn("/run", targets)
         self.assertNotIn("/storage", targets)
+        self.assertNotIn("/root", targets)
+
+    def test_root_home_bound_from_storage(self) -> None:
+        self.w.mounted_root("179:19")
+        self.w.run(INITD + "/S00base", "start")
+        binds = [c["args"] for c in self.w.calls() if c["tool"] == "mount" and "--bind" in c["args"]]
+        self.assertEqual(len(binds), 1, binds)
+        self.assertEqual(binds[0][-1], "/root")
+        self.assertTrue(binds[0][-2].endswith("/storage/.config/thimsy/home/root"), binds[0])
+        seq = [c["args"][-1] for c in self.w.calls() if c["tool"] == "mount"]
+        self.assertLess(seq.index("/storage"), seq.index("/root"))
 
     def test_partuuid_when_root_is_not_seen(self) -> None:
         self.w.cmdline("root=PARTUUID=11111111-0000-4000-8000-000000000003 ro")
@@ -946,7 +958,18 @@ class TestPostBuild(unittest.TestCase):
         self.assertEqual(tab.count("ttyS2::respawn:/sbin/getty -L ttyS2 1500000 vt100"), 1)
         self.assertEqual(os.readlink(str(target / "etc/localtime")),
                          "/storage/.config/thimsy/localtime")
-        self.assertEqual(os.readlink(str(target / "root")), "/storage/.config/thimsy/home/root")
+        # /root stays a directory (Buildroot's device table has "/root d 700"; S00base
+        # bind-mounts root's home over it), even where an earlier build made it a link.
+        self.assertTrue((target / "root").is_dir())
+        self.assertFalse((target / "root").is_symlink())
+        os.rmdir(str(target / "root"))
+        os.symlink("/storage/.config/thimsy/home/root", str(target / "root"))
+        r = self.sh(script, posix(target), env={"BR2_CONFIG": posix(cfg)})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse((target / "root").is_symlink())
+        self.assertTrue((target / "root").is_dir())
+        if os.name != "nt":
+            self.assertEqual((target / "root").stat().st_mode & 0o777, 0o700)
         self.assertTrue((target / "storage").is_dir())
         if os.name != "nt":
             self.assertTrue(os.access(str(target / "etc/init.d/rcS"), os.X_OK))

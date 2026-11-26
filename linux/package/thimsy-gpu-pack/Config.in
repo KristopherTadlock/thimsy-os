@@ -4,8 +4,11 @@ config BR2_PACKAGE_THIMSY_GPU_PACK
 	select BR2_PACKAGE_HOST_EROFS_UTILS
 	help
 	  Packs the driver files of this tree's Mesa build into one
-	  EROFS image per driver set, gpu-<driver>.erofs, mounted
-	  over the tier root at boot (decision D25).
+	  EROFS image per driver set, gpu-<driver>.erofs. When a card
+	  is put together, the family's pack is unpacked over the
+	  tier root into that card's root image (post-image.d/
+	  10-erofs.sh, decisions D25 and G8-2); nothing is mounted
+	  at boot.
 
 if BR2_PACKAGE_THIMSY_GPU_PACK
 

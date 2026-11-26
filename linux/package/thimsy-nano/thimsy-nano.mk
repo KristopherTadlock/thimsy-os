@@ -17,10 +17,11 @@ THIMSY_NANO_SOURCE = nano-$(THIMSY_NANO_VERSION).tar.gz
 # plan 3.3's question stays open for the owner). liba52 (GPL-2.0) is built only
 # with NANO_WITH_AC3=ON, which Linux leaves off.
 THIMSY_NANO_LICENSE = Apache-2.0, GPL-2.0+ (NanoOskKanji.h, from SKK-JISYO), Zlib (nanosvg), MIT (rcheevos)
-# TODO(G0, I41): nano/NOTICE (which lists liba52/, NanoAc3.* and NanoOskKanji.h
-# with their licences) and an Apache-2.0 LICENSE file in nano/ do not exist yet;
-# add them here when they land. lint_packages.py reports them as pending.
-THIMSY_NANO_LICENSE_FILES = NanoOskKanji.h nanosvg/nanosvg.h rcheevos/LICENSE
+# nano/LICENSE is the Apache-2.0 text, and nano/NOTICE lists the parts under
+# other licences (NanoOskKanji.h, liba52/ with NanoAc3.*, nanosvg/, rcheevos/);
+# both are fork-only (tools/nano-tree/upstream.json), so the Android patch does
+# not carry them.
+THIMSY_NANO_LICENSE_FILES = LICENSE NOTICE NanoOskKanji.h nanosvg/nanosvg.h rcheevos/LICENSE
 THIMSY_NANO_DEPENDENCIES = \
 	host-pkgconf \
 	libthimsy \

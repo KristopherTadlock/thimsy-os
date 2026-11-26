@@ -7,8 +7,9 @@
   nano_tree.py import-tree DIR                 copy an applied AOSP Nano folder into nano/
   nano_tree.py import-patch [REF] [--old REV]  three-way import of REF's Nano patch changes
   nano_tree.py merge-patch O A B P             the `nanopatch` merge driver (run by git)
+  nano_tree.py merge-block O A B P             the `nanoblock` merge driver for block.sha256
   nano_tree.py import-base NEW                 move nano/ to a new GammaOS base commit
-  nano_tree.py install-driver                  register the merge driver in .git/config
+  nano_tree.py install-driver                  register the merge drivers in .git/config
   nano_tree.py export-assets OUT [--from DIR]  install Nano's runtime assets as Android.bp does
   nano_tree.py status [--check]                base, cache, driver, sync and (with --check) regen
 
@@ -29,11 +30,12 @@ from nanotree.compose import compose, tracked_entries  # noqa: E402
 from nanotree.config import Layout, NanoTreeError, Upstream, find_root  # noqa: E402
 from nanotree.gitcache import Cache, Fork, git_version, init_cache, posix  # noqa: E402
 from nanotree.importer import (check_files, import_base, import_patch, import_tree,  # noqa: E402
-                               merge_patch)
+                               merge_block, merge_patch)
 from nanotree.patchfile import Patch, sha256  # noqa: E402
 from nanotree.regen import regen  # noqa: E402
 
 DRIVER = "nanopatch"
+BLOCK_DRIVER = "nanoblock"
 
 
 def _ctx(args):
@@ -184,27 +186,36 @@ def cmd_merge_patch(args) -> int:
     return merge_patch(layout, cfg, fork, cache, args.O, args.A, args.B, args.P)
 
 
+def cmd_merge_block(args) -> int:
+    layout, cfg, fork, cache = _ctx(args)
+    return merge_block(layout, fork, cache, args.O, args.A, args.B, args.P)
+
+
 def cmd_import_base(args) -> int:
     layout, cfg, fork, cache = _ctx(args)
     return import_base(layout, cfg, fork, cache, args.new)
 
 
-def driver_command() -> str:
+def driver_command(sub: str = "merge-patch") -> str:
     exe = posix(sys.executable)
-    return '"%s" tools/nano-tree/nano_tree.py merge-patch %%O %%A %%B %%P' % exe
+    return '"%s" tools/nano-tree/nano_tree.py %s %%O %%A %%B %%P' % (exe, sub)
 
 
 def cmd_install_driver(args) -> int:
     layout, cfg, fork, cache = _ctx(args)
-    fork.git("config", "merge.%s.name" % DRIVER, "Thimsy: import nano-144's Nano patch into nano/ and regenerate")
-    fork.git("config", "merge.%s.driver" % DRIVER, driver_command())
-    print("install-driver: merge.%s.driver = %s" % (DRIVER, driver_command()))
+    for name, sub, desc in (
+            (DRIVER, "merge-patch", "Thimsy: regenerate the Nano patch from nano/ (importing nano-144's changes)"),
+            (BLOCK_DRIVER, "merge-block", "Thimsy: the merged Nano block's hash")):
+        fork.git("config", "merge.%s.name" % name, desc)
+        fork.git("config", "merge.%s.driver" % name, driver_command(sub))
+        print("install-driver: merge.%s.driver = %s" % (name, driver_command(sub)))
     return 0
 
 
 def driver_installed(fork: Fork) -> bool:
     out = fork.git("config", "--get", "merge.%s.driver" % DRIVER, check=False, ok_codes=(0, 1))
-    return b"merge-patch" in out
+    out2 = fork.git("config", "--get", "merge.%s.driver" % BLOCK_DRIVER, check=False, ok_codes=(0, 1))
+    return b"merge-patch" in out and b"merge-block" in out2
 
 
 def cmd_export_assets(args) -> int:
@@ -300,10 +311,14 @@ def main(argv=None) -> int:
     for n in ("O", "A", "B", "P"):
         p.add_argument(n)
     p.set_defaults(fn=cmd_merge_patch)
+    p = sub.add_parser("merge-block", help="the block.sha256 merge driver (git runs it)")
+    for n in ("O", "A", "B", "P"):
+        p.add_argument(n)
+    p.set_defaults(fn=cmd_merge_block)
     p = sub.add_parser("import-base", help="move nano/ to a new GammaOS base")
     p.add_argument("new")
     p.set_defaults(fn=cmd_import_base)
-    p = sub.add_parser("install-driver", help="register the merge driver in .git/config")
+    p = sub.add_parser("install-driver", help="register the merge drivers in .git/config")
     p.set_defaults(fn=cmd_install_driver)
     p = sub.add_parser("export-assets", help="install Nano's prebuilt_etc assets")
     p.add_argument("out")

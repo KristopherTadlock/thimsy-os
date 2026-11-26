@@ -33,6 +33,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -287,6 +288,29 @@ def load_device(path: str) -> Dict[str, Any]:
     return dev
 
 
+# device.json's "dtb" (linux/schema/device.schema.json): <vendor>/<name>.dtb.
+SCHEMA_DTB = re.compile(r"^[a-z0-9-]+/[A-Za-z0-9._,+-]+\.dtb$")
+
+
+def device_from_json(path: str, family: str) -> Tuple[str, str]:
+    """(id, DTB file name) of a device.json (linux/schema/device.schema.json): "id", "family",
+    and "dtb" as <vendor>/<name>.dtb, of which the FIT carries the file name (Buildroot copies
+    DTBs to BINARIES_DIR without their directory)."""
+    dev = load_device(path)
+    dev_id = dev.get("id")
+    if not isinstance(dev_id, str) or not dev_id:
+        raise FitError("%s has no \"id\" (linux/schema/device.schema.json)" % path)
+    if dev.get("family") != family:
+        raise FitError("%s is for family %r, not %r" % (path, dev.get("family"), family))
+    dtb = dev.get("dtb")
+    if dtb is None:
+        raise FitError("%s has \"dtb\": null (the firmware provides the device tree), so it "
+                       "has no FIT" % path)
+    if not isinstance(dtb, str) or not SCHEMA_DTB.match(dtb):
+        raise FitError("%s: \"dtb\" must be <vendor>/<name>.dtb, got %r" % (path, dtb))
+    return dev_id, dtb.rsplit("/", 1)[1]
+
+
 def resolve(family: str, device: Optional[str], dtb: Optional[str],
             device_json: Optional[str], append: str = "") -> Dict[str, Any]:
     if family in NO_FIT:
@@ -294,21 +318,17 @@ def resolve(family: str, device: Optional[str], dtb: Optional[str],
     if family not in FAMILIES:
         raise FitError("unknown family %r (known: %s)" % (family, ", ".join(sorted(FAMILIES))))
     fam = FAMILIES[family]
-    extra = ""
     if device_json:
-        # TODO(device.json schema): keys `device`, `family`, `dtb`, optional
-        # `bootargs`, until the schema lands with the hand import (E.7).
-        dev = load_device(device_json)
-        if dev.get("family") not in (None, family):
-            raise FitError("%s is for family %r, not %r" % (device_json, dev.get("family"), family))
-        device = device or dev.get("device")
-        dtb = dtb or dev.get("dtb")
-        extra = dev.get("bootargs", "") or ""
+        # The schema has no bootargs: the family's come from FAMILIES, a device's own from
+        # --bootargs-append.
+        dev_id, dev_dtb = device_from_json(device_json, family)
+        device = device or dev_id
+        dtb = dtb or dev_dtb
     if not device or not dtb:
         raise FitError("need a device and its DTB (--device-json, or --device and --dtb)")
     if os.path.basename(dtb) != dtb or not dtb.endswith(".dtb"):
         raise FitError("dtb must be a file name ending .dtb, got %r" % dtb)
-    bootargs = " ".join(x for x in (fam["bootargs"], extra, append) if x)
+    bootargs = " ".join(x for x in (fam["bootargs"], append) if x)
     for word in bootargs.split():
         if word.startswith("root="):
             raise FitError("bootargs must not carry root=: the boot script appends "
@@ -562,7 +582,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     def device_args(p: argparse.ArgumentParser) -> None:
         p.add_argument("--family", required=True)
-        p.add_argument("--device-json", help="the device's JSON (device, family, dtb, bootargs)")
+        p.add_argument("--device-json", help="the device's device.json (its id, family and dtb)")
         p.add_argument("--device", help="the device id (overrides the JSON)")
         p.add_argument("--dtb", help="the DTB's file name (overrides the JSON)")
         p.add_argument("--bootargs-append", default="", help="appended to the bootargs")

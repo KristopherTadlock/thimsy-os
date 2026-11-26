@@ -8,8 +8,10 @@ Usage:
               [--mkfs PATH] [--epoch SECONDS] [--keep]
 
 Decision D25: a tier's userland carries no GPU driver; each driver set is a
-separate EROFS image, gpu-<driver>.erofs, mounted over the tier root at boot
-(the mount is the image assembly's, step G8). thimsy-gpu-pack.mk runs this as a
+separate EROFS image, gpu-<driver>.erofs. Card assembly (step G8,
+board/common/post-image.d/10-erofs.sh) unpacks the family's pack over the tier
+root into each card's root image; nothing is mounted at boot, and the card's
+/usr/share/thimsy/gpu.json says which pack it got. thimsy-gpu-pack.mk runs this as a
 Buildroot target-finalize hook, after every package has installed and before
 the root image is made:
 

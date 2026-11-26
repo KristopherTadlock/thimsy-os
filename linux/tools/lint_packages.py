@@ -286,6 +286,14 @@ def lint(linux: Path = LINUX, repo: Optional[Path] = REPO, rep: Optional[Report]
         else:
             if check_hash_file(rep, "%s/%s/%s.hash" % (base, name, name), hash_path) == 0:
                 rep.wait("%s: %s.hash has no hash yet (needs the first download)" % (name, name))
+        # A build.sh tarball package's other downloads (build.sh appends these lines).
+        extra = d / "extra-downloads.hash"
+        if extra.is_file():
+            if not is_repo_tarball:
+                rep.error("%s/%s/extra-downloads.hash: only build.sh tarball packages take one"
+                          % (base, name))
+            elif check_hash_file(rep, "%s/%s/extra-downloads.hash" % (base, name), extra) == 0:
+                rep.error("%s/%s/extra-downloads.hash has no hash" % (base, name))
 
         if is_core:
             core = core_name(name, recipe)
@@ -317,10 +325,12 @@ def lint(linux: Path = LINUX, repo: Optional[Path] = REPO, rep: Optional[Report]
                 for f in recipe.vars.get(prefix + "_LICENSE_FILES", "").split():
                     if not (folder / f).is_file():
                         rep.error("%s: licence file %s/%s does not exist" % (rel_mk, REPO_TARBALLS[name], f))
-            if name == "thimsy-nano" and folder.is_dir():
-                for f in ("NOTICE",):
-                    if not (folder / f).is_file():
-                        rep.wait("thimsy-nano: nano/%s does not exist yet (decision I41)" % f)
+            if name == "thimsy-nano":
+                # Decision I41: nano/'s Apache-2.0 LICENSE and its NOTICE of the other licences.
+                listed = recipe.vars.get(prefix + "_LICENSE_FILES", "").split()
+                for f in ("LICENSE", "NOTICE"):
+                    if f not in listed:
+                        rep.error("%s: _LICENSE_FILES must list nano/%s (decision I41)" % (rel_mk, f))
 
     if cores_pending:
         rep.wait("mods/retroarch-cores.src.lock does not exist yet (decision I10): %d cores have no "

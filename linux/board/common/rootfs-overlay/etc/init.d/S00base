@@ -110,12 +110,20 @@ first_boot_tree() {
 	: > "$stamp"
 }
 
+# /root is a directory of the read-only root; root's home lives on /storage.
+bind_home() {
+	is_mounted /root && return 0
+	mkdir -p "$THIMSY_CONFIG/home/root" || return 1
+	"$MOUNT" --bind "$THIMSY_CONFIG/home/root" "$R/root"
+}
+
 case ${1:-start} in
 start)
 	mount_base
 	thimsy_mark s00-mounts
 	mount_storage
 	first_boot_tree || thimsy_warn $TAG "the /storage tree is incomplete"
+	bind_home || thimsy_warn $TAG "/root is not bound to /storage: root's home is read-only"
 	thimsy_mark s00-done
 	;;
 stop) ;;

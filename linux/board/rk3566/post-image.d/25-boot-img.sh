@@ -8,9 +8,9 @@
 # with BINARIES_DIR/Image (or Image.zst) and the device's DTB, which
 # Buildroot copies to BINARIES_DIR without its directory (the JSON's "dtb"
 # is "rockchip/NAME.dtb"; a copy kept with its directory is found too).
-# The DTB name is passed on the command line: device.json's schema has
-# "id" and a "dtb" with a directory, which fit.py's --device-json does not
-# read yet (its TODO). fit.py writes cards/<id>/fit/{boot.its,boot.itb,
+# The id and the DTB's file name are passed on the command line (fit.py's
+# --device-json reads the same two from the schema's "id" and "dtb"), so
+# the name looked up here is the one the FIT carries. fit.py writes cards/<id>/fit/{boot.its,boot.itb,
 # boot.img}; boot.img moves to cards/<id>/, where genimage takes it.
 # fit.py refuses a FIT or boot.img that does not fit the family's map.
 set -eu

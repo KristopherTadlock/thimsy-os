@@ -232,7 +232,8 @@ class Base(unittest.TestCase):
         g("commit", "-q", "-m", "root (nano-144's history)")
         g("branch", "nano144")
         write(os.path.join(f, ".gitattributes"),
-              b"/nano/** -text\npatches/thimsy/0001-thimsy.patch merge=nanopatch -diff\n")
+              b"/nano/** -text\npatches/thimsy/0001-thimsy.patch merge=nanopatch -diff\n"
+              b"tools/nano-tree/block.sha256 merge=nanoblock\n")
         cfg = {
             "repo": pathlib.Path(self.u.dir).as_uri(), "base": self.u.base, "path": NANO,
             "assets": ["ps3xmb/**"], "abbrev": 11, "deleted": [],
@@ -269,10 +270,11 @@ class Base(unittest.TestCase):
         out = self.g("ls-files", "-s", "nano").decode().splitlines()
         return {ln.split("\t")[1][len("nano/"):]: ln.split()[0] for ln in out}
 
-    def driver(self):
-        cmd = '"%s" "%s" --root "%s" merge-patch %%O %%A %%B %%P' % (
-            sys.executable.replace("\\", "/"), TOOL.replace("\\", "/"), self.f.replace("\\", "/"))
-        self.g("config", "merge.nanopatch.driver", cmd)
+    def driver(self, block=True):
+        for name, sub in (("nanopatch", "merge-patch"), ("nanoblock", "merge-block"))[:2 if block else 1]:
+            cmd = '"%s" "%s" --root "%s" %s %%O %%A %%B %%P' % (
+                sys.executable.replace("\\", "/"), TOOL.replace("\\", "/"), self.f.replace("\\", "/"), sub)
+            self.g("config", "merge.%s.driver" % name, cmd)
 
 
 class Unit(unittest.TestCase):
@@ -414,6 +416,19 @@ class Regen(Base):
         self.assertIn(b"b/" + NANO.encode() + b"/compat/include/y.h", self.patch())
         self.assertNotIn(b"platform/linux", self.patch())
 
+    def test_intent_to_add(self):
+        """`git add -N` leaves the empty blob in the index: regen hashes the file on disk."""
+        self.make_fork()
+        write(self.nano("compat/include/z.h"), b"int z;\n")
+        self.g("add", "-N", "nano/compat/include/z.h")
+        self.assertEqual(self.tool("regen", "--check")[0], 1)
+        self.assertEqual(self.tool("regen")[0], 0)
+        self.assertIn(b"+int z;", self.patch())
+        self.assertNotIn(b"e69de29", self.patch())
+        self.assertEqual(self.tool("regen", "--check")[0], 0)
+        self.g("add", "nano/compat/include/z.h")
+        self.assertEqual(self.tool("regen", "--check")[0], 0)
+
     def test_mode_from_index(self):
         self.make_fork()
         self.g("update-index", "--chmod=+x", "nano/keep.h")
@@ -547,6 +562,66 @@ class Imports(Base):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn(b"other p3", self.patch())
         self.assertIn(b"+line3 linux", self.patch())
+        self.assertEqual(self.tool("regen", "--check")[0], 0)
+
+    def step_branch(self, name, edits, outside=None, start="master"):
+        """A step branch from START: EDITS ({nano path: data}) and the patch regenerated."""
+        self.g("checkout", "-q", "-b", name, start)
+        for rel, data in edits.items():
+            write(self.nano(rel), data)
+        if outside:
+            path = os.path.join(self.f, "patches", "thimsy", "0001-thimsy.patch")
+            write(path, self.patch().replace(*outside))
+        self.assertEqual(self.tool("regen")[0], 0)
+        self.g("add", "-A")
+        self.g("commit", "-q", "-m", name)
+
+    def merge(self, *args):
+        return subprocess.run(["git", "merge", "--no-edit"] + list(args), cwd=self.f,
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    def test_merge_driver_fork_branches(self):
+        """Two step branches that both changed nano/ (and so the patch and block.sha256): the
+        drivers regenerate both from the merged nano/ and the merge completes."""
+        self.make_fork()
+        self.g("branch", "-M", "master")
+        self.driver()
+        a = read(self.nano("a.cpp"))
+        self.step_branch("s1", {"a.cpp": edit_line(a, 4, "line4 s1"), "platform/linux/p.cpp": b"p\n"})
+        self.step_branch("s2", {"keep.h": edit_line(read(self.nano("keep.h")), 3, "line3 s2"),
+                                "a.cpp": edit_line(a, 9, "line9 s2"), "compat/n.h": b"n\n"},
+                         outside=(b"other p0", b"other s2"))
+        self.g("checkout", "-q", "s1")
+        proc = self.merge("s2")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertEqual(self.g("status", "--porcelain").strip(), b"")
+        merged = self.patch()
+        for want in (b"+line4 s1", b"+line9 s2", b"+line3 s2", b"other s2", b"+n"):
+            self.assertIn(want, merged)
+        self.assertNotIn(b"platform/linux", merged)
+        self.assertEqual(self.tool("regen", "--check")[0], 0)
+        self.assertEqual(self.g("show", "HEAD:tools/nano-tree/block.sha256").decode().strip(),
+                         sha256(Patch.parse(merged).split_block(NANO + "/")[1]))
+
+    def test_merge_driver_fork_branches_conflict(self):
+        """nano/ conflicts: both generated files are left as this side's and the merge stops."""
+        self.make_fork()
+        self.g("branch", "-M", "master")
+        self.driver()
+        a = read(self.nano("a.cpp"))
+        self.step_branch("s1", {"a.cpp": edit_line(a, 5, "line5 s1")})
+        self.step_branch("s2", {"a.cpp": edit_line(a, 5, "line5 s2")})
+        self.g("checkout", "-q", "s1")
+        ours = self.patch()
+        proc = self.merge("s2")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn(b"nanopatch: nano/a.cpp does not merge cleanly", proc.stderr + proc.stdout)
+        self.assertEqual(self.patch(), ours)
+        write(self.nano("a.cpp"), edit_line(a, 5, "line5 both"))
+        self.assertEqual(self.tool("regen", "--force")[0], 0)
+        self.g("add", "-A")
+        self.g("commit", "-q", "--no-edit")
+        self.assertIn(b"+line5 both", self.patch())
         self.assertEqual(self.tool("regen", "--check")[0], 0)
 
     def test_import_base(self):
