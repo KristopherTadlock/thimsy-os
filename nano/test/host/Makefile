@@ -335,6 +335,9 @@ HL_PLATFORM_SRCS += platform/host/FakeAudio.cpp
 # The fake volumes (G7-volumes).
 HL_TESTS += fake_volumes_test
 HL_PLATFORM_SRCS += platform/host/FakeVolumes.cpp
+# The fake Wi-Fi and Bluetooth (G7-net).
+HL_TESTS += fake_network_test
+HL_PLATFORM_SRCS += platform/host/FakeNetwork.cpp
 HL_PLATFORM_OBJS := $(patsubst %.cpp,$(HL_O)/obj/%.o,$(HL_PLATFORM_SRCS))
 HL_CPPFLAGS := $(NANOCOMPAT_CPPFLAGS) -I$(LIBTHIMSY)/include -I$(NANO) -I$(LIBTHIMSY)/testing -I$(HL_TEST_DIR)
 HL_WARN := -Wall -Wextra -Werror

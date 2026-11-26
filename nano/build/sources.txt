@@ -228,6 +228,7 @@ platform/linux/InputPolicy.cpp
 platform/linux/LinuxPlatform.cpp
 platform/linux/Power.cpp
 platform/linux/ShellGate.cpp
+platform/linux/actions/Network.cpp
 platform/linux/actions/Run.cpp
 platform/linux/actions/SystemActions.cpp
 platform/linux/actions/WpaCtrl.cpp
@@ -249,6 +250,7 @@ platform/host/FakeDisplayDrm.cpp
 platform/host/FakeAudio.cpp
 platform/host/FakeEvdev.cpp
 platform/host/FakeLauncher.cpp
+platform/host/FakeNetwork.cpp
 platform/host/FakeVolumes.cpp
 platform/host/FakePower.cpp
 platform/host/FakeInput.cpp

@@ -114,6 +114,8 @@ TEST(LinuxPlatform, HasEveryService) {
     EXPECT_FALSE(p->power->setBrightnessViaHal(10));
     EXPECT_TRUE(p->actions != nullptr);
     EXPECT_TRUE(p->input != nullptr);  // G7-input
+    ASSERT_TRUE(p->net != nullptr);  // G7-net
+    p->net->autoEnableWifi();         // D30net remembers the radio: nothing to do
 }
 
 }  // namespace

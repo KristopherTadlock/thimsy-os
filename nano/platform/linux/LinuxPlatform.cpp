@@ -28,6 +28,7 @@
 #include "Power.h"  // G7-power
 #include "actions/SystemActions.h"  // G7-power
 #include "InputPolicy.h"  // G7-input
+#include "actions/Network.h"  // G7-net
 
 std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs& /*args*/) {
     std::unique_ptr<Platform> platform(new Platform);
@@ -39,5 +40,6 @@ std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs&
     platform->power = nanolinux::power::create();  // G7-power
     platform->actions = nanolinux::actions::create();  // G7-power
     platform->input = nanolinux::input::create();  // G7-input
+    platform->net = nanolinux::net::create();  // G7-net: wpa_supplicant and bluetoothctl
     return platform;
 }

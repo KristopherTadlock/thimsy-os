@@ -1913,6 +1913,17 @@
     "nano:NanoPlatform.h"
    ]
   },
+  "platform/host/FakeNetwork.cpp": {
+   "includes": [
+    "nano:platform/host/FakeNetwork.h",
+    "nano:platform/host/HostControl.h"
+   ]
+  },
+  "platform/host/FakeNetwork.h": {
+   "includes": [
+    "nano:NanoPlatform.h"
+   ]
+  },
   "platform/host/FakePower.cpp": {
    "includes": [
     "nano:platform/host/FakePower.h",
@@ -1943,6 +1954,7 @@
   "platform/host/HostConfig.h": {
    "includes": [
     "nano:platform/host/FakeEvdev.h",
+    "nano:platform/host/FakeNetwork.h",
     "nano:platform/host/FakeVolumes.h",
     "nano:platform/host/HostControl.h",
     "nano:platform/host/ShellGateHost.h"
@@ -1960,6 +1972,7 @@
     "nano:platform/host/FakeDisplay.h",
     "nano:platform/host/FakeInput.h",
     "nano:platform/host/FakeLauncher.h",
+    "nano:platform/host/FakeNetwork.h",
     "nano:platform/host/FakePower.h",
     "nano:platform/host/HostConfig.h",
     "shim:compat/include/log/log.h",
@@ -2033,6 +2046,7 @@
     "nano:platform/linux/Launcher.h",
     "nano:platform/linux/Power.h",
     "nano:platform/linux/Volumes.h",
+    "nano:platform/linux/actions/Network.h",
     "nano:platform/linux/actions/SystemActions.h",
     "nano:platform/linux/display/Display.h"
    ]
@@ -2068,6 +2082,20 @@
   "platform/linux/Volumes.h": {
    "includes": [
     "nano:NanoPlatform.h"
+   ]
+  },
+  "platform/linux/actions/Network.cpp": {
+   "includes": [
+    "nano:platform/linux/actions/Network.h",
+    "nano:platform/linux/actions/SystemActions.h",
+    "nano:platform/linux/actions/WpaCtrl.h",
+    "shim:compat/include/log/log.h"
+   ]
+  },
+  "platform/linux/actions/Network.h": {
+   "includes": [
+    "nano:NanoPlatform.h",
+    "nano:platform/linux/actions/Run.h"
    ]
   },
   "platform/linux/actions/Run.cpp": {
@@ -2210,6 +2238,14 @@
     "missing:Launcher.h",
     "missing:display/Display.h",
     "nano:NanoPlatform.h"
+   ]
+  },
+  "platform/linux/tests/network_test.cpp": {
+   "includes": [
+    "gtest:gtest/gtest.h",
+    "missing:actions/Network.h",
+    "missing:actions/Run.h",
+    "missing:compat_test_util.h"
    ]
   },
   "platform/linux/tests/power_test.cpp": {
@@ -2740,6 +2776,15 @@
     "nano:test/host/headless/tests/headless_test_util.h",
     "shim:compat/include/cutils/properties.h",
     "shim:compat/include/nanocompat/nanocompat.h"
+   ]
+  },
+  "test/host/headless/tests/fake_network_test.cpp": {
+   "includes": [
+    "gtest:gtest/gtest.h",
+    "nano:platform/host/FakeNetwork.h",
+    "nano:platform/host/HostConfig.h",
+    "nano:platform/host/HostControl.h",
+    "nano:test/host/headless/tests/headless_test_util.h"
    ]
   },
   "test/host/headless/tests/fake_power_test.cpp": {
