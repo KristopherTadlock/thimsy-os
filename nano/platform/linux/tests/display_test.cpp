@@ -24,8 +24,10 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include <android/log.h>
 #include <drm.h>
 #include <drm_mode.h>
 
@@ -287,6 +289,40 @@ TEST_F(DisplayTest, ReleaseNeedsThePanel) {
     EXPECT_FALSE(d->releaseForChild());
     EXPECT_EQ(rec.joined(), "");
     EXPECT_FALSE(d->reacquire());
+}
+
+// At a launch, threadLoop's exit path has already stopped the display (drmStop): the release finds
+// the panel free and says so without a warning; only a panel Nano never had is a warning.
+TEST_F(DisplayTest, APanelTheMenuStoppedIsNotAWarning) {
+    std::vector<std::pair<int, std::string>> lines;
+    nanocompat::setLogSink([&](int prio, const char* tag, const char* msg) {
+        if (strcmp(tag, "ThimsyDisplay") == 0) lines.emplace_back(prio, msg);
+    });
+    auto warnings = [&] {
+        int n = 0;
+        for (const auto& l : lines) n += l.first >= ANDROID_LOG_WARN;
+        return n;
+    };
+    {
+        std::unique_ptr<nanoplat::Display> d = make();
+        rec.orientation = "Normal";
+        d->startScanout(-1, false, nullptr);
+        rec.active = false;  // the menu's drmStop
+        lines.clear();
+        EXPECT_FALSE(d->releaseForChild());
+        EXPECT_EQ(warnings(), 0);
+        ASSERT_EQ(lines.size(), 1u);
+        EXPECT_NE(lines[0].second.find("already free"), std::string::npos) << lines[0].second;
+    }
+    {
+        rec.splashFindsDisplay = false;
+        std::unique_ptr<nanoplat::Display> d = make();
+        d->startScanout(-1, false, nullptr);
+        lines.clear();
+        EXPECT_FALSE(d->releaseForChild());
+        EXPECT_EQ(warnings(), 1);
+    }
+    nanocompat::setLogSink(nullptr);
 }
 
 // --- readPanelOrientation over a fake connector ---------------------------------------------------

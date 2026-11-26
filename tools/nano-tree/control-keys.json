@@ -105,7 +105,7 @@
     {"match": "sys.gammaos.dualstack.active", "disposition": "store-only",
      "note": "State Nano writes and reads back; Android's dual-display stack has no Linux counterpart."},
     {"match": "sys.gammaos.nano.app_launched", "disposition": "store-only",
-     "note": "State Nano writes and reads back (the framework also writes it on Android)."},
+     "note": "State Nano writes and reads back (the framework also writes it on Android). On Linux the launcher sets it to 1 when it takes Nano's launch, so threadLoop's exit path does not wait for it, and thimsy-session clears it when the game ends and before it starts Nano with no game running."},
     {"match": "sys.gammaos.nano.bmap_dev", "disposition": "not-reached",
      "note": "Written by PhoneWindowManager; read by Nano."},
     {"match": "sys.gammaos.nano.drm_active", "value": "1", "disposition": "routed", "route": "first-frame",

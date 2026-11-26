@@ -31,8 +31,10 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -168,6 +170,28 @@ std::string get(const char* key) {
     char v[PROPERTY_VALUE_MAX] = {};
     property_get(key, v, "");
     return v;
+}
+
+// threadLoop's exit path after a launch (NanoMenu.cpp): both of its waits (the DRM boot path's and
+// the "Loading..." one) are this loop around their drawing; it returns the frames waited.
+// tools/nano-tree/tests/test_exit_path_linux.py checks that NanoMenu.cpp's waits still are.
+// exit-path-wait: begin
+int exitPathWaits() {
+    char launched[PROPERTY_VALUE_MAX] = {};
+    int wait = 0;
+    for (; wait < 600; wait++) {
+        property_get("sys.gammaos.nano.app_launched", launched, "0");
+        if (!strcmp(launched, "1")) break;
+        usleep(16666);
+    }
+    return wait;
+}
+// exit-path-wait: end
+
+int64_t nowMs() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
 TEST(LauncherArgv, CoreNames) {
@@ -608,6 +632,64 @@ TEST_F(LauncherTest, ATriggerFromOutsideCommitLaunchIsRefused) {
     EXPECT_FALSE(launcher->queued());
     EXPECT_FALSE(nanolinux::launcher::runQueued(5).has_value());
     EXPECT_EQ(get("sys.gammaos.nano.launch_app"), "com.retroarch.aarch64");  // not Nano's launch: untouched
+    EXPECT_EQ(get(nanolinux::launcher::kAppLaunchedKey), "");                // and no app in front of Nano
+}
+
+// The launch delay: Android's framework sets app_launched while the home finishes its launch site,
+// and threadLoop's exit path waits for it (600 frames, ~10 s of "Loading..."). On Linux the game
+// starts only after the menu has ended, so the launcher sets it when it takes the launch: by the
+// time the launch site ends the menu, the exit path's wait ends on its first look.
+TEST_F(LauncherTest, TheMenusExitPathEndsAtOnceAfterNanosLaunch) {
+    using Leave = LinuxLauncher::Leave;
+    script("exit 0\n");
+    LinuxLauncher* launcher = installPlatform();
+    ASSERT_TRUE(launcher != nullptr);
+    EXPECT_EQ(get(nanolinux::launcher::kAppLaunchedKey), "");
+    std::vector<std::string> seen;
+    const int id = nanocompat::addPropertyObserver(nanolinux::launcher::kAppLaunchedKey,
+                                                   [&](std::string_view, std::string_view v) {
+                                                       seen.push_back(std::string(v) + (launcher->queued() ? " queued" : ""));
+                                                   });
+    android::commitLaunch(LaunchTuple()
+                                  .romPath("/r/a.sfc")
+                                  .game("snes", "/r/a.sfc", "/c/snes9x_libretro_android.so")
+                                  .core("/c/snes9x_libretro_android.so")
+                                  .app("com.retroarch.aarch64"));
+    EXPECT_EQ(get(nanolinux::launcher::kAppLaunchedKey), "");  // the keys alone are no launch
+    android::commitLaunch(LaunchTuple().handoffFired("1").pendingExit("0").dropInput("1").doLaunch("1"));
+    android::commitLaunch(LaunchTuple().retroarch("1"));  // the same launch: written once
+    nanocompat::removePropertyObserver(id);
+    ASSERT_EQ(seen.size(), 1u);
+    EXPECT_EQ(seen[0], "1 queued");  // set once the launch is queued, inside the launch site's commit
+    const int64_t t0 = nowMs();
+    EXPECT_EQ(exitPathWaits(), 0);
+    EXPECT_LT(nowMs() - t0, 100);
+    int pid = 0;
+    ASSERT_EQ(nanolinux::launcher::leaveQueued(&pid), Leave::Started);
+    ASSERT_GT(pid, 0);
+    int status = 0;
+    EXPECT_EQ(waitpid(pid, &status, 0), pid);
+    // The launcher leaves it set: the game is in front until thimsy-session clears it at its end.
+    EXPECT_EQ(get(nanolinux::launcher::kAppLaunchedKey), "1");
+}
+
+// A launch that cannot start (here: no RetroArch) still ends Nano's menu (the launch site exits and
+// Nano exits for the session to restart it), so the exit path does not wait for it either.
+TEST_F(LauncherTest, ARefusedLaunchDoesNotHoldTheExitPath) {
+    using Leave = LinuxLauncher::Leave;
+    LinuxLauncher* launcher = installPlatform();  // no script(): options.retroarch does not exist
+    ASSERT_TRUE(launcher != nullptr);
+    android::commitLaunch(LaunchTuple()
+                                  .romPath("/r/a.sfc")
+                                  .core("/c/snes9x_libretro_android.so")
+                                  .app("com.retroarch.aarch64")
+                                  .doLaunch("1"));
+    EXPECT_FALSE(launcher->queued());
+    EXPECT_EQ(get(nanolinux::launcher::kAppLaunchedKey), "1");
+    EXPECT_EQ(exitPathWaits(), 0);
+    int pid = 0;
+    EXPECT_EQ(nanolinux::launcher::leaveQueued(&pid), Leave::NotStarted);
+    EXPECT_EQ(pid, -1);
 }
 
 }  // namespace
