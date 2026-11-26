@@ -42,7 +42,8 @@ satisfied for [core] and [drm].
 
 The split (IMPLEMENTATION.md C.1, B.4), over nano/Android.bp's gammaos-nano srcs, in its order:
   - SPLIT_DECISIONS places a file by hand, with the reason (the KMS file is [drm]; features v1 leaves
-    out on Linux are [firmware]);
+    out on Linux are [firmware]); SPLIT_PREFIXES does the same for a folder (platform/firmware/ is
+    [firmware]: the firmware platform, B.6);
   - any other file is [firmware] when it reaches an Android-only header with neither shim nor stub
     (each such header needs a NOT_STUBBED reason, or the census fails), a sibling's header, or a
     header that resolves nowhere; else [core];
@@ -106,6 +107,13 @@ SPLIT_DECISIONS: "OrderedDict[str, Tuple[str, str]]" = OrderedDict([
     ("LibretroRunner.cpp", ("firmware", "the in-process libretro runner, until plan Phase 5")),
     ("DrasticGpu3d.cpp", ("firmware", "drastic-nano's GPU renderer (the DS player, not on Linux v1)")),
     ("DrasticSettings.cpp", ("firmware", "drastic-nano's settings (the DS player, not on Linux v1)")),
+])
+# The same by folder, {prefix: (section, reason)}, for every gammaos-nano src under the prefix (G7-main).
+# The firmware platform's files are Android's side of the seam (B.6): each G7 step adds its own
+# platform/firmware/<Area>.cpp, and Linux and the host link their own platform library instead.
+SPLIT_PREFIXES: "OrderedDict[str, Tuple[str, str]]" = OrderedDict([
+    ("platform/firmware/", ("firmware", "the firmware platform (B.6); Linux and the host link their own "
+                                        "(platform/linux, platform/host)")),
 ])
 # Android-only headers G4 decided not to stub: {header: reason}. A [core] or [drm] file may not reach
 # one (the census then puts it in [firmware]); a header that is in neither table nor stubbed fails.
@@ -495,8 +503,9 @@ class Split:
         self.reasons: Dict[str, str] = {}
         undecided: List[str] = []
         for path in srcs:
-            if path in SPLIT_DECISIONS:
-                sec, why = SPLIT_DECISIONS[path]
+            prefix = next((p for p in SPLIT_PREFIXES if path.startswith(p)), None)
+            if path in SPLIT_DECISIONS or prefix is not None:
+                sec, why = SPLIT_DECISIONS[path] if path in SPLIT_DECISIONS else SPLIT_PREFIXES[prefix]
                 self.sections[sec].append(path)
                 if sec != "core":
                     self.reasons["%s:%s" % (sec, path)] = why
@@ -534,6 +543,11 @@ class Split:
         words = set(re.findall(r"[A-Za-z_]\w*", code))
         calls = set(re.findall(r"([A-Za-z_]\w*)\s*\(", code))
         for path in self.sections["firmware"]:
+            # Never the firmware platform's files: what they define for the seam (createPlatform),
+            # every platform library defines too, and a platform that lacks it must fail the link
+            # rather than get an inert stub.
+            if any(path.startswith(p) for p in SPLIT_PREFIXES):
+                continue
             with open(os.path.join(c.nano, *path.split("/")), "rb") as f:
                 defs = gen.dropped_definitions(f.read().decode("utf-8", "replace"))
             used = []

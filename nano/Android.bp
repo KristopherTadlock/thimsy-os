@@ -45,6 +45,9 @@ cc_binary {
 
     srcs: [
         "main.cpp",
+        "NanoBootSequence.cpp",            // main()'s boot steps, shared with the Linux main
+        "NanoPlatform.cpp",                // the platform seam: install() and get()
+        "platform/firmware/Platform.cpp",  // the firmware platform (createPlatform)
         "NanoMenu.cpp",
         "NanoMenuDrm.cpp",
         "NanoMenuDrmBuffers.cpp", // the render targets' buffer back end (AHardwareBuffer, gralloc)

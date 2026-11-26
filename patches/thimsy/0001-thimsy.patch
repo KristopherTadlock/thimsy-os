@@ -2466,18 +2466,23 @@ index 2ff1dad7970..89bb33a9256 100644
                      } else { close(fd); unlink(tmp.c_str()); }
                  }
 diff --git a/frameworks/base/cmds/gammaos-nano/Android.bp b/frameworks/base/cmds/gammaos-nano/Android.bp
-index 0f747c9a45c..488fd011b5c 100644
+index 0f747c9a45c..081ba519c79 100644
 --- a/frameworks/base/cmds/gammaos-nano/Android.bp
 +++ b/frameworks/base/cmds/gammaos-nano/Android.bp
-@@ -47,6 +47,7 @@ cc_binary {
+@@ -45,8 +45,12 @@ cc_binary {
+ 
+     srcs: [
          "main.cpp",
++        "NanoBootSequence.cpp",            // main()'s boot steps, shared with the Linux main
++        "NanoPlatform.cpp",                // the platform seam: install() and get()
++        "platform/firmware/Platform.cpp",  // the firmware platform (createPlatform)
          "NanoMenu.cpp",
          "NanoMenuDrm.cpp",
 +        "NanoMenuDrmBuffers.cpp", // the render targets' buffer back end (AHardwareBuffer, gralloc)
          "NanoMenuRgbFollow.cpp",
          "NanoMenuXmb.cpp",
          "NanoMenuShaders.cpp",
-@@ -69,23 +70,31 @@ cc_binary {
+@@ -69,23 +73,31 @@ cc_binary {
          "NanoMenuPS3EmuCatalog.cpp",
          "NanoMenuPS3Folder.cpp",
          "NanoMenuFileExplorer.cpp",
@@ -2510,7 +2515,7 @@ index 0f747c9a45c..488fd011b5c 100644
          "NanoMenuSetupWizard.cpp",
          "NanoMenuStrings.cpp",
          "NanoBtStable.cpp",
-@@ -111,13 +120,40 @@ cc_binary {
+@@ -111,13 +123,40 @@ cc_binary {
          "NanoAacDec.cpp",
          "NanoCea608.cpp",
          "NanoScraper.cpp",
@@ -2551,7 +2556,7 @@ index 0f747c9a45c..488fd011b5c 100644
          "LibretroRunner.cpp",
          "FakeJNI.cpp",
          "DrasticRunner.cpp",
-@@ -133,6 +169,7 @@ cc_binary {
+@@ -133,6 +172,7 @@ cc_binary {
          "liba52_nano",   // AC-3 decoder (no AC-3 codec on the device)
          "libtinyxml2",   // XML DOM parser for the ES-DE theme engine (NanoEsdeTheme)
          "libnanosvg_nano",   // SVG rasterizer for ES-DE theme logos (NanoThemeEngine)
@@ -2559,7 +2564,7 @@ index 0f747c9a45c..488fd011b5c 100644
          // Share storage + credential encoding, shared with the gammaos-sharefs daemon so a share
          // added in the menu is written exactly as the daemon expects to read it.
          "libgammaos_sharecfg",
-@@ -143,14 +180,13 @@ cc_binary {
+@@ -143,14 +183,13 @@ cc_binary {
          "jni_headers",
          "native_headers",   // <android/imagedecoder.h> + <android/bitmap.h> (photo viewer decode)
          "libgammargb_process_headers",   // shared GammaRGB colour pipeline (parity with SF sampler)
@@ -2575,7 +2580,7 @@ index 0f747c9a45c..488fd011b5c 100644
          "libbinder_ndk",
          "libcutils",
          "liblog",
-@@ -172,21 +208,28 @@ cc_binary {
+@@ -172,21 +211,28 @@ cc_binary {
          "libandroid",   // APerformanceHint (ADPF render-thread hint session)
          "libaaudio",    // GammaEQ audio preview + music player output (AAudio)
          "libmediandk",  // music player decode: AMediaExtractor + AMediaCodec -> PCM
@@ -2608,7 +2613,7 @@ index 0f747c9a45c..488fd011b5c 100644
          "nano_xmb_icons",
          "nano_xmb_normalmaps",
          "nano_xmb_glass",
-@@ -204,13 +247,64 @@ cc_binary {
+@@ -204,13 +250,64 @@ cc_binary {
          "nano_xmb_photoviewer",
          "nano_xmb_backgrounds",
          "nano_xmb_systemstatus",
@@ -2674,7 +2679,7 @@ index 0f747c9a45c..488fd011b5c 100644
  // Vendored liba52 (a52dec 0.7.4, GPL-2) - AC-3 decoder. The device has no hardware
  // or software AC-3 codec, so NanoAc3 uses this to decode AC-3 audio in .ts / MKV / VOB.
  // Pure-C generic path (no SIMD / djbfft / memalign); -w because the 2002-era source
-@@ -249,6 +343,7 @@ cc_library_static {
+@@ -249,6 +346,7 @@ cc_library_static {
  // source is not clean under Soong's warning set (same treatment as liba52_nano).
  cc_library_static {
      name: "libnanosvg_nano",
@@ -2682,7 +2687,7 @@ index 0f747c9a45c..488fd011b5c 100644
      srcs: ["nanosvg/nanosvg_impl.c"],
      local_include_dirs: ["nanosvg"],
      export_include_dirs: ["nanosvg"],
-@@ -323,14 +418,40 @@ sh_binary {
+@@ -323,14 +421,40 @@ sh_binary {
      src: "nano-pmdown.sh",
  }
  
@@ -2724,7 +2729,7 @@ index 0f747c9a45c..488fd011b5c 100644
  // /system/etc/nano_xmb/<sub_dir>/; the renderer also checks
  // /data/system/nano_xmb/ first so assets can be pushed during development
  // without rebuilding the system image.
-@@ -340,18 +461,6 @@ prebuilt_etc {
+@@ -340,18 +464,6 @@ prebuilt_etc {
      sub_dir: "nano_xmb/fonts",
  }
  
@@ -2743,7 +2748,7 @@ index 0f747c9a45c..488fd011b5c 100644
  // ES-DE built-in asset SVGs the theme engine falls back to when a theme does not
  // ship its own: the helpsystem button glyphs (the legend icons at the bottom of
  // every view), the per-controller badge icons, and the metadata badge icons.
-@@ -388,12 +497,6 @@ prebuilt_etc {
+@@ -388,12 +500,6 @@ prebuilt_etc {
      sub_dir: "nano_xmb/gradients",
  }
  
@@ -2756,7 +2761,7 @@ index 0f747c9a45c..488fd011b5c 100644
  prebuilt_etc {
      name: "nano_xmb_icons",
      srcs: ["ps3xmb/icons/*.png"],
-@@ -423,7 +526,27 @@ prebuilt_etc {
+@@ -423,7 +529,27 @@ prebuilt_etc {
  // /data/system/nano_xmb/audio/ first (dev override), else this install path.
  prebuilt_etc {
      name: "nano_xmb_audio",
@@ -2785,7 +2790,7 @@ index 0f747c9a45c..488fd011b5c 100644
      sub_dir: "nano_xmb/audio",
  }
  
-@@ -510,6 +633,13 @@ prebuilt_etc {
+@@ -510,6 +636,13 @@ prebuilt_etc {
          "ps3xmb/i18n/ar.json",
          "ps3xmb/i18n/tr.json",
          "ps3xmb/i18n/pl.json",
@@ -2799,7 +2804,7 @@ index 0f747c9a45c..488fd011b5c 100644
      ],
      sub_dir: "gammaos-nano/i18n",
  }
-@@ -543,7 +673,12 @@ prebuilt_etc {
+@@ -543,7 +676,12 @@ prebuilt_etc {
  // first, this is the bundled fallback).
  prebuilt_etc {
      name: "nano_xmb_nds",
@@ -2813,7 +2818,7 @@ index 0f747c9a45c..488fd011b5c 100644
      sub_dir: "nano_xmb/nds",
  }
  
-@@ -558,6 +693,32 @@ prebuilt_etc {
+@@ -558,6 +696,32 @@ prebuilt_etc {
      sub_dir: "nano_xmb/daijishou",
  }
  
@@ -2846,7 +2851,7 @@ index 0f747c9a45c..488fd011b5c 100644
  // Source files shared with the drastic-nano binary. drastic-nano
  // reuses the DRM rendering stack, DrasticRunner lifecycle, and
  // FakeJNI shim from gammaos-nano; wrapping them in a filegroup lets
-@@ -567,11 +728,386 @@ filegroup {
+@@ -567,11 +731,386 @@ filegroup {
      name: "drastic_nano_shared_srcs",
      srcs: [
          "NanoMenuDrm.cpp",
@@ -10596,6 +10601,107 @@ index 00000000000..4206c8ba656
 +}
 +
 +}  // namespace android
+diff --git a/frameworks/base/cmds/gammaos-nano/NanoBootSequence.cpp b/frameworks/base/cmds/gammaos-nano/NanoBootSequence.cpp
+new file mode 100644
+index 00000000000..6bcf3a78186
+--- /dev/null
++++ b/frameworks/base/cmds/gammaos-nano/NanoBootSequence.cpp
+@@ -0,0 +1,54 @@
++/*
++ * Copyright (C) 2026 GammaOS
++ * Copyright (C) 2026 The Thimsy OS Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++// nanoBootSequence() (NanoBootSequence.h): main.cpp's boot steps, moved verbatim, with main.cpp's
++// LOG_TAG so the firmware's log is unchanged.
++
++#define LOG_TAG "GammaOSNano"
++
++#include <sys/resource.h>
++
++#include <cutils/properties.h>
++#include <utils/Log.h>
++
++#include "NanoBootSequence.h"
++#include "NanoMenu.h"
++
++using namespace android;
++
++// The early DRM master fd: defined by each main (main.cpp grabs it on non-Qualcomm SoCs).
++extern int gEarlyDrmFd;
++
++sp<NanoMenu> nanoBootSequence(void (*platformSteps)()) {
++    setpriority(PRIO_PROCESS, 0, ANDROID_PRIORITY_DISPLAY);
++
++    ALOGI("GammaOS Nano starting... (earlyDrmFd=%d)", gEarlyDrmFd);
++
++    property_set("sys.gammaos.nano.drm_active", "0");
++
++    if (platformSteps) platformSteps();
++
++    sp<NanoMenu> nano = new NanoMenu();
++
++    // waitForSurfaceFlinger() removed: on the DRM boot path, SF is not
++    // needed at all (headless EGL + DRM direct).  On restart (boot_completed=1),
++    // readyToRun() creates SurfaceComposerClient which waits internally.
++
++    nano->run("GammaOSNano", PRIORITY_DISPLAY);
++
++    return nano;
++}
+diff --git a/frameworks/base/cmds/gammaos-nano/NanoBootSequence.h b/frameworks/base/cmds/gammaos-nano/NanoBootSequence.h
+new file mode 100644
+index 00000000000..7ed745f4118
+--- /dev/null
++++ b/frameworks/base/cmds/gammaos-nano/NanoBootSequence.h
+@@ -0,0 +1,35 @@
++/*
++ * Copyright (C) 2026 GammaOS
++ * Copyright (C) 2026 The Thimsy OS Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++// main()'s portable boot steps, shared by every main that runs the home menu
++// (docs/linux/IMPLEMENTATION.md B.7): main.cpp on the firmware, platform/linux/main_linux.cpp on
++// Linux. Moved from main.cpp's main() as they were.
++#pragma once
++
++#include <utils/StrongPointer.h>
++
++namespace android {
++class NanoMenu;
++}
++
++// Raises the process to the display priority, logs the start, clears sys.gammaos.nano.drm_active,
++// runs `platformSteps` (may be null: on the firmware, DraStic's boot work and binder's thread pool),
++// then makes NanoMenu and starts its thread. Returns the menu; the caller waits for it.
++//
++// Call it from main(), on the main thread, after nanoplat::install() and after the early DRM
++// section: NanoMenu::readyToRun takes gEarlyDrmFd (defined by each main) once, on its own thread.
++android::sp<android::NanoMenu> nanoBootSequence(void (*platformSteps)());
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoButtonMap.cpp b/frameworks/base/cmds/gammaos-nano/NanoButtonMap.cpp
 new file mode 100644
 index 00000000000..0f972cbdb78
@@ -80275,10 +80381,70 @@ index 41e93d385af..70ed0b512a3 100644
 +    # kernel starting (nano-seedrng load).
 +    exec u:r:su:s0 root root -- /system/bin/nano-seedrng shutdown
 diff --git a/frameworks/base/cmds/gammaos-nano/main.cpp b/frameworks/base/cmds/gammaos-nano/main.cpp
-index 8e387db4282..b63a7d9dd9d 100644
+index 8e387db4282..6e807bc8a4e 100644
 --- a/frameworks/base/cmds/gammaos-nano/main.cpp
 +++ b/frameworks/base/cmds/gammaos-nano/main.cpp
-@@ -1078,6 +1078,7 @@ int main(int argc, char** argv) {
+@@ -47,9 +47,11 @@
+ 
+ #include "DrasticRunner.h"
+ #include "FakeJNI.h"
++#include "NanoBootSequence.h"
+ #include "NanoMenu.h"
+ #include "NanoMenuDrm.h"
+ #include "NanoMenuUtils.h"
++#include "NanoPlatform.h"
+ 
+ using namespace android;
+ 
+@@ -941,7 +943,47 @@ static void startDrasticLibPreloadThread() {
+     }).detach();
+ }
+ 
++// The firmware's boot steps between sys.gammaos.nano.drm_active=0 and NanoMenu, which
++// nanoBootSequence() runs there: DraStic's library patch, preload, init and QR watcher,
++// and binder's thread pool.
++static void firmwareBootSteps() {
++    // SYNCHRONOUSLY patch libdrastic_arm64.so in the cache BEFORE
++    // any other drastic work. The patch short-circuits drastic's
++    // initialize_audio function to a single `ret`, which prevents
++    // the 15-second boot-time stall caused by slCreateEngine's
++    // binder waitForService("media.audio_flinger"). See the
++    // patchDrasticAudioInit() comment block for the full rationale.
++    //
++    // Must happen on the main thread before the smoke-test (or the
++    // preload thread) can possibly dlopen libdrastic_arm64.so —
++    // otherwise bionic will mmap the unpatched .text segment and
++    // the patch won't take effect until the next populate cycle.
++    // None of it without drastic-nano (drasticNanoAvailable): DraStic's library is not there.
++    const bool drasticNano = drasticNanoAvailable();
++    if (drasticNano) patchDrasticAudioInit();
++
++    // Kick the drastic library preload in the background to warm
++    // the rest of the dependency chain (libandroid, libxml2, power
++    // HIDL, libdrastic itself, and sync prefetch of BIOS/ROM files).
++    // These are safe to load in parallel with the main thread's
++    // NanoMenu boot path.
++    if (drasticNano) startDrasticLibPreloadThread();
++
++    if (drasticNano) runDrasticInitIfNeeded();
++    // Unblock the preload thread's deferred libOpenSLES warm: every
++    // boot-critical dlopen (libdrastic, when QR is primed) is done now.
++    sDrasticEarlyInitDone.store(true, std::memory_order_release);
++    if (drasticNano) startDrasticQrTestWatcher();
++
++    sp<ProcessState> proc(ProcessState::self());
++    ProcessState::self()->startThreadPool();
++}
++
+ int main(int argc, char** argv) {
++    // The platform first (docs/linux/IMPLEMENTATION.md B.6): before any thread and before
++    // either NanoMenu (the overlay's too). The firmware platform never fails to start.
++    nanoplat::install(nanoplat::createPlatform(nanoplat::PlatformArgs{argc, argv}));
++
+     // Overlay XMB mode: invoked as `gammaos-nano --overlay` by the
+     // gammaos-nano-overlay init service. This instance runs in the
+     // full-Android context (SurfaceFlinger + WindowManager up) as a
+@@ -1078,6 +1120,7 @@ int main(int argc, char** argv) {
                "is up - stale flag, clearing it and running as the DRM home", svc);
          property_set("sys.gammaos.nano.show_overlay", "0");
          property_set("sys.gammaos.nano.overlay_wallpaper", "0");
@@ -80286,33 +80452,56 @@ index 8e387db4282..b63a7d9dd9d 100644
      }
  
      // Grab DRM master early on non-Qualcomm SoCs to beat HWC.
-@@ -1183,20 +1184,22 @@ int main(int argc, char** argv) {
-     // preload thread) can possibly dlopen libdrastic_arm64.so —
-     // otherwise bionic will mmap the unpatched .text segment and
-     // the patch won't take effect until the next populate cycle.
+@@ -1166,48 +1209,7 @@ int main(int argc, char** argv) {
+         }
+     }
+ 
+-    setpriority(PRIO_PROCESS, 0, ANDROID_PRIORITY_DISPLAY);
+-
+-    ALOGI("GammaOS Nano starting... (earlyDrmFd=%d)", gEarlyDrmFd);
+-
+-    property_set("sys.gammaos.nano.drm_active", "0");
+-
+-    // SYNCHRONOUSLY patch libdrastic_arm64.so in the cache BEFORE
+-    // any other drastic work. The patch short-circuits drastic's
+-    // initialize_audio function to a single `ret`, which prevents
+-    // the 15-second boot-time stall caused by slCreateEngine's
+-    // binder waitForService("media.audio_flinger"). See the
+-    // patchDrasticAudioInit() comment block for the full rationale.
+-    //
+-    // Must happen on the main thread before the smoke-test (or the
+-    // preload thread) can possibly dlopen libdrastic_arm64.so —
+-    // otherwise bionic will mmap the unpatched .text segment and
+-    // the patch won't take effect until the next populate cycle.
 -    patchDrasticAudioInit();
-+    // None of it without drastic-nano (drasticNanoAvailable): DraStic's library is not there.
-+    const bool drasticNano = drasticNanoAvailable();
-+    if (drasticNano) patchDrasticAudioInit();
- 
-     // Kick the drastic library preload in the background to warm
-     // the rest of the dependency chain (libandroid, libxml2, power
-     // HIDL, libdrastic itself, and sync prefetch of BIOS/ROM files).
-     // These are safe to load in parallel with the main thread's
-     // NanoMenu boot path.
+-
+-    // Kick the drastic library preload in the background to warm
+-    // the rest of the dependency chain (libandroid, libxml2, power
+-    // HIDL, libdrastic itself, and sync prefetch of BIOS/ROM files).
+-    // These are safe to load in parallel with the main thread's
+-    // NanoMenu boot path.
 -    startDrasticLibPreloadThread();
-+    if (drasticNano) startDrasticLibPreloadThread();
- 
+-
 -    runDrasticInitIfNeeded();
-+    if (drasticNano) runDrasticInitIfNeeded();
-     // Unblock the preload thread's deferred libOpenSLES warm: every
-     // boot-critical dlopen (libdrastic, when QR is primed) is done now.
-     sDrasticEarlyInitDone.store(true, std::memory_order_release);
+-    // Unblock the preload thread's deferred libOpenSLES warm: every
+-    // boot-critical dlopen (libdrastic, when QR is primed) is done now.
+-    sDrasticEarlyInitDone.store(true, std::memory_order_release);
 -    startDrasticQrTestWatcher();
-+    if (drasticNano) startDrasticQrTestWatcher();
+-
+-    sp<ProcessState> proc(ProcessState::self());
+-    ProcessState::self()->startThreadPool();
+-
+-    sp<NanoMenu> nano = new NanoMenu();
+-
+-    // waitForSurfaceFlinger() removed: on the DRM boot path, SF is not
+-    // needed at all (headless EGL + DRM direct).  On restart (boot_completed=1),
+-    // readyToRun() creates SurfaceComposerClient which waits internally.
+-
+-    nano->run("GammaOSNano", PRIORITY_DISPLAY);
++    sp<NanoMenu> nano = nanoBootSequence(firmwareBootSteps);
  
-     sp<ProcessState> proc(ProcessState::self());
-     ProcessState::self()->startThreadPool();
+     ALOGI("GammaOS Nano running. Joining thread pool.");
+ 
 diff --git a/frameworks/base/cmds/gammaos-nano/nano-pmdown.sh b/frameworks/base/cmds/gammaos-nano/nano-pmdown.sh
 index 7f134bf8839..4f4409a40dd 100644
 --- a/frameworks/base/cmds/gammaos-nano/nano-pmdown.sh
@@ -80362,6 +80551,41 @@ index 00000000000..517afa3ed3e
 +    fi
 +    state=$now
 +done
+diff --git a/frameworks/base/cmds/gammaos-nano/platform/firmware/Platform.cpp b/frameworks/base/cmds/gammaos-nano/platform/firmware/Platform.cpp
+new file mode 100644
+index 00000000000..4dc936eec6a
+--- /dev/null
++++ b/frameworks/base/cmds/gammaos-nano/platform/firmware/Platform.cpp
+@@ -0,0 +1,29 @@
++/*
++ * Copyright (C) 2026 The Thimsy OS Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++// The firmware platform's createPlatform() (docs/linux/IMPLEMENTATION.md B.6, B.7 P4): what
++// gammaos-nano's main.cpp installs. Each service is today's Android code, moved into
++// platform/firmware/<Area>.cpp by the G7 step of its area, which wires it in below.
++
++#include <memory>
++
++#include "NanoPlatform.h"
++
++std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs& /*args*/) {
++    std::unique_ptr<Platform> platform(new Platform);
++    // The services, one line each (G7 steps).
++    return platform;
++}
 diff --git a/frameworks/base/cmds/gammaos-nano/powerwatch/nano_powerwatch.cpp b/frameworks/base/cmds/gammaos-nano/powerwatch/nano_powerwatch.cpp
 new file mode 100644
 index 00000000000..84dab5ba8dd

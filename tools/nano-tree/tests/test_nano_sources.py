@@ -110,17 +110,23 @@ class AgainstAndroidBp(unittest.TestCase):
 
     def test_platform_sections(self):
         """[linux] is every platform/linux .cpp outside platform/linux/tests/, and [host] every
-        platform/host .cpp plus the headless main; both list NanoPlatform.cpp (G5-3) until G7-main
-        moves it to [core]."""
+        platform/host .cpp plus the headless main. NanoPlatform.cpp, which every platform links, is
+        in [core] since G7-main added it to gammaos-nano, and in no platform section; the firmware
+        platform (platform/firmware) is all [firmware]."""
         def cpps(prefix):
             return [p for p in self.files if p.startswith(prefix) and p.endswith(".cpp")]
         linux = [p for p in cpps("platform/linux/") if not p.startswith("platform/linux/tests/")]
         self.assertTrue(linux, "no platform/linux sources")
-        self.assertEqual(sorted(self.src["linux"]), sorted(["NanoPlatform.cpp"] + linux))
+        self.assertEqual(sorted(self.src["linux"]), sorted(linux))
         self.assertEqual([p for p in self.src["linux"] if "/tests/" in p], [])
         self.assertEqual(sorted(self.src["host"]),
-                         sorted(["NanoPlatform.cpp", "test/host/headless/main_headless.cpp"]
-                                + cpps("platform/host/")))
+                         sorted(["test/host/headless/main_headless.cpp"] + cpps("platform/host/")))
+        self.assertIn("NanoPlatform.cpp", self.src["core"])
+        firmware = cpps("platform/firmware/")
+        self.assertIn("platform/firmware/Platform.cpp", firmware)
+        self.assertEqual(sorted(p for p in self.src["firmware"] if p.startswith("platform/")), sorted(firmware))
+        self.assertEqual([p for p in self.src["dropped-linux"] if p.startswith("platform/")], [],
+                         "a platform's createPlatform must never be stubbed")
 
     def test_dropped_linux_subset_of_firmware(self):
         self.assertEqual(sorted(set(self.src["dropped-linux"]) - set(self.src["firmware"])), [])
