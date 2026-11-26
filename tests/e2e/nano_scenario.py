@@ -320,9 +320,10 @@ class HeadlessRun:
         # a signal. check_exits() fails the scenario on any but 0.
         self.exits: List[Tuple[int, int]] = []
         self.checked_exits = 0
-        # Launch commits count only from this index of events.all on: the current process's start,
-        # or just past the commit the last expect_launch matched (test-quality-6).
+        # Launches count only from this index of events.all on: the current process's start, or
+        # just past the launch the last expect_launch matched (test-quality-6).
         self.launch_from = 0
+        self.launch_matched = -1
         self.start_index = 0
 
     # -- life cycle
@@ -464,8 +465,10 @@ class HeadlessRun:
             self.wait_for(lambda: self._file_holds(v), self.within(step), "%s %s" % (where, json.dumps(v)))
         elif kind == "expect_launch":
             self.wait_for(lambda: self._launched(v), self.within(step),
-                          "%s launch %s (handshake now %s)" % (where, json.dumps(v), json.dumps(self.launch_state()[0])))
-            self.launch_from = len(self.events.all)   # this launch is used up
+                          "%s launch %s (launches %s; handshake now %s)" % (
+                              where, json.dumps(v), json.dumps([e for _, e in self.launches()]),
+                              json.dumps(self.handshake())))
+            self.launch_from = self.launch_matched + 1   # this launch is used up
         elif kind == "expect_no_shell":
             self.events.poll()
             bad = [e["cmd"] for e in self.events.all if e.get("ev") == "shell"
@@ -520,46 +523,43 @@ class HeadlessRun:
             return v["contains"] in text
         return True
 
-    def launch_state(self) -> Tuple[Dict[str, str], bool]:
+    def handshake(self) -> Dict[str, str]:
         """The launch handshake's keys as Nano last wrote them (the store keeps them across a
-        restart), and whether a launch was committed since launch_from: do_launch set to 1, or the
-        process ending cleanly (its "exit" event, or status 0) with launch_app set, as the
-        firmware's handshake ends. A crash is never a commit (test-quality-3), and an earlier
-        process's commit, or one an earlier expect_launch matched, does not count again."""
+        restart), for failure messages."""
         keys: Dict[str, str] = {}
-        committed = False
-        for i, e in enumerate(self.events.all):
-            fresh = i >= self.launch_from
+        for e in self.events.all:
             if e.get("ev") == "prop" and str(e.get("key", "")).startswith(LAUNCH_PREFIX):
-                k = e["key"][len(LAUNCH_PREFIX):]
-                keys[k] = e.get("value", "")
-                if fresh and k in ("launch_app", "launch_core", "launch_intent", "launch_rom"):
-                    committed = False
-                if fresh and k == "do_launch" and e.get("value") == "1":
-                    committed = True
-            elif fresh and e.get("ev") == "exit" and keys.get("launch_app"):
-                committed = True
-        if self.proc is not None and self.proc.poll() == 0 and keys.get("launch_app") and \
-                self.start_index >= self.launch_from:
-            committed = True
-        return keys, committed
+                keys[e["key"][len(LAUNCH_PREFIX):]] = e.get("value", "")
+        return keys
 
-    def _launched(self, v: Dict[str, Any]) -> bool:
-        keys, committed = self.launch_state()
-        if not committed:
+    def launches(self) -> List[Tuple[int, Dict[str, Any]]]:
+        """The launches since launch_from, with their index in events.all: the host platform's fake
+        launcher (platform/host/FakeLauncher.h) records each one with a {"ev":"launch"} event when a
+        commit writes the handshake's trigger (do_launch=1 or service.bootanim.nano_retroarch=1), as
+        the Linux launcher starts a game then (G7-launch-b). The handshake's keys alone, or Nano
+        exiting after writing them, are no launch; a crash never is (test-quality-3); an earlier
+        process's launch, or one an earlier expect_launch matched, does not count again."""
+        return [(i, e) for i, e in enumerate(self.events.all)
+                if i >= self.launch_from and e.get("ev") == "launch"]
+
+    @staticmethod
+    def launch_matches(e: Dict[str, Any], v: Dict[str, Any]) -> bool:
+        if e.get("kind") != v.get("kind", "Core"):
             return False
-        core = keys.get("launch_core", "")
-        if v.get("kind", "Core") == "Core" and not core:
+        if "core" in v and v["core"] not in os.path.basename(str(e.get("core", ""))):
             return False
-        if v.get("kind") == "Package" and core:
+        if "rom_endswith" in v and not str(e.get("rom", "")).endswith(v["rom_endswith"]):
             return False
-        if "core" in v and v["core"] not in os.path.basename(core):
-            return False
-        if "rom_endswith" in v and not keys.get("launch_rom", "").endswith(v["rom_endswith"]):
-            return False
-        if "package" in v and keys.get("launch_app", "") != v["package"]:
+        if "package" in v and e.get("package", "") != v["package"]:
             return False
         return True
+
+    def _launched(self, v: Dict[str, Any]) -> bool:
+        for i, e in self.launches():
+            if self.launch_matches(e, v):
+                self.launch_matched = i
+                return True
+        return False
 
     def press(self, code: int, hold_ms: int, device: Optional[str]) -> None:
         node = device or self.layout.devices[0]
@@ -568,10 +568,11 @@ class HeadlessRun:
         self.fifos.write(node, input_events(code, 0))
 
     def child_exit(self, v: Dict[str, Any], step: Dict[str, Any]) -> None:
-        """The launched game ends. Until G7-launch, Nano exits on a launch (the firmware's
-        behaviour) and the session restarts it, as init does on Android: so wait for Nano to end,
-        wait after_ms, and start it again in the same jail. (After G7-launch the fake launcher's
-        pollChild reports the exit instead; this step then writes a control line.)"""
+        """The launched game ends. Nano's launch sites still exit after a launch (G7-launch-b moved
+        the launch behind the fake launcher, not the exit), and the session restarts Nano, as init
+        does on Android: so wait for Nano to end, wait after_ms, and start it again in the same
+        jail. (Once Nano stays up through a launch, the fake launcher's pollChild reports the exit
+        instead, and this step writes a control line.)"""
         self.wait_for(lambda: not self.running(), self.within(step), "%s Nano to exit after the launch"
                       % step["_where"])
         self.check_exits()   # the hand-off is a clean exit, never a crash

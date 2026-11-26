@@ -43,7 +43,7 @@ deadline), `hold_ms` (`press`), `device` (`press`: the node, default the first d
 | `expect_prop` | {cond} | waits until the property's value (as the store keeps it) matches |
 | `expect_persist` | {cond} on a `persist.*` key | waits until `persist.props` on disk holds it |
 | `expect_file` | `{"path": "/data/...", "contains"\|"equals": text}` or `"exists": bool` | waits for a file in the jail (links followed as Nano sees them) |
-| `expect_launch` | `{"kind": "Core"\|"Package", "core", "rom_endswith", "package"}` | waits until a launch is committed with those values (below) |
+| `expect_launch` | `{"kind": "Core"\|"Package", "core", "rom_endswith", "package"}` | waits until the fake launcher records a launch with those values (below) |
 | `expect_no_shell` | list of command prefixes | fails if any shell command so far starts with one |
 | `press` | key name or code | key down, `hold_ms` (default 80), key up, each followed by `SYN_REPORT` |
 | `barrier` | bool | turns the frame barrier on (each present then waits for a grant) or off |
@@ -79,11 +79,17 @@ by), `A` (`BTN_SOUTH`), `B` (`BTN_EAST`), `X` (`BTN_WEST`), `Y` (`BTN_NORTH`), `
 `SELECT`, `START`, `MODE`, `L3`, `R3`, `ENTER`, `ESC`, `BACK`, `HOME`, `POWER`, `VOLUME_UP`,
 `VOLUME_DOWN`; or a number.
 
-**Launches.** Until G7-launch moves launching behind `Launcher`, a launch is the firmware's
-handshake: Nano writes `sys.gammaos.nano.launch_app`, `launch_core`, `launch_rom`, `launch_intent`
-and the rest, then sets `do_launch=1` or exits. `expect_launch` reads the last values Nano wrote
-(the `prop` events) once the launch is committed. After G7-launch it reads the fake launcher's
-requests instead; the scenario stays the same.
+**Launches.** Nano writes the firmware's handshake (`sys.gammaos.nano.launch_app`, `launch_core`,
+`launch_rom`, `launch_intent` and the rest) through `commitLaunch`, which since G7-launch-b goes to
+the platform's launcher. The host's fake launcher (`nano/platform/host/FakeLauncher.h`) writes the
+keys as the firmware does and, at a write of the trigger (`do_launch=1` or
+`service.bootanim.nano_retroarch=1`), reads the request from them and records it with a `launch`
+event, as the Linux launcher starts a game there; `do_launch` and then `nano_retroarch` for the same
+request is one launch. `expect_launch` waits for a `launch` event since the last one it matched:
+`kind` is the event's, `core` is found in its core path's file name, `rom_endswith` ends its `rom`
+(`launch_rom`, else `launch_game`), `package` equals its `package` (`launch_app`). The handshake's
+keys alone, or Nano exiting after writing them, are no launch, and a crash never is. Nano's launch
+sites still exit after a launch, so `child_exit` still restarts it.
 
 ## nano-headless's events and control lines
 
@@ -93,7 +99,8 @@ The runner talks to `nano-headless` through `/run/thimsy/headless/` (`nano/platf
   `start` (pid, config), `splash` (displays, w, h, rotation), `present` (n, slot, w, h, draws),
   `capture` (n, path, ok, w, h), `prop` (key, value: every property write Nano makes), `shell`
   (fn, cmd, rule, status), `grab` (path, on), `drm_stop`, `drm_release`, `pong`, `quit_requested`,
-  `control_error`, `exit` (code).
+  `control_error`, `exit` (code), `display` (op, ...: the fake display), `launch` (kind, package,
+  core, rom, system, intent, trigger: the fake launcher), `launch_quit`.
 - `ctl`, a FIFO: `barrier on|off`, `grant N`, `capture PATH`, `ping [TOKEN]`, `quit`.
 
 ## Scenarios here
