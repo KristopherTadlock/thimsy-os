@@ -74,3 +74,30 @@ refused and `s2idle` stays. Nothing is needed after resume yet (`sleep-post`).
 - Volume keys are `thimsy-session`'s (`sys.thimsy.hud.volume`), through
   `amixer` on the `Master` control *(guess: check the control name on the
   unit)*.
+
+## Bluetooth notes
+
+- Userland: BlueZ and the D-Bus system bus are in every tier
+  (`configs/fragments/userland.fragment`); `D35bluetooth` starts them only
+  when `device.json` says `"bluetooth": true` and the user turned Bluetooth
+  on. It exits 3 at once when `/sys/class/bluetooth` is missing (no
+  Bluetooth in the kernel) and after `THIMSY_BT_WAIT_S` when no `hci*`
+  appears; Nano then turns its switch back off.
+- Kernel: the kernel config is ROCKNIX's RK3566 `linux.aarch64.conf`, imported
+  (`hw-rk3566.fragment`'s `gpl/generated/rk3566/linux/config`), not a Thimsy
+  fragment. At the ROCKNIX revision read for this step it has `CONFIG_BT=m`,
+  `CONFIG_BT_HCIUART=m` with `CONFIG_BT_HCIUART_SERDEV=y` and
+  `CONFIG_BT_HCIUART_RTL=y`, `CONFIG_BT_RTL=m`, `CONFIG_BT_HIDP=m` and
+  `CONFIG_UHID=y` (HoG pads need uhid). The image has no uevent-driven module
+  loading (no mdev or udev), so a module-built UART driver is loaded only if
+  `device.json`'s `modules` names it; the ARC-D's lists none yet.
+  `bluetooth` and `btrtl` come with `hci_uart` (module dependencies), and
+  `hidp` is loaded on demand by the kernel's socket module request.
+- **Phase 0 (b) check** (with plan open question 25): after the import, the
+  generated config still has the options above (`grep -E
+  '^CONFIG_(BT|BT_HCIUART|BT_HCIUART_SERDEV|BT_HCIUART_RTL|BT_RTL|BT_HIDP|UHID)='`);
+  the ARC-D's device tree gets a `bluetooth` node under its UART (mainline's
+  dtsi has none), `device.json`'s `modules` gains `hci_uart`, the RTL
+  firmware and config (`rtl_bt/`) pass the firmware policy, and
+  `/sys/class/bluetooth/hci0` appears before `D35bluetooth` runs. Else the
+  ARC-D's v1 ships without Bluetooth (`"bluetooth": false`).
