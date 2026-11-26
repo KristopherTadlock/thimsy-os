@@ -1032,12 +1032,15 @@ class TestD35Bluetooth(WorldCase):
         conf = self.w.read("etc/thimsy/init.conf")
         self.w.write("etc/thimsy/init.conf", conf + "THIMSY_BT_WAIT_S=1\n")
 
-    def device(self, has_bt: Optional[str], enabled: Optional[str], controller: bool = True) -> None:
+    def device(self, has_bt: Optional[str], enabled: Optional[str], controller: bool = True,
+               kernel: bool = True) -> None:
         if has_bt is not None:
             self.w.write("run/thimsy/props/ro/ro.thimsy.device.bluetooth", has_bt + "\n")
         if enabled is not None:
             self.w.write("storage/.config/thimsy/persist.props",
                          "persist.thimsy.bluetooth.enabled=%s\n" % enabled)
+        if kernel:
+            (self.w.root / "sys/class/bluetooth").mkdir(parents=True, exist_ok=True)
         if controller:
             (self.w.root / "sys/class/bluetooth/hci0").mkdir(parents=True, exist_ok=True)
 
@@ -1045,8 +1048,9 @@ class TestD35Bluetooth(WorldCase):
         return [(c["tool"], c["args"]) for c in self.w.calls() if c["tool"] in self.DAEMONS]
 
     def test_started_only_with_the_hardware_and_the_switch(self) -> None:
-        for has_bt, enabled, code in (("true", None, 0), ("true", "0", 0), (None, "1", 1),
-                                      ("false", "1", 1)):
+        # 3: this device has no Bluetooth (Nano turns its switch back off).
+        for has_bt, enabled, code in (("true", None, 0), ("true", "0", 0), (None, "1", 3),
+                                      ("false", "1", 3)):
             with self.subTest(has_bt=has_bt, enabled=enabled):
                 self.tearDown()
                 self.setUp()
@@ -1077,10 +1081,23 @@ class TestD35Bluetooth(WorldCase):
 
     def test_no_controller(self) -> None:
         self.device("true", "1", controller=False)
+        t0 = time.monotonic()
         r = self.w.run(self.D35, "start", check=False)
-        self.assertEqual(r.returncode, 1)
+        self.assertGreaterEqual(time.monotonic() - t0, 0.9)  # THIMSY_BT_WAIT_S=1
+        self.assertEqual(r.returncode, 3)
         self.assertEqual(self.daemon_calls(), [])
         self.assertIn("there is no controller", self.w.boot_log())
+
+    def test_no_bluetooth_in_the_kernel_does_not_wait(self) -> None:
+        conf = self.w.read("etc/thimsy/init.conf")
+        self.w.write("etc/thimsy/init.conf", conf + "THIMSY_BT_WAIT_S=30\n")
+        self.device("true", "1", controller=False, kernel=False)
+        t0 = time.monotonic()
+        r = self.w.run(self.D35, "start", check=False)
+        self.assertLess(time.monotonic() - t0, 15)
+        self.assertEqual(r.returncode, 3)
+        self.assertEqual(self.daemon_calls(), [])
+        self.assertIn("the kernel has no Bluetooth", self.w.boot_log())
 
     def test_no_bus_no_bluetoothd(self) -> None:
         self.device("true", "1")

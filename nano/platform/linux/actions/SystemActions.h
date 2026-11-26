@@ -24,7 +24,10 @@
 // - setBluetoothEnabled: persist.thimsy.bluetooth.enabled (1 or 0), which D35bluetooth reads at
 //   boot; on: `sh /etc/init.d/deferred/D35bluetooth start` (D-Bus and bluetoothd, only on a device
 //   whose device.json has "bluetooth": true and with a controller), then `bluetoothctl power on`
-//   (not when the script failed); off: `bluetoothctl power off`, then `D35bluetooth stop`.
+//   (not when the script failed; tried up to 5 times 500 ms apart while it fails at once, as
+//   bluetoothd may not have registered the controller yet); off: `bluetoothctl power off`, then
+//   `D35bluetooth stop`. When the script says the device has no Bluetooth (status 3: device.json,
+//   the kernel, or no controller), the key goes back to 0.
 //   connectBluetooth: `bluetoothctl connect <mac>`. An image without BlueZ logs that once per call.
 // - setTimeFormat: nothing. persist.gammaos.nano.clock12, which Nano wrote just before, is the
 //   only clock format on Linux.
@@ -63,6 +66,8 @@ struct Options {
     std::function<RunResult(const std::vector<std::string>& argv, int timeoutMs)> run;
     // Makes this process follow the zone just set; empty: setenv("TZ", zone) and tzset().
     std::function<void(const std::string& zone)> followZone;
+    // Waits between two tries of `bluetoothctl power on`; empty: nanosleep.
+    std::function<void(int ms)> pause;
     // The Wi-Fi script, the forget and bluetoothctl run on the actions' own worker thread, one at a
     // time in the order asked, so the caller (Nano's render thread, for a menu press) never waits on
     // them; false runs them on the caller's thread (tests).

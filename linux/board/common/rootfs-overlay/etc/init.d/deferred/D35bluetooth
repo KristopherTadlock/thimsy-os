@@ -14,9 +14,16 @@
 # /var/lib/bluetooth links to /storage/.config/thimsy/bluetooth
 # (post-build.d/15-state-links.sh).
 #
-# Exit status: 0 when nothing was asked for or bluetoothd runs; 1 when it was
-# asked for and could not start (no Bluetooth on this device, no controller,
-# or a daemon failed).
+# Nano runs this through its program runner, which gives it a session of its
+# own and none of Nano's descriptors (nano/platform/linux/actions/Run.cpp), so
+# the daemons outlive a restart of Nano and hold none of its evdev grabs.
+#
+# Exit status: 0 when nothing was asked for or bluetoothd runs; 3 when it was
+# asked for and this device has no Bluetooth: device.json says none, the
+# kernel has none (no /sys/class/bluetooth: S03modules has loaded every
+# module by now, and nothing loads one later), or no controller appeared
+# (Nano then turns its switch back off, so later boots skip the wait); 1 when
+# a daemon could not start.
 . "${THIMSY_ROOT:-}/usr/share/thimsy/init/lib.sh"
 
 TAG=D35bluetooth
@@ -109,16 +116,20 @@ start)
 	thimsy_ro ro.thimsy.device.bluetooth false
 	if [ "$RO_OUT" != true ]; then
 		thimsy_log $TAG "Bluetooth is on, but this device has none (device.json)"
-		exit 1
+		exit 3
 	fi
 	pid_alive "$BTD_PID" && exit 0
 	if ! bluetoothd_path; then
 		thimsy_warn $TAG "Bluetooth is on, but bluetoothd is not on this image"
 		exit 1
 	fi
+	if [ ! -d "$R/sys/class/bluetooth" ]; then
+		thimsy_log $TAG "Bluetooth is on, but the kernel has no Bluetooth"
+		exit 3
+	fi
 	if ! wait_for_controller; then
 		thimsy_log $TAG "Bluetooth is on, but there is no controller"
-		exit 1
+		exit 3
 	fi
 	mkdir -p "$STATE_DIR"
 	chmod 0700 "$STATE_DIR"
