@@ -4,34 +4,37 @@
 # thimsy-padd for the image build (Buildroot's cmake-package). Written, not run here: the host
 # machine has no CMake; the host tests run through the Makefile (make check).
 #
-# libthimsy comes from, in order: a "thimsy" target already defined by a parent project, the
-# source tree at THIMSY_LIBTHIMSY_SOURCE_DIR (default ../../../libthimsy, added as a subdirectory),
-# or an installed libthimsy.a and its headers (Buildroot's staging directory).
-cmake_minimum_required(VERSION 3.18)  # find_library(REQUIRED)
+# libthimsy comes from, in order: a thimsy::thimsy target a parent project defines; the source tree
+# at THIMSY_LIBTHIMSY_SOURCE_DIR when it is set; the installed package (find_package(thimsy):
+# Buildroot's staging directory, where libthimsy's recipe installs it); the repository's
+# ../../../libthimsy when this is a checkout (Buildroot copies only this directory, and finds the
+# staged package first).
+cmake_minimum_required(VERSION 3.16)
 project(thimsy-padd VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-option(THIMSY_PADD_BUILD_TESTS "Build thimsy-padd's tests" OFF)
+option(THIMSY_BUILD_TESTS "Build thimsy-padd's unit tests (CTest)" OFF)
 option(THIMSY_PADD_INSTALL_REPLAY "Install padd-replay (a debugging tool) too" OFF)
-set(THIMSY_LIBTHIMSY_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../libthimsy"
-    CACHE PATH "libthimsy's source tree, if building it here")
+set(THIMSY_LIBTHIMSY_SOURCE_DIR "" CACHE PATH "libthimsy's source tree (empty: the installed package)")
 
 find_package(Threads REQUIRED)
 
-if(NOT TARGET thimsy)
-    if(EXISTS "${THIMSY_LIBTHIMSY_SOURCE_DIR}/CMakeLists.txt")
+if(NOT TARGET thimsy::thimsy)
+    if(THIMSY_LIBTHIMSY_SOURCE_DIR)
         add_subdirectory("${THIMSY_LIBTHIMSY_SOURCE_DIR}" libthimsy EXCLUDE_FROM_ALL)
     else()
-        find_library(THIMSY_LIBRARY NAMES thimsy REQUIRED)
-        find_path(THIMSY_INCLUDE_DIR thimsy/config.h REQUIRED)
-        add_library(thimsy STATIC IMPORTED)
-        set_target_properties(thimsy PROPERTIES
-            IMPORTED_LOCATION "${THIMSY_LIBRARY}"
-            INTERFACE_INCLUDE_DIRECTORIES "${THIMSY_INCLUDE_DIR}"
-            INTERFACE_LINK_LIBRARIES Threads::Threads)
+        find_package(thimsy CONFIG QUIET)
+        if(NOT thimsy_FOUND)
+            if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../../libthimsy/CMakeLists.txt")
+                add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../libthimsy" libthimsy EXCLUDE_FROM_ALL)
+            else()
+                message(FATAL_ERROR "thimsy-padd: libthimsy not found: install it (find_package(thimsy)) "
+                                    "or set THIMSY_LIBTHIMSY_SOURCE_DIR")
+            endif()
+        endif()
     endif()
 endif()
 
@@ -50,7 +53,7 @@ add_library(padd_core STATIC
 )
 target_include_directories(padd_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_options(padd_core PRIVATE ${_warn})
-target_link_libraries(padd_core PUBLIC thimsy Threads::Threads)
+target_link_libraries(padd_core PUBLIC thimsy::thimsy Threads::Threads)
 
 add_executable(thimsy-padd src/main.cpp)
 target_compile_options(thimsy-padd PRIVATE ${_warn})
@@ -67,16 +70,17 @@ if(THIMSY_PADD_INSTALL_REPLAY)
     install(TARGETS padd-replay RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
-if(THIMSY_PADD_BUILD_TESTS)
+if(THIMSY_BUILD_TESTS)
     enable_testing()
     set(_sanitize -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined)
     set(_tests input_codes_test calibrate_test padspec_test merger_test rumble_test replay_test io_test)
     foreach(_t ${_tests})
         add_executable(${_t} tests/${_t}.cpp)
-        target_include_directories(${_t} PRIVATE tests "${THIMSY_LIBTHIMSY_SOURCE_DIR}/testing")
+        target_include_directories(${_t} PRIVATE tests)
         target_compile_options(${_t} PRIVATE ${_warn} ${_sanitize})
         target_link_options(${_t} PRIVATE ${_sanitize})
-        target_link_libraries(${_t} PRIVATE padd_core)
+        # libthimsy's GoogleTest stand-in (the Makefile's -I libthimsy/testing).
+        target_link_libraries(${_t} PRIVATE padd_core thimsy::gtest_standin)
         add_test(NAME ${_t} COMMAND ${_t})
         set_tests_properties(${_t} PROPERTIES ENVIRONMENT
             "THIMSY_PADD_TRACES=${CMAKE_CURRENT_SOURCE_DIR}/tests/traces")
