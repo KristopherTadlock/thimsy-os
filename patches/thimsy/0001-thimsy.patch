@@ -75709,10 +75709,10 @@ index 00000000000..2d135afa0a3
 +#endif /* NANOCOMPAT_BIONIC_H */
 diff --git a/frameworks/base/cmds/gammaos-nano/compat/include/nanocompat/nanocompat.h b/frameworks/base/cmds/gammaos-nano/compat/include/nanocompat/nanocompat.h
 new file mode 100644
-index 00000000000..0cca8654b13
+index 00000000000..cd6fc8845d4
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/compat/include/nanocompat/nanocompat.h
-@@ -0,0 +1,90 @@
+@@ -0,0 +1,92 @@
 +/*
 + * Copyright (C) 2026 The Thimsy OS Project
 + *
@@ -75794,7 +75794,9 @@ index 00000000000..0cca8654b13
 +void setLogMinPriority(int priority);
 +// Also append every line to `path` (the Linux image uses /run/thimsy/log/nano.log): when the file
 +// passes maxBytes / 2 it is renamed to `path`.1, replacing the older half, so the two together stay
-+// under maxBytes. An empty path turns it off.
++// under maxBytes. An empty path turns it off. When stdout or stderr already is that file (the
++// session starts Nano with both on it), the ring takes them over: lines are not also written to
++// stderr, the size counts their writes, and each rotation moves them to the new half (dup2).
 +void setLogFile(const std::string& path, size_t maxBytes = 256 * 1024);
 +// Replaces stderr as the line sink (tests); nullptr restores stderr. The file above still gets
 +// every line. The sink gets the priority, the tag ("" for none) and one message (without the
@@ -78990,10 +78992,10 @@ index 00000000000..8effe5462d8
 +}  // namespace nanocompat
 diff --git a/frameworks/base/cmds/gammaos-nano/compat/src/log.cpp b/frameworks/base/cmds/gammaos-nano/compat/src/log.cpp
 new file mode 100644
-index 00000000000..ae45c8ff73e
+index 00000000000..23a1df11d6b
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/compat/src/log.cpp
-@@ -0,0 +1,261 @@
+@@ -0,0 +1,292 @@
 +/*
 + * Copyright (C) 2026 The Thimsy OS Project
 + *
@@ -79045,7 +79047,18 @@ index 00000000000..ae45c8ff73e
 +    size_t fileMax = 0;
 +    int fd = -1;
 +    off_t fileSize = 0;
++    // Set when the ring file is opened: stdout or stderr is that same file (thimsy-session starts
++    // Nano with both on /run/thimsy/log/nano.log). The ring then owns them: no second copy of each
++    // line goes to stderr, they follow every rotation (dup2), and the size is the file's own, so
++    // what children and stdio write counts too.
++    bool ownsOut = false;
++    bool ownsErr = false;
 +};
++
++bool sameFile(int a, const struct stat& b) {
++    struct stat st;
++    return fstat(a, &st) == 0 && st.st_dev == b.st_dev && st.st_ino == b.st_ino;
++}
 +
 +// Never destroyed: threads may log while the process exits.
 +LogState& logState() {
@@ -79093,7 +79106,17 @@ index 00000000000..ae45c8ff73e
 +        s.fd = ::open(s.filePath.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
 +        if (s.fd < 0) return;
 +        struct stat st;
-+        s.fileSize = fstat(s.fd, &st) == 0 ? st.st_size : 0;
++        if (fstat(s.fd, &st) == 0) {
++            s.fileSize = st.st_size;
++            s.ownsOut = sameFile(STDOUT_FILENO, st);
++            s.ownsErr = sameFile(STDERR_FILENO, st);
++        } else {
++            s.fileSize = 0;
++        }
++    }
++    if (s.ownsOut || s.ownsErr) {
++        struct stat st;
++        if (fstat(s.fd, &st) == 0) s.fileSize = st.st_size;
 +    }
 +    if (s.fileMax > 0 && static_cast<size_t>(s.fileSize) + text.size() > s.fileMax / 2) {
 +        // This half is full: it becomes the older half, and a new one starts.
@@ -79103,6 +79126,13 @@ index 00000000000..ae45c8ff73e
 +        s.fd = ::open(s.filePath.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_APPEND | O_CLOEXEC, 0644);
 +        s.fileSize = 0;
 +        if (s.fd < 0) return;
++        // Stdio moves to the new half too, so nothing keeps the older half (soon unlinked) open.
++        // dup2 leaves 1 and 2 inheritable, as they were.
++        if (s.ownsOut) {
++            fflush(stdout);
++            dup2(s.fd, STDOUT_FILENO);
++        }
++        if (s.ownsErr) dup2(s.fd, STDERR_FILENO);
 +    }
 +    writeAll(s.fd, text.data(), text.size());
 +    s.fileSize += static_cast<off_t>(text.size());
@@ -79120,6 +79150,8 @@ index 00000000000..ae45c8ff73e
 +    s.fileSize = 0;
 +    s.filePath = path;
 +    s.fileMax = maxBytes;
++    s.ownsOut = false;
++    s.ownsErr = false;
 +}
 +
 +void setLogSink(LogSink sink) {
@@ -79160,7 +79192,8 @@ index 00000000000..ae45c8ff73e
 +        std::lock_guard<std::mutex> lock(s.mu);
 +        sink = s.sink;
 +        appendToFileLocked(s, out);
-+        if (!sink) writeAll(STDERR_FILENO, out.data(), out.size());  // one write per message
++        // One write per message; none when stderr is the ring file (it has the line already).
++        if (!sink && !(s.fd >= 0 && s.ownsErr)) writeAll(STDERR_FILENO, out.data(), out.size());
 +    }
 +    if (sink) (*sink)(prio, tag, text);
 +}
