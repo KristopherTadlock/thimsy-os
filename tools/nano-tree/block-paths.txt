@@ -1,0 +1,6 @@
+# nano/'s shared source files (tests excluded) whose string literals name a raw block device
+# (/dev/block or mmcblk; IMPLEMENTATION.md B.5, H.4, decision I40). On Linux, thimsy-session hides the
+# eMMC from Nano behind /dev/null binds and /dev/block/by-name is never created; a new file here is
+# reviewed against that rule before the list is updated:
+#   py -3.12 tools/nano-tree/tests/test_nano_stubs.py --update-block
+NanoScreenCal.cpp
