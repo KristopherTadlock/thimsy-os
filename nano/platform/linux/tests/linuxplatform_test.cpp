@@ -22,6 +22,16 @@
 #include <gtest/gtest.h>
 
 #include "NanoPlatform.h"
+#include "AudioPull.h"
+
+// AudioAlsa.cpp needs alsa-lib's headers, which this build has not: its makeAudio() is stood in
+// for by a PullAudio whose sink never opens (G7-audio).
+std::unique_ptr<nanoplat::Audio> nanolinux::makeAudio() {
+    return std::unique_ptr<nanoplat::Audio>(new PullAudio([](const nanoplat::AudioFormat&, int* error) {
+        *error = -19;
+        return std::unique_ptr<PcmSink>();
+    }));
+}
 
 namespace {
 
@@ -36,6 +46,17 @@ TEST(LinuxPlatform, CreatesAndInstalls) {
     nanoplat::Platform* raw = platform.get();
     nanoplat::install(std::move(platform));
     EXPECT_TRUE(&nanoplat::get() == raw);
+}
+
+TEST(LinuxPlatform, WiresTheAudio) {
+    std::unique_ptr<nanoplat::Platform> platform = nanoplat::createPlatform(nanoplat::PlatformArgs());
+    ASSERT_TRUE(platform != nullptr);
+    ASSERT_TRUE(platform->audio != nullptr);
+    nanoplat::AudioFormat format;
+    format.name = "Test";
+    format.rate = 48000;
+    format.channels = 2;
+    EXPECT_TRUE(platform->audio->open(format, nullptr, nullptr) == nullptr);  // the stand-in's sink fails
 }
 
 TEST(LinuxPlatform, EachCallMakesItsOwn) {

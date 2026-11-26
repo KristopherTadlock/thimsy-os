@@ -205,6 +205,8 @@ DrasticGpu3d.cpp
 # main, ShellGate.cpp as nano_shellgate, and the rest (with [drm]) as nano_platform_linux;
 # DrmBuffersGbm.cpp and EglWraps.cpp stand in for [firmware]'s NanoMenuDrmBuffers.cpp (B.8).
 [linux]
+platform/linux/AudioAlsa.cpp
+platform/linux/AudioPull.cpp
 platform/linux/ControlKeys.cpp
 platform/linux/LinuxPlatform.cpp
 platform/linux/ShellGate.cpp
@@ -216,6 +218,7 @@ platform/linux/main_linux.cpp
 # (NanoPlatform.cpp, install and get, is in [core] since G7-main).
 [host]
 platform/host/DrmHost.cpp
+platform/host/FakeAudio.cpp
 platform/host/FakeEvdev.cpp
 platform/host/HostConfig.cpp
 platform/host/HostControl.cpp

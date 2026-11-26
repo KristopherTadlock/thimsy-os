@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# The Linux platform's host tests (docs/linux/IMPLEMENTATION.md G9, G7-main): the shell gate, the
-# control keys and the platform's createPlatform (with nano/NanoPlatform.cpp), against Nano's compat
-# shims and libthimsy (nano/test/host/compat/compat.mk), with g++ and make only. The display back end and the EGL wraps need libdrm, GBM and EGL headers and are not
-# built here (G10 runs -fsyntax-only on them).
+# The Linux platform's host tests (docs/linux/IMPLEMENTATION.md G9, G7-main, G7-audio): the shell
+# gate, the control keys, the platform's createPlatform (with nano/NanoPlatform.cpp) and the audio
+# streams' threads (AudioPull.cpp), against Nano's compat shims and libthimsy
+# (nano/test/host/compat/compat.mk), with g++ and make only. The display back end and the EGL wraps
+# need libdrm, GBM and EGL headers, and AudioAlsa.cpp alsa-lib's: they are not built here (G10 runs
+# -fsyntax-only on them).
 #
 #   nice -n 19 make -f nano/platform/linux/tests/platform.mk -j1 check
 #
@@ -39,11 +41,12 @@ PLAT_WRAP_LDFLAGS := $(foreach s,$(PLAT_WRAPS),-Wl,--wrap=$(s))
 # nano/ for quoted includes only ("NanoPlatform.h"), so no header of nano/ shadows a shim.
 PLAT_CPPFLAGS := $(COMPAT_TEST_CPPFLAGS) -I$(PLAT_DIR) -iquote $(PLAT_NANO_DIR)
 
-PLAT_TESTS := shellgate_test controlkeys_test linuxplatform_test
+PLAT_TESTS := shellgate_test controlkeys_test linuxplatform_test audiopull_test
 # PLAT_SRCS_<test>: files of platform/linux; PLAT_NANO_SRCS_<test>: files of nano/.
 PLAT_SRCS_shellgate_test := ShellGate.cpp
 PLAT_SRCS_controlkeys_test := ControlKeys.cpp
-PLAT_SRCS_linuxplatform_test := LinuxPlatform.cpp
+PLAT_SRCS_linuxplatform_test := LinuxPlatform.cpp AudioPull.cpp
+PLAT_SRCS_audiopull_test := AudioPull.cpp
 PLAT_NANO_SRCS_linuxplatform_test := NanoPlatform.cpp
 PLAT_TEST_BINS := $(PLAT_TESTS:%=$(PLAT_O)/test/%)
 

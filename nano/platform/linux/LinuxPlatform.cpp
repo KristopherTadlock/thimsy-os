@@ -21,9 +21,11 @@
 #include <memory>
 
 #include "NanoPlatform.h"
+#include "AudioPull.h"  // G7-audio
 
 std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs& /*args*/) {
     std::unique_ptr<Platform> platform(new Platform);
     // The services, one line each (G7 steps).
+    platform->audio = nanolinux::makeAudio();
     return platform;
 }

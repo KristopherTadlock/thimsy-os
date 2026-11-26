@@ -1716,6 +1716,17 @@
     "shim:compat/include/log/log.h"
    ]
   },
+  "platform/host/FakeAudio.cpp": {
+   "includes": [
+    "nano:platform/host/FakeAudio.h",
+    "shim:compat/include/log/log.h"
+   ]
+  },
+  "platform/host/FakeAudio.h": {
+   "includes": [
+    "nano:NanoPlatform.h"
+   ]
+  },
   "platform/host/FakeEvdev.cpp": {
    "includes": [
     "nano:platform/host/FakeEvdev.h"
@@ -1742,6 +1753,7 @@
   "platform/host/HostPlatform.cpp": {
    "includes": [
     "nano:NanoPlatform.h",
+    "nano:platform/host/FakeAudio.h",
     "nano:platform/host/HostConfig.h",
     "shim:compat/include/log/log.h",
     "shim:compat/include/nanocompat/nanocompat.h"
@@ -1751,6 +1763,24 @@
    "includes": [
     "nano:platform/host/HostControl.h",
     "nano:platform/host/ShellGateHost.h"
+   ]
+  },
+  "platform/linux/AudioAlsa.cpp": {
+   "includes": [
+    "lib:alsa:alsa/asoundlib.h",
+    "nano:platform/linux/AudioPull.h",
+    "shim:compat/include/log/log.h"
+   ]
+  },
+  "platform/linux/AudioPull.cpp": {
+   "includes": [
+    "nano:platform/linux/AudioPull.h",
+    "shim:compat/include/log/log.h"
+   ]
+  },
+  "platform/linux/AudioPull.h": {
+   "includes": [
+    "nano:NanoPlatform.h"
    ]
   },
   "platform/linux/ControlKeys.cpp": {
@@ -1763,7 +1793,8 @@
   },
   "platform/linux/LinuxPlatform.cpp": {
    "includes": [
-    "nano:NanoPlatform.h"
+    "nano:NanoPlatform.h",
+    "nano:platform/linux/AudioPull.h"
    ]
   },
   "platform/linux/ShellGate.cpp": {
@@ -1807,6 +1838,12 @@
     "shim:compat/include/utils/Thread.h"
    ]
   },
+  "platform/linux/tests/audiopull_test.cpp": {
+   "includes": [
+    "gtest:gtest/gtest.h",
+    "missing:AudioPull.h"
+   ]
+  },
   "platform/linux/tests/controlkeys_test.cpp": {
    "includes": [
     "missing:ControlKeys.h",
@@ -1817,6 +1854,7 @@
   "platform/linux/tests/linuxplatform_test.cpp": {
    "includes": [
     "gtest:gtest/gtest.h",
+    "missing:AudioPull.h",
     "nano:NanoPlatform.h"
    ]
   },
@@ -2289,6 +2327,13 @@
     "shim:compat/include/log/log.h",
     "shim:compat/include/utils/StrongPointer.h",
     "shim:compat/include/utils/ThreadDefs.h"
+   ]
+  },
+  "test/host/headless/tests/fake_audio_test.cpp": {
+   "includes": [
+    "gtest:gtest/gtest.h",
+    "nano:NanoPlatform.h",
+    "nano:platform/host/FakeAudio.h"
    ]
   },
   "test/host/headless/tests/fake_evdev_test.cpp": {
