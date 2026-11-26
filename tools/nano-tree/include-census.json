@@ -134,9 +134,9 @@
     "nano:NanoAudio.h",
     "nano:NanoHls.h",
     "nano:NanoIcyDemux.h",
+    "nano:NanoPlatform.h",
     "nano:NanoTsDescramble.h",
     "shim:compat/include/log/log.h",
-    "stub:compat/stubs/include/aaudio/AAudio.h",
     "stub:compat/stubs/include/media/NdkMediaCodec.h",
     "stub:compat/stubs/include/media/NdkMediaExtractor.h",
     "stub:compat/stubs/include/media/NdkMediaFormat.h"
@@ -1696,6 +1696,13 @@
     "nano:nanosvg/nanosvg.h"
    ]
   },
+  "platform/firmware/Audio.cpp": {
+   "includes": [
+    "nano:NanoPlatform.h",
+    "shim:compat/include/log/log.h",
+    "stub:compat/stubs/include/aaudio/AAudio.h"
+   ]
+  },
   "platform/firmware/Platform.cpp": {
    "includes": [
     "nano:NanoPlatform.h"
@@ -2718,7 +2725,6 @@
    ],
    "needs": {
     "stub": [
-     "aaudio/AAudio.h",
      "media/NdkMediaCodec.h",
      "media/NdkMediaDataSource.h",
      "media/NdkMediaExtractor.h",
@@ -4702,6 +4708,16 @@
    ],
    "needs": {}
   },
+  "platform/firmware/Audio.cpp": {
+   "modules": [
+    "gammaos-nano"
+   ],
+   "needs": {
+    "stub": [
+     "aaudio/AAudio.h"
+    ]
+   }
+  },
   "platform/firmware/Platform.cpp": {
    "modules": [
     "gammaos-nano"
@@ -5295,6 +5311,7 @@
   "firmware": {
    "main.cpp": "reaches binder/ProcessState.h (not stubbed: Android's entry point (main.cpp) starts the binder thread pool; Linux has its own main); jni.h (not stubbed: the JNI shim of drastic-nano's runner (the DS player, not on Linux v1) and main.cpp's)",
    "platform/firmware/Platform.cpp": "the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)",
+   "platform/firmware/Audio.cpp": "the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)",
    "NanoMenuDrmBuffers.cpp": "the AHardwareBuffer render-target back end (G9a); Linux links platform/linux/display/DrmBuffersGbm.cpp instead",
    "NanoMenuRgbFollow.cpp": "reaches GammaRgbProcess.h (a header outside Nano's folder (upstream.json siblings): v1 has neither Shares nor RGB follow on Linux)",
    "NanoMenuShares.cpp": "reaches share_config.h (a header outside Nano's folder (upstream.json siblings): v1 has neither Shares nor RGB follow on Linux)",

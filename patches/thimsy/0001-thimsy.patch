@@ -2466,23 +2466,24 @@ index 2ff1dad7970..89bb33a9256 100644
                      } else { close(fd); unlink(tmp.c_str()); }
                  }
 diff --git a/frameworks/base/cmds/gammaos-nano/Android.bp b/frameworks/base/cmds/gammaos-nano/Android.bp
-index 0f747c9a45c..081ba519c79 100644
+index 0f747c9a45c..87ec162530d 100644
 --- a/frameworks/base/cmds/gammaos-nano/Android.bp
 +++ b/frameworks/base/cmds/gammaos-nano/Android.bp
-@@ -45,8 +45,12 @@ cc_binary {
+@@ -45,8 +45,13 @@ cc_binary {
  
      srcs: [
          "main.cpp",
 +        "NanoBootSequence.cpp",            // main()'s boot steps, shared with the Linux main
 +        "NanoPlatform.cpp",                // the platform seam: install() and get()
 +        "platform/firmware/Platform.cpp",  // the firmware platform (createPlatform)
++        "platform/firmware/Audio.cpp",     // the firmware Audio: NanoAudio's AAudio output (G7-audio)
          "NanoMenu.cpp",
          "NanoMenuDrm.cpp",
 +        "NanoMenuDrmBuffers.cpp", // the render targets' buffer back end (AHardwareBuffer, gralloc)
          "NanoMenuRgbFollow.cpp",
          "NanoMenuXmb.cpp",
          "NanoMenuShaders.cpp",
-@@ -69,23 +73,31 @@ cc_binary {
+@@ -69,23 +74,31 @@ cc_binary {
          "NanoMenuPS3EmuCatalog.cpp",
          "NanoMenuPS3Folder.cpp",
          "NanoMenuFileExplorer.cpp",
@@ -2515,7 +2516,7 @@ index 0f747c9a45c..081ba519c79 100644
          "NanoMenuSetupWizard.cpp",
          "NanoMenuStrings.cpp",
          "NanoBtStable.cpp",
-@@ -111,13 +123,40 @@ cc_binary {
+@@ -111,13 +124,40 @@ cc_binary {
          "NanoAacDec.cpp",
          "NanoCea608.cpp",
          "NanoScraper.cpp",
@@ -2556,7 +2557,7 @@ index 0f747c9a45c..081ba519c79 100644
          "LibretroRunner.cpp",
          "FakeJNI.cpp",
          "DrasticRunner.cpp",
-@@ -133,6 +172,7 @@ cc_binary {
+@@ -133,6 +173,7 @@ cc_binary {
          "liba52_nano",   // AC-3 decoder (no AC-3 codec on the device)
          "libtinyxml2",   // XML DOM parser for the ES-DE theme engine (NanoEsdeTheme)
          "libnanosvg_nano",   // SVG rasterizer for ES-DE theme logos (NanoThemeEngine)
@@ -2564,7 +2565,7 @@ index 0f747c9a45c..081ba519c79 100644
          // Share storage + credential encoding, shared with the gammaos-sharefs daemon so a share
          // added in the menu is written exactly as the daemon expects to read it.
          "libgammaos_sharecfg",
-@@ -143,14 +183,13 @@ cc_binary {
+@@ -143,14 +184,13 @@ cc_binary {
          "jni_headers",
          "native_headers",   // <android/imagedecoder.h> + <android/bitmap.h> (photo viewer decode)
          "libgammargb_process_headers",   // shared GammaRGB colour pipeline (parity with SF sampler)
@@ -2580,7 +2581,7 @@ index 0f747c9a45c..081ba519c79 100644
          "libbinder_ndk",
          "libcutils",
          "liblog",
-@@ -172,21 +211,28 @@ cc_binary {
+@@ -172,21 +212,28 @@ cc_binary {
          "libandroid",   // APerformanceHint (ADPF render-thread hint session)
          "libaaudio",    // GammaEQ audio preview + music player output (AAudio)
          "libmediandk",  // music player decode: AMediaExtractor + AMediaCodec -> PCM
@@ -2613,7 +2614,7 @@ index 0f747c9a45c..081ba519c79 100644
          "nano_xmb_icons",
          "nano_xmb_normalmaps",
          "nano_xmb_glass",
-@@ -204,13 +250,64 @@ cc_binary {
+@@ -204,13 +251,64 @@ cc_binary {
          "nano_xmb_photoviewer",
          "nano_xmb_backgrounds",
          "nano_xmb_systemstatus",
@@ -2679,7 +2680,7 @@ index 0f747c9a45c..081ba519c79 100644
  // Vendored liba52 (a52dec 0.7.4, GPL-2) - AC-3 decoder. The device has no hardware
  // or software AC-3 codec, so NanoAc3 uses this to decode AC-3 audio in .ts / MKV / VOB.
  // Pure-C generic path (no SIMD / djbfft / memalign); -w because the 2002-era source
-@@ -249,6 +346,7 @@ cc_library_static {
+@@ -249,6 +347,7 @@ cc_library_static {
  // source is not clean under Soong's warning set (same treatment as liba52_nano).
  cc_library_static {
      name: "libnanosvg_nano",
@@ -2687,7 +2688,7 @@ index 0f747c9a45c..081ba519c79 100644
      srcs: ["nanosvg/nanosvg_impl.c"],
      local_include_dirs: ["nanosvg"],
      export_include_dirs: ["nanosvg"],
-@@ -323,14 +421,40 @@ sh_binary {
+@@ -323,14 +422,40 @@ sh_binary {
      src: "nano-pmdown.sh",
  }
  
@@ -2729,7 +2730,7 @@ index 0f747c9a45c..081ba519c79 100644
  // /system/etc/nano_xmb/<sub_dir>/; the renderer also checks
  // /data/system/nano_xmb/ first so assets can be pushed during development
  // without rebuilding the system image.
-@@ -340,18 +464,6 @@ prebuilt_etc {
+@@ -340,18 +465,6 @@ prebuilt_etc {
      sub_dir: "nano_xmb/fonts",
  }
  
@@ -2748,7 +2749,7 @@ index 0f747c9a45c..081ba519c79 100644
  // ES-DE built-in asset SVGs the theme engine falls back to when a theme does not
  // ship its own: the helpsystem button glyphs (the legend icons at the bottom of
  // every view), the per-controller badge icons, and the metadata badge icons.
-@@ -388,12 +500,6 @@ prebuilt_etc {
+@@ -388,12 +501,6 @@ prebuilt_etc {
      sub_dir: "nano_xmb/gradients",
  }
  
@@ -2761,7 +2762,7 @@ index 0f747c9a45c..081ba519c79 100644
  prebuilt_etc {
      name: "nano_xmb_icons",
      srcs: ["ps3xmb/icons/*.png"],
-@@ -423,7 +529,27 @@ prebuilt_etc {
+@@ -423,7 +530,27 @@ prebuilt_etc {
  // /data/system/nano_xmb/audio/ first (dev override), else this install path.
  prebuilt_etc {
      name: "nano_xmb_audio",
@@ -2790,7 +2791,7 @@ index 0f747c9a45c..081ba519c79 100644
      sub_dir: "nano_xmb/audio",
  }
  
-@@ -510,6 +636,13 @@ prebuilt_etc {
+@@ -510,6 +637,13 @@ prebuilt_etc {
          "ps3xmb/i18n/ar.json",
          "ps3xmb/i18n/tr.json",
          "ps3xmb/i18n/pl.json",
@@ -2804,7 +2805,7 @@ index 0f747c9a45c..081ba519c79 100644
      ],
      sub_dir: "gammaos-nano/i18n",
  }
-@@ -543,7 +676,12 @@ prebuilt_etc {
+@@ -543,7 +677,12 @@ prebuilt_etc {
  // first, this is the bundled fallback).
  prebuilt_etc {
      name: "nano_xmb_nds",
@@ -2818,7 +2819,7 @@ index 0f747c9a45c..081ba519c79 100644
      sub_dir: "nano_xmb/nds",
  }
  
-@@ -558,6 +696,32 @@ prebuilt_etc {
+@@ -558,6 +697,32 @@ prebuilt_etc {
      sub_dir: "nano_xmb/daijishou",
  }
  
@@ -2851,7 +2852,7 @@ index 0f747c9a45c..081ba519c79 100644
  // Source files shared with the drastic-nano binary. drastic-nano
  // reuses the DRM rendering stack, DrasticRunner lifecycle, and
  // FakeJNI shim from gammaos-nano; wrapping them in a filegroup lets
-@@ -567,11 +731,386 @@ filegroup {
+@@ -567,11 +732,386 @@ filegroup {
      name: "drastic_nano_shared_srcs",
      srcs: [
          "NanoMenuDrm.cpp",
@@ -5031,10 +5032,139 @@ index 00000000000..8c0796cfc18
 +
 +}  // namespace nanoarc
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoAudio.cpp b/frameworks/base/cmds/gammaos-nano/NanoAudio.cpp
-index e989710f4fa..34541516e12 100644
+index e989710f4fa..2b1c8bb7134 100644
 --- a/frameworks/base/cmds/gammaos-nano/NanoAudio.cpp
 +++ b/frameworks/base/cmds/gammaos-nano/NanoAudio.cpp
-@@ -1028,6 +1028,115 @@ bool NanoSfxPlayer::load(const std::string& wavPath, float master) {
+@@ -21,8 +21,8 @@
+ #include "NanoTsDescramble.h"   // descramble scrambled-flagged .ts so its audio track extracts
+ #include "NanoHls.h"   // in-process HTTP/HLS fetcher (IPTV audio over http)
+ #include "NanoIcyDemux.h"   // custom streaming demuxer for radio Ogg/FLAC/AAC
++#include "NanoPlatform.h"   // the output streams (nanoplat::get().audio; AAudio on the firmware)
+ 
+-#include <aaudio/AAudio.h>
+ #include <media/NdkMediaExtractor.h>
+ #include <media/NdkMediaCodec.h>
+ #include <media/NdkMediaFormat.h>
+@@ -240,38 +240,26 @@ bool NanoAudioPlayer::ensureStream(int rate, int channels) {
+ // AND error callbacks; the error callback drives route-change recovery (see recoverStream).
+ bool NanoAudioPlayer::openStreamLocked(int rate, int channels) {
+     if (mStream) {
+-        AAudioStream* s = static_cast<AAudioStream*>(mStream);
+-        AAudioStream_requestStop(s);
+-        AAudioStream_close(s);
++        delete static_cast<nanoplat::AudioStream*>(mStream);   // stops and closes it
+         mStream = nullptr;
+         mStarted = false;
+     }
+-    AAudioStreamBuilder* b = nullptr;
+-    if (AAudio_createStreamBuilder(&b) != AAUDIO_OK || !b) return false;
+-    AAudioStreamBuilder_setDirection(b, AAUDIO_DIRECTION_OUTPUT);
+-    AAudioStreamBuilder_setFormat(b, AAUDIO_FORMAT_PCM_I16);
+-    AAudioStreamBuilder_setChannelCount(b, channels);
+-    AAudioStreamBuilder_setSampleRate(b, rate);
+-    AAudioStreamBuilder_setUsage(b, AAUDIO_USAGE_MEDIA);
+-    AAudioStreamBuilder_setContentType(b, AAUDIO_CONTENT_TYPE_MUSIC);
+-    AAudioStreamBuilder_setPerformanceMode(b, AAUDIO_PERFORMANCE_MODE_NONE);
+-    AAudioStreamBuilder_setDataCallback(b, [](AAudioStream*, void* u, void* data, int32_t n) {
+-        return (aaudio_data_callback_result_t)
+-            static_cast<NanoAudioPlayer*>(u)->fillAudio(data, n);
+-    }, this);
++    nanoplat::AudioFormat format;
++    format.name = "NanoAudio";
++    format.rate = rate;
++    format.channels = channels;
+     // Output-device change (headphone plug/unplug, BT connect) DISCONNECTS the stream; reopen
+     // it on the new default device from a one-shot thread (must not close/reopen in the callback).
+-    AAudioStreamBuilder_setErrorCallback(b, [](AAudioStream*, void* u, aaudio_result_t err) {
+-        NanoAudioPlayer* self = static_cast<NanoAudioPlayer*>(u);
+-        if (err != AAUDIO_ERROR_DISCONNECTED || self->mShutdown.load()) return;
+-        bool expected = false;
+-        if (self->mRecovering.compare_exchange_strong(expected, true))
+-            std::thread(&NanoAudioPlayer::recoverStream, self).detach();
+-    }, this);
+-    AAudioStream* s = nullptr;
+-    aaudio_result_t r = AAudioStreamBuilder_openStream(b, &s);
+-    AAudioStreamBuilder_delete(b);
+-    if (r != AAUDIO_OK || !s) { ALOGW("NanoAudio: open stream failed (%d)", (int)r); return false; }
++    nanoplat::AudioStream* s = nanoplat::get().audio->open(format,
++        [this](int16_t* frames, int count) { return fillAudio(frames, count); },
++        [this]() {
++            NanoAudioPlayer* self = this;
++            if (self->mShutdown.load()) return;
++            bool expected = false;
++            if (self->mRecovering.compare_exchange_strong(expected, true))
++                std::thread(&NanoAudioPlayer::recoverStream, self).detach();
++        }).release();
++    if (!s) return false;
+     mStream = s;
+     mStreamRate = rate;
+     mStreamChans = channels;
+@@ -280,7 +268,7 @@ bool NanoAudioPlayer::openStreamLocked(int rate, int channels) {
+     // request; position() divides the callback frame count by mStreamRate, so a mismatch would skew
+     // the A/V clock. Log both to confirm whether requested == device on this device.
+     ALOGI("NanoAudio: stream open req=%dHz x%d, device=%dHz x%d", rate, channels,
+-          AAudioStream_getSampleRate(s), AAudioStream_getChannelCount(s));
++          s->sampleRate(), s->channelCount());
+     return true;
+ }
+ 
+@@ -294,7 +282,7 @@ void NanoAudioPlayer::recoverStream() {
+         if (!mShutdown.load() && mStreamRate > 0 && mStreamChans > 0) {
+             bool wasStarted = mStarted.load();
+             if (openStreamLocked(mStreamRate, mStreamChans) && wasStarted && !mStopped.load()) {
+-                if (AAudioStream_requestStart(static_cast<AAudioStream*>(mStream)) == AAUDIO_OK)
++                if (static_cast<nanoplat::AudioStream*>(mStream)->start())
+                     mStarted = true;
+             }
+             ALOGI("NanoAudio: stream recovered after route change (playing=%d)", (int)mStarted.load());
+@@ -306,9 +294,7 @@ void NanoAudioPlayer::recoverStream() {
+ void NanoAudioPlayer::closeStream() {
+     std::lock_guard<std::mutex> lk(mStreamMutex);
+     if (mStream) {
+-        AAudioStream* s = static_cast<AAudioStream*>(mStream);
+-        AAudioStream_requestStop(s);
+-        AAudioStream_close(s);
++        delete static_cast<nanoplat::AudioStream*>(mStream);   // stops and closes it
+         mStream = nullptr;
+     }
+     mStarted = false;
+@@ -463,7 +449,7 @@ void NanoAudioPlayer::seekFed(double sec) {
+ void NanoAudioPlayer::play() {
+     std::lock_guard<std::mutex> lk(mStreamMutex);
+     if (mStream && !mStarted) {
+-        AAudioStream_requestStart(static_cast<AAudioStream*>(mStream));
++        static_cast<nanoplat::AudioStream*>(mStream)->start();
+         mStarted = true;
+         mStopped = false;
+     }
+@@ -472,7 +458,7 @@ void NanoAudioPlayer::play() {
+ void NanoAudioPlayer::pause() {
+     std::lock_guard<std::mutex> lk(mStreamMutex);
+     if (mStream && mStarted) {
+-        AAudioStream_requestPause(static_cast<AAudioStream*>(mStream));
++        static_cast<nanoplat::AudioStream*>(mStream)->pause();
+         mStarted = false;
+     }
+ }
+@@ -637,7 +623,7 @@ int32_t NanoAudioPlayer::fillAudio(void* audioData, int32_t numFrames) {
+         // audio-leads-video desync). Either way do NOT count -> the clock is held at origin until arm.
+         if (mPrerollDrain.load(std::memory_order_relaxed))
+             mTail.store(tail + toRead, std::memory_order_release);
+-        return AAUDIO_CALLBACK_RESULT_CONTINUE;
++        return nanoplat::Audio::kFillContinue;
+     }
+     float vol = mVol.load(std::memory_order_relaxed);
+ 
+@@ -685,7 +671,7 @@ int32_t NanoAudioPlayer::fillAudio(void* audioData, int32_t numFrames) {
+         for (int i = 0; i < kFftN; i++) { mFftPublish[w][i] = mFftRoll[p]; if (++p >= kFftN) p = 0; }
+         mFftWhich.store(w, std::memory_order_release);
+     }
+-    return AAUDIO_CALLBACK_RESULT_CONTINUE;
++    return nanoplat::Audio::kFillContinue;
+ }
+ 
+ void NanoAudioPlayer::getBands(Bands& out) {
+@@ -1028,6 +1014,115 @@ bool NanoSfxPlayer::load(const std::string& wavPath, float master) {
      return true;
  }
  
@@ -5150,6 +5280,102 @@ index e989710f4fa..34541516e12 100644
  int32_t NanoSfxPlayer::fillCb(void* audioData, int32_t numFrames) {
      int16_t* out = (int16_t*)audioData;
      const int16_t* pcm = mPcm.data(); const size_t len = mPcm.size();
+@@ -1046,36 +1141,28 @@ int32_t NanoSfxPlayer::fillCb(void* audioData, int32_t numFrames) {
+         out[i * 2 + 1] = (int16_t)(r > 32767 ? 32767 : (r < -32768 ? -32768 : r));
+     }
+     if (any) mIdleCb = 0;
+-    else if (++mIdleCb > 150) { mRunning.store(false); return AAUDIO_CALLBACK_RESULT_STOP; }   // ~1.5s idle -> stop
+-    return AAUDIO_CALLBACK_RESULT_CONTINUE;
++    else if (++mIdleCb > 150) { mRunning.store(false); return nanoplat::Audio::kFillStop; }   // ~1.5s idle -> stop
++    return nanoplat::Audio::kFillContinue;
+ }
+ 
+ bool NanoSfxPlayer::openStreamLocked() {        // mStreamM held
+     if (mStream) return true;
+-    AAudioStreamBuilder* b = nullptr;
+-    if (AAudio_createStreamBuilder(&b) != AAUDIO_OK || !b) return false;
+-    AAudioStreamBuilder_setDirection(b, AAUDIO_DIRECTION_OUTPUT);
+-    AAudioStreamBuilder_setFormat(b, AAUDIO_FORMAT_PCM_I16);
+-    AAudioStreamBuilder_setChannelCount(b, 2);
+-    AAudioStreamBuilder_setSampleRate(b, mRate);
+-    AAudioStreamBuilder_setUsage(b, AAUDIO_USAGE_MEDIA);            // follow STREAM_MUSIC == the DSi sounds
+-    AAudioStreamBuilder_setContentType(b, AAUDIO_CONTENT_TYPE_MUSIC);
+-    AAudioStreamBuilder_setPerformanceMode(b, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
+-    AAudioStreamBuilder_setDataCallback(b, [](AAudioStream*, void* u, void* data, int32_t n) {
+-        return (aaudio_data_callback_result_t)static_cast<NanoSfxPlayer*>(u)->fillCb(data, n);
+-    }, this);
++    nanoplat::AudioFormat format;   // usage MEDIA, as every stream: follow STREAM_MUSIC == the DSi sounds
++    format.name = "NanoSfx";
++    format.rate = mRate;
++    format.channels = 2;
++    format.lowLatency = true;
+     // Route-change recovery: on a headphone plug/unplug AAudio disconnects the stream and stops
+     // delivering callbacks, so without this the SFX went silent until the app restarted. Reopen on
+     // the new device, the same way NanoAudioPlayer does for the music stream.
+-    AAudioStreamBuilder_setErrorCallback(b, [](AAudioStream*, void* u, aaudio_result_t err) {
+-        NanoSfxPlayer* self = static_cast<NanoSfxPlayer*>(u);
+-        if (err != AAUDIO_ERROR_DISCONNECTED || self->mShutdown.load()) return;
+-        std::thread(&NanoSfxPlayer::recoverStream, self).detach();
+-    }, this);
+-    AAudioStream* s = nullptr;
+-    aaudio_result_t r = AAudioStreamBuilder_openStream(b, &s);
+-    AAudioStreamBuilder_delete(b);
+-    if (r != AAUDIO_OK || !s) { ALOGW("NanoSfx: open stream failed (%d)", (int)r); return false; }
++    nanoplat::AudioStream* s = nanoplat::get().audio->open(format,
++        [this](int16_t* frames, int count) { return fillCb(frames, count); },
++        [this]() {
++            NanoSfxPlayer* self = this;
++            if (self->mShutdown.load()) return;
++            std::thread(&NanoSfxPlayer::recoverStream, self).detach();
++        }).release();
++    if (!s) return false;
+     mStream = s;
+     return true;
+ }
+@@ -1088,14 +1175,12 @@ void NanoSfxPlayer::recoverStream() {
+     if (mShutdown.load()) return;
+     const bool wasRunning = mRunning.load();
+     if (mStream) {
+-        AAudioStream* s = static_cast<AAudioStream*>(mStream);
+-        AAudioStream_requestStop(s);
+-        AAudioStream_close(s);
++        delete static_cast<nanoplat::AudioStream*>(mStream);   // stops and closes it
+         mStream = nullptr;
+     }
+     mRunning.store(false);
+     if (!openStreamLocked()) { ALOGW("NanoSfx: stream reopen after route change failed"); return; }
+-    if (wasRunning && AAudioStream_requestStart(static_cast<AAudioStream*>(mStream)) == AAUDIO_OK)
++    if (wasRunning && static_cast<nanoplat::AudioStream*>(mStream)->start())
+         mRunning.store(true);
+     ALOGI("NanoSfx: stream recovered after route change (playing=%d)", (int)mRunning.load());
+ }
+@@ -1110,7 +1195,7 @@ void NanoSfxPlayer::trigger() {
+         std::thread([this]() {
+             std::lock_guard<std::mutex> lk(mStreamM);
+             if (!mStream) openStreamLocked();
+-            if (mStream && AAudioStream_requestStart((AAudioStream*)mStream) == AAUDIO_OK) mRunning.store(true);
++            if (mStream && static_cast<nanoplat::AudioStream*>(mStream)->start()) mRunning.store(true);
+             mStarting.store(false);
+         }).detach();
+     }
+@@ -1125,7 +1210,7 @@ void NanoSfxPlayer::release() {
+     // awake. Wait for it, bounded.
+     for (int i = 0; i < 40 && mStarting.load(); i++) usleep(5000);
+     std::lock_guard<std::mutex> lk(mStreamM);
+-    if (mStream) { AAudioStream_requestStop((AAudioStream*)mStream); AAudioStream_close((AAudioStream*)mStream); mStream = nullptr; }
++    if (mStream) { delete static_cast<nanoplat::AudioStream*>(mStream); mStream = nullptr; }   // stops and closes it
+     mRunning.store(false); mStarting.store(false);
+     for (int v = 0; v < kVoices; v++) mVoiceOn[v].store(false);
+ }
+@@ -1133,7 +1218,7 @@ void NanoSfxPlayer::release() {
+ void NanoSfxPlayer::shutdown() {
+     mShutdown.store(true);
+     std::lock_guard<std::mutex> lk(mStreamM);
+-    if (mStream) { AAudioStream_requestStop((AAudioStream*)mStream); AAudioStream_close((AAudioStream*)mStream); mStream = nullptr; }
++    if (mStream) { delete static_cast<nanoplat::AudioStream*>(mStream); mStream = nullptr; }   // stops and closes it
+     mRunning.store(false);
+ }
+ 
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoAudio.h b/frameworks/base/cmds/gammaos-nano/NanoAudio.h
 index b07b02c0759..fa6bfa336cb 100644
 --- a/frameworks/base/cmds/gammaos-nano/NanoAudio.h
@@ -63067,10 +63293,10 @@ index 00000000000..1cf7b6955b2
 +}  // namespace nanoplat
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoPlatform.h b/frameworks/base/cmds/gammaos-nano/NanoPlatform.h
 new file mode 100644
-index 00000000000..b738ac26d2e
+index 00000000000..524e9eb0d19
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/NanoPlatform.h
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,104 @@
 +/*
 + * Copyright (C) 2026 The Thimsy OS Project
 + *
@@ -63108,13 +63334,53 @@ index 00000000000..b738ac26d2e
 +#pragma once
 +
 +#include <memory>
++#include <cstdint>     // Audio (G7-audio)
++#include <functional>  // Audio (G7-audio)
 +
 +namespace nanoplat {
++
++// ---- Audio (G7-audio): NanoAudio.cpp's output streams, in the pull shape of its AAudio callback.
++// Each player opens its own stream (NanoAudioPlayer per track, NanoSfxPlayer for the UI sounds), so
++// Audio makes streams rather than being one. Samples are 16-bit, interleaved.
++
++struct AudioFormat {
++    const char* name = "";    // the stream's name in log lines ("NanoAudio", "NanoSfx")
++    int rate = 0;             // frames per second asked for
++    int channels = 0;         // samples per frame
++    bool lowLatency = false;  // firmware: AAUDIO_PERFORMANCE_MODE_LOW_LATENCY rather than NONE
++};
++
++// One open output stream, made by Audio::open() and paused until start(). Destroying it stops and
++// closes it; never destroy it from its own Fill or OnDisconnect.
++class AudioStream {
++ public:
++    virtual ~AudioStream() = default;
++    virtual bool start() = 0;               // true when the output accepted the start
++    virtual void pause() = 0;
++    virtual int sampleRate() const = 0;     // what the output agreed to (may differ from the request)
++    virtual int channelCount() const = 0;
++};
++
++class Audio {
++ public:
++    virtual ~Audio() = default;
++    // What a Fill returns: go on, or stop calling it (the stream then stays stopped until start()).
++    static constexpr int kFillContinue = 0;
++    static constexpr int kFillStop = 1;
++    // Writes `count` frames into `frames`; called on the platform's audio thread while started.
++    using Fill = std::function<int(int16_t* frames, int count)>;
++    // The output device went away (a headphone plugged in, Bluetooth): the stream is dead and is to
++    // be destroyed and opened again from another thread. Called on a platform thread.
++    using OnDisconnect = std::function<void()>;
++    // Null when the stream can't be opened; the platform logs why under format.name.
++    virtual std::unique_ptr<AudioStream> open(const AudioFormat& format, Fill fill, OnDisconnect onDisconnect) = 0;
++};
 +
 +// The platform's services. Empty until the first G7 step declares one. Each platform library
 +// derives from it to keep its own state; services added later are members here.
 +struct Platform {
 +    virtual ~Platform();
++    std::unique_ptr<Audio> audio;  // G7-audio: set by every createPlatform(), never null after install()
 +};
 +
 +struct PlatformArgs {
@@ -80551,12 +80817,142 @@ index 00000000000..517afa3ed3e
 +    fi
 +    state=$now
 +done
+diff --git a/frameworks/base/cmds/gammaos-nano/platform/firmware/Audio.cpp b/frameworks/base/cmds/gammaos-nano/platform/firmware/Audio.cpp
+new file mode 100644
+index 00000000000..ef347bf5f20
+--- /dev/null
++++ b/frameworks/base/cmds/gammaos-nano/platform/firmware/Audio.cpp
+@@ -0,0 +1,124 @@
++/*
++ * Copyright (C) 2026 The Thimsy OS Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++// The firmware Audio (docs/linux/IMPLEMENTATION.md B.6, G7-audio): NanoAudio.cpp's AAudio output,
++// moved here from NanoAudioPlayer and NanoSfxPlayer. One AAudio stream in callback mode per
++// AudioStream: the stream builder of their openStreamLocked(), their requestStart, requestPause,
++// requestStop and close calls. The callbacks reach the player through its Fill and OnDisconnect.
++// Same LOG_TAG as NanoAudio.cpp, so the moved log lines read as before.
++
++#define LOG_TAG "GammaOSNano"
++
++#include <aaudio/AAudio.h>
++
++#include <log/log.h>
++
++#include <memory>
++#include <utility>
++
++#include "NanoPlatform.h"
++
++namespace nanofirmware {
++
++namespace {
++
++static_assert(nanoplat::Audio::kFillContinue == AAUDIO_CALLBACK_RESULT_CONTINUE, "Fill results are AAudio's");
++static_assert(nanoplat::Audio::kFillStop == AAUDIO_CALLBACK_RESULT_STOP, "Fill results are AAudio's");
++
++class FirmwareAudioStream : public nanoplat::AudioStream {
++ public:
++    FirmwareAudioStream(nanoplat::Audio::Fill fill, nanoplat::Audio::OnDisconnect onDisconnect)
++        : mFill(std::move(fill)), mOnDisconnect(std::move(onDisconnect)) {}
++
++    ~FirmwareAudioStream() override {
++        if (mStream) {
++            AAudioStream* s = static_cast<AAudioStream*>(mStream);
++            AAudioStream_requestStop(s);
++            AAudioStream_close(s);
++            mStream = nullptr;
++        }
++    }
++
++    bool open(const nanoplat::AudioFormat& format);
++
++    bool start() override {
++        return AAudioStream_requestStart(static_cast<AAudioStream*>(mStream)) == AAUDIO_OK;
++    }
++
++    void pause() override {
++        AAudioStream_requestPause(static_cast<AAudioStream*>(mStream));
++    }
++
++    int sampleRate() const override { return AAudioStream_getSampleRate(static_cast<AAudioStream*>(mStream)); }
++    int channelCount() const override { return AAudioStream_getChannelCount(static_cast<AAudioStream*>(mStream)); }
++
++ private:
++    const nanoplat::Audio::Fill mFill;
++    const nanoplat::Audio::OnDisconnect mOnDisconnect;
++    void* mStream = nullptr;   // AAudioStream*, as the players kept it
++};
++
++// Build the AAudio output stream. Installs the data AND error callbacks; the error callback drives
++// route-change recovery (the player's OnDisconnect reopens the stream).
++bool FirmwareAudioStream::open(const nanoplat::AudioFormat& format) {
++    const int rate = format.rate;
++    const int channels = format.channels;
++    AAudioStreamBuilder* b = nullptr;
++    if (AAudio_createStreamBuilder(&b) != AAUDIO_OK || !b) return false;
++    AAudioStreamBuilder_setDirection(b, AAUDIO_DIRECTION_OUTPUT);
++    AAudioStreamBuilder_setFormat(b, AAUDIO_FORMAT_PCM_I16);
++    AAudioStreamBuilder_setChannelCount(b, channels);
++    AAudioStreamBuilder_setSampleRate(b, rate);
++    AAudioStreamBuilder_setUsage(b, AAUDIO_USAGE_MEDIA);
++    AAudioStreamBuilder_setContentType(b, AAUDIO_CONTENT_TYPE_MUSIC);
++    if (format.lowLatency)
++        AAudioStreamBuilder_setPerformanceMode(b, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
++    else
++        AAudioStreamBuilder_setPerformanceMode(b, AAUDIO_PERFORMANCE_MODE_NONE);
++    AAudioStreamBuilder_setDataCallback(b, [](AAudioStream*, void* u, void* data, int32_t n) {
++        return (aaudio_data_callback_result_t)
++            static_cast<FirmwareAudioStream*>(u)->mFill(static_cast<int16_t*>(data), n);
++    }, this);
++    AAudioStreamBuilder_setErrorCallback(b, [](AAudioStream*, void* u, aaudio_result_t err) {
++        FirmwareAudioStream* self = static_cast<FirmwareAudioStream*>(u);
++        if (err != AAUDIO_ERROR_DISCONNECTED) return;
++        self->mOnDisconnect();
++    }, this);
++    AAudioStream* s = nullptr;
++    aaudio_result_t r = AAudioStreamBuilder_openStream(b, &s);
++    AAudioStreamBuilder_delete(b);
++    if (r != AAUDIO_OK || !s) { ALOGW("%s: open stream failed (%d)", format.name, (int)r); return false; }
++    mStream = s;
++    return true;
++}
++
++class FirmwareAudio : public nanoplat::Audio {
++ public:
++    std::unique_ptr<nanoplat::AudioStream> open(const nanoplat::AudioFormat& format, Fill fill,
++                                                OnDisconnect onDisconnect) override {
++        std::unique_ptr<FirmwareAudioStream> stream(new FirmwareAudioStream(std::move(fill), std::move(onDisconnect)));
++        if (!stream->open(format)) return nullptr;
++        return std::unique_ptr<nanoplat::AudioStream>(stream.release());
++    }
++};
++
++}  // namespace
++
++std::unique_ptr<nanoplat::Audio> makeAudio() {
++    return std::unique_ptr<nanoplat::Audio>(new FirmwareAudio);
++}
++
++}  // namespace nanofirmware
 diff --git a/frameworks/base/cmds/gammaos-nano/platform/firmware/Platform.cpp b/frameworks/base/cmds/gammaos-nano/platform/firmware/Platform.cpp
 new file mode 100644
-index 00000000000..4dc936eec6a
+index 00000000000..b59dae7a8ee
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/platform/firmware/Platform.cpp
-@@ -0,0 +1,29 @@
+@@ -0,0 +1,34 @@
 +/*
 + * Copyright (C) 2026 The Thimsy OS Project
 + *
@@ -80581,9 +80977,14 @@ index 00000000000..4dc936eec6a
 +
 +#include "NanoPlatform.h"
 +
++namespace nanofirmware {
++std::unique_ptr<nanoplat::Audio> makeAudio();  // platform/firmware/Audio.cpp (G7-audio)
++}  // namespace nanofirmware
++
 +std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs& /*args*/) {
 +    std::unique_ptr<Platform> platform(new Platform);
 +    // The services, one line each (G7 steps).
++    platform->audio = nanofirmware::makeAudio();
 +    return platform;
 +}
 diff --git a/frameworks/base/cmds/gammaos-nano/powerwatch/nano_powerwatch.cpp b/frameworks/base/cmds/gammaos-nano/powerwatch/nano_powerwatch.cpp

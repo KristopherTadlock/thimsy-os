@@ -22,8 +22,13 @@
 
 #include "NanoPlatform.h"
 
+namespace nanofirmware {
+std::unique_ptr<nanoplat::Audio> makeAudio();  // platform/firmware/Audio.cpp (G7-audio)
+}  // namespace nanofirmware
+
 std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs& /*args*/) {
     std::unique_ptr<Platform> platform(new Platform);
     // The services, one line each (G7 steps).
+    platform->audio = nanofirmware::makeAudio();
     return platform;
 }
