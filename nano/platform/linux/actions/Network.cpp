@@ -35,6 +35,7 @@
 #include <utility>
 #include <vector>
 
+#include <cutils/properties.h>
 #include <log/log.h>
 
 #include "SystemActions.h"  // validMac
@@ -53,11 +54,11 @@ constexpr int kJoinRetryWaitMs = 10000;
 constexpr int kPollStepMs = 500;
 constexpr int kBtQuickMs = 3000;        // show, devices, info
 constexpr int kBtRemoveMs = 4000;       // on the menu's input thread
-constexpr int kBtPowerMs = 10000;
 constexpr int kBtConnectMs = 20000;
 constexpr int kBtPairMs = 60000;
 constexpr int kBtBackoffMs = 30000;
 constexpr int kBtScanMax = 32;          // devices looked up after an inquiry
+constexpr int kBtRescanS = 5;           // a pairing's scan for a device BlueZ no longer knows
 
 std::vector<std::string> lines(const std::string& text) {
     std::vector<std::string> out;
@@ -187,6 +188,12 @@ bool btFailed(const RunResult& r) {
 
 void defaultSleep(int ms) { usleep((useconds_t)ms * 1000); }
 
+std::string defaultProp(const char* key) {
+    char v[PROPERTY_VALUE_MAX] = {};
+    property_get(key, v, "");
+    return v;
+}
+
 long long monotonicMs() {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -282,6 +289,7 @@ class LinuxNetwork : public nanoplat::Network {
         if (!o_.run) o_.run = actions::runProgram;
         if (!o_.sleep) o_.sleep = defaultSleep;
         if (!o_.nowMs) o_.nowMs = monotonicMs;
+        if (!o_.prop) o_.prop = defaultProp;
     }
 
     // D30net brings Wi-Fi up at boot from persist.thimsy.wifi.enabled, which the radio toggle
@@ -537,9 +545,18 @@ class LinuxNetwork : public nanoplat::Network {
 
     std::vector<nanoplat::BtDevEntry> bondedBt() override { return paired(); }
 
+    // The whole switch, as the legacy screen's setBluetoothEnabled: `power on` alone has no
+    // bluetoothd to ask while Bluetooth is off, and `power off` alone would leave the daemons running
+    // and the key at 1 for the next boot. Synchronous: the wizard calls this on a thread of its own.
     void setBtRadio(bool on) override {
-        const RunResult r = bt({"bluetoothctl", "power", on ? "on" : "off"}, kBtPowerMs);
-        if (btFailed(r)) ALOGW("Bluetooth power %s failed", on ? "on" : "off");
+        actions::Options a;
+        a.root = o_.root;
+        a.run = o_.run;
+        a.pause = o_.sleep;
+        actions::switchBluetooth(on, a);
+        // The daemons just started or stopped: an earlier missing or silent bluetoothd says nothing now.
+        std::lock_guard<std::mutex> l(mu_);
+        btSkipUntil_ = 0;
     }
 
     std::vector<nanoplat::BtDevEntry> btWizScan() override { return inquiry(15); }
@@ -629,8 +646,16 @@ class LinuxNetwork : public nanoplat::Network {
         return r;
     }
 
-    // 1 powered, 0 off or no controller, -1 unknown (no bluetoothctl, no answer).
+    // Whether D35bluetooth runs the bus and bluetoothd: the device has Bluetooth, the switch is on
+    // and the bus's socket is there. Otherwise bluetoothctl could only fail (or abort) at once.
+    bool btDaemonsUp() {
+        return o_.prop("ro.thimsy.device.bluetooth") == "true" && o_.prop("persist.thimsy.bluetooth.enabled") == "1" &&
+               access((o_.root + o_.busSocket).c_str(), F_OK) == 0;
+    }
+
+    // 1 powered, 0 off or no controller (or no daemons), -1 unknown (no bluetoothctl, no answer).
     int powered() {
+        if (!btDaemonsUp()) return 0;
         const RunResult r = bt({"bluetoothctl", "show"}, kBtQuickMs);
         if (r.status == 127 || r.timedOut) return -1;
         const std::string t = plainText(r.out);
@@ -694,6 +719,13 @@ class LinuxNetwork : public nanoplat::Network {
 
     bool pair(const std::string& mac) {
         if (!actions::validMac(mac)) return false;
+        // BlueZ drops a device it found but did not pair TemporaryTimeout (30 s) after it last saw
+        // it, and `pair` then fails at once ("not available"): a device chosen from a list older than
+        // that is looked for again first.
+        nanoplat::BtDevEntry known;
+        known.address = mac;
+        if (!info(known))
+            (void)bt({"bluetoothctl", "--timeout", std::to_string(kBtRescanS), "scan", "on"}, (kBtRescanS + 5) * 1000);
         const RunResult r = bt({"bluetoothctl", "--agent", "NoInputNoOutput", "pair", mac}, kBtPairMs);
         nanoplat::BtDevEntry d;
         d.address = mac;

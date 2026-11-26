@@ -432,6 +432,22 @@ TEST_F(ActionsTest, ADeviceWithoutBluetoothTurnsTheSwitchBackOff) {
     EXPECT_EQ(prop("persist.thimsy.bluetooth.enabled"), "0");
 }
 
+// switchBluetooth (Network::setBtRadio's) is the same switch on the caller's thread, background or not.
+TEST_F(ActionsTest, SwitchBluetoothIsTheSameSwitchOnTheCallersThread) {
+    const std::string script = o.root + "/etc/init.d/deferred/D35bluetooth";
+    o.background = true;
+    nanolinux::actions::switchBluetooth(true, o);
+    EXPECT_EQ(prop("persist.thimsy.bluetooth.enabled"), "1");
+    ASSERT_EQ(runs.size(), 2u);
+    EXPECT_EQ(runs[0], (std::vector<std::string>{"/bin/sh", script, "start"}));
+    EXPECT_EQ(runs[1], (std::vector<std::string>{"bluetoothctl", "power", "on"}));
+    nanolinux::actions::switchBluetooth(false, o);
+    EXPECT_EQ(prop("persist.thimsy.bluetooth.enabled"), "0");
+    ASSERT_EQ(runs.size(), 4u);
+    EXPECT_EQ(runs[2], (std::vector<std::string>{"bluetoothctl", "power", "off"}));
+    EXPECT_EQ(runs[3], (std::vector<std::string>{"/bin/sh", script, "stop"}));
+}
+
 TEST_F(ActionsTest, SlowActionsRunOnAWorkerInOrder) {
     std::mutex mu;
     std::vector<std::string> seen;

@@ -28,6 +28,8 @@
 //   bluetoothd may not have registered the controller yet); off: `bluetoothctl power off`, then
 //   `D35bluetooth stop`. When the script says the device has no Bluetooth (status 3: device.json,
 //   the kernel, or no controller), the key goes back to 0.
+//   switchBluetooth is that whole switch on the caller's thread, for Network::setBtRadio (the PS3
+//   wizard's Turn On/Off, which Nano already calls on a thread of its own).
 //   connectBluetooth: `bluetoothctl connect <mac>`. An image without BlueZ logs that once per call.
 // - setTimeFormat: nothing. persist.gammaos.nano.clock12, which Nano wrote just before, is the
 //   only clock format on Linux.
@@ -80,6 +82,11 @@ bool validZoneId(const std::string& id);
 
 // "AA:BB:CC:DD:EE:FF" (either case).
 bool validMac(const std::string& mac);
+
+// setBluetoothEnabled's switch, all of it on the caller's thread: the key, then D35bluetooth start
+// and `bluetoothctl power on` (with its tries), or `power off` and D35bluetooth stop. Uses the
+// options' root, btScript, run and pause.
+void switchBluetooth(bool on, Options options = Options());
 
 std::unique_ptr<nanoplat::SystemActions> create(Options options = Options());
 

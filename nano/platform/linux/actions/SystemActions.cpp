@@ -79,13 +79,69 @@ void defaultFollowZone(const std::string& zone) {
     tzset();
 }
 
+// D35bluetooth start|stop: its exit status (0: it succeeded; start: bluetoothd runs).
+int btScript(const Options& o, bool on) {
+    RunResult r = o.run({"/bin/sh", o.root + o.btScript, on ? "start" : "stop"}, kBtScriptMs);
+    if (r.status != 0)
+        ALOGW("Bluetooth %s: %s exited %d%s", on ? "on" : "off", o.btScript.c_str(), r.status,
+              r.timedOut ? " (timed out)" : "");
+    return r.status;
+}
+
+// `retrying`: a failure is logged at info (another try follows).
+RunResult bluetoothctl(const Options& o, const std::vector<std::string>& argv, int timeoutMs, bool retrying = false) {
+    RunResult r = o.run(argv, timeoutMs);
+    std::string what;
+    for (size_t i = 1; i < argv.size(); i++) what += (i > 1 ? " " : "") + argv[i];
+    if (r.status == 127)
+        ALOGW("Bluetooth %s: bluetoothctl is not on this image", what.c_str());
+    else if (r.status != 0 && retrying && !r.timedOut)
+        ALOGI("Bluetooth %s: bluetoothctl exited %d; trying again", what.c_str(), r.status);
+    else if (r.status != 0)
+        ALOGW("Bluetooth %s: bluetoothctl exited %d%s", what.c_str(), r.status, r.timedOut ? " (timed out)" : "");
+    else
+        ALOGI("Bluetooth %s", what.c_str());
+    return r;
+}
+
+void writeBluetoothKey(bool on) {
+    if (property_set(kBluetoothEnabledKey, on ? "1" : "0") != 0) ALOGE("could not write %s", kBluetoothEnabledKey);
+}
+
+// The switch after the key: on, D-Bus and bluetoothd first, then the radio; off, the radio, then the
+// daemons.
+void bluetoothSwitch(const Options& o, bool on) {
+    if (on) {
+        const int status = btScript(o, true);
+        if (status == kBtNoneStatus) {
+            // No Bluetooth here: the switch goes back off (Nano reads the key back), and the boot's
+            // D35bluetooth neither waits for a controller nor fails each time.
+            ALOGW("Bluetooth on: this device has none; %s back to 0", kBluetoothEnabledKey);
+            writeBluetoothKey(false);
+        }
+        if (status != 0) return;
+        for (int i = 1;; i++) {
+            const RunResult r = bluetoothctl(o, {"bluetoothctl", "power", "on"}, kBtPowerMs, i < kBtPowerTries);
+            // Retried only while it fails at once: not found, a timeout or the last try ends it.
+            if (r.status == 0 || r.status == 127 || r.timedOut || i >= kBtPowerTries) break;
+            o.pause(kBtRetryMs);
+        }
+    } else {
+        bluetoothctl(o, {"bluetoothctl", "power", "off"}, kBtPowerMs);
+        btScript(o, false);
+    }
+}
+
+Options withDefaults(Options o) {
+    if (!o.run) o.run = runProgram;
+    if (!o.followZone) o.followZone = defaultFollowZone;
+    if (!o.pause) o.pause = defaultPause;
+    return o;
+}
+
 class LinuxSystemActions : public nanoplat::SystemActions {
  public:
-    explicit LinuxSystemActions(Options o) : o_(std::move(o)) {
-        if (!o_.run) o_.run = runProgram;
-        if (!o_.followZone) o_.followZone = defaultFollowZone;
-        if (!o_.pause) o_.pause = defaultPause;
-    }
+    explicit LinuxSystemActions(Options o) : o_(withDefaults(std::move(o))) {}
 
     // Runs what is queued, then stops the worker (the platform itself is never destroyed).
     ~LinuxSystemActions() override {
@@ -110,29 +166,9 @@ class LinuxSystemActions : public nanoplat::SystemActions {
 
     void setBluetoothEnabled(bool on) override {
         // As Wi-Fi: the setting at once (D35bluetooth reads it at boot); the daemons and the radio on
-        // the worker. On: D-Bus and bluetoothd first, then the radio; off: the radio, then the daemons.
-        if (property_set(kBluetoothEnabledKey, on ? "1" : "0") != 0) ALOGE("could not write %s", kBluetoothEnabledKey);
-        post([this, on] {
-            if (on) {
-                const int status = btScript(true);
-                if (status == kBtNoneStatus) {
-                    // No Bluetooth here: the switch goes back off (Nano reads the key back), and
-                    // the boot's D35bluetooth neither waits for a controller nor fails each time.
-                    ALOGW("Bluetooth on: this device has none; %s back to 0", kBluetoothEnabledKey);
-                    if (property_set(kBluetoothEnabledKey, "0") != 0) ALOGE("could not write %s", kBluetoothEnabledKey);
-                }
-                if (status != 0) return;
-                for (int i = 1;; i++) {
-                    const RunResult r = bluetoothctl({"bluetoothctl", "power", "on"}, kBtPowerMs, i < kBtPowerTries);
-                    // Retried only while it fails at once: not found, a timeout or the last try ends it.
-                    if (r.status == 0 || r.status == 127 || r.timedOut || i >= kBtPowerTries) break;
-                    o_.pause(kBtRetryMs);
-                }
-            } else {
-                bluetoothctl({"bluetoothctl", "power", "off"}, kBtPowerMs);
-                btScript(false);
-            }
-        });
+        // the worker.
+        writeBluetoothKey(on);
+        post([this, on] { bluetoothSwitch(o_, on); });
     }
 
     void connectBluetooth(const std::string& mac) override {
@@ -140,7 +176,7 @@ class LinuxSystemActions : public nanoplat::SystemActions {
             ALOGW("Bluetooth connect: not an address: \"%s\"", mac.c_str());
             return;
         }
-        post([this, mac] { bluetoothctl({"bluetoothctl", "connect", mac}, kBtConnectMs); });
+        post([this, mac] { bluetoothctl(o_, {"bluetoothctl", "connect", mac}, kBtConnectMs); });
     }
 
     void setTimeFormat(bool /*h12*/) override {}
@@ -213,15 +249,6 @@ class LinuxSystemActions : public nanoplat::SystemActions {
             ALOGI("Wi-Fi %s", on ? "on" : "off");
     }
 
-    // D35bluetooth start|stop: its exit status (0: it succeeded; start: bluetoothd runs).
-    int btScript(bool on) {
-        RunResult r = o_.run({"/bin/sh", o_.root + o_.btScript, on ? "start" : "stop"}, kBtScriptMs);
-        if (r.status != 0)
-            ALOGW("Bluetooth %s: %s exited %d%s", on ? "on" : "off", o_.btScript.c_str(), r.status,
-                  r.timedOut ? " (timed out)" : "");
-        return r.status;
-    }
-
     void forget(int savedNetId) {
         const std::vector<std::string> socks = wpa::sockets(o_.root + o_.wpaDir);
         if (socks.empty()) {
@@ -244,22 +271,6 @@ class LinuxSystemActions : public nanoplat::SystemActions {
             ALOGW("forget network %d: removed, not saved: %s", savedNetId, err.empty() ? reply.c_str() : err.c_str());
         else
             ALOGI("forgot network %d", savedNetId);
-    }
-
-    // `retrying`: a failure is logged at info (another try follows).
-    RunResult bluetoothctl(const std::vector<std::string>& argv, int timeoutMs, bool retrying = false) {
-        RunResult r = o_.run(argv, timeoutMs);
-        std::string what;
-        for (size_t i = 1; i < argv.size(); i++) what += (i > 1 ? " " : "") + argv[i];
-        if (r.status == 127)
-            ALOGW("Bluetooth %s: bluetoothctl is not on this image", what.c_str());
-        else if (r.status != 0 && retrying && !r.timedOut)
-            ALOGI("Bluetooth %s: bluetoothctl exited %d; trying again", what.c_str(), r.status);
-        else if (r.status != 0)
-            ALOGW("Bluetooth %s: bluetoothctl exited %d%s", what.c_str(), r.status, r.timedOut ? " (timed out)" : "");
-        else
-            ALOGI("Bluetooth %s", what.c_str());
-        return r;
     }
 
     Options o_;
@@ -297,6 +308,12 @@ bool validMac(const std::string& mac) {
         if (i % 3 == 2 ? mac[i] != ':' : !isHex(mac[i])) return false;
     }
     return true;
+}
+
+void switchBluetooth(bool on, Options options) {
+    const Options o = withDefaults(std::move(options));
+    writeBluetoothKey(on);
+    bluetoothSwitch(o, on);
 }
 
 std::unique_ptr<nanoplat::SystemActions> create(Options options) {

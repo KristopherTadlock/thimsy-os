@@ -35,6 +35,7 @@
 #include <thread>
 #include <vector>
 
+#include <cutils/properties.h>
 #include <gtest/gtest.h>
 
 #include "actions/Network.h"
@@ -126,10 +127,10 @@ class FakeWpaD {
 const char kListHeader[] = "network id / ssid / bssid / flags\n";
 const char kScanHeader[] = "bssid / frequency / signal level / flags / ssid\n";
 
-class NetworkTest : public ::testing::Test {
+class NetworkTest : public compat_test::StoreTest {
  protected:
     void SetUp() override {
-        ASSERT_FALSE(dir_.path().empty());
+        compat_test::StoreTest::SetUp();   // setBtRadio writes persist.thimsy.bluetooth.enabled
         root_ = dir_ / "root";
         mkdirs(root_ + "/run/wpa_supplicant");
         mkdirs(root_ + "/tmp");
@@ -137,11 +138,17 @@ class NetworkTest : public ::testing::Test {
         o.wpaReplyMs = 1000;
         o.sleep = [this](int ms) { slept += ms; };
         o.nowMs = [this] { return now; };
+        // Bluetooth is on: the device has it, the switch is on, D35bluetooth's bus runs.
+        props["ro.thimsy.device.bluetooth"] = "true";
+        props["persist.thimsy.bluetooth.enabled"] = "1";
+        put(root_ + "/run/dbus/system_bus_socket", "");
+        o.prop = [this](const char* key) { return props[key]; };
         o.run = [this](const std::vector<std::string>& argv, int timeoutMs) {
             std::string key;
             for (size_t i = 1; i < argv.size(); i++) key += (i > 1 ? " " : "") + argv[i];
             runs.push_back(key);
             timeouts[key] = timeoutMs;
+            if (!argv.empty() && argv[0] == "/bin/sh") return script;   // D35bluetooth
             if (argv.empty() || argv[0] != "bluetoothctl") return RunResult{127, false, ""};
             auto it = bt.find(key);
             if (it != bt.end()) return it->second;
@@ -156,7 +163,6 @@ class NetworkTest : public ::testing::Test {
         return n;
     }
 
-    compat_test::ScratchDir dir_;
     std::string root_;
     nanolinux::net::Options o;
     int slept = 0;
@@ -165,6 +171,8 @@ class NetworkTest : public ::testing::Test {
     std::map<std::string, int> timeouts;
     std::map<std::string, RunResult> bt;
     RunResult btDefault{0, false, ""};
+    RunResult script{0, false, ""};
+    std::map<std::string, std::string> props;
 };
 
 RunResult out(const std::string& text, int status = 0) { return RunResult{status, false, text}; }
@@ -535,16 +543,16 @@ TEST_F(NetworkTest, PairTrustsAndConnects) {
     bt["info " + mac] = out("\tName: Pad\n\tPaired: yes\n");
     auto n = make();
     EXPECT_TRUE(n->pairBt(mac));
-    EXPECT_EQ(runs, (std::vector<std::string>{"--agent NoInputNoOutput pair " + mac, "info " + mac, "trust " + mac,
-                                              "connect " + mac}));
+    EXPECT_EQ(runs, (std::vector<std::string>{"info " + mac, "--agent NoInputNoOutput pair " + mac, "info " + mac,
+                                              "trust " + mac, "connect " + mac}));
     EXPECT_GE(timeouts["--agent NoInputNoOutput pair " + mac], 30000);
     runs.clear();
     EXPECT_TRUE(n->btWizPair(mac, "--ask"));   // no prompt on Linux yet: paired without it
-    EXPECT_EQ(runs.front(), "--agent NoInputNoOutput pair " + mac);
+    EXPECT_EQ(runs[1], "--agent NoInputNoOutput pair " + mac);
     runs.clear();
     bt["info " + mac] = out("\tName: Pad\n\tPaired: no\n");
     EXPECT_FALSE(n->pairBt(mac));
-    EXPECT_EQ(runs.size(), 2u);   // pair and info: no trust or connect
+    EXPECT_EQ(runs.size(), 3u);   // info, pair and info: no trust or connect
     runs.clear();
     EXPECT_FALSE(n->pairBt("11:22:33:44:55"));
     EXPECT_FALSE(n->btWizPair("11:22:33:44:55:66; reboot", ""));
@@ -562,10 +570,6 @@ TEST_F(NetworkTest, RemoveConnectDisconnectAndPower) {
     EXPECT_TRUE(n->btWizUnpair(mac));
     EXPECT_FALSE(n->btWizConnect(mac));
     EXPECT_TRUE(n->btWizDisconnect(mac));
-    n->setBtRadio(true);
-    n->setBtRadio(false);
-    EXPECT_EQ(ran("power on"), 1);
-    EXPECT_EQ(ran("power off"), 1);
     const size_t before = runs.size();
     n->btConfirmInbound(mac, 0);   // no inbound agent on Linux: logged
     EXPECT_EQ(runs.size(), before);
@@ -580,4 +584,113 @@ TEST_F(NetworkTest, BluetoothdNotAnsweringBacksOff) {
     EXPECT_FALSE(n->btRadioOn());
     EXPECT_TRUE(n->btListState().devices.empty());
     EXPECT_EQ(runs.size(), 1u);
+}
+
+// w5-linux-3: with Bluetooth off (the default, and a device without it) D35bluetooth runs neither the
+// bus nor bluetoothd, and the net poll asks every few seconds: no bluetoothctl then.
+TEST_F(NetworkTest, NoBluetoothctlWhileTheDaemonsAreNotMeantToRun) {
+    bt["show"] = out("Controller 00:1A:7D:DA:71:13 (public)\n\tPowered: yes\n");
+    struct Case {
+        const char* what;
+        const char* hasBt;
+        const char* enabled;
+        bool bus;
+    };
+    for (const Case& c : {Case{"off", "true", "0", false}, Case{"unset", "true", "", false},
+                          Case{"no Bluetooth", "false", "1", false}, Case{"no bus yet", "true", "1", false},
+                          Case{"no Bluetooth, bus", "", "1", true}}) {
+        SCOPED_TRACE(c.what);
+        props["ro.thimsy.device.bluetooth"] = c.hasBt;
+        props["persist.thimsy.bluetooth.enabled"] = c.enabled;
+        if (c.bus)
+            put(root_ + "/run/dbus/system_bus_socket", "");
+        else
+            unlink((root_ + "/run/dbus/system_bus_socket").c_str());
+        runs.clear();
+        auto n = make();
+        Network::WifiLevel wl = Network::kWifiLevel_Unknown;
+        Network::BtLevel bl = Network::kBtLevel_Unknown;
+        int bars = 0, connected = 0;
+        std::string ssid;
+        n->pollState(wl, bars, ssid, bl, connected);
+        EXPECT_EQ(bl, Network::kBtLevel_Off);
+        EXPECT_FALSE(n->btRadioOn());
+        EXPECT_FALSE(n->btListState().on);
+        EXPECT_TRUE(runs.empty());
+    }
+    // On, with the bus: asked.
+    props["ro.thimsy.device.bluetooth"] = "true";
+    props["persist.thimsy.bluetooth.enabled"] = "1";
+    put(root_ + "/run/dbus/system_bus_socket", "");
+    EXPECT_TRUE(make()->btRadioOn());
+    EXPECT_EQ(ran("show"), 1);
+}
+
+// w5-linux-1: the PS3 wizard's Turn On/Off is the whole switch (the key, D35bluetooth, the radio),
+// as the legacy screen's: `power on` alone has no bluetoothd while Bluetooth is off.
+TEST_F(NetworkTest, SetBtRadioIsTheWholeSwitch) {
+    const std::string d35 = root_ + "/etc/init.d/deferred/D35bluetooth";
+    auto n = make();
+    n->setBtRadio(true);
+    EXPECT_EQ(runs, (std::vector<std::string>{d35 + " start", "power on"}));
+    char v[PROPERTY_VALUE_MAX] = {};
+    property_get("persist.thimsy.bluetooth.enabled", v, "");
+    EXPECT_STREQ(v, "1");
+    runs.clear();
+    n->setBtRadio(false);
+    EXPECT_EQ(runs, (std::vector<std::string>{"power off", d35 + " stop"}));   // the radio first
+    property_get("persist.thimsy.bluetooth.enabled", v, "");
+    EXPECT_STREQ(v, "0");
+
+    // No Bluetooth on this device (D35bluetooth's 3): no bluetoothctl, and the key goes back to 0.
+    runs.clear();
+    script = RunResult{3, false, ""};
+    n->setBtRadio(true);
+    EXPECT_EQ(runs, (std::vector<std::string>{d35 + " start"}));
+    property_get("persist.thimsy.bluetooth.enabled", v, "");
+    EXPECT_STREQ(v, "0");
+
+    // `power on` failing at once while bluetoothd registers the controller: tried again.
+    runs.clear();
+    script = RunResult{0, false, ""};
+    bt["power on"] = out("No default controller available\n", 1);
+    slept = 0;
+    n->setBtRadio(true);
+    EXPECT_EQ(ran("power on"), 5);
+    EXPECT_EQ(slept, 4 * 500);
+}
+
+// The switch ends the back-off of a bluetoothd that did not answer: it was just started.
+TEST_F(NetworkTest, SetBtRadioEndsTheBackOff) {
+    btDefault = RunResult{128 + 9, true, "Waiting to connect to bluetoothd...\n"};
+    auto n = make();
+    EXPECT_FALSE(n->btRadioOn());
+    EXPECT_EQ(ran("show"), 1);
+    EXPECT_FALSE(n->btRadioOn());
+    EXPECT_EQ(ran("show"), 1);   // backing off
+    btDefault = RunResult{0, false, ""};
+    bt["show"] = out("Controller 00:1A:7D:DA:71:13 (public)\n\tPowered: yes\n");
+    n->setBtRadio(true);
+    EXPECT_TRUE(n->btRadioOn());
+    EXPECT_EQ(ran("show"), 2);
+}
+
+// w5-linux-9: BlueZ drops an unpaired device it found TemporaryTimeout (30 s) after it last saw it; a
+// device chosen later is looked for again before the pairing.
+TEST_F(NetworkTest, PairLooksAgainForADeviceBlueZDropped) {
+    const std::string mac = "11:22:33:44:55:66";
+    int infos = 0;
+    o.run = [this, &infos, mac](const std::vector<std::string>& argv, int timeoutMs) {
+        std::string key;
+        for (size_t i = 1; i < argv.size(); i++) key += (i > 1 ? " " : "") + argv[i];
+        runs.push_back(key);
+        timeouts[key] = timeoutMs;
+        if (key == "info " + mac && infos++ == 0) return out("Device " + mac + " not available\n", 1);
+        if (key == "info " + mac) return out("\tName: Pad\n\tPaired: yes\n");
+        return RunResult{0, false, ""};
+    };
+    EXPECT_TRUE(make()->btWizPair(mac, ""));
+    EXPECT_EQ(runs, (std::vector<std::string>{"info " + mac, "--timeout 5 scan on", "--agent NoInputNoOutput pair " + mac,
+                                              "info " + mac, "trust " + mac, "connect " + mac}));
+    EXPECT_EQ(timeouts["--timeout 5 scan on"], 10000);
 }

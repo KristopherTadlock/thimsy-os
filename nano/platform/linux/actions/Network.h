@@ -36,10 +36,17 @@
 // Bluetooth: bluetoothctl (BlueZ), run on demand through the runner (Run.h), never a shell: show
 // (Powered), devices Paired (paired-devices before BlueZ 5.65) checked by info <mac> (Name, Class,
 // Paired, Connected), --timeout N scan on then devices for an inquiry, --agent NoInputNoOutput pair,
-// trust and connect for a pairing, remove, connect, disconnect, power on|off. A PIN or the "--ask"
-// prompt has no Linux path yet: pairing goes ahead without it (logged); inbound requests are not
-// accepted (logged). When bluetoothctl is missing or does not answer (no bluetoothd), Bluetooth
-// reads as unknown and bluetoothctl is not run again for 30 s.
+// trust and connect for a pairing (after a 5 s scan when info no longer knows the device: BlueZ drops
+// an unpaired device TemporaryTimeout, 30 s, after it last saw it), remove, connect, disconnect. A
+// PIN or the "--ask" prompt has no Linux path yet: pairing goes ahead without it (logged); inbound
+// requests are not accepted (logged). setBtRadio is the whole Bluetooth switch
+// (actions::switchBluetooth: the key, D35bluetooth and power on|off), as the legacy screen's
+// setBluetoothEnabled is, so the PS3 wizard starts and stops the daemons too. Bluetooth reads as off
+// without running bluetoothctl unless the daemons are meant to run: ro.thimsy.device.bluetooth is
+// true, persist.thimsy.bluetooth.enabled is 1 and the system bus's socket is there (D35bluetooth
+// starts neither otherwise, and the net poll asks every few seconds). When bluetoothctl is missing
+// or does not answer (no bluetoothd), Bluetooth reads as unknown and bluetoothctl is not run again
+// for 30 s, or until the switch is used.
 //
 // Every call runs on the caller's thread and is bounded: each control request by wpaReplyMs, each
 // bluetoothctl by its own deadline (a few seconds; a scan its length plus 5 s; a pairing 60 s), and
@@ -74,6 +81,10 @@ struct Options {
     std::function<void(int ms)> sleep;
     // CLOCK_MONOTONIC milliseconds, for the Bluetooth back-off; empty: clock_gettime.
     std::function<long long()> nowMs;
+    // D35bluetooth's system bus: no socket, no bluetoothd to ask.
+    std::string busSocket = "/run/dbus/system_bus_socket";
+    // Reads a property ("" when unset); empty: property_get.
+    std::function<std::string(const char* key)> prop;
 };
 
 // wpa_supplicant's printf-escaped text (printf_encode: \\ \" \n \r \t \e \xNN, octal) as bytes.
