@@ -1,0 +1,23 @@
+# The QEMU virt target (decision I8): the virtio keyboard is the pad; the boot test (E.9) sends
+# Enter and expects BTN_SOUTH.
+device ../../../../board/qemu-aarch64-virt/devices/qemu-virt.json
+node event0 name="QEMU Virtio Keyboard" phys="virtio0/input0" bus=0x06 vendor=0x0627 product=0x0001
+caps event0 keys KEY_ESC KEY_1 KEY_2 KEY_Q KEY_W KEY_A KEY_S KEY_B KEY_ENTER KEY_TAB KEY_SPACE KEY_HOME KEY_UP KEY_DOWN KEY_LEFT KEY_RIGHT
+100 event0 EV_MSC MSC_SCAN 458792
+100 event0 EV_KEY KEY_ENTER 1
+100 event0 EV_SYN SYN_REPORT 0
+# Autorepeat changes nothing.
+130 event0 EV_KEY KEY_ENTER 2
+130 event0 EV_SYN SYN_REPORT 0
+150 event0 EV_KEY KEY_ENTER 0
+150 event0 EV_SYN SYN_REPORT 0
+# A key device.json does not map is dropped.
+200 event0 EV_KEY KEY_B 1
+200 event0 EV_SYN SYN_REPORT 0
+# The arrows are the hat; Home is BTN_MODE.
+300 event0 EV_KEY KEY_LEFT 1
+300 event0 EV_KEY KEY_HOME 1
+300 event0 EV_SYN SYN_REPORT 0
+310 event0 EV_KEY KEY_LEFT 0
+310 event0 EV_KEY KEY_HOME 0
+310 event0 EV_SYN SYN_REPORT 0

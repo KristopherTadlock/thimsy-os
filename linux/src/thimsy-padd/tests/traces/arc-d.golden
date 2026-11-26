@@ -1,0 +1,68 @@
+bind event2 -> gpio-keys-control
+bind event3 -> adc-keys-home
+bind event4 -> pwm-vibrator
+setup pad name="Thimsy Gamepad" bus=0x06 vendor=0x5448 product=0x0001 version=1
+setup pad keys BTN_SOUTH BTN_EAST BTN_NORTH BTN_WEST BTN_TL BTN_TR BTN_TL2 BTN_TR2 BTN_SELECT BTN_START BTN_MODE BTN_THUMBL BTN_THUMBR
+setup pad abs ABS_X -32768 32767
+setup pad abs ABS_Y -32768 32767
+setup pad abs ABS_HAT0X -1 1
+setup pad abs ABS_HAT0Y -1 1
+setup pad ff FF_RUMBLE FF_GAIN effects=16
+100 pad EV_KEY BTN_EAST 1
+100 pad EV_SYN SYN_REPORT 0
+150 pad EV_KEY BTN_EAST 0
+150 pad EV_SYN SYN_REPORT 0
+200 pad EV_KEY BTN_SOUTH 1
+200 pad EV_SYN SYN_REPORT 0
+250 pad EV_KEY BTN_SOUTH 0
+250 pad EV_SYN SYN_REPORT 0
+300 pad EV_KEY BTN_THUMBL 1
+300 pad EV_KEY BTN_THUMBR 1
+300 pad EV_SYN SYN_REPORT 0
+320 pad EV_KEY BTN_THUMBL 0
+320 pad EV_KEY BTN_THUMBR 0
+320 pad EV_SYN SYN_REPORT 0
+400 pad EV_ABS ABS_HAT0X -1
+400 pad EV_ABS ABS_HAT0Y -1
+400 pad EV_SYN SYN_REPORT 0
+450 pad EV_ABS ABS_HAT0Y 0
+450 pad EV_SYN SYN_REPORT 0
+460 pad EV_ABS ABS_HAT0X 0
+460 pad EV_SYN SYN_REPORT 0
+500 pad EV_KEY BTN_MODE 1
+500 pad EV_SYN SYN_REPORT 0
+520 pad EV_KEY BTN_START 1
+520 pad EV_SYN SYN_REPORT 0
+540 intercept on
+540 pad EV_KEY BTN_START 0
+540 pad EV_KEY BTN_MODE 0
+540 pad EV_SYN SYN_REPORT 0
+600 tap EV_ABS ABS_HAT0Y 1
+600 tap EV_SYN SYN_REPORT 0
+620 tap EV_ABS ABS_HAT0Y 0
+620 tap EV_SYN SYN_REPORT 0
+700 tap EV_KEY BTN_EAST 1
+700 tap EV_SYN SYN_REPORT 0
+710 intercept off
+710 tap EV_KEY BTN_EAST 0
+710 tap EV_SYN SYN_REPORT 0
+760 pad EV_KEY BTN_EAST 1
+760 pad EV_SYN SYN_REPORT 0
+770 pad EV_KEY BTN_EAST 0
+770 pad EV_SYN SYN_REPORT 0
+800 vib pwm-vibrator on strong=0x8000 weak=0x2000 for=200
+925 vib pwm-vibrator on strong=0xa000 weak=0x2000 for=50
+975 vib pwm-vibrator on strong=0x8000 weak=0x2000 for=25
+1000 vib pwm-vibrator on strong=0x2000 weak=0x0000 for=50
+1050 vib pwm-vibrator off
+1100 pad EV_KEY BTN_TL 1
+1100 pad EV_SYN SYN_REPORT 0
+1110 needs-sync event2
+1111 pad EV_KEY BTN_TL 0
+1111 pad EV_KEY BTN_TR 1
+1111 pad EV_SYN SYN_REPORT 0
+1200 pad EV_KEY BTN_MODE 1
+1200 pad EV_SYN SYN_REPORT 0
+1210 pad EV_KEY BTN_MODE 0
+1210 pad EV_SYN SYN_REPORT 0
+1220 ignore event3: matches no source

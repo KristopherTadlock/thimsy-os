@@ -1,0 +1,41 @@
+# A rocknix-joypad family (the generated RG40XX H): one kernel node that already normalises the
+# pad. padd re-exposes it under the Thimsy identity: producer kernel-joypad, buttons passed
+# through, the sticks rescaled to the pad's range (the driver inverts RX and RY itself).
+device ../../../../tests/fixtures/expected/generated/h700/devices/anbernic-rg40xx-h.json
+node event1 name="H700 Gamepad" bus=0x19 vendor=0x0001 product=0x0001
+caps event1 keys BTN_SOUTH BTN_EAST BTN_NORTH BTN_WEST BTN_TL BTN_TR BTN_TL2 BTN_TR2 BTN_SELECT BTN_START BTN_MODE BTN_THUMBL BTN_THUMBR BTN_DPAD_UP BTN_DPAD_DOWN BTN_DPAD_LEFT BTN_DPAD_RIGHT
+caps event1 abs ABS_X -1800 1800 16 32
+caps event1 abs ABS_Y -1800 1800 16 32
+caps event1 abs ABS_RX -1800 1800 16 32
+caps event1 abs ABS_RY -1800 1800 16 32
+100 event1 EV_KEY BTN_SOUTH 1
+100 event1 EV_SYN SYN_REPORT 0
+120 event1 EV_KEY BTN_SOUTH 0
+120 event1 EV_KEY BTN_MODE 1
+120 event1 EV_SYN SYN_REPORT 0
+130 event1 EV_KEY BTN_MODE 0
+130 event1 EV_SYN SYN_REPORT 0
+# Left stick half right and fully up; the right stick fully down
+200 event1 EV_ABS ABS_X 900
+200 event1 EV_ABS ABS_Y -1800
+200 event1 EV_ABS ABS_RY 1800
+200 event1 EV_SYN SYN_REPORT 0
+# Inside the node's flat (32): centre
+210 event1 EV_ABS ABS_X 20
+210 event1 EV_ABS ABS_Y -31
+210 event1 EV_SYN SYN_REPORT 0
+# Beyond the range: clamped
+220 event1 EV_ABS ABS_X 2047
+220 event1 EV_SYN SYN_REPORT 0
+# The d-pad keys become the hat
+300 event1 EV_KEY BTN_DPAD_RIGHT 1
+300 event1 EV_KEY BTN_DPAD_DOWN 1
+300 event1 EV_SYN SYN_REPORT 0
+# Intercept with the sticks deflected and the d-pad held: everything centred on the pad
+400 intercept 1
+410 event1 EV_ABS ABS_X 0
+410 event1 EV_SYN SYN_REPORT 0
+420 event1 EV_KEY BTN_DPAD_RIGHT 0
+420 event1 EV_KEY BTN_DPAD_DOWN 0
+420 event1 EV_SYN SYN_REPORT 0
+430 intercept 0

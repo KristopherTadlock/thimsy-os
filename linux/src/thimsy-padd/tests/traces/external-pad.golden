@@ -1,0 +1,16 @@
+ignore event7: matches no source
+ignore event8: matches no source
+bind event2 -> gpio-keys-control
+bind event3 -> adc-keys-home
+setup pad name="Thimsy Gamepad" bus=0x06 vendor=0x5448 product=0x0001 version=1
+setup pad keys BTN_SOUTH BTN_EAST BTN_NORTH BTN_WEST BTN_TL BTN_TR BTN_TL2 BTN_TR2 BTN_SELECT BTN_START BTN_MODE BTN_THUMBL BTN_THUMBR
+setup pad abs ABS_X -32768 32767
+setup pad abs ABS_Y -32768 32767
+setup pad abs ABS_HAT0X -1 1
+setup pad abs ABS_HAT0Y -1 1
+setup pad ff FF_RUMBLE FF_GAIN effects=16
+120 pad EV_KEY BTN_SOUTH 1
+120 pad EV_SYN SYN_REPORT 0
+140 pad EV_KEY BTN_SOUTH 0
+140 pad EV_SYN SYN_REPORT 0
+150 ignore usb-keyboard: matches no source
