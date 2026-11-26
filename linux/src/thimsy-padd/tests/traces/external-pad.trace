@@ -1,0 +1,29 @@
+# An external pad is never one of padd's sources: it matches no device.json entry and is left to
+# the kernel's own driver. A second node named like the ARC's but on another phys is not taken
+# either. The ARC's own keys still work; the pwm-vibrator is missing (it is not required).
+device ../../../../board/rk3566/devices/anbernic-rg-arc-d.json
+node event7 name="Microsoft X-Box 360 pad" phys="usb-xhci-hcd.0.auto-1/input0" bus=0x03 vendor=0x045e product=0x028e
+caps event7 keys BTN_SOUTH BTN_EAST BTN_NORTH BTN_WEST BTN_TL BTN_TR BTN_SELECT BTN_START BTN_MODE BTN_THUMBL BTN_THUMBR
+caps event7 abs ABS_X -32768 32767 16 128
+caps event7 abs ABS_HAT0X -1 1 0 0
+caps event7 ff FF_RUMBLE
+node event8 name="gpio-keys-control" phys="gpio-keys/input1" bus=0x19
+caps event8 keys BTN_SOUTH
+node event2 name="gpio-keys-control" phys="gpio-keys/input0" bus=0x19
+caps event2 keys BTN_SOUTH BTN_EAST BTN_START
+node event3 name="adc-keys-home" phys="adc-keys/input0" bus=0x19
+caps event3 keys BTN_BACK
+100 event7 EV_KEY BTN_SOUTH 1
+100 event7 EV_ABS ABS_X 30000
+100 event7 EV_SYN SYN_REPORT 0
+110 event8 EV_KEY BTN_SOUTH 1
+110 event8 EV_SYN SYN_REPORT 0
+120 event2 EV_KEY BTN_EAST 1
+120 event2 EV_SYN SYN_REPORT 0
+130 event7 EV_KEY BTN_SOUTH 0
+130 event7 EV_SYN SYN_REPORT 0
+140 event2 EV_KEY BTN_EAST 0
+140 event2 EV_SYN SYN_REPORT 0
+# An event from a label no node line declared, and that is no source id: ignored too.
+150 usb-keyboard EV_KEY KEY_ENTER 1
+150 usb-keyboard EV_SYN SYN_REPORT 0

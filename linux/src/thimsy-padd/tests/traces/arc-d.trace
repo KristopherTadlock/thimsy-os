@@ -1,0 +1,80 @@
+# The RG ARC-D: three source nodes on mainline device trees (plan 5.3), merged into one pad.
+device ../../../../board/rk3566/devices/anbernic-rg-arc-d.json
+node event2 name="gpio-keys-control" phys="gpio-keys/input0" bus=0x19
+caps event2 keys BTN_SOUTH BTN_EAST BTN_C BTN_NORTH BTN_WEST BTN_Z BTN_TL BTN_TR BTN_TL2 BTN_TR2 BTN_SELECT BTN_START BTN_DPAD_UP BTN_DPAD_DOWN BTN_DPAD_LEFT BTN_DPAD_RIGHT
+node event3 name="adc-keys-home" phys="adc-keys/input0" bus=0x19
+caps event3 keys BTN_BACK
+node event4 name="pwm-vibrator" bus=0x19
+caps event4 ff FF_RUMBLE
+# A: the key the kernel calls BTN_SOUTH; the pad shows it as BTN_EAST (South and East swapped).
+100 event2 EV_KEY BTN_SOUTH 1
+100 event2 EV_SYN SYN_REPORT 0
+150 event2 EV_KEY BTN_SOUTH 0
+150 event2 EV_SYN SYN_REPORT 0
+# B -> BTN_SOUTH; MSC_SCAN is dropped
+200 event2 EV_MSC MSC_SCAN 17
+200 event2 EV_KEY BTN_EAST 1
+200 event2 EV_SYN SYN_REPORT 0
+250 event2 EV_KEY BTN_EAST 0
+250 event2 EV_SYN SYN_REPORT 0
+# C and Z: the stick clicks, in one batch
+300 event2 EV_KEY BTN_C 1
+300 event2 EV_KEY BTN_Z 1
+300 event2 EV_SYN SYN_REPORT 0
+320 event2 EV_KEY BTN_C 0
+320 event2 EV_KEY BTN_Z 0
+320 event2 EV_SYN SYN_REPORT 0
+# The d-pad is the hat: up and left, then up released
+400 event2 EV_KEY BTN_DPAD_UP 1
+400 event2 EV_KEY BTN_DPAD_LEFT 1
+400 event2 EV_SYN SYN_REPORT 0
+450 event2 EV_KEY BTN_DPAD_UP 0
+450 event2 EV_SYN SYN_REPORT 0
+460 event2 EV_KEY BTN_DPAD_LEFT 0
+460 event2 EV_SYN SYN_REPORT 0
+# The home key is its own node: F -> BTN_MODE. F and Start held (the quit combo).
+500 event3 EV_KEY BTN_BACK 1
+500 event3 EV_SYN SYN_REPORT 0
+520 event2 EV_KEY BTN_START 1
+520 event2 EV_SYN SYN_REPORT 0
+# Nano opens its menu while both are held: the pad releases them in one batch.
+540 intercept 1
+# The menu gets new presses on the tap; releases of keys held from before go nowhere.
+560 event2 EV_KEY BTN_START 0
+560 event2 EV_SYN SYN_REPORT 0
+600 event2 EV_KEY BTN_DPAD_DOWN 1
+600 event2 EV_SYN SYN_REPORT 0
+620 event2 EV_KEY BTN_DPAD_DOWN 0
+620 event2 EV_SYN SYN_REPORT 0
+# A held while the menu closes reaches the game only when pressed again.
+700 event2 EV_KEY BTN_SOUTH 1
+700 event2 EV_SYN SYN_REPORT 0
+710 intercept 0
+720 event3 EV_KEY BTN_BACK 0
+720 event3 EV_SYN SYN_REPORT 0
+740 event2 EV_KEY BTN_SOUTH 0
+740 event2 EV_SYN SYN_REPORT 0
+760 event2 EV_KEY BTN_SOUTH 1
+760 event2 EV_SYN SYN_REPORT 0
+770 event2 EV_KEY BTN_SOUTH 0
+770 event2 EV_SYN SYN_REPORT 0
+# A game rumbles: effect 0, 200 ms; the pwm-vibrator node plays it and stops at 1000.
+800 ff upload 0 0x8000 0x2000 200
+800 ff play 0 1
+# A second effect overlaps the first and plays twice, each time after a 25 ms delay.
+900 ff upload 1 0x2000 0 50 25
+900 ff play 1 2
+# The node's buffer overflowed: everything up to the next SYN_REPORT is dropped, then padd
+# reads its whole state.
+1100 event2 EV_KEY BTN_TL 1
+1100 event2 EV_SYN SYN_REPORT 0
+1110 event2 EV_SYN SYN_DROPPED 0
+1110 event2 EV_KEY BTN_TL 0
+1110 event2 EV_SYN SYN_REPORT 0
+1111 sync event2 BTN_TR
+# The home key's node goes away (a driver reload) while F is held: F is released.
+1200 event3 EV_KEY BTN_BACK 1
+1200 event3 EV_SYN SYN_REPORT 0
+1210 gone event3
+1220 event3 EV_KEY BTN_BACK 0
+1220 event3 EV_SYN SYN_REPORT 0
