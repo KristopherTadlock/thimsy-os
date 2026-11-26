@@ -155,6 +155,7 @@ set(NANO_STUBGEN_FROM ${NANO_SRC_dropped_linux} ${NANO_LEFT_OUT})
 set(NANO_LINUX_MAIN "platform/linux/main_linux.cpp")
 set(NANO_LINUX_SHELLGATE "platform/linux/ShellGate.cpp")
 set(NANO_LINUX_DRM_BUFFERS "platform/linux/display/DrmBuffersGbm.cpp")
+set(NANO_LINUX_EGL_WRAPS "platform/linux/display/EglWraps.cpp")
 set(NANO_LINUX_WRAPS_FILE "${NANO_DIR}/platform/linux/linker-wraps.txt")
 set(NANO_HOST_MAIN "test/host/headless/main_headless.cpp")
 set(NANO_GLSTUB_GLUE "test/host/glstub/glue.c")
@@ -410,6 +411,11 @@ if(NANO_BUILD_LINUX)
     if(NOT NANO_LINUX_DRM_BUFFERS IN_LIST NANO_SRC_linux)
         message(FATAL_ERROR "nano: sources.txt's [linux] lacks ${NANO_LINUX_DRM_BUFFERS} (B.8)")
     endif()
+    # linker-wraps.txt wraps eglGetProcAddress and eglQueryString; their __wrap_ definitions are
+    # here, and without them the link fails on __wrap_egl* rather than at configure.
+    if(NOT NANO_LINUX_EGL_WRAPS IN_LIST NANO_SRC_linux)
+        message(FATAL_ERROR "nano: sources.txt's [linux] lacks ${NANO_LINUX_EGL_WRAPS} (B.8)")
+    endif()
     if(NOT TARGET nano_shellgate)
         message(FATAL_ERROR "nano: sources.txt's [linux] lacks ${NANO_LINUX_SHELLGATE} (B.5)")
     endif()
@@ -424,8 +430,10 @@ if(NANO_BUILD_LINUX)
     list(TRANSFORM _plat PREPEND "${NANO_DIR}/")
     add_library(nano_platform_linux STATIC ${_plat})
     target_include_directories(nano_platform_linux PUBLIC "${NANO_DIR}/platform/linux")
+    # main_linux.cpp, ShellGate.cpp and the [dropped-linux] stubs stay out of the library (above).
+    # libnanostubs (nano_stubs) is named here, as in the Makefiles, not only through nano_core.
     target_link_libraries(nano_platform_linux
-        PUBLIC nano_core nano_shellgate nano::gbm nano::egl nano::glesv2 nano::drm nano::alsa
+        PUBLIC nano_core nano_stubs nano_shellgate nano::gbm nano::egl nano::glesv2 nano::drm nano::alsa
         PRIVATE nano_flags)
 
     add_library(nano_linux_main STATIC "${NANO_DIR}/${NANO_LINUX_MAIN}")
@@ -456,7 +464,7 @@ if(NANO_BUILD_HOST)
     list(TRANSFORM _plat PREPEND "${NANO_DIR}/")
     add_library(nano_platform_host STATIC ${_plat})
     target_include_directories(nano_platform_host PUBLIC "${NANO_DIR}/platform/host")
-    target_link_libraries(nano_platform_host PUBLIC nano_core PRIVATE nano_flags)
+    target_link_libraries(nano_platform_host PUBLIC nano_core nano_stubs PRIVATE nano_flags)
 
     add_library(nano_glstub STATIC "${NANO_DIR}/${NANO_GLSTUB_GLUE}")
     target_include_directories(nano_glstub PUBLIC "${NANO_DIR}/test/host/glstub")
