@@ -294,6 +294,10 @@ nano_image_format(JPEG jpeglib.h jpeg)
 check_include_files("webp/demux.h" NANO_HAVE_HEADER_webp_demux_h LANGUAGE CXX)
 if(NANO_HAVE_HEADER_webp_demux_h)
     nano_image_format(WEBP webp/decode.h "webp;webpdemux")
+elseif(NANO_REQUIRE_IMAGE_LIBS)
+    # The image's build (thimsy-nano selects BR2_PACKAGE_LIBWEBP_DEMUX): without the demuxer an
+    # animated WebP would quietly show its first frame only.
+    message(FATAL_ERROR "nano: NANO_REQUIRE_IMAGE_LIBS: <webp/demux.h> not found (animated WEBP)")
 else()
     nano_image_format(WEBP webp/decode.h webp)
 endif()
