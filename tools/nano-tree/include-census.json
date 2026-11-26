@@ -1346,6 +1346,12 @@
     "shim:compat/include/android/log.h"
    ]
   },
+  "NanoPlatform.cpp": {
+   "includes": [
+    "nano:NanoPlatform.h",
+    "shim:compat/include/log/log.h"
+   ]
+  },
   "NanoRaConfig.cpp": {
    "includes": [
     "nano:NanoRaConfig.h"
@@ -1673,6 +1679,51 @@
   "nanosvg/nanosvgrast.h": {
    "includes": [
     "nano:nanosvg/nanosvg.h"
+   ]
+  },
+  "platform/host/DrmHost.cpp": {
+   "includes": [
+    "nano:NanoMenuDrm.h",
+    "nano:platform/host/HostControl.h",
+    "shim:compat/include/cutils/properties.h",
+    "shim:compat/include/log/log.h"
+   ]
+  },
+  "platform/host/FakeEvdev.cpp": {
+   "includes": [
+    "nano:platform/host/FakeEvdev.h"
+   ]
+  },
+  "platform/host/HostConfig.cpp": {
+   "includes": [
+    "libthimsy:thimsy/json.h",
+    "nano:platform/host/HostConfig.h"
+   ]
+  },
+  "platform/host/HostConfig.h": {
+   "includes": [
+    "nano:platform/host/FakeEvdev.h",
+    "nano:platform/host/HostControl.h",
+    "nano:platform/host/ShellGateHost.h"
+   ]
+  },
+  "platform/host/HostControl.cpp": {
+   "includes": [
+    "nano:platform/host/HostControl.h"
+   ]
+  },
+  "platform/host/HostPlatform.cpp": {
+   "includes": [
+    "nano:NanoPlatform.h",
+    "nano:platform/host/HostConfig.h",
+    "shim:compat/include/log/log.h",
+    "shim:compat/include/nanocompat/nanocompat.h"
+   ]
+  },
+  "platform/host/ShellGateHost.cpp": {
+   "includes": [
+    "nano:platform/host/HostControl.h",
+    "nano:platform/host/ShellGateHost.h"
    ]
   },
   "powerwatch/nano_powerwatch.cpp": {
@@ -2122,6 +2173,65 @@
    "includes": [
     "nano:NanoNdsBanner.h",
     "nano:test/fuzz/fuzz_util.h"
+   ]
+  },
+  "test/host/glstub/glue.c": {
+   "includes": [
+    "nano:test/host/glstub/glstub.h"
+   ]
+  },
+  "test/host/headless/main_headless.cpp": {
+   "includes": [
+    "nano:NanoMenu.h",
+    "nano:NanoPlatform.h",
+    "nano:platform/host/HostControl.h",
+    "shim:compat/include/cutils/properties.h",
+    "shim:compat/include/log/log.h",
+    "shim:compat/include/utils/StrongPointer.h",
+    "shim:compat/include/utils/ThreadDefs.h"
+   ]
+  },
+  "test/host/headless/tests/fake_evdev_test.cpp": {
+   "includes": [
+    "gtest:gtest/gtest.h",
+    "nano:platform/host/FakeEvdev.h",
+    "nano:test/host/headless/tests/headless_test_util.h"
+   ]
+  },
+  "test/host/headless/tests/glstub_test.cpp": {
+   "includes": [
+    "gtest:gtest/gtest.h"
+   ]
+  },
+  "test/host/headless/tests/host_control_test.cpp": {
+   "includes": [
+    "gtest:gtest/gtest.h",
+    "nano:platform/host/HostControl.h",
+    "nano:test/host/headless/tests/headless_test_util.h"
+   ]
+  },
+  "test/host/headless/tests/host_platform_test.cpp": {
+   "includes": [
+    "gtest:gtest/gtest.h",
+    "nano:NanoPlatform.h",
+    "nano:platform/host/HostConfig.h",
+    "nano:test/host/headless/tests/headless_test_util.h",
+    "shim:compat/include/cutils/properties.h"
+   ]
+  },
+  "test/host/headless/tests/seam_test.cpp": {
+   "includes": [
+    "gtest:gtest/gtest.h",
+    "nano:NanoPlatform.h",
+    "nano:test/host/headless/tests/headless_test_util.h"
+   ]
+  },
+  "test/host/headless/tests/shell_gate_test.cpp": {
+   "includes": [
+    "gtest:gtest/gtest.h",
+    "nano:platform/host/HostControl.h",
+    "nano:platform/host/ShellGateHost.h",
+    "nano:test/host/headless/tests/headless_test_util.h"
    ]
   },
   "test/host/stubgen/testdata/core.cpp": {

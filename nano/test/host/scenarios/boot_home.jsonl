@@ -1,0 +1,16 @@
+# Boot to the home screen and present frames (D.3's first scenario). Nano reaches readyToRun's DRM
+# path through DrmHost (sys.gammaos.nano.drm_active=1), allocates the ring, and presents; the frame
+# barrier then holds it while a frame is captured.
+{"boot": {"props": {"persist.gammaos.nano.theme": "xmb", "persist.gammaos.nano.grab_input": "1"}}}
+{"expect": {"present_count_at_least": 1}, "within_ms": 30000}
+{"expect_prop": {"key": "sys.gammaos.nano.drm_active", "equals": "1"}}
+{"expect": {"event": {"ev": "splash", "displays": 1}}}
+{"expect": {"event": {"ev": "grab", "path": "/dev/input/event0", "on": true}}, "note": "Nano opened and grabbed the fake pad"}
+{"barrier": true}
+{"frames": 2}
+{"capture": "home.ppm"}
+{"frames": 1}
+{"expect": {"event": {"ev": "capture", "ok": true}}}
+{"barrier": false}
+{"expect": {"present_count_at_least": 10}}
+{"expect_no_shell": ["am start", "am force-stop", "pm uninstall", "reboot"]}
