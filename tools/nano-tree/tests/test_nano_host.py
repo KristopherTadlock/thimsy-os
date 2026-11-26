@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -44,19 +45,40 @@ def _wsl_has_distro() -> bool:
     return DISTRO in [n.strip().strip("\ufeff") for n in names.splitlines()]
 
 
+# The shell script that runs a target (ROOT and TARGET are set before it: values in the script, run
+# with wsl.exe --exec, so no outer shell expands it). A checkout on /mnt (a
+# Windows drive seen from WSL, slow 9p) is copied to ~/.cache/thimsy/nano-host-src first, as
+# tests/run.sh cxx does; the base's assets (work/nano-composed) are read where they are.
+SCRIPT = r"""set -e
+root=$ROOT; target=$TARGET
+data=; [ -d "$root/work/nano-composed" ] && data="NANO_DATA=$root/work/nano-composed"
+case "$root" in
+  /mnt/*) copy=$HOME/.cache/thimsy/nano-host-src
+          rm -rf "$copy" && mkdir -p "$copy"
+          tar -C "$root" -cf - nano libthimsy linux/tools | tar -C "$copy" -xf -
+          root=$copy ;;
+esac
+cd "$root/nano/test/host"
+L=; command -v flock >/dev/null && L="flock /tmp/thimsy-cxx.lock"
+exec $L nice -n 19 make -j1 "$target" $data
+"""
+
+
+def script(root: str, target: str) -> str:
+    return "ROOT=%s TARGET=%s\n%s" % (shlex.quote(root), shlex.quote(target), SCRIPT)
+
+
 def command(target: str):
     """(argv, how) to run TARGET of the host Makefile, or (None, why not)."""
-    script = ("cd %s && if command -v flock >/dev/null; then L='flock /tmp/thimsy-cxx.lock'; else L=; fi; "
-              "exec $L nice -n 19 make -j1 %s")
     if sys.platform.startswith("linux"):
         if not (shutil.which("make") and shutil.which("g++")):
             return None, "make or g++ is not installed"
-        return ["sh", "-c", script % ("'%s'" % MAKEFILE_DIR, target)], "local"
+        return ["sh", "-c", script(ROOT, target)], "local"
     if os.name == "nt":
         if not _wsl_has_distro():
             return None, "no WSL distro %s" % DISTRO
         wsl = shutil.which("wsl.exe") or shutil.which("wsl")
-        return [wsl, "-d", DISTRO, "--", "sh", "-c", script % ("'%s'" % wsl_path(MAKEFILE_DIR), target)], "WSL " + DISTRO
+        return [wsl, "-d", DISTRO, "--exec", "sh", "-c", script(wsl_path(ROOT), target)], "WSL " + DISTRO
     return None, "no way to run g++ here"
 
 

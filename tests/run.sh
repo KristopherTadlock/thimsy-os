@@ -7,7 +7,8 @@
 #   cxx     the small C++ suites with g++ and make, each behind linux/tools/build_guard.sh --light and
 #           the lock /tmp/thimsy-cxx.lock: libthimsy, Nano's compat shims and check-unit-0,
 #           thimsy-padd, thimsy-session. On Linux directly; elsewhere in WSL (THIMSY_WSL_DISTRO,
-#           default Ubuntu). A suite the guard refuses is reported as refused, and the mode fails.
+#           default Ubuntu), on a copy under ~/.cache/thimsy/cxx-src when the checkout is on /mnt.
+#           A suite the guard refuses is reported as refused, and the mode fails.
 #
 # Usage: tests/run.sh [quick|slow|all|nano|linux|cxx] [unittest options, such as -v or -k NAME]
 #
@@ -39,8 +40,22 @@ case "$mode" in
       win=$(pwd -W 2>/dev/null || pwd)
       drive=$(printf '%s' "$win" | cut -c1 | tr 'A-Z' 'a-z')
       wslroot="/mnt/$drive$(printf '%s' "$win" | cut -c3- | tr '\\' '/')"
-      exec wsl.exe -d "${THIMSY_WSL_DISTRO:-Ubuntu}" -- bash "$wslroot/tests/run.sh" cxx "$@"
+      # MSYS_NO_PATHCONV: Git Bash would turn the /mnt/... argument into a Windows path.
+      MSYS_NO_PATHCONV=1 exec wsl.exe -d "${THIMSY_WSL_DISTRO:-Ubuntu}" -- bash "$wslroot/tests/run.sh" cxx "$@"
     fi
+    nano_data="$ROOT/work/nano-composed"
+    case "$ROOT" in
+      /mnt/*)
+        # A Windows checkout seen through WSL's /mnt (9p): slow, and timing-sensitive tests (the
+        # session E2E) time out there. Build and test a copy on the Linux side instead.
+        copy="$HOME/.cache/thimsy/cxx-src"
+        echo "=== copying the sources to $copy"
+        rm -rf "$copy" && mkdir -p "$copy"
+        tar -C "$ROOT" -cf - nano libthimsy linux | tar -C "$copy" -xf -
+        cd "$copy"
+        ROOT="$copy" ;;
+    esac
+    [ -d "$nano_data" ] || nano_data=""
     guard="$ROOT/linux/tools/build_guard.sh"
     lock() { if command -v flock >/dev/null; then flock /tmp/thimsy-cxx.lock "$@"; else "$@"; fi; }
     failed=""
@@ -58,7 +73,7 @@ case "$mode" in
     suite libthimsy libthimsy -C libthimsy check
     # check-compat would run libthimsy's tests again; they ran just above.
     suite nano-compat check-compat -C nano/test/host check-compat COMPAT_WITH_LIBTHIMSY=0
-    suite nano-unit-0 check-unit-0 -C nano/test/host check-unit-0
+    suite nano-unit-0 check-unit-0 -C nano/test/host check-unit-0 ${nano_data:+NANO_DATA="$nano_data"}
     suite thimsy-padd thimsy-padd -C linux/src/thimsy-padd check
     suite thimsy-session thimsy-session -C linux/src/thimsy-session check
     if [ -n "$failed" ]; then
