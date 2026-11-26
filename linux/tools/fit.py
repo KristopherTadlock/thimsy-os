@@ -59,7 +59,10 @@ FAMILIES: Dict[str, Dict[str, Any]] = {
         "fit_load": 0x0A000000,
         "header_load": 0x0C000000,
         "boot_slot": 40 * MIB,
-        "bootargs": "init=/init rootfstype=erofs ro rootwait quiet loglevel=3",
+        # gpt: a primary GPT torn by a cut-off write (D60firstboot's repartition) makes the
+        # kernel read the backup at the card's end, as U-Boot does, instead of finding no
+        # partitions and waiting for root forever (device-safety-1).
+        "bootargs": "init=/init rootfstype=erofs ro rootwait gpt quiet loglevel=3",
         "magic": b"THIMSFIT",
     },
 }

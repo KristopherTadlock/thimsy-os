@@ -213,7 +213,20 @@ The state is read from the GPT (`sfdisk --dump`) on every run:
 So at no moment is there a basic-data entry without a complete filesystem,
 and a power cut at any step leaves a state the next boot finishes. The
 tests cut the power before and after each of the four steps, and in the
-middle of the format, and check both.
+middle of the format, and check both. A cut inside one sfdisk write can
+tear the primary GPT (libfdisk writes the backup first, then the primary
+entries, then the primary header); U-Boot then reads the backup, and the
+kernel does too because the command line has `gpt` (tools/fit.py,
+run-qemu.sh). D60 ignores TERM while it holds `/run/thimsy/firstboot.lock`,
+and rcK waits up to 10 s for the lock before it signals everyone, so a
+shutdown never cuts the write (review finding device-safety-1).
+
+An entry 5 that is `missing` is also what a card looks like when an image is
+written again over a used Thimsy card (a repair, or an update before
+there is an updater): the old library's exFAT is still at the very offset
+step 1 computes, and step 2 formats over it. Telling the two apart, or
+ending the image with a gap so the old boot sector survives and can be
+adopted, is open for the owner (review finding device-safety-2).
 
 The partition is the alpha's library drive by default (I44): the
 session's volume policy accepts the boot disk's `games` partition and no

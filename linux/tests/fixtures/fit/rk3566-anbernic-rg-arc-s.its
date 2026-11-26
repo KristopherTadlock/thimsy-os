@@ -32,7 +32,7 @@
 			description = "anbernic-rg-arc-s";
 			kernel = "kernel";
 			fdt = "fdt";
-			bootargs = "init=/init rootfstype=erofs ro rootwait quiet loglevel=3";
+			bootargs = "init=/init rootfstype=erofs ro rootwait gpt quiet loglevel=3";
 		};
 	};
 };

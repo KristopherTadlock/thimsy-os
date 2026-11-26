@@ -764,6 +764,32 @@ class TestPropsAndFamily(WorldCase):
 
 # --- D60firstboot -----------------------------------------------------------------
 
+class TestTornGpt(unittest.TestCase):
+    """device-safety-1: an sfdisk write cut off between the primary entries and the primary header
+    leaves only the backup GPT valid. The kernel reads it only with "gpt" on its command line, rcK's
+    TERM to everyone never reaches D60's sfdisk, and rcK waits for D60's lock before its KILL."""
+
+    def test_kernel_falls_back_to_the_backup_gpt(self) -> None:
+        sys.path.insert(0, str(LINUX / "tools"))
+        try:
+            import fit
+        finally:
+            sys.path.pop(0)
+        self.assertIn(" gpt ", " %s " % fit.FAMILIES["rk3566"]["bootargs"])
+        qemu = (LINUX / "board/qemu-aarch64-virt/run-qemu.sh").read_text(encoding="utf-8")
+        self.assertRegex(qemu, r'cmdline="root=/dev/vda3 [^"]* gpt ')
+
+    def test_d60_ignores_term_and_rck_waits_for_it(self) -> None:
+        initd = LINUX / "board/common/rootfs-overlay" / INITD
+        d60 = (initd / "deferred/D60firstboot").read_text(encoding="utf-8")
+        start = d60.index("\nstart)")
+        self.assertLess(start, d60.index("trap '' TERM", start))
+        self.assertLess(d60.index("trap '' TERM", start), d60.index("\tfirstboot\n", start))
+        rck = (initd / "rcK").read_text(encoding="utf-8")
+        self.assertLess(rck.index('[ -d "$R/run/thimsy/firstboot.lock" ]'), rck.index("kill -TERM -1"))
+        self.assertIn("firstboot.lock", d60)
+
+
 @needs_sh
 class TestD60FirstBoot(WorldCase):
     D60 = INITD + "/deferred/D60firstboot"

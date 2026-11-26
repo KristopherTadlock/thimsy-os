@@ -89,7 +89,8 @@ if [ "$dry" = 0 ]; then
 	command -v "$qemu" > /dev/null 2>&1 || die "$qemu is not on PATH"
 fi
 
-cmdline="root=/dev/vda3 rootfstype=erofs ro init=/init console=ttyAMA0${append:+ $append}"
+# gpt: as the FIT's bootargs (tools/fit.py), the backup GPT when the primary is torn.
+cmdline="root=/dev/vda3 rootfstype=erofs ro gpt init=/init console=ttyAMA0${append:+ $append}"
 
 accel="-accel tcg -cpu max"
 if [ "$(uname -m)" = aarch64 ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then

@@ -192,6 +192,10 @@ start)
 		thimsy_log $TAG "already running"
 		exit 0
 	fi
+	# rcK's TERM to everyone must not cut an sfdisk write in two: a torn
+	# primary GPT leaves only the backup (device-safety-1). sfdisk and
+	# mkfs inherit the ignored signals; rcK waits for the lock (10 s at most).
+	trap '' TERM HUP INT
 	firstboot
 	rc=$?
 	rmdir "$LOCK" 2>/dev/null
