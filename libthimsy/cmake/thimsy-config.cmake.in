@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Thimsy OS contributors
+#
+# find_package(thimsy CONFIG): thimsy::thimsy (the static library), thimsy::gtest_standin (the
+# GoogleTest stand-in, header-only, defines main) and thimsy::thimsy-prop (the tool).
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(Threads)
+
+include("${CMAKE_CURRENT_LIST_DIR}/thimsy-targets.cmake")
+check_required_components(thimsy)

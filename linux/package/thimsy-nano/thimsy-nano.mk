@@ -39,11 +39,21 @@ THIMSY_NANO_DEPENDENCIES = \
 	libcurl \
 	openssl \
 	alsa-lib
-# Option names are G6's (nano/CMakeLists.txt, not written yet): G6 keeps them or
-# changes this list.
+# nano/CMakeLists.txt's options (G6; tools/nano-tree/tests/test_nano_cmake.py
+# checks that each one passed here exists). The feature switches stay OFF:
+# AC-3 (liba52, GPL-2.0), PDF (no pdfium package), zip/7z (Android's
+# libziparchive) and a media back end (none yet); what they leave out links as
+# generated inert stubs. NANO_REQUIRE_IMAGE_LIBS makes a missing image library
+# an error, not a format the photo viewer quietly lacks. The build runs two
+# Python 3.8+ generators (standard library only) with the build host's python3,
+# which Buildroot requires anyway, and the toolchain's nm.
 THIMSY_NANO_CONF_OPTS = \
 	-DNANO_PLATFORM=linux \
 	-DNANO_WITH_AC3=OFF \
+	-DNANO_WITH_PDF=OFF \
+	-DNANO_WITH_ARCHIVE=OFF \
+	-DNANO_WITH_MEDIA=OFF \
+	-DNANO_REQUIRE_IMAGE_LIBS=ON \
 	-DNANO_BUILD_TESTS=OFF
 
 ifeq ($(BR2_PACKAGE_THIMSY_NANO_SCRAPE),y)
