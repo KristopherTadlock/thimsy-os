@@ -34,8 +34,9 @@
 //   init and QR watcher; binder's thread pool         no binder)
 //   IPCThreadState::joinThreadPool()                  NanoMenu::join(): on Android the process ends
 //                                                     in threadLoop's stopProcess(); here main
-//                                                     returns when the thread ends, after the game
-//                                                     a launch started has ended (G7-launch-b)
+//                                                     returns when the thread ends, once it has
+//                                                     started the game a launch queued and left it
+//                                                     running (G7-launch-b; linux-host-impls-1)
 //
 // tools/nano-tree/tests/test_main_linux.py fingerprints main.cpp's main() and firmwareBootSteps(),
 // so a change there is reviewed against this list.
@@ -46,7 +47,6 @@
 #include <string.h>
 
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 
@@ -119,13 +119,22 @@ int main(int argc, char** argv) {
     nano->join();
     // A launch ends the menu thread (Nano's launch sites still exit); the launcher has queued the
     // game. Drop the menu first (~NanoMenu lets go of the pads threadLoop grabbed on its way out
-    // and closes them), then start the game in its own session and wait for it, so nothing Nano
-    // does after the trigger runs beside the game and the session's restart of Nano never takes the
-    // panel or the pad from it (G7-launch-b).
+    // and closes them), then start the game in its own session and exit at once, as Android's home
+    // exits when it starts a game: threads ~NanoMenu leaves behind (the render watchdog, which
+    // reads NanoMenu every 2 s, and the detached scan workers) end with the process instead of
+    // reading the freed menu for as long as the game runs. The game is left running with
+    // sys.thimsy.game.pid set: thimsy-session holds Nano's restart until it ends, so Nano never
+    // takes the panel or the pad from it, and then starts Nano without a back-off; after a launch
+    // that did not start, the exit status (kExitLaunchOver) tells it so too (linux-host-impls-1,
+    // -2, -6).
     nano.clear();
-    if (std::optional<nanoplat::ChildExit> e = nanolinux::launcher::runQueued())
-        ALOGI("Thimsy Nano: the launched game (pid %d) ended", e->pid);
+    int gamePid = -1;
+    const nanolinux::launcher::LinuxLauncher::Leave end = nanolinux::launcher::leaveQueued(&gamePid);
+    if (end == nanolinux::launcher::LinuxLauncher::Leave::Started)
+        ALOGI("Thimsy Nano: the launched game (pid %d) runs on; thimsy-session starts Nano when it ends",
+              gamePid);
     ALOGI("Thimsy Nano: menu thread ended, exiting");
     nanolinux::controlkeys::uninstall();
-    return 0;
+    return end == nanolinux::launcher::LinuxLauncher::Leave::NoLaunch ? nanolinux::launcher::kExitNoLaunch
+                                                                      : nanolinux::launcher::kExitLaunchOver;
 }

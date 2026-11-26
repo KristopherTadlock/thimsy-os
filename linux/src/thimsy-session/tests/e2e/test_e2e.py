@@ -634,5 +634,53 @@ class RespawnedSession(SessionCase):
         self.assertIn("deferred services ran before this session", self.log())
 
 
+# A Nano that launches, as thimsy-nano does since linux-host-impls-1: its first run starts a game in
+# its own session, writes sys.thimsy.game.pid and exits 0; its second exits 0 with no game (a launch
+# that could not start); later runs stay. Each run notes when it started (ms).
+NANO_LAUNCHES = TOOL + r"""R=$THIMSY_ROOT
+n=$(cat "$R/nano.runs" 2>/dev/null || echo 0)
+n=$((n + 1))
+echo "$n" > "$R/nano.runs"
+echo "$(($(date +%s%N) / 1000000))" >> "$R/nano.starts"
+case $n in
+1)
+	setsid sleep 60 > /dev/null 2>&1 &
+	printf '%s' "$!" > "$R/run/thimsy/props/.sys.thimsy.game.pid.tmp"
+	mv "$R/run/thimsy/props/.sys.thimsy.game.pid.tmp" "$R/run/thimsy/props/sys.thimsy.game.pid"
+	exit 0 ;;
+2) exit 0 ;;
+esac
+exec sleep 1000
+"""
+
+
+class NanoLeavesAGameRunning(SessionCase):
+    """linux-host-impls-1, -2, -6: Nano exits after a launch, leaving the game running. The session
+    does not start Nano while the game runs, sees the game through sys.thimsy.game.pid (and clears
+    it when the game ends), and starts Nano at once after the game and after a launch that did not
+    start, not after a crash's back-off."""
+
+    @classmethod
+    def prepare(cls, r: Root) -> None:
+        r.tool("thimsy-nano", NANO_LAUNCHES)
+
+    def test_nano_comes_back_after_the_game_and_after_a_failed_launch(self):
+        wait_for(lambda: "Nano left game" in self.log(), what="the game watched")
+        game = int(self.prop("sys.thimsy.game.pid"))
+        time.sleep(0.5)
+        self.assertEqual(len(self.ran("thimsy-nano")), 1)  # not while the game runs
+        # The session reaches the game's group through the key: quit-game ends it.
+        self.set_prop("sys.thimsy.session.request", "1:quit-game")
+        wait_for(lambda: self.prop("sys.thimsy.session.done") == "1:ok", what="quit-game done")
+        self.assertIn("signal 15 to group %d" % game, self.log())
+        wait_for(lambda: "the game Nano left running ended" in self.log(), what="the game's end")
+        wait_for(lambda: len(self.ran("thimsy-nano")) == 3, what="Nano started twice more")
+        self.assertEqual(self.prop("sys.thimsy.game.pid"), "")  # the session cleared it
+        starts = [int(x) for x in self.r.read("/nano.starts").split()]
+        self.assertEqual(len(starts), 3)
+        # Run 2 exited 0 at once with no game: run 3 follows without the 1 s back-off.
+        self.assertLess(starts[2] - starts[1], 900)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -18,7 +18,9 @@
 // the writes, the queue until Nano's menu has ended, and real children (small sh scripts standing
 // in for RetroArch): fork, setsid, execve after the display's release, waitpid polling, SIGTERM to
 // the group, a failed execve, the handshake cleared at a launch's end; and the whole path from a
-// commit through the control keys to a started child, with a ROM path too long for a property.
+// commit through the control keys to a started child, with a ROM path too long for a property; the
+// game's pid for the session (sys.thimsy.game.pid) and the exit path that leaves the game running
+// (startAndLeave, leaveQueued).
 
 #include "Launcher.h"
 
@@ -28,6 +30,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <memory>
@@ -87,6 +90,7 @@ class ForwardingLauncher : public LinuxLauncher {
     bool inCommit() const override { return to->inCommit(); }
     bool queued() const override { return to->queued(); }
     bool startQueued(std::string* error) override { return to->startQueued(error); }
+    Leave startAndLeave(int* pid, std::string* error) override { return to->startAndLeave(pid, error); }
     LinuxLauncher* to = nullptr;
 };
 
@@ -310,6 +314,75 @@ TEST_F(LauncherTest, TheLaunchWaitsForTheMenusEnd) {
     EXPECT_EQ(err, "");
 }
 
+// linux-host-impls-2: the session sees the game through sys.thimsy.game.pid, set when the child
+// starts and cleared when pollChild reports its end.
+TEST_F(LauncherTest, TheGamesPidIsTheSessions) {
+    script("sleep 30 & wait\n");
+    std::unique_ptr<LinuxLauncher> l = make();
+    std::string err;
+    EXPECT_EQ(get(nanolinux::launcher::kGamePidKey), "");
+    ASSERT_TRUE(launchNow(*l, core(), &err)) << err;
+    const std::string pid = get(nanolinux::launcher::kGamePidKey);
+    ASSERT_FALSE(pid.empty());
+    EXPECT_EQ(getpgid(atoi(pid.c_str())), atoi(pid.c_str()));  // the group the session signals
+    l->requestChildQuit();
+    std::optional<nanoplat::ChildExit> e = nanolinux::launcher::waitForChild(*l, 5);
+    ASSERT_TRUE(e.has_value());
+    EXPECT_EQ(std::to_string(e->pid), pid);
+    EXPECT_EQ(get(nanolinux::launcher::kGamePidKey), "");
+    // A launch that does not start leaves the key alone.
+    ASSERT_TRUE(writeExecutable(options.retroarch, std::string("\x7f" "garbage", 8)));
+    EXPECT_FALSE(launchNow(*l, core(), &err));
+    EXPECT_EQ(get(nanolinux::launcher::kGamePidKey), "");
+}
+
+// linux-host-impls-1 and -6: main_linux.cpp's leaveQueued(): the game is left running for the
+// session, the launch is over for Nano (the handshake cleared) and the result says what happened.
+TEST_F(LauncherTest, StartAndLeaveLeavesTheGameRunning) {
+    using Leave = LinuxLauncher::Leave;
+    script("sleep 30 & echo $! > '" + (dir_ / "sleep.pid") + "'\nwait\n");
+    std::unique_ptr<LinuxLauncher> l = make();
+    std::string err = "x";
+    int pid = 0;
+    EXPECT_EQ(l->startAndLeave(&pid, &err), Leave::NoLaunch);  // nothing asked for
+    EXPECT_EQ(pid, -1);
+    EXPECT_EQ(err, "");
+
+    l->commit(LaunchTuple().core("/c/snes9x_libretro_android.so").app("com.retroarch.aarch64"));
+    ASSERT_TRUE(l->launch(core(), &err)) << err;
+    ASSERT_EQ(l->startAndLeave(&pid, &err), Leave::Started) << err;
+    ASSERT_GT(pid, 0);
+    EXPECT_EQ(get(nanolinux::launcher::kGamePidKey), std::to_string(pid));  // stays for the session
+    EXPECT_EQ(get("sys.gammaos.nano.launch_core"), "");                      // over for Nano
+    EXPECT_EQ(get("sys.gammaos.nano.launch_app"), "");
+    EXPECT_FALSE(l->childRunning());            // no longer this launcher's to poll
+    EXPECT_FALSE(l->pollChild().has_value());
+    EXPECT_EQ(display.joined(), "release");
+    EXPECT_EQ(kill(pid, 0), 0);                 // still running
+    EXPECT_TRUE(l->launch(core(), &err)) << err;  // the next Nano's launch is not refused here
+    EXPECT_EQ(l->startAndLeave(nullptr, &err), Leave::Started) << err;
+    // The test reaps what it left running: SIGTERM to both groups.
+    const std::string second = get(nanolinux::launcher::kGamePidKey);
+    kill(-pid, SIGTERM);
+    kill(-atoi(second.c_str()), SIGTERM);
+    int status = 0;
+    EXPECT_EQ(waitpid(pid, &status, 0), pid);
+    EXPECT_EQ(waitpid(atoi(second.c_str()), &status, 0), atoi(second.c_str()));
+
+    // Refused (a package with no Linux emulator) or not started (a failed execve): NotStarted.
+    LaunchRequest p;
+    p.kind = LaunchRequest::Kind::Package;
+    p.package = "org.ppsspp.ppsspp";
+    EXPECT_FALSE(l->launch(p, &err));
+    EXPECT_EQ(l->startAndLeave(&pid, &err), Leave::NotStarted);
+    EXPECT_EQ(pid, -1);
+    ASSERT_TRUE(writeExecutable(options.retroarch, std::string("\x7f" "garbage", 8)));
+    ASSERT_TRUE(l->launch(core(), &err)) << err;
+    EXPECT_EQ(l->startAndLeave(&pid, &err), Leave::NotStarted);
+    EXPECT_NE(err.find("execve"), std::string::npos) << err;
+    EXPECT_EQ(l->startAndLeave(&pid, &err), Leave::NoLaunch);  // and that launch is over
+}
+
 TEST_F(LauncherTest, AChildOnlyAfterTheLastOneEnded) {
     script("sleep 30 & echo $! > '" + (dir_ / "sleep.pid") + "'\nwait\n");
     std::unique_ptr<LinuxLauncher> l = make();
@@ -499,6 +572,30 @@ TEST_F(LauncherTest, ATriggerAloneAfterACoreLaunchStartsRetroArch) {
     ASSERT_TRUE(nanolinux::launcher::runQueued(5).has_value());
     const std::string text = compat_test::readFile(out);
     EXPECT_EQ(text.substr(0, text.find('\n')), "--config " + (dir_ / "retroarch.cfg")) << text;
+}
+
+// main_linux.cpp's path: a commit through the control keys, then leaveQueued() at the menu's end.
+TEST_F(LauncherTest, LeaveQueuedFromACommit) {
+    using Leave = LinuxLauncher::Leave;
+    script("exit 0\n");
+    LinuxLauncher* launcher = installPlatform();
+    ASSERT_TRUE(launcher != nullptr);
+    int pid = 0;
+    EXPECT_EQ(nanolinux::launcher::leaveQueued(&pid), Leave::NoLaunch);
+    EXPECT_EQ(pid, -1);
+    android::commitLaunch(LaunchTuple()
+                                  .romPath("/r/a.sfc")
+                                  .game("snes", "/r/a.sfc", "/c/snes9x_libretro_android.so")
+                                  .core("/c/snes9x_libretro_android.so")
+                                  .app("com.retroarch.aarch64")
+                                  .doLaunch("1"));
+    ASSERT_TRUE(launcher->queued());
+    ASSERT_EQ(nanolinux::launcher::leaveQueued(&pid), Leave::Started);
+    ASSERT_GT(pid, 0);
+    int status = 0;
+    EXPECT_EQ(waitpid(pid, &status, 0), pid);  // the test stands in for the session's reaper
+    EXPECT_EQ(get("sys.gammaos.nano.launch_rom"), "");
+    EXPECT_EQ(nanolinux::launcher::leaveQueued(&pid), Leave::NoLaunch);
 }
 
 // A trigger another process writes is not a launch while Nano runs.

@@ -92,6 +92,34 @@ TEST(Supervisor, NanoLeavingAGameRunningComesBackWhenTheGameEnds) {
     EXPECT_TRUE(s.nanoRunning());
 }
 
+// linux-host-impls-6: Nano exits after every launch. A launch that left no game running (it could
+// not start, or the game ended at once) is not a crash: Nano comes back at once and the back-off
+// that crashes built up is reset.
+TEST(Supervisor, NanoExitingForALaunchIsNotACrash) {
+    Supervisor s = started();
+    s.firstFrame(0);
+    s.nanoExited(500, 0);  // a crash half a second in
+    EXPECT_EQ(s.nanoBackoff(), 1000);
+    ASSERT_EQ(count(s.onTick(1500), SupKind::SpawnNano), 1);
+    s.nanoStarted(1500, 200);
+    for (Ms t = 3000; t < 10000; t += 1500) {  // one short launch after another
+        EXPECT_TRUE(s.nanoExited(t, 0, true).empty());
+        EXPECT_EQ(s.nanoBackoff(), 0);
+        EXPECT_EQ(s.nextDeadline(), t);
+        ASSERT_EQ(count(s.onTick(t), SupKind::SpawnNano), 1);
+        s.nanoStarted(t, 300);
+    }
+    // A game still running wins: Nano waits for it, whatever the status.
+    std::vector<SupAction> a = s.nanoExited(20000, 555, true);
+    ASSERT_EQ(a.size(), 1u);
+    EXPECT_EQ(a[0].kind, SupKind::WatchGame);
+    EXPECT_TRUE(s.onTick(25000).empty());
+    ASSERT_EQ(count(s.gameExited(26000), SupKind::SpawnNano), 1);
+    s.nanoStarted(26000, 400);
+    s.nanoExited(26100, 0);  // and a short run that is not a launch's end is a crash again
+    EXPECT_EQ(s.nanoBackoff(), 1000);
+}
+
 TEST(Supervisor, DeferredServicesRunOnceAtTheFirstFrame) {
     Supervisor s = started();
     std::vector<SupAction> a = s.firstFrame(800);

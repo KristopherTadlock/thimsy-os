@@ -75,7 +75,7 @@ void Supervisor::scrapeStarted(int pid) {
     scrapePid_ = pid > 0 ? pid : 0;
 }
 
-std::vector<SupAction> Supervisor::nanoExited(Ms now, int gamePid) {
+std::vector<SupAction> Supervisor::nanoExited(Ms now, int gamePid, bool launchOver) {
     std::vector<SupAction> out;
     nano_.pid = 0;
     if (shutdown_) return out;
@@ -90,6 +90,11 @@ std::vector<SupAction> Supervisor::nanoExited(Ms now, int gamePid) {
         SupAction a{SupKind::WatchGame};
         a.pid = gamePid;
         out.push_back(a);
+        return out;
+    }
+    if (launchOver) {
+        nano_.backoff = 0;
+        nano_.restartAt = now;
         return out;
     }
     scheduleRestart(&nano_, now);

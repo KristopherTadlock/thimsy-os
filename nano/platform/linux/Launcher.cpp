@@ -46,6 +46,7 @@ namespace nanolinux {
 namespace launcher {
 
 const char kRetroarchPackage[] = "com.retroarch.aarch64";
+const char kGamePidKey[] = "sys.thimsy.game.pid";
 
 namespace {
 
@@ -208,6 +209,7 @@ class LinuxLauncherImpl : public LinuxLauncher {
     bool startQueued(std::string* error) override {
         bool ok = false;
         bool cleared = false;
+        pid_t started = -1;
         {
             std::lock_guard<std::mutex> lock(mu_);
             std::unique_ptr<Queued> q = std::move(queued_);
@@ -218,11 +220,42 @@ class LinuxLauncherImpl : public LinuxLauncher {
             } else {
                 ok = start(*q, error);
                 cleared = !ok;
+                if (ok) started = pid_;
             }
             if (cleared) requested_ = false;
         }
+        if (started > 0) setGamePid(started);
         if (cleared) clearHandshake();
         return ok;
+    }
+
+    Leave startAndLeave(int* pidOut, std::string* error) override {
+        Leave end = Leave::NoLaunch;
+        pid_t started = -1;
+        {
+            std::lock_guard<std::mutex> lock(mu_);
+            std::unique_ptr<Queued> q = std::move(queued_);
+            if (error) error->clear();
+            if (q) {
+                if (start(*q, error)) {
+                    end = Leave::Started;
+                    started = pid_;
+                    pid_ = -1;  // left running: Nano exits, and the session watches it
+                } else {
+                    end = Leave::NotStarted;
+                }
+            } else if (requested_) {
+                end = Leave::NotStarted;  // asked for and refused
+            }
+            requested_ = false;
+        }
+        if (started > 0) {
+            setGamePid(started);
+            ALOGI("pid %d left running: Nano exits, thimsy-session watches it (%s)", (int)started, kGamePidKey);
+        }
+        if (end != Leave::NoLaunch) clearHandshake();
+        if (pidOut) *pidOut = started;
+        return end;
     }
 
     bool childRunning() const override {
@@ -252,6 +285,7 @@ class LinuxLauncherImpl : public LinuxLauncher {
             pid_ = -1;
             requested_ = false;
         }
+        if (getProp(kGamePidKey) == std::to_string(e.pid)) property_set(kGamePidKey, "");
         clearHandshake();
         return e;
     }
@@ -279,6 +313,9 @@ class LinuxLauncherImpl : public LinuxLauncher {
         std::lock_guard<std::mutex> lock(mu_);
         written_[name] = Written{full, stored};
     }
+
+    // The session's view of the game (Launcher.h): outside mu_, as an observer may run.
+    static void setGamePid(pid_t pid) { property_set(kGamePidKey, std::to_string(pid).c_str()); }
 
     // The launch is over: the keys the framework clears when it returns to Nano.
     void clearHandshake() {
@@ -412,6 +449,17 @@ std::optional<nanoplat::ChildExit> waitForChild(nanoplat::Launcher& launcher, in
         usleep((useconds_t)(pollMs > 0 ? pollMs : 1) * 1000);
     }
     return std::nullopt;
+}
+
+LinuxLauncher::Leave leaveQueued(int* pid) {
+    if (pid) *pid = -1;
+    LinuxLauncher* launcher = linuxLauncher();
+    if (!launcher) return LinuxLauncher::Leave::NoLaunch;
+    std::string error;
+    const LinuxLauncher::Leave end = launcher->startAndLeave(pid, &error);
+    if (end == LinuxLauncher::Leave::NotStarted && !error.empty())
+        ALOGW("the queued launch did not start: %s", error.c_str());
+    return end;
 }
 
 std::optional<nanoplat::ChildExit> runQueued(int pollMs) {
