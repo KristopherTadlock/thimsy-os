@@ -42,6 +42,7 @@ HAVE = os.path.isdir(STUBS_INCLUDE) and os.path.isfile(os.path.join(NANO, "Andro
 # declares them and no stub may define them (G9a's hand-off).
 BACKEND_FUNCTIONS = ("AHardwareBuffer_release", "AHardwareBuffer_describe", "AHardwareBuffer_lock",
                      "AHardwareBuffer_unlock")
+GBM_BACKEND = os.path.join(NANO, "platform", "linux", "display", "DrmBuffersGbm.cpp")
 
 # --- the stub inventory -----------------------------------------------------------------------------
 
@@ -433,6 +434,64 @@ class Stubs(unittest.TestCase):
                 code, _ = lex(_read(os.path.join(dirpath, n)))
                 for fn in BACKEND_FUNCTIONS:
                     self.assertIsNone(re.search(r"\b%s\s*\([^;{]*\)\s*\{" % fn, code), "%s defines %s" % (n, fn))
+
+    def test_gbm_backend_defines_them_as_declared(self):
+        """G9's DrmBuffersGbm.cpp defines struct AHardwareBuffer and the four functions, extern "C",
+        with the stub's return and parameter types; and the Linux platform uses no
+        AHARDWAREBUFFER_ name the stub does not declare (the budget only shrinks, G4-2)."""
+        if not os.path.isfile(GBM_BACKEND):
+            self.skipTest("no platform/linux/display/DrmBuffersGbm.cpp")
+        decl = _read(os.path.join(STUBS_INCLUDE, "android", "hardware_buffer.h"))
+        gbm = _read(GBM_BACKEND)
+        self.assertRegex(gbm, r"(?m)^struct AHardwareBuffer \{")
+        self.assertIn("typedef struct AHardwareBuffer AHardwareBuffer;", decl)
+        self.assertNotRegex(decl, r"struct AHardwareBuffer\s*\{", "the stub's AHardwareBuffer must stay opaque")
+
+        def params(text):
+            out = []
+            for p in text.split(","):
+                p = " ".join(p.split())
+                p = re.sub(r"\s*\b[A-Za-z_]\w*$", "", p)            # the parameter's name
+                out.append(p.replace(" *", "*").replace("* ", "*"))
+            return out
+
+        for fn in BACKEND_FUNCTIONS:
+            d = re.search(r"(?m)^(\w[\w ]*?\**)\s*\b%s\s*\(([^)]*)\)\s*;" % fn, decl)
+            g = re.search(r'(?m)^extern "C" (\w[\w ]*?\**)\s*\b%s\s*\(([^)]*)\)\s*\{' % fn, gbm)
+            self.assertIsNotNone(d, "hardware_buffer.h does not declare %s" % fn)
+            self.assertIsNotNone(g, 'DrmBuffersGbm.cpp does not define %s extern "C"' % fn)
+            self.assertEqual(d.group(1).strip(), g.group(1).strip(), fn)
+            self.assertEqual(params(d.group(2)), params(g.group(2)), fn)
+
+        declared = set(re.findall(r"\bAHARDWAREBUFFER_\w+", decl))
+        used = set()
+        for dirpath, _dirnames, names in os.walk(os.path.join(NANO, "platform", "linux")):
+            for n in names:
+                if n.endswith((".cpp", ".h")):
+                    code, _ = lex(_read(os.path.join(dirpath, n)))
+                    used |= set(re.findall(r"\bAHARDWAREBUFFER_\w+", code))
+        self.assertEqual(sorted(used - declared), [])
+
+    def test_linux_defines_rgb_follow(self):
+        """nanoRgbFollowSample() is declared by NanoMenuDrm.h and called every home frame, but its
+        Android definition (NanoMenuRgbFollow.cpp) is [firmware]: each platform defines an inert one
+        (G5-7) instead of leaving it to the stub generator."""
+        rx = re.compile(r"(?m)^void nanoRgbFollowSample\(\)\s*\{\s*\}")
+        for folder in ("linux", "host"):
+            hits = []
+            for dirpath, _dirnames, names in os.walk(os.path.join(NANO, "platform", folder)):
+                for n in names:
+                    if n.endswith(".cpp") and rx.search(_read(os.path.join(dirpath, n))):
+                        hits.append(n)
+            self.assertEqual(len(hits), 1, "platform/%s: %s" % (folder, hits))
+
+    def test_stop_process_returns(self):
+        """main_linux.cpp and main_headless.cpp end when NanoMenu::join() returns, after threadLoop's
+        IPCThreadState::stopProcess(): the stub must only log, never exit or block (G9's hand-off)."""
+        code, _ = lex(_read(os.path.join(STUBS_INCLUDE, "binder", "IPCThreadState.h")))
+        m = re.search(r"\bvoid stopProcess\([^)]*\)\s*\{([^}]*)\}", code)
+        self.assertIsNotNone(m)
+        self.assertEqual(m.group(1).strip(), "NANOSTUB_ONCE();")
 
     def test_defined_stubs_log_once(self):
         """Every function the stubs' sources define logs at its first call (NANOSTUB_ONCE), except

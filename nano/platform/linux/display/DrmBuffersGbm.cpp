@@ -39,8 +39,14 @@
 // The EGL gate in front of all this (drmSetupZeroCopy's check for Android's EGL names) is met by
 // EglWraps.cpp. Written, not compiled here (no libdrm, GBM or EGL headers on this machine): G10
 // runs -fsyntax-only on it against them. It needs <android/hardware_buffer.h> from the layer-2
-// stubs (G4), which declares the opaque AHardwareBuffer, AHardwareBuffer_Desc, the format and
-// usage constants and the four functions defined here, and must not define them.
+// stubs (G4), which declares the opaque AHardwareBuffer, AHardwareBuffer_Desc, the constants
+// [core] and [drm] use and the four functions defined here, and must not define them. The usage
+// bits this file reports that the stub does not declare are kUsage* below (the NDK's values; the
+// stub budget only shrinks, G4-2).
+//
+// It also defines nanoRgbFollowSample() as a no-op: NanoMenuDrm.h declares it and NanoMenu.cpp calls
+// it every home frame, but its Android definition (NanoMenuRgbFollow.cpp, GammaRGB's follow-screen
+// sampler) is [firmware]; v1 has no RGB follow on Linux (G5-7, the host's DrmHost.cpp does the same).
 
 #define LOG_TAG "ThimsyDrmGbm"
 
@@ -76,6 +82,12 @@
 #endif
 
 namespace {
+
+// The NDK usage bits a render target has (<android/hardware_buffer.h>'s values), reported by
+// AHardwareBuffer_describe.
+constexpr uint64_t kUsageGpuSampledImage = 1ULL << 8;    // AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE
+constexpr uint64_t kUsageGpuFramebuffer = 1ULL << 9;     // AHARDWAREBUFFER_USAGE_GPU_FRAMEBUFFER
+constexpr uint64_t kUsageComposerOverlay = 1ULL << 11;   // AHARDWAREBUFFER_USAGE_COMPOSER_OVERLAY
 
 // One gbm_device per DRM fd it was made on; destroyed with its last buffer.
 struct GbmDevice {
@@ -179,8 +191,7 @@ AHardwareBuffer* allocBuffer(int drmFd, uint32_t w, uint32_t h, const char* labe
     b->stride = gbm_bo_get_stride(b->bo);
     b->offset = gbm_bo_get_offset(b->bo, 0);
     b->modifier = gbm_bo_get_modifier(b->bo);
-    b->usage = AHARDWAREBUFFER_USAGE_GPU_FRAMEBUFFER | AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE |
-               AHARDWAREBUFFER_USAGE_COMPOSER_OVERLAY;
+    b->usage = kUsageGpuFramebuffer | kUsageGpuSampledImage | kUsageComposerOverlay;
     b->dmabufFd = gbm_bo_get_fd(b->bo);
     if (b->dmabufFd < 0) {
         ALOGW("gbm_bo_get_fd(%s) failed: %s", label, strerror(errno));
@@ -301,6 +312,9 @@ bool drmAllocAhbTarget(EGLDisplay eglDpy, uint32_t w, uint32_t h, AhbRenderTarge
           (unsigned long long)b->modifier, cmd.fb_id, fbo);
     return true;
 }
+
+// GammaRGB's follow-screen sampler (NanoMenuRgbFollow.cpp on Android): not on Linux v1.
+void nanoRgbFollowSample() {}
 
 }  // namespace android
 
