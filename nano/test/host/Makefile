@@ -29,7 +29,8 @@
 #                  library headers or G4's compat/stubs)
 #   headless       nano-headless for the host E2E (heavy; SKIPs until the headers and G4's stubs exist)
 #   check-headless-0  the host platform's small programs (NanoPlatform.cpp, the host platform but
-#                  DrmHost.cpp, the GL stub with gen.py's output), linked as nano-headless links
+#                  DrmHost.cpp, the GL stub with gen.py's output, NanoLaunchCommit.cpp), linked as
+#                  nano-headless links
 #   list-unit      each test program, its production files, its needs and whether check-unit-0 has it
 #   clean          removes O's unit, syntax and headless trees (compat-clean removes compat's)
 #   check          check-compat, check-stubs, check-unit-0 and check-headless-0 (the default)
@@ -311,7 +312,7 @@ endif
 HL_O := $(O)/headless0
 HL_TEST_DIR := $(NANO)/test/host/headless/tests
 HL_TESTS := seam_test host_control_test fake_evdev_test shell_gate_test host_platform_test glstub_test \
-	fake_display_test
+	fake_display_test launch_commit_test
 HL_PLATFORM_SRCS := NanoPlatform.cpp platform/host/HostControl.cpp platform/host/FakeEvdev.cpp \
 	platform/host/ShellGateHost.cpp platform/host/HostConfig.cpp platform/host/HostPlatform.cpp \
 	platform/host/FakeDisplay.cpp
@@ -337,6 +338,8 @@ $(HL_O)/glstub/glstub_test_gen.o: $(HL_O)/glstub/glstub_test_gen.c | host-guard 
 	$(COMPAT_CC_RUN) $(CC) $(COMPAT_CSTD) $(HL_WARN) $(UNIT_FLAGS) -I$(GLSTUB_DIR) -c $< -o $@
 
 hl_extra_glstub_test := $(HL_O)/obj/test/host/glstub/glue.o $(HL_O)/glstub/glstub_test_gen.o
+# The launch handshake's commitLaunch (G7-launch-a), a [core] file, against the property shims.
+hl_extra_launch_commit_test := $(HL_O)/obj/NanoLaunchCommit.o
 define HL_RULE
 $(call hl_bin,$(1)): $(HL_O)/obj/test/host/headless/tests/$(1).o $(HL_PLATFORM_OBJS) $(hl_extra_$(1)) \
 		$(COMPAT_ASAN_LIB) $(COMPAT_LIBTHIMSY_ASAN) | host-guard compat-guard

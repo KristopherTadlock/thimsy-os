@@ -30,6 +30,7 @@
 NanoBootSequence.cpp
 NanoPlatform.cpp
 NanoMenu.cpp
+NanoLaunchCommit.cpp
 NanoMenuXmb.cpp
 NanoMenuShaders.cpp
 NanoMenuEffects.cpp
