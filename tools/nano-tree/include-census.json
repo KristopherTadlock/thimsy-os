@@ -2211,6 +2211,7 @@
     "lib:libdrm:drm_mode.h",
     "missing:compat_test_util.h",
     "missing:display/Display.h",
+    "shim:compat/include/android/log.h",
     "shim:compat/include/cutils/properties.h"
    ]
   },

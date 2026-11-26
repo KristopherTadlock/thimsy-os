@@ -15,7 +15,7 @@
  */
 
 // Running a Linux program for the system actions (G7-power): an argv, never a shell string, started
-// with posix_spawnp (not one of the shell gate's wrapped functions: these are the platform's own
+// with fork and execve (not one of the shell gate's wrapped functions: these are the platform's own
 // Linux commands, not Nano's Android ones), its output collected, and killed at a deadline.
 #pragma once
 
@@ -33,8 +33,10 @@ struct RunResult {
     std::string out;        // stdout and stderr together, at most 64 KiB
 };
 
-// Runs argv[0] (looked up on PATH unless it has a slash) with stdin on /dev/null. Blocks until the
-// program exits or `timeoutMs` has passed.
+// Runs argv[0] (looked up on PATH unless it has a slash) with stdin on /dev/null, in a session of
+// its own, with default signals and no descriptor of the caller's above stderr (a daemon it starts
+// keeps none of Nano's: Run.cpp). Blocks until the program exits or `timeoutMs` has passed; at the
+// deadline only the program itself is killed, not what it left running.
 RunResult runProgram(const std::vector<std::string>& argv, int timeoutMs);
 
 }  // namespace actions

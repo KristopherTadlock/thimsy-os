@@ -47,6 +47,7 @@ namespace launcher {
 
 const char kRetroarchPackage[] = "com.retroarch.aarch64";
 const char kGamePidKey[] = "sys.thimsy.game.pid";
+const char kAppLaunchedKey[] = "sys.gammaos.nano.app_launched";
 
 namespace {
 
@@ -338,9 +339,11 @@ class LinuxLauncherImpl : public LinuxLauncher {
         int pipeFds[2];
         if (pipe2(pipeFds, O_CLOEXEC) != 0) return fail(error, std::string("pipe2: ") + strerror(errno));
 
+        // Usually false: threadLoop's exit path has already stopped the display (drmStop), and
+        // releaseForChild says so itself; nothing is taken back after a failure then.
         const bool released = display_ != nullptr && display_->releaseForChild();
-        ALOGI("launch (%s, by %s): %s%s", q.request.kind == nanoplat::LaunchRequest::Kind::Core ? "core" : "package",
-              q.request.trigger.c_str(), joined(argv).c_str(), released ? "" : " (the panel was not Nano's)");
+        ALOGI("launch (%s, by %s): %s", q.request.kind == nanoplat::LaunchRequest::Kind::Core ? "core" : "package",
+              q.request.trigger.c_str(), joined(argv).c_str());
         const pid_t pid = fork();
         if (pid == 0) childExec(av.data(), pipeFds[1], maxFd);
         const int forkErr = errno;
@@ -441,6 +444,12 @@ void launchFromHandshake(const controlkeys::LaunchRequest& handshake) {
     std::string error;
     if (!launcher->launch(request, &error))
         ALOGW("launch by %s not started: %s", handshake.trigger.c_str(), error.c_str());
+    // Android's framework sets app_launched when it starts the app, while the home still runs its
+    // launch site; threadLoop's exit path waits up to ~10 s for it. On Linux the game starts only
+    // once the menu has ended (leaveQueued), and Nano exits after a refused launch too, so the
+    // launch is as far as it gets while the menu runs: say so now, and the exit path ends at once.
+    // thimsy-session clears the key when the game ends and before it starts Nano again.
+    if (getProp(kAppLaunchedKey) != "1") property_set(kAppLaunchedKey, "1");
 }
 
 std::optional<nanoplat::ChildExit> waitForChild(nanoplat::Launcher& launcher, int pollMs) {

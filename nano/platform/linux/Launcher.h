@@ -25,7 +25,8 @@
 //   into one request, debounced; main_linux.cpp gives them launchFromHandshake() as the launch
 //   handler, which builds the request (LinuxLauncher::requestFor) and calls the platform's launch().
 //   Only a trigger written by Nano's own commitLaunch() is a launch: one from another process is
-//   logged and refused while Nano runs.
+//   logged and refused while Nano runs. A launch Nano wrote sets sys.gammaos.nano.app_launched=1
+//   (kAppLaunchedKey), which Android's framework sets, so threadLoop's exit path does not wait.
 // - launch: checks the request (the argv, argvFor; the program and the core are there) and queues it.
 //   Nano's launch sites still exit after a launch, and code runs after the trigger (Quick Resume
 //   saves the core's state and SRAM for RetroArch to resume from, the fades, the pad grab), so the
@@ -87,6 +88,13 @@ extern const char kRetroarchPackage[];
 // The game's pid for thimsy-session (linux/docs/session.md): set when a child starts.
 extern const char kGamePidKey[];
 
+// sys.gammaos.nano.app_launched: "1" once launchFromHandshake has taken Nano's own launch (queued
+// or refused), as Android's framework sets it when it starts the app. threadLoop's exit path waits
+// for it (up to ~10 s of "Loading..."), so on Linux it ends at once. thimsy-session clears it (and
+// app_drawn) when the game ends and before it starts Nano with no game running: a stale "1" reads
+// as a game in front of Nano (no idle sleep, no ES-DE card sweep, BIOS installs refused).
+extern const char kAppLaunchedKey[];
+
 // thimsy-nano's exit status after its menu ended (thimsy-session restarts Nano at once, its back-off
 // reset, after kExitLaunchOver when no game runs; any other end counts as a crash).
 constexpr int kExitLaunchOver = 0;  // a launch was asked for: its game left running, or it did not start
@@ -145,6 +153,7 @@ LinuxLauncher* linuxLauncher();
 
 // controlkeys::Handlers.launch: refused (logged) unless the trigger came from the launcher's own
 // commit(); else LinuxLauncher::requestFor, then launch(); a launch that can't be queued is logged.
+// Either way kAppLaunchedKey is then "1" (Nano's launch site ends the menu, and Nano exits).
 void launchFromHandshake(const controlkeys::LaunchRequest& handshake);
 
 // Polls `launcher` every pollMs until its child has ended; the child's end, or nullopt when there

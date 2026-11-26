@@ -41,6 +41,8 @@ class PropTool : public ::testing::Test {
         thimsy_test::spit(dir / "device.json", R"({
             "id": "anbernic-rg-arc-d", "family": "rk3566", "model": "Anbernic RG ARC-D", "ram_mb": 2048,
             "panel": {"width": 480, "height": 640, "rotation": 90},
+            "audio": {"card": "rk817_ext", "card_index": 1, "playback": {"control": "Playback Mux"}},
+            "bluetooth": true,
             "pad": {"face_buttons": 6}, "modules": ["joypad", "rumble"],
             "product": {"manufacturer": "Anbernic", "model": "RG ARC-D"},
             "props": {"ro.gammaos.device": "arc-d"}
@@ -115,7 +117,12 @@ TEST_F(PropTool, BootWritesReadOnlyKeysAndSeals) {
     EXPECT_EQ(s->get("ro.thimsy.device.model"), "Anbernic RG ARC-D");
     EXPECT_EQ(s->get("ro.thimsy.device.ram_mb"), "2048");
     EXPECT_EQ(s->get("ro.thimsy.device.panel.rotation"), "90");
-    EXPECT_EQ(s->list("ro.thimsy.device.pad").size(), 0u);  // only top-level and panel scalars
+    EXPECT_EQ(s->list("ro.thimsy.device.pad").size(), 0u);  // only top-level, panel and audio scalars
+    // D20sound's card (linux/docs/init.md) and D35bluetooth's switch.
+    EXPECT_EQ(s->get("ro.thimsy.device.audio.card"), "rk817_ext");
+    EXPECT_EQ(s->get("ro.thimsy.device.audio.card_index"), "1");
+    EXPECT_EQ(s->list("ro.thimsy.device.audio.playback").size(), 0u);
+    EXPECT_EQ(s->get("ro.thimsy.device.bluetooth"), "true");
     // The names the init scripts, thimsy-session and Nano's control keys read.
     EXPECT_EQ(s->get("ro.thimsy.family"), "rk3566");
     EXPECT_EQ(s->get("ro.thimsy.device.family"), "rk3566");

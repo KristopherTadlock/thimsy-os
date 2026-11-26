@@ -4,27 +4,91 @@
 #
 # The state lives on the data partition. Without one (first boot), the
 # family's hook sets its defaults (THIMSY_HOOK=sound-defaults).
+#
+# The card is device.json's audio.card_index (ro.thimsy.device.audio.card_index,
+# card 0 without one): the card thimsy-session gives Nano and its games as
+# ALSA_CARD, which /etc/asound.conf's default mixes on. When device.json also
+# names the card (audio.card), a card at that index with another id, or the
+# named card at another index, is a warning: device.json is wrong for this
+# kernel (on RK3566 an HDMI audio card may register before the codec's).
 . "${THIMSY_ROOT:-}/usr/share/thimsy/init/lib.sh"
 
 TAG=D20sound
 STATE=$THIMSY_CONFIG/asound.state
 
+thimsy_ro ro.thimsy.device.audio.card_index 0
+CARD=$RO_OUT
+case $CARD in
+'' | *[!0-9]*)
+	thimsy_log $TAG "audio.card_index '$CARD' is not a card number; using card 0"
+	CARD=0
+	;;
+esac
+thimsy_ro ro.thimsy.device.audio.card ''
+CARD_NAME=$RO_OUT
+CARD_DIR=$R/proc/asound/card$CARD
+
+# alsa_id NAME: ID_OUT is the id the kernel makes of a card named NAME: its
+# letters and digits only, at most 15 ("rk817_ext" is rk817ext).
+alsa_id() {
+	_in=$1
+	ID_OUT=
+	while [ -n "$_in" ] && [ "${#ID_OUT}" -lt 15 ]; do
+		_c=${_in%"${_in#?}"}
+		_in=${_in#?}
+		case $_c in
+		[A-Za-z0-9]) ID_OUT=$ID_OUT$_c ;;
+		esac
+	done
+}
+
+# card_id DIR: ID_OUT is the id in DIR/id ("" when unreadable).
+card_id() {
+	ID_OUT=
+	if [ -r "$1/id" ]; then
+		read -r ID_OUT < "$1/id" || :
+	fi
+}
+
 # The codec may probe after the first frame; give it a few seconds.
 wait_for_card() {
 	i=0
-	while [ ! -e "$R/proc/asound/card0" ] && [ "$i" -lt 5 ]; do
+	while [ ! -e "$CARD_DIR" ] && [ "$i" -lt "$THIMSY_SOUND_WAIT_S" ]; do
 		sleep 1
 		i=$((i + 1))
 	done
-	[ -e "$R/proc/asound/card0" ]
+	[ -e "$CARD_DIR" ]
+}
+
+# check_card: warns when card$CARD is not the card device.json names, and
+# says where the named card is if another index has it.
+check_card() {
+	[ -n "$CARD_NAME" ] || return 0
+	alsa_id "$CARD_NAME"
+	want=$ID_OUT
+	if [ -e "$CARD_DIR" ]; then
+		card_id "$CARD_DIR"
+		[ "$ID_OUT" = "$want" ] && return 0
+		thimsy_warn $TAG "card$CARD is '$ID_OUT', not device.json's audio.card $CARD_NAME"
+	fi
+	for c in "$R"/proc/asound/card[0-9]*; do
+		[ -d "$c" ] || continue
+		card_id "$c"
+		if [ "$ID_OUT" = "$want" ]; then
+			thimsy_warn $TAG "$CARD_NAME is ${c##*/}: device.json's audio.card_index $CARD is wrong"
+			return 0
+		fi
+	done
 }
 
 case ${1:-start} in
 start)
 	if ! wait_for_card; then
-		thimsy_log $TAG "no sound card"
+		thimsy_log $TAG "no sound card (card$CARD)"
+		check_card
 		exit 0
 	fi
+	check_card
 	if [ -r "$STATE" ]; then
 		"$ALSACTL" -f "$STATE" restore > /dev/null 2>&1 ||
 			thimsy_log $TAG "alsactl restore failed ($?)"
@@ -33,7 +97,7 @@ start)
 	fi
 	;;
 stop)
-	[ -e "$R/proc/asound/card0" ] || exit 0
+	[ -e "$CARD_DIR" ] || exit 0
 	[ -d "$THIMSY_CONFIG" ] || exit 0
 	"$ALSACTL" -f "$STATE" store > /dev/null 2>&1 ||
 		thimsy_log $TAG "alsactl store failed ($?)"

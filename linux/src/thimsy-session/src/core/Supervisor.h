@@ -10,6 +10,11 @@
 //             starts a game), it is started again when that game ends, without a back-off. If it
 //             says it exited for a launch (exit status 0) and no game runs (the game ended at once,
 //             or the launch could not start), it is started again at once, the back-off reset.
+//             A launch loop is not let spin, though: a launch cycle (Nano's start to the moment it
+//             is to start again, the game's run included) shorter than launchLoopWindowMs is quick,
+//             and after launchLoopFreeRestarts quick cycles in a row the next ones wait the same
+//             back-off as crashes (backoffStartMs doubling to backoffMaxMs). A longer cycle, or a
+//             restart asked for (restartNano), ends the run of quick ones. Crashes do not count.
 //   deferred  "rcD start" once per boot: at Nano's first frame (sys.thimsy.nano.first_frame=1), or
 //             deferredFallbackMs after Nano was first started if no first frame came, so a broken
 //             Nano still gets SSH and the drives. Never twice: a respawned session that finds the
@@ -37,6 +42,8 @@ struct SupervisorConfig {
     Ms backoffMaxMs = 30000;
     Ms deferredFallbackMs = 30000;
     Ms quitKillMs = 3000;
+    Ms launchLoopWindowMs = 10000;  // a launch cycle shorter than this is quick
+    int launchLoopFreeRestarts = 3;  // quick cycles in a row started again at once
 };
 
 enum class SupKind {
@@ -92,6 +99,7 @@ class Supervisor {
     bool waitingForGame() const { return waitingForGame_; }
     Ms nanoBackoff() const { return nano_.backoff; }
     Ms nanoRestartAt() const { return nano_.restartAt; }
+    int quickLaunches() const { return quickLaunches_; }
 
  private:
     struct Restartable {
@@ -102,12 +110,16 @@ class Supervisor {
     };
     // Schedules the next start of r after an exit at `now`.
     void scheduleRestart(Restartable* r, Ms now);
+    // A launch cycle of Nano's ended at `now` with no game running: the delay before Nano starts
+    // again (0, or the back-off once quick cycles repeat).
+    Ms launchCycleDelay(Ms now);
 
     SupervisorConfig config_;
     Restartable nano_;
     bool nanoStarting_ = false;
     bool waitingForGame_ = false;
     bool restartRequested_ = false;
+    int quickLaunches_ = 0;  // quick launch cycles in a row
     Ms firstNanoStart_ = kNever;
     bool deferredDone_ = false;
     Restartable padd_;
