@@ -122,8 +122,9 @@ echo "$(basename "$0") $*" >> "$THIMSY_ROOT/commands.log"
 
 LONG_RUNNING = TOOL + "exec sleep 1000\n"
 
-# Nano also records the GPU pack's environment it was given (gpu.json's "env").
-NANO = TOOL + 'echo "nano-env GALLIUM_DRIVER=${GALLIUM_DRIVER-unset}" >> "$THIMSY_ROOT/commands.log"\n' + \
+# Nano also records the GPU pack's environment it was given (gpu.json's "env") and its sound card.
+NANO = TOOL + 'echo "nano-env GALLIUM_DRIVER=${GALLIUM_DRIVER-unset} ALSA_CARD=${ALSA_CARD-unset}" ' + \
+    '>> "$THIMSY_ROOT/commands.log"\n' + \
     "exec sleep 1000\n"
 
 # As thimsy-gpu-pack writes it for the swrast pack.
@@ -397,7 +398,8 @@ class BootDrivesKeysAndRequests(SessionCase):
 
     def test_01b_nano_gets_the_gpu_environment(self):
         wait_for(lambda: self.ran("nano-env"), what="Nano's environment")
-        self.assertEqual(self.ran("nano-env"), ["nano-env GALLIUM_DRIVER=softpipe"])
+        # and the card /etc/asound.conf mixes on: device.json's audio.card_index
+        self.assertEqual(self.ran("nano-env"), ["nano-env GALLIUM_DRIVER=softpipe ALSA_CARD=1"])
         self.assertIn("GPU environment for Nano: GALLIUM_DRIVER=softpipe", self.log())
 
     def test_02_first_frame_runs_the_deferred_services_once(self):

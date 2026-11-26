@@ -125,7 +125,9 @@ requests: `sys.gammaos.nano.dosleep=1` into `sleep`, `sys.gammaos.nano.park_rest
    GPU pack's `/usr/share/thimsy/gpu.json` (`thimsy-gpu-pack`): its `"env"` object (for the swrast
    pack `GALLIUM_DRIVER=softpipe`) is added to Nano's environment, and so to every game Nano starts.
    Entries whose name is not a shell variable name or whose value is not a string are left out and
-   logged; no file, or a bad one, means no GPU environment.
+   logged; no file, or a bad one, means no GPU environment. Nano's environment also gets
+   `ALSA_CARD=<audio.card_index>` (0 without one): the card `/etc/asound.conf`'s `default` (plug over
+   a dmix) and its control use, so Nano's streams and its games' share the card.
 2. Makes `/` a shared mount (so drives mounted later reach Nano's namespace), stops a Nano left over
    by an earlier session (`/run/thimsy/nano.pid`), and **starts Nano at once** (`thimsy-session: nano
    started` in the kernel log). Nano's output goes to `/run/thimsy/log/nano.log`.

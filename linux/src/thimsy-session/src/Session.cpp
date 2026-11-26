@@ -525,6 +525,8 @@ void Session::runSup(const std::vector<SupAction>& acts) {
                 SpawnSpec s;
                 s.argv = {tool(opts_.nanoPath)};
                 s.env = gpuEnv_;   // the games Nano starts inherit it
+                // The card /etc/asound.conf's "default" mixes on, for Nano and its games.
+                s.env.push_back("ALSA_CARD=" + audioCard_);
                 s.logFile = P(std::string(kLogDir) + "/nano.log");
                 std::vector<std::string> plan = jailPlan();
                 if (opts_.fakeHw) {

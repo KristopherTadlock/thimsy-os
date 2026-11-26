@@ -17,7 +17,8 @@
 // The Linux platform's Audio sink (docs/linux/IMPLEMENTATION.md B.6, G7-audio): ALSA's "default"
 // PCM through alsa-lib, blocking, S16 interleaved, one PCM per stream; PullAudio (AudioPull.cpp)
 // runs the stream's thread. "default" has to mix, as Nano keeps the music and the UI sounds open at
-// once (dmix). alsa-lib resamples when the device can't take the rate, so the stream reports the
+// once and the game opens it beside them: the image's /etc/asound.conf makes it plug over a dmix on
+// the card ALSA_CARD names (thimsy-session sets it). alsa-lib resamples when the device can't take the rate, so the stream reports the
 // rate asked for. Needs alsa-lib's headers (nano::alsa, C.2): not built by platform.mk's tests.
 
 #define LOG_TAG "GammaOSNano"
