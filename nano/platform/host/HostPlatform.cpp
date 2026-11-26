@@ -22,8 +22,9 @@
 // handshake's assertions need). It keeps its configuration, and fills NanoPlatform.h's services
 // with the host's fakes: the display (FakeDisplay.h, over DrmHost.cpp), the launcher
 // (FakeLauncher.h: records each launch with a {"ev":"launch"} event), the Volumes (the
-// config's scripted list of drives, FakeVolumes.h), and the power and the system actions
-// (FakePower.h, G7-power).
+// config's scripted list of drives, FakeVolumes.h), the power and the system actions
+// (FakePower.h, G7-power), and the Wi-Fi and Bluetooth (the config's scripted networks and
+// devices, FakeNetwork.h, G7-net).
 
 #define LOG_TAG "NanoHost"
 
@@ -43,6 +44,7 @@
 #include "FakeLauncher.h"  // G7-launch-b
 #include "FakePower.h"  // G7-power
 #include "FakeInput.h"  // G7-input
+#include "FakeNetwork.h"  // G7-net
 #include "HostConfig.h"
 #include "NanoPlatform.h"
 #include "FakeAudio.h"  // G7-audio
@@ -143,6 +145,7 @@ std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs&
     ALOGI("nano-headless: host platform up (display %dx%d@%d, %zu input devices, %zu shell rules)",
           cfg.display.width, cfg.display.height, cfg.display.refreshHz, cfg.devices.size(), cfg.shellRules.size());
     std::unique_ptr<nanoplat::Volumes> volumes = makeFakeVolumes(cfg.volumes);   // G7-volumes
+    std::unique_ptr<nanoplat::Network> net = createFakeNetwork(cfg.network);   // G7-net
     std::unique_ptr<nanoplat::Platform> platform(new HostPlatform(std::move(cfg)));
     // The services, one line each (G7 steps).
     platform->display = createFakeDisplay(createHostDrm());  // G7-display
@@ -152,5 +155,6 @@ std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs&
     platform->power = createFakePower();  // G7-power
     platform->actions = createFakeActions();  // G7-power
     platform->input = createFakeInput();  // G7-input
+    platform->net = std::move(net);   // G7-net: the config's scripted networks and devices
     return platform;
 }

@@ -63,6 +63,10 @@ constexpr const char* kKeyDone = "sys.thimsy.session.done";
 constexpr const char* kKeyPowerctl = "sys.powerctl";
 constexpr const char* kKeyScrapeRun = "sys.gammaos.nano.scrape_run";
 constexpr const char* kKeyGamePid = "sys.thimsy.game.pid";
+// Nano's "an app is in front" state: Android's framework sets and clears these; on Linux Nano's
+// launcher sets app_launched when it takes a launch, and the session clears both (clearAppState).
+constexpr const char* kKeyAppLaunched = "sys.gammaos.nano.app_launched";
+constexpr const char* kKeyAppDrawn = "sys.gammaos.nano.app_drawn";
 constexpr const char* kKeyVolumesSerial = "sys.thimsy.volumes.serial";
 constexpr const char* kKeyHudVolume = "sys.thimsy.hud.volume";
 constexpr const char* kKeyPowerLong = "sys.thimsy.key.power_long";
@@ -136,6 +140,7 @@ class Session {
     int gamePid() const;
     int gamePgid() const;
     void gameEnded(Ms now);
+    void clearAppState(const char* why);
     void doSleep();
     void execStep(const Step& s);
     void stepVolume(int dir);
@@ -524,6 +529,12 @@ void Session::runSup(const std::vector<SupAction>& acts) {
         Ms now = monoNow();
         switch (a.kind) {
             case SupKind::SpawnNano: {
+                // Nano starts only with no game of its own running (the supervisor holds it until
+                // the game ends), so an app_launched left at 1 (a crash, an earlier session) is stale.
+                if (gamePid() == 0) clearAppState("before Nano starts");
+                // Each Nano sets it to 1 at its own first frame (once per process): from 0, the
+                // change is seen, and the supervisor knows when this Nano was first on screen.
+                store_->set(kKeyFirstFrame, "0");
                 SpawnSpec s;
                 s.argv = {tool(opts_.nanoPath)};
                 s.env = gpuEnv_;   // the games Nano starts inherit it
@@ -765,7 +776,20 @@ int Session::gamePid() const {
 void Session::gameEnded(Ms now) {
     if (gameWatchPid_ > 0 && store_->get(kKeyGamePid) == std::to_string(gameWatchPid_)) store_->set(kKeyGamePid, "");
     gameWatchPid_ = 0;
+    clearAppState("the game ended");
     runSup(sup_.gameExited(now));
+}
+
+// What Android's framework does when an app returns to the home: app_launched (and app_drawn) back
+// to 0. A stale 1 makes the next Nano take a game to be in front of it: no idle sleep, no ES-DE card
+// sweep or played-time tick, BIOS installs refused, the DSi ambiance muted.
+void Session::clearAppState(const char* why) {
+    for (const char* k : {kKeyAppLaunched, kKeyAppDrawn}) {
+        const std::string v = store_->get(k);
+        if (v.empty() || v == "0") continue;
+        store_->set(k, "0");
+        log(std::string(k) + " cleared (" + why + ")");
+    }
 }
 
 int Session::gamePgid() const {

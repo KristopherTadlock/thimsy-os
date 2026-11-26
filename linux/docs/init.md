@@ -21,6 +21,7 @@ linux/board/common/rootfs-overlay/
   etc/init.d/deferred/D10cards     coldplug: re-send "add" for block devices
   etc/init.d/deferred/D20sound     alsactl restore (and store on stop)
   etc/init.d/deferred/D30net       loopback, host name, Wi-Fi if it was on
+  etc/init.d/deferred/D35bluetooth D-Bus and bluetoothd, if the device has Bluetooth and it was on
   etc/init.d/deferred/D40time      BusyBox ntpd
   etc/init.d/deferred/D50ssh       dropbear (dev images; release: opt-in, keys only)
   etc/init.d/deferred/D60firstboot the games partition on the boot disk
@@ -46,7 +47,8 @@ kernel -> /init (FlipBase's: proc, sys, devtmpfs, splash) -> busybox init
   ::respawn:   /usr/libexec/thimsy/session  (thimsy-session: starts Nano at once)
                ... Nano sets sys.thimsy.nano.first_frame=1 ...
                session runs "rcD start" in the background:
-               D05family, D10cards, D20sound, D30net, D40time, D50ssh, D60firstboot
+               D05family, D10cards, D20sound, D30net, D35bluetooth, D40time, D50ssh,
+               D60firstboot
   ::shutdown:  rcK
 ```
 
@@ -189,8 +191,9 @@ from `device.json`'s `family` and `modules` (the latter space-separated;
 |---|---|---|
 | `D05family` | family hook `deferred` | |
 | `D10cards` | writes `add` to every non-eMMC block device's `uevent`, so `thimsy-session`, already listening, sees the drives that were there at boot and applies its own policy (fsck, `/storage/<VOLID>`, `volumes.json`). One policy, in the session (F.1); not a second one in shell | |
-| `D20sound` | waits up to 5 s for `card0`; `alsactl -f /storage/.config/thimsy/asound.state restore`, or the family's `sound-defaults`; stop: `store` | |
-| `D30net` | `lo` up; host name; if Wi-Fi was on: `wpa_supplicant -B` on the first `wlan*` (control socket `/run/wpa_supplicant`, config `/storage/.config/thimsy/wpa_supplicant.conf`, seeded 0600), `udhcpc -f -T 1 -A 2` in a background job | `persist.thimsy.wifi.enabled=1` |
+| `D20sound` | waits up to 5 s (`THIMSY_SOUND_WAIT_S`) for `card<N>`, N = device.json's `audio.card_index` (`ro.thimsy.device.audio.card_index`, else 0, the session's `ALSA_CARD`); warns when that card's id is not `audio.card`'s (letters and digits kept) or that card has another index; `alsactl -f /storage/.config/thimsy/asound.state restore`, or the family's `sound-defaults`; stop: `store` | |
+| `D30net` | `lo` up; host name; if Wi-Fi was on: `wpa_supplicant -B` on the first `wlan*` (waited for up to 5 s; control socket `/run/wpa_supplicant`, config `/storage/.config/thimsy/wpa_supplicant.conf`, seeded 0600), `udhcpc -f -T 1 -A 2` in a background job. Stop (rcK, and Nano's Wi-Fi off): TERM `udhcpc`, then `wpa_supplicant`. Nano's Wi-Fi switch sets the key and runs this script (start or stop) on its actions worker, through the same runner as `D35bluetooth` (a session of its own, none of Nano's descriptors); its Wi-Fi screens then talk to `wpa_supplicant`'s control socket | `persist.thimsy.wifi.enabled=1` |
+| `D35bluetooth` | only when device.json says `"bluetooth": true` (`ro.thimsy.device.bluetooth`) and Bluetooth was on: waits up to 5 s (`THIMSY_BT_WAIT_S`) for a controller (`/sys/class/bluetooth/hci*`); `/storage/.config/thimsy/bluetooth` (0700, where `/var/lib/bluetooth` links: pairings survive); `dbus-uuidgen --ensure`, `dbus-daemon --system --nofork` in a background job (waits up to 3 s for `/run/dbus/system_bus_socket`), then `bluetoothd -n` in a background job, pids in `/run/dbus-daemon.pid` and `/run/bluetoothd.pid`. Without `/sys/class/bluetooth` (no Bluetooth in the kernel; S03modules has loaded every module by then) it does not wait. Exit 3 when it was on and the device has no Bluetooth (device.json, the kernel, or no controller): Nano then writes the key back to 0, so later boots neither wait nor warn; exit 1 when a daemon could not start. Stop (rcK, and Nano's Bluetooth off): TERM `bluetoothd`, then the bus, each waited for up to 2 s, then KILL. A pidfile is trusted only while its pid runs and is that daemon (`/proc/PID/comm` is `bluetoothd` or `dbus-daemon`; start waits up to 1 s for `bluetoothd` to exec): one left by a daemon that died is removed, and the process that has its pid now is neither signalled nor taken for the daemon. One start or stop at a time: each holds `/run/thimsy/bluetooth.lock` (BusyBox `flock` on fd 9; the daemons start without fd 9), and start reads the key again once it holds it, so rcD's boot start and Nano's switch cannot interleave. Nano's Bluetooth switch (the legacy screen's `setBluetoothEnabled` on the actions worker, and the PS3 wizard's Turn On/Off through `Network::setBtRadio` on its own thread) sets the key and runs this script (start, then `bluetoothctl power on`, tried up to 5 times 500 ms apart while it fails at once, as bluetoothd may not have registered the controller yet; `power off`, then stop). Nano runs no `bluetoothctl` for its state unless the key is 1, the device has Bluetooth and the bus socket is there. Nano's runner starts it in a session of its own with none of Nano's descriptors above stderr, so the daemons are not in Nano's process group and hold none of its evdev fds | `persist.thimsy.bluetooth.enabled=1` (off by default) |
 | `D40time` | `ntpd -n -p ...` in the background (it retries until the network is up) | `persist.thimsy.time.ntp=0` turns it off |
 | `D50ssh` | `dropbear -r <host key on /storage>`; dev images by default; release images only when turned on, and then `-s` (no passwords) | `persist.thimsy.ssh.enabled` |
 | `D60firstboot` | the games partition, below | |

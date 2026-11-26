@@ -80,6 +80,7 @@ class LinuxDisplay : public nanoplat::Display {
             ALOGE("startScanout: drmEarlySplash found no display");
             return -1;
         }
+        scannedOut_ = true;
         chooseRotation();
         applyRotation();
         return -1;
@@ -91,7 +92,12 @@ class LinuxDisplay : public nanoplat::Display {
             return false;
         }
         if (!kms_->active()) {
-            ALOGW("releaseForChild: the panel is not Nano's");
+            // The usual case at a launch: threadLoop's exit path ran drmStop, so the panel is
+            // already free and there is nothing to release or take back.
+            if (scannedOut_)
+                ALOGI("releaseForChild: the panel is already free (Nano's menu stopped the display)");
+            else
+                ALOGW("releaseForChild: the panel is not Nano's (no display was found at start)");
             return false;
         }
         kms_->finishGpu();  // before drmStop frees the ring the GPU may still be drawing into
@@ -177,6 +183,7 @@ class LinuxDisplay : public nanoplat::Display {
     std::unique_ptr<Kms> kms_;
     const Options options_;
     bool released_ = false;
+    bool scannedOut_ = false;  // startScanout found a display (so an inactive one was stopped since)
     bool chosen_ = false;
     int rotation_ = -1;  // degrees, or -1: leave what drmEarlySplash set
 };

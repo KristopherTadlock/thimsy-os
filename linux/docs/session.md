@@ -98,9 +98,10 @@ A malformed numbered request is answered `<seq>:error:<why>`; a malformed unnumb
 
 | Key | Who writes it | Meaning |
 |---|---|---|
-| `sys.thimsy.nano.first_frame` | Nano | `1` once its first frame is on screen: the session starts the deferred services. |
+| `sys.thimsy.nano.first_frame` | Nano | `1` once its first frame is on screen: the session starts the deferred services (once per boot) and notes when that Nano was first on screen (the launch-loop hold-back). The session sets it to `0` before each Nano start. |
 | `sys.boot_completed` | Nano | `1` at the same moment (its control keys, G9-11): Nano gates sleep and its idle work on it. The session never writes it. |
 | `sys.thimsy.game.pid` | Nano | The pid of the game it launched (the game is its process group leader), written when the game starts. The session stops, continues and quits that group; when Nano has exited and left the game running, the session clears the key once that game ends. |
+| `sys.gammaos.nano.app_launched`, `sys.gammaos.nano.app_drawn` | Nano; the session | Android's framework sets them when an app starts and clears them when it returns to the home. On Linux Nano's launcher sets `app_launched=1` when it takes a launch (so its menu's exit path does not wait for it); the session sets both back to `0` when the game Nano left running ends, and before it starts Nano with no game running (a stale `1` would read as a game in front of Nano). |
 | `sys.powerctl` | Nano (Android's key) | `shutdown[,reason]` or `reboot[,reason]`: as the `poweroff` and `reboot` requests. |
 | `sys.gammaos.nano.scrape_run` | Nano | Any new value starts the scraper (decision I25), as `gammaos-nano.rc`'s trigger does. |
 | `sys.thimsy.volumes.serial` | session | Bumped after each write of `volumes.json`. |
@@ -113,7 +114,9 @@ A malformed numbered request is answered `<seq>:error:<why>`; a malformed unnumb
 
 The control table of Nano's Linux platform (G9's `ControlKeys.cpp`) turns Android's own triggers into
 requests: `sys.gammaos.nano.dosleep=1` into `sleep`, `sys.gammaos.nano.park_restart=1` into
-`restart-nano`.
+`restart-nano`, and `service.bootanim.nano_action=reboot` or `=shutdown` into `reboot` or `poweroff`.
+Nano's own Reboot and Power Off (the last step of its shutdown, `Power::powerAction`) write the
+`reboot` or `poweroff` request directly; the `nano_action` rows are for a write from elsewhere.
 
 ## What the session does
 
@@ -142,10 +145,19 @@ requests: `sys.gammaos.nano.dosleep=1` into `sleep`, `sys.gammaos.nano.park_rest
 
 Restarted when it exits: at once if it ran 30 s or more, else after 1, 2, 4 ... up to 30 s. If it
 exits while the game it launched still runs (as Android's home exits when it starts a game), it is
-started again when that game ends, without a back-off. Nano exits after every launch: it starts the
-game, leaves it running and exits 0. An exit 0 with no game running (the game ended at once, or the
-launch could not start) is not a crash either: Nano is started again at once and the back-off is
-reset. A Nano whose menu ends with no launch exits 1, which counts as a crash. After `poweroff` or
+started again when that game ends, subject to the launch-loop hold-back below. Nano exits after
+every launch: it starts the game, leaves it running and exits 0. An exit 0 with no game running (the
+game ended at once, or the launch could not start) is not a crash either: Nano is started again at
+once and the back-off is reset, subject to the same hold-back. The hold-back: a launch cycle is
+quick when it is shorter than 10 s (from Nano's start until it is to start again, the game's run
+included) and Nano's first frame was on screen less than 2 s before it exited for the launch, or
+never; no one had time to choose, as in an auto-launch loop. After three quick cycles in a row the
+next ones wait the crash back-off (1, 2, 4 ... up to 30 s); a cycle that is not quick, or a
+`restart-nano` request, ends the run. A user trying games that fail at once (a missing core or BIOS)
+has the menu on screen for longer than that before each launch and is not held back. The session
+sets `sys.thimsy.nano.first_frame` to `0` before each Nano start, so each Nano's first frame is
+seen. A Nano whose menu ends with no launch exits 1, which counts as a crash, as does exit 2 (its platform
+did not start). After `poweroff` or
 `reboot` nothing is started again.
 
 Nano runs in its own mount namespace (B.5, decision I40): every node of an internal-storage disk

@@ -81,6 +81,25 @@ class CommittedTree(unittest.TestCase):
         self.assertEqual(t["thimsy_rk3566_hw"].fragments[:3], ["common", "hw-common", "hw-rk3566"])
         self.assertIn("generated/rk3566/defconfig.fragment", t["thimsy_rk3566_hw"].fragments)
 
+    def test_bluetooth_userland_follows_the_devices(self):
+        # BlueZ and D-Bus are in the userland every tier carries exactly when some device.json
+        # says "bluetooth": true (D35bluetooth starts them only on such a device).
+        devices = sorted((LINUX / "board").glob("*/devices/*.json"))
+        self.assertTrue(devices)
+        with_bt = []
+        for p in devices:
+            with open(str(p), encoding="utf-8") as f:
+                if json.load(f).get("bluetooth") is True:
+                    with_bt.append(p.stem)
+        bt = ("BR2_PACKAGE_DBUS", "BR2_PACKAGE_BLUEZ5_UTILS", "BR2_PACKAGE_BLUEZ5_UTILS_CLIENT")
+        for t in self.tree.targets.values():
+            m = self.merges[t.name]
+            with self.subTest(target=t.name):
+                for sym in bt:
+                    # Hardware packs build no userland: their root is their tier's.
+                    want = bool(with_bt) and t.kind == "tier"
+                    self.assertEqual(m.is_y(sym), want, "%s (devices with Bluetooth: %s)" % (sym, with_bt))
+
     def test_release_targets_are_their_dev_twins_with_release(self):
         for tier in ("v8_0", "v8_2"):
             dev, rel = self.tree.targets["thimsy_" + tier], self.tree.targets["thimsy_%s_release" % tier]

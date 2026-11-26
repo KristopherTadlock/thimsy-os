@@ -129,6 +129,51 @@ bool parseDevice(Reader& r, const Value& v, const std::string& where, evdev::Dev
     return true;
 }
 
+// "network" (FakeNetwork.h): the scripted Wi-Fi networks and Bluetooth devices.
+bool parseNetwork(Reader& r, const Value& v, const std::string& where, FakeNetConfig* n) {
+    if (!r.object(v, where, {"wifi_on", "connected", "ip", "mac", "gateway", "dns", "dns2", "validated", "networks",
+                             "bt_on", "bt_devices"}) ||
+        !r.boolean(v, "wifi_on", where, &n->wifiOn) || !r.str(v, "connected", where, &n->connected) ||
+        !r.str(v, "ip", where, &n->ip) || !r.str(v, "mac", where, &n->mac) || !r.str(v, "gateway", where, &n->gateway) ||
+        !r.str(v, "dns", where, &n->dns) || !r.str(v, "dns2", where, &n->dns2) ||
+        !r.boolean(v, "validated", where, &n->validated) || !r.boolean(v, "bt_on", where, &n->btOn))
+        return false;
+    if (const Value* nets = v.find("networks")) {
+        if (!nets->isArray()) return r.fail(where + ".networks", "not an array");
+        n->networks.clear();
+        for (size_t i = 0; i < nets->size(); ++i) {
+            const std::string w = where + ".networks[" + std::to_string(i) + "]";
+            const Value& e = (*nets)[i];
+            FakeWifiNet net;
+            if (!r.object(e, w, {"ssid", "bssid", "rssi", "security", "saved_id", "in_range", "password"}) ||
+                !r.str(e, "ssid", w, &net.ssid) || !r.str(e, "bssid", w, &net.bssid) ||
+                !r.integer(e, "rssi", w, -127, 0, &net.rssi) || !r.integer(e, "security", w, 0, 4, &net.security) ||
+                !r.integer(e, "saved_id", w, -1, 65535, &net.savedId) || !r.boolean(e, "in_range", w, &net.inRange) ||
+                !r.str(e, "password", w, &net.password))
+                return false;
+            if (net.ssid.empty()) return r.fail(w + ".ssid", "missing");
+            n->networks.push_back(std::move(net));
+        }
+    }
+    if (const Value* devs = v.find("bt_devices")) {
+        if (!devs->isArray()) return r.fail(where + ".bt_devices", "not an array");
+        n->btDevices.clear();
+        for (size_t i = 0; i < devs->size(); ++i) {
+            const std::string w = where + ".bt_devices[" + std::to_string(i) + "]";
+            const Value& e = (*devs)[i];
+            FakeBtDevice d;
+            if (!r.object(e, w, {"address", "name", "bonded", "connected", "cod", "in_range"}) ||
+                !r.str(e, "address", w, &d.address) || !r.str(e, "name", w, &d.name) ||
+                !r.boolean(e, "bonded", w, &d.bonded) || !r.boolean(e, "connected", w, &d.connected) ||
+                !r.integer(e, "cod", w, 0, 0xffffff, &d.cod) || !r.boolean(e, "in_range", w, &d.inRange))
+                return false;
+            if (d.address.empty()) return r.fail(w + ".address", "missing");
+            n->btDevices.push_back(std::move(d));
+        }
+    }
+    return true;
+}
+
 }  // namespace
 
 bool parseHostConfig(std::string_view text, HostConfig* out, std::string* err) {
@@ -141,7 +186,7 @@ bool parseHostConfig(std::string_view text, HostConfig* out, std::string* err) {
     Reader r(err);
     const std::string top = "host config";
     if (!r.object(root, top, {"events", "control", "persist_file", "run_dir", "log_file", "display", "barrier",
-                              "devices", "shell", "record_props", "volumes"}))
+                              "devices", "shell", "record_props", "volumes", "network"}))
         return false;
     HostConfig c = *out;
     if (!r.str(root, "events", top, &c.events) || !r.str(root, "control", top, &c.control) ||
@@ -213,6 +258,9 @@ bool parseHostConfig(std::string_view text, HostConfig* out, std::string* err) {
             if (vol.id.empty()) return r.fail(w + ".id", "missing");
             c.volumes.push_back(std::move(vol));
         }
+    }
+    if (const Value* n = root.find("network")) {
+        if (!parseNetwork(r, *n, top + ".network", &c.network)) return false;
     }
     *out = std::move(c);
     return true;

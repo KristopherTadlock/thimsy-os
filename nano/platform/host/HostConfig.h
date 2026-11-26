@@ -34,7 +34,14 @@
 //              "default_status": 127},
 //    "record_props": [""],                               key prefixes logged as {"ev":"prop"}
 //    "volumes": [{"id": "9602-C755", "path": "", "kind": "sd", "state": "mounted",
-//                 "boot_disk": false, "read_only": false}]}  the drives (FakeVolumes.h)
+//                 "boot_disk": false, "read_only": false}],  the drives (FakeVolumes.h)
+//    "network": {"wifi_on": true, "connected": "Home", "ip": "192.168.50.20", "mac": "02:00:00:00:00:01",
+//                "gateway": "192.168.50.1", "dns": "192.168.50.1", "dns2": "", "validated": true,
+//                "networks": [{"ssid": "Home", "bssid": "", "rssi": -60, "security": 2, "saved_id": 0,
+//                              "in_range": true, "password": ""}],
+//                "bt_on": true, "bt_devices": [{"address": "AA:BB:CC:DD:EE:FF", "name": "Pad",
+//                              "bonded": false, "connected": false, "cod": 0, "in_range": true}]}}
+//                                                        the Wi-Fi and Bluetooth (FakeNetwork.h)
 #pragma once
 
 #include <string>
@@ -42,6 +49,7 @@
 #include <vector>
 
 #include "FakeEvdev.h"
+#include "FakeNetwork.h"
 #include "FakeVolumes.h"
 #include "HostControl.h"
 #include "ShellGateHost.h"
@@ -61,6 +69,7 @@ struct HostConfig {
     int shellDefaultStatus = 127;
     std::vector<std::string> recordProps = {""};
     std::vector<FakeVolume> volumes;
+    FakeNetConfig network;
 };
 
 // Parses `text` over the defaults in *out. false, with *err naming the member, on a syntax error,

@@ -42,6 +42,10 @@ thimsy_tool UDHCPC udhcpc
 thimsy_tool NTPD ntpd
 thimsy_tool DROPBEAR dropbear
 thimsy_tool DROPBEARKEY dropbearkey
+thimsy_tool DBUS_DAEMON dbus-daemon
+thimsy_tool DBUS_UUIDGEN dbus-uuidgen
+thimsy_tool BLUETOOTHD bluetoothd
+thimsy_tool FLOCK flock
 
 # Tunables; /etc/thimsy/init.conf may override them.
 THIMSY_DATA_MOUNT_OPTS=noatime,nosuid,nodev
@@ -49,6 +53,8 @@ THIMSY_GAMES_NAME=games
 THIMSY_GAMES_LABEL=THIMSY
 THIMSY_GAMES_MIN_MIB=64
 THIMSY_NTP_SERVERS="0.pool.ntp.org 1.pool.ntp.org 2.pool.ntp.org"
+THIMSY_SOUND_WAIT_S=5
+THIMSY_BT_WAIT_S=5
 if [ -r "$R/etc/thimsy/init.conf" ]; then
 	. "$R/etc/thimsy/init.conf"
 fi
@@ -127,6 +133,17 @@ thimsy_persist() {
 			PERSIST_OUT=$_v
 		fi
 	done < "$THIMSY_CONFIG/persist.props"
+}
+
+# thimsy_ro KEY DEFAULT: RO_OUT is the read-only property KEY, as S01props'
+# "thimsy-prop boot" wrote it (/run/thimsy/props/ro/KEY: device.json's
+# scalars as ro.thimsy.device.*), else DEFAULT.
+thimsy_ro() {
+	RO_OUT=
+	if [ -r "$R/run/thimsy/props/ro/$1" ]; then
+		read -r RO_OUT < "$R/run/thimsy/props/ro/$1" || :
+	fi
+	[ -n "$RO_OUT" ] || RO_OUT=$2
 }
 
 # thimsy_build_prop KEY DEFAULT: BUILD_PROP_OUT from /usr/share/thimsy/build.props.

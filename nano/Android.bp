@@ -55,6 +55,7 @@ cc_binary {
         "platform/firmware/Power.cpp",     // the firmware platform's Power (G7-power)
         "platform/firmware/SystemActions.cpp", // the firmware platform's SystemActions (G7-power)
         "platform/firmware/InputPolicy.cpp", // the firmware platform's InputPolicy (G7-input)
+        "platform/firmware/Network.cpp",   // the firmware platform's Network (G7-net)
         "NanoMenu.cpp",
         "NanoLaunchCommit.cpp",            // the launch handshake's writes (G7-launch-a)
         "NanoMenuDrm.cpp",

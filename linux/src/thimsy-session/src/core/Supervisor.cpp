@@ -34,6 +34,22 @@ void Supervisor::scheduleRestart(Restartable* r, Ms now) {
     r->restartAt = now + r->backoff;
 }
 
+Ms Supervisor::launchCycleDelay(Ms now) {
+    // A user picking games that fail at once has Nano on screen for seconds before each launch; an
+    // auto-launch does not.
+    if (now - nano_.startedAt >= config_.launchLoopWindowMs || launchActMs_ >= config_.launchLoopActMs) {
+        quickLaunches_ = 0;
+        nano_.backoff = 0;
+        return 0;
+    }
+    if (++quickLaunches_ <= config_.launchLoopFreeRestarts) {
+        nano_.backoff = 0;
+        return 0;
+    }
+    nano_.backoff = nano_.backoff == 0 ? config_.backoffStartMs : std::min(nano_.backoff * 2, config_.backoffMaxMs);
+    return nano_.backoff;
+}
+
 std::vector<SupAction> Supervisor::start(Ms now, bool deferredAlreadyRan, bool paddAlive) {
     std::vector<SupAction> out;
     deferredDone_ = deferredAlreadyRan;
@@ -50,6 +66,7 @@ std::vector<SupAction> Supervisor::start(Ms now, bool deferredAlreadyRan, bool p
 std::vector<SupAction> Supervisor::nanoStarted(Ms now, int pid) {
     nanoStarting_ = false;
     nano_.startedAt = now;
+    nanoShownAt_ = kNever;
     if (pid > 0) {
         nano_.pid = pid;
         if (firstNanoStart_ == kNever) firstNanoStart_ = now;
@@ -78,6 +95,7 @@ void Supervisor::scrapeStarted(int pid) {
 std::vector<SupAction> Supervisor::nanoExited(Ms now, int gamePid, bool launchOver) {
     std::vector<SupAction> out;
     nano_.pid = 0;
+    launchActMs_ = nanoShownAt_ == kNever ? 0 : now - nanoShownAt_;
     if (shutdown_) return out;
     if (restartRequested_) {
         restartRequested_ = false;
@@ -93,8 +111,7 @@ std::vector<SupAction> Supervisor::nanoExited(Ms now, int gamePid, bool launchOv
         return out;
     }
     if (launchOver) {
-        nano_.backoff = 0;
-        nano_.restartAt = now;
+        nano_.restartAt = now + launchCycleDelay(now);
         return out;
     }
     scheduleRestart(&nano_, now);
@@ -106,10 +123,13 @@ std::vector<SupAction> Supervisor::gameExited(Ms now) {
     if (!waitingForGame_) return out;
     waitingForGame_ = false;
     if (shutdown_ || nano_.pid > 0 || nanoStarting_) return out;
+    const Ms delay = launchCycleDelay(now);
+    if (delay > 0) {
+        nano_.restartAt = now + delay;  // onTick starts it
+        return out;
+    }
     nano_.restartAt = kNever;
-    nano_.backoff = 0;
     nanoStarting_ = true;
-    (void)now;
     out.push_back({SupKind::SpawnNano});
     return out;
 }
@@ -123,8 +143,8 @@ std::vector<SupAction> Supervisor::paddExited(Ms now) {
 void Supervisor::scrapeExited() { scrapePid_ = 0; }
 
 std::vector<SupAction> Supervisor::firstFrame(Ms now) {
-    (void)now;
     std::vector<SupAction> out;
+    if (nano_.pid > 0 && nanoShownAt_ == kNever) nanoShownAt_ = now;
     if (deferredDone_ || shutdown_) return out;
     deferredDone_ = true;
     out.push_back({SupKind::RunDeferred});
@@ -155,6 +175,7 @@ std::vector<SupAction> Supervisor::quitGame(Ms now, int pgid) {
 std::vector<SupAction> Supervisor::restartNano(Ms now) {
     std::vector<SupAction> out;
     if (shutdown_) return out;
+    quickLaunches_ = 0;
     if (nano_.pid > 0) {
         restartRequested_ = true;
         out.push_back({SupKind::SignalGroup, nano_.pid, SIGTERM});

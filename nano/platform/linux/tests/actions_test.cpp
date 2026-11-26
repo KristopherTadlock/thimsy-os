@@ -20,7 +20,12 @@
 
 #include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <poll.h>
+#include <pthread.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -204,6 +209,67 @@ TEST(Run, ADaemonKeepingThePipeDoesNotHang) {
     EXPECT_LT(ms, 2500);
 }
 
+TEST(Run, TheChildGetsNoneOfTheCallersDescriptors) {
+    // As Nano's evdev fds: no O_CLOEXEC. A daemon a script leaves running must not hold one (an
+    // EVIOCGRAB belongs to the open file and would outlive Nano).
+    const int leak = open("/dev/null", O_RDONLY);
+    ASSERT_GE(leak, 3);
+    const int high = fcntl(leak, F_DUPFD, 200);  // above any the test itself has open
+    ASSERT_GE(high, 200);
+    const std::string probe = "for n in " + std::to_string(leak) + " " + std::to_string(high) +
+                              "; do [ -e /proc/self/fd/$n ] && echo open $n; done; echo checked";
+    RunResult r = nanolinux::actions::runProgram({"/bin/sh", "-c", probe}, 5000);
+    close(high);
+    close(leak);
+    EXPECT_EQ(r.status, 0);
+    EXPECT_EQ(r.out, "checked\n");
+}
+
+TEST(Run, TheChildHasASessionDefaultSignalsAndAnEmptyMask) {
+    // Its own session: the session's kill(-nanoPid) must not reach what a script leaves running.
+    sigset_t block, old;
+    sigemptyset(&block);
+    sigaddset(&block, SIGUSR1);
+    ASSERT_EQ(pthread_sigmask(SIG_BLOCK, &block, &old), 0);
+    struct sigaction ign, oldAct;
+    memset(&ign, 0, sizeof ign);
+    ign.sa_handler = SIG_IGN;
+    ASSERT_EQ(sigaction(SIGUSR2, &ign, &oldAct), 0);
+    RunResult r = nanolinux::actions::runProgram(
+        {"/bin/sh", "-c", "cat /proc/$$/stat; grep -E '^(SigBlk|SigIgn):' /proc/$$/status; echo pid $$"}, 5000);
+    sigaction(SIGUSR2, &oldAct, nullptr);
+    pthread_sigmask(SIG_SETMASK, &old, nullptr);
+    ASSERT_EQ(r.status, 0) << r.out;
+    // /proc/<pid>/stat: "pid (comm) state ppid pgrp session ...".
+    const size_t paren = r.out.rfind(')');
+    ASSERT_NE(paren, std::string::npos) << r.out;
+    long pid = 0, ppid = 0, pgrp = 0, session = 0;
+    char state = 0;
+    ASSERT_EQ(sscanf(r.out.c_str(), "%ld", &pid), 1) << r.out;
+    ASSERT_EQ(sscanf(r.out.c_str() + paren + 1, " %c %ld %ld %ld", &state, &ppid, &pgrp, &session), 4) << r.out;
+    EXPECT_EQ(pgrp, pid);
+    EXPECT_EQ(session, pid);
+    EXPECT_NE((pid_t)session, getsid(0));
+    // SIGUSR1 (bit 10) blocked and SIGUSR2 (bit 12) ignored here; neither in the child.
+    const size_t blk = r.out.find("SigBlk:");
+    const size_t ignAt = r.out.find("SigIgn:");
+    ASSERT_NE(blk, std::string::npos) << r.out;
+    ASSERT_NE(ignAt, std::string::npos) << r.out;
+    const unsigned long long blocked = strtoull(r.out.c_str() + blk + 7, nullptr, 16);
+    const unsigned long long ignored = strtoull(r.out.c_str() + ignAt + 7, nullptr, 16);
+    EXPECT_EQ(blocked & (1ull << (SIGUSR1 - 1)), 0ull) << r.out;
+    EXPECT_EQ(ignored & (1ull << (SIGUSR2 - 1)), 0ull) << r.out;
+}
+
+TEST(Run, ARelativeNameIsLookedUpOnPath) {
+    EXPECT_EQ(nanolinux::actions::runProgram({"sh", "-c", "exit 4"}, 5000).status, 4);
+    compat_test::ScratchDir dir;
+    const std::string file = dir / "not-executable";
+    put(file, "#!/bin/sh\nexit 0\n");
+    chmod(file.c_str(), 0644);
+    EXPECT_EQ(nanolinux::actions::runProgram({file}, 5000).status, 127);  // execve fails: as a shell says
+}
+
 // --- WpaCtrl.cpp -----------------------------------------------------------------------------------
 
 TEST(WpaCtrl, RequestSkipsEventsAndCleansUp) {
@@ -294,20 +360,92 @@ TEST_F(ActionsTest, ForgetWithoutWpaSupplicant) {
     EXPECT_TRUE(runs.empty());
 }
 
-TEST_F(ActionsTest, BluetoothThroughBluetoothctl) {
+TEST_F(ActionsTest, BluetoothThroughD35AndBluetoothctl) {
     auto a = make();
+    const std::string script = o.root + "/etc/init.d/deferred/D35bluetooth";
     a->setBluetoothEnabled(true);
+    EXPECT_EQ(prop("persist.thimsy.bluetooth.enabled"), "1");
     a->setBluetoothEnabled(false);
+    EXPECT_EQ(prop("persist.thimsy.bluetooth.enabled"), "0");
     a->connectBluetooth("aa:BB:cc:00:11:22");
     a->connectBluetooth("aa:BB:cc:00:11");          // not an address
     a->connectBluetooth("aa:BB:cc:00:11:22; reboot");
-    next.status = 127;                              // no BlueZ on the image: logged
+    next.status = 1;                                // D35bluetooth could not start bluetoothd
+    a->setBluetoothEnabled(true);
+    ASSERT_EQ(runs.size(), 6u);
+    EXPECT_EQ(runs[0], (std::vector<std::string>{"/bin/sh", script, "start"}));  // the daemons first
+    EXPECT_EQ(runs[1], (std::vector<std::string>{"bluetoothctl", "power", "on"}));
+    EXPECT_EQ(runs[2], (std::vector<std::string>{"bluetoothctl", "power", "off"}));  // the radio first
+    EXPECT_EQ(runs[3], (std::vector<std::string>{"/bin/sh", script, "stop"}));
+    EXPECT_EQ(runs[4], (std::vector<std::string>{"bluetoothctl", "connect", "aa:BB:cc:00:11:22"}));
+    EXPECT_EQ(runs[5], (std::vector<std::string>{"/bin/sh", script, "start"}));  // failed: no bluetoothctl
+    EXPECT_GE(timeouts[0], 10000);
+    EXPECT_EQ(prop("persist.thimsy.bluetooth.enabled"), "1");  // status 1: it may work next time
+}
+
+TEST_F(ActionsTest, PowerOnIsTriedAgainWhileBluetoothdRegistersTheController) {
+    std::vector<RunResult> answers;  // in order; then status 0
+    std::vector<int> pauses;
+    o.pause = [&pauses](int ms) { pauses.push_back(ms); };
+    o.run = [this, &answers](const std::vector<std::string>& argv, int) {
+        runs.push_back(argv);
+        if (answers.empty()) return RunResult{0, false, ""};
+        RunResult r = answers.front();
+        answers.erase(answers.begin());
+        return r;
+    };
+    auto a = make();
+    const std::vector<std::string> on = {"bluetoothctl", "power", "on"};
+
+    // "No default controller available" twice, then the radio comes on.
+    answers = {{0, false, ""}, {1, false, ""}, {1, false, ""}};
     a->setBluetoothEnabled(true);
     ASSERT_EQ(runs.size(), 4u);
-    EXPECT_EQ(runs[0], (std::vector<std::string>{"bluetoothctl", "power", "on"}));
-    EXPECT_EQ(runs[1], (std::vector<std::string>{"bluetoothctl", "power", "off"}));
-    EXPECT_EQ(runs[2], (std::vector<std::string>{"bluetoothctl", "connect", "aa:BB:cc:00:11:22"}));
-    EXPECT_EQ(runs[3], (std::vector<std::string>{"bluetoothctl", "power", "on"}));
+    EXPECT_EQ(runs[1], on);
+    EXPECT_EQ(runs[3], on);
+    EXPECT_EQ(pauses, (std::vector<int>{500, 500}));
+
+    // Five tries at most.
+    runs.clear();
+    pauses.clear();
+    answers = {{0, false, ""}, {1, false, ""}, {1, false, ""}, {1, false, ""}, {1, false, ""}, {1, false, ""}};
+    a->setBluetoothEnabled(true);
+    EXPECT_EQ(runs.size(), 6u);  // the script, then five
+    EXPECT_EQ(pauses.size(), 4u);
+
+    // Not on this image, or a timeout: no second try.
+    for (RunResult end : {RunResult{127, false, ""}, RunResult{137, true, ""}}) {
+        runs.clear();
+        pauses.clear();
+        answers = {{0, false, ""}, end};
+        a->setBluetoothEnabled(true);
+        EXPECT_EQ(runs.size(), 2u);
+        EXPECT_TRUE(pauses.empty());
+    }
+    EXPECT_EQ(prop("persist.thimsy.bluetooth.enabled"), "1");
+}
+
+TEST_F(ActionsTest, ADeviceWithoutBluetoothTurnsTheSwitchBackOff) {
+    next.status = 3;  // D35bluetooth: device.json, the kernel or the controller says there is none
+    make()->setBluetoothEnabled(true);
+    ASSERT_EQ(runs.size(), 1u);  // no bluetoothctl
+    EXPECT_EQ(prop("persist.thimsy.bluetooth.enabled"), "0");
+}
+
+// switchBluetooth (Network::setBtRadio's) is the same switch on the caller's thread, background or not.
+TEST_F(ActionsTest, SwitchBluetoothIsTheSameSwitchOnTheCallersThread) {
+    const std::string script = o.root + "/etc/init.d/deferred/D35bluetooth";
+    o.background = true;
+    nanolinux::actions::switchBluetooth(true, o);
+    EXPECT_EQ(prop("persist.thimsy.bluetooth.enabled"), "1");
+    ASSERT_EQ(runs.size(), 2u);
+    EXPECT_EQ(runs[0], (std::vector<std::string>{"/bin/sh", script, "start"}));
+    EXPECT_EQ(runs[1], (std::vector<std::string>{"bluetoothctl", "power", "on"}));
+    nanolinux::actions::switchBluetooth(false, o);
+    EXPECT_EQ(prop("persist.thimsy.bluetooth.enabled"), "0");
+    ASSERT_EQ(runs.size(), 4u);
+    EXPECT_EQ(runs[2], (std::vector<std::string>{"bluetoothctl", "power", "off"}));
+    EXPECT_EQ(runs[3], (std::vector<std::string>{"/bin/sh", script, "stop"}));
 }
 
 TEST_F(ActionsTest, SlowActionsRunOnAWorkerInOrder) {
@@ -339,7 +477,7 @@ TEST_F(ActionsTest, SlowActionsRunOnAWorkerInOrder) {
         release = true;
     }  // destroying the actions runs what is queued, then stops the worker
     EXPECT_FALSE(onCaller);
-    EXPECT_EQ(seen, (std::vector<std::string>{"start", "off", "00:11:22:33:44:55", "stop"}));
+    EXPECT_EQ(seen, (std::vector<std::string>{"start", "off", "stop", "00:11:22:33:44:55", "stop"}));
 }
 
 TEST_F(ActionsTest, TimeFormatIsTheStoresOnly) {

@@ -13,12 +13,12 @@
 # limitations under the License.
 
 # The Linux platform's host tests (docs/linux/IMPLEMENTATION.md G9, G7-main, G7-display, G7-launch-b,
-# G7-audio, G7-volumes, G7-power): the shell gate, the control keys, the display
+# G7-audio, G7-volumes, G7-power, G7-net): the shell gate, the control keys, the display
 # (display/Display.cpp and PanelOrientation.cpp over fakes), the launcher (Launcher.cpp, with real
 # children), the platform's createPlatform (with nano/NanoPlatform.cpp), the audio streams' threads
-# (AudioPull.cpp), the Volumes (on data/'s files), the power (Power.cpp over a fake sysfs) and the
-# system actions (actions/, over a fake wpa_supplicant), against Nano's compat shims and libthimsy
-# (nano/test/host/compat/compat.mk), with g++ and make only. The display back end, the EGL wraps
+# (AudioPull.cpp), the Volumes (on data/'s files), the power (Power.cpp over a fake sysfs), and the
+# system actions and the network (actions/, over a fake wpa_supplicant), against Nano's compat
+# shims and libthimsy (nano/test/host/compat/compat.mk), with g++ and make only. The display back end, the EGL wraps
 # and the display's KMS binding (display/DisplayKms.cpp) need libdrm, GBM and EGL headers, and
 # AudioAlsa.cpp alsa-lib's: they are not built here (G10 runs -fsyntax-only on them); the
 # kernel's DRM uapi headers (drm.h, drm_mode.h) are found in PLAT_DRM_UAPI, after the system's own
@@ -72,6 +72,10 @@ PLAT_SRCS_actions_test := actions/SystemActions.cpp actions/Run.cpp actions/WpaC
 PLAT_TESTS += inputpolicy_test
 PLAT_SRCS_inputpolicy_test := InputPolicy.cpp
 PLAT_SRCS_linuxplatform_test += InputPolicy.cpp
+# G7-net: Wi-Fi over a fake wpa_supplicant socket, Bluetooth through canned bluetoothctl output.
+PLAT_TESTS += network_test
+PLAT_SRCS_network_test := actions/Network.cpp actions/SystemActions.cpp actions/Run.cpp actions/WpaCtrl.cpp
+PLAT_SRCS_linuxplatform_test += actions/Network.cpp
 PLAT_TEST_BINS := $(PLAT_TESTS:%=$(PLAT_O)/test/%)
 # volumes_test reads thimsy-session's own volumes.json files from data/.
 PLAT_TEST_DEFS := -DPLAT_TEST_DATA_DIR='"$(PLAT_TEST_DIR)/data"'

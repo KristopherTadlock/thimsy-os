@@ -138,7 +138,7 @@ class World:
     PY_TOOLS = ["sfdisk", "mkfs.exfat"]
     SH_TOOLS = ["mount", "umount", "e2fsck", "sync", "modprobe", "thimsy-prop",
                 "thimsy-padd", "amixer", "alsactl", "dd", "chown", "dropbear",
-                "dropbearkey"]
+                "dropbearkey", "dbus-daemon", "dbus-uuidgen", "bluetoothd", "flock"]
     # The trivial fakes: log the call (as rcs_fake_tool.log_call does), fail
     # without an effect after a power cut, and do the little each one does.
     SH_FAKE = r"""#!/bin/sh
@@ -175,6 +175,14 @@ dd)
 		set -- "$@" "$a"
 	done
 	exec dd "$@"
+	;;
+dbus-daemon)
+	# The bus is up once its socket is (D35bluetooth waits for it).
+	case " ${THIMSY_FAKE_FAIL:-} " in
+	*" dbus "*) exit 1 ;;
+	esac
+	mkdir -p "$R/run/dbus"
+	: > "$R/run/dbus/system_bus_socket"
 	;;
 dropbearkey)
 	while [ "$#" -gt 1 ]; do
@@ -280,6 +288,24 @@ exit 0
                    "23 22 0:5 / /dev rw,nosuid shared:2 - devtmpfs devtmpfs rw\n" % majmin)
 
     # running ------------------------------------------------------------------
+    def popen(self, rel: str, *args: str) -> subprocess.Popen:
+        """rel in the background, with run()'s environment."""
+        assert SH is not None
+        return subprocess.Popen(SH + [posix(self.root / rel)] + list(args), env=self._env(None),
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    def _env(self, env: Optional[Dict[str, str]]) -> Dict[str, str]:
+        e = dict(os.environ)
+        e.update({"THIMSY_ROOT": posix(self.root), "THIMSY_TOOLDIR": posix(self.bin),
+                  "THIMSY_FAKE_LOG": posix(self.log), "LC_ALL": "C"})
+        for k in ("THIMSY_FAKE_POWERCUT", "THIMSY_FAKE_FAIL", "THIMSY_FAKE_FAMILY",
+                  "THIMSY_FAKE_MODULES"):
+            e.pop(k, None)
+        e.update(self.env_extra)
+        if env:
+            e.update(env)
+        return e
+
     def run(self, rel: str, *args: str, env: Optional[Dict[str, str]] = None,
             check: bool = True) -> subprocess.CompletedProcess:
         assert SH is not None
@@ -925,6 +951,303 @@ class TestD50Ssh(WorldCase):
             for frag in (LINUX / "configs").rglob("*"):
                 if frag.is_file():
                     self.assertNotIn(sym, frag.read_text(encoding="utf-8"), frag)
+
+
+class TestD20Sound(WorldCase):
+    """D20sound waits for device.json's audio.card_index (ro.thimsy.device.audio.card_index), the
+    card the session's ALSA_CARD and asound.conf use, and warns when device.json's audio.card is
+    not that card or sits at another index (the ARCs: card 1 behind HDMI's card 0, a Phase 0
+    check)."""
+
+    D20 = INITD + "/deferred/D20sound"
+
+    def setUp(self) -> None:
+        super().setUp()
+        for d in ("run/thimsy/props/ro", "run/thimsy/log", "storage/.config/thimsy"):
+            (self.w.root / d).mkdir(parents=True, exist_ok=True)
+        conf = self.w.read("etc/thimsy/init.conf")
+        self.w.write("etc/thimsy/init.conf", conf + "THIMSY_SOUND_WAIT_S=1\n")
+
+    def device(self, index: Optional[str], name: Optional[str]) -> None:
+        for key, v in (("card_index", index), ("card", name)):
+            rel = "run/thimsy/props/ro/ro.thimsy.device.audio." + key
+            if v is None:
+                p = self.w.root / rel
+                if p.exists():
+                    p.unlink()
+            else:
+                self.w.write(rel, v + "\n")
+
+    def cards(self, *ids: str) -> None:
+        for n, i in enumerate(ids):
+            self.w.write("proc/asound/card%d/id" % n, i + "\n")
+
+    def alsactl(self) -> List[List[str]]:
+        return [c["args"] for c in self.w.calls() if c["tool"] == "alsactl"]
+
+    def kmsg(self) -> str:
+        return self.w.read("dev/kmsg")
+
+    def test_the_arcs_card_one_behind_hdmi(self) -> None:
+        self.device("1", "rk817_ext")
+        self.cards("hdmisound", "rk817ext")
+        self.w.write("storage/.config/thimsy/asound.state", "state\n")
+        self.w.run(self.D20, "start")
+        self.assertEqual(self.alsactl(), [["-f", "/storage/.config/thimsy/asound.state", "restore"]])
+        self.assertEqual(self.kmsg(), "")
+        self.w.clear_calls()
+        self.w.run(self.D20, "stop")
+        self.assertEqual(self.alsactl(), [["-f", "/storage/.config/thimsy/asound.state", "store"]])
+
+    def test_no_card_index_is_card_zero(self) -> None:
+        self.device(None, None)
+        self.cards("rk817ext")
+        self.w.write("storage/.config/thimsy/asound.state", "state\n")
+        self.w.run(self.D20, "start")
+        self.assertEqual(len(self.alsactl()), 1)
+        self.assertEqual(self.kmsg(), "")
+
+    def test_a_wrong_index_is_reported(self) -> None:
+        # device.json says card 1, but the kernel made the codec card 0 (no HDMI card first).
+        self.device("1", "rk817_ext")
+        self.cards("rk817ext")
+        self.w.run(self.D20, "start")
+        self.assertEqual(self.alsactl(), [])
+        self.assertIn("no sound card (card1)", self.w.boot_log())
+        self.assertIn("rk817_ext is card0: device.json's audio.card_index 1 is wrong", self.kmsg())
+        self.w.clear_calls()
+        self.w.run(self.D20, "stop")
+        self.assertEqual(self.alsactl(), [])
+
+    def test_another_card_at_the_index_is_reported(self) -> None:
+        self.device("0", "rk817_ext")
+        self.cards("hdmisound", "rk817ext")
+        self.w.run(self.D20, "start")
+        self.assertIn("card0 is 'hdmisound', not device.json's audio.card rk817_ext", self.kmsg())
+        self.assertIn("rk817_ext is card1: device.json's audio.card_index 0 is wrong", self.kmsg())
+
+    def test_a_bad_index_falls_back_to_card_zero(self) -> None:
+        self.device("one", None)
+        self.cards("rk817ext")
+        self.w.write("storage/.config/thimsy/asound.state", "state\n")
+        self.w.run(self.D20, "start")
+        self.assertEqual(len(self.alsactl()), 1)
+        self.assertIn("audio.card_index 'one' is not a card number", self.w.boot_log())
+
+
+class TestD35Bluetooth(WorldCase):
+    """D35bluetooth: D-Bus, then bluetoothd, only when device.json says "bluetooth": true and the
+    user turned Bluetooth on (persist.thimsy.bluetooth.enabled=1); stop ends bluetoothd, then
+    the bus."""
+
+    D35 = INITD + "/deferred/D35bluetooth"
+    DAEMONS = ("dbus-daemon", "dbus-uuidgen", "bluetoothd")
+
+    def setUp(self) -> None:
+        super().setUp()
+        for d in ("run/thimsy/props/ro", "run/thimsy/log", "storage/.config/thimsy"):
+            (self.w.root / d).mkdir(parents=True, exist_ok=True)
+        conf = self.w.read("etc/thimsy/init.conf")
+        self.w.write("etc/thimsy/init.conf", conf + "THIMSY_BT_WAIT_S=1\n")
+
+    def device(self, has_bt: Optional[str], enabled: Optional[str], controller: bool = True,
+               kernel: bool = True) -> None:
+        if has_bt is not None:
+            self.w.write("run/thimsy/props/ro/ro.thimsy.device.bluetooth", has_bt + "\n")
+        if enabled is not None:
+            self.w.write("storage/.config/thimsy/persist.props",
+                         "persist.thimsy.bluetooth.enabled=%s\n" % enabled)
+        if kernel:
+            (self.w.root / "sys/class/bluetooth").mkdir(parents=True, exist_ok=True)
+        if controller:
+            (self.w.root / "sys/class/bluetooth/hci0").mkdir(parents=True, exist_ok=True)
+
+    def daemon_calls(self):
+        return [(c["tool"], c["args"]) for c in self.w.calls() if c["tool"] in self.DAEMONS]
+
+    def test_started_only_with_the_hardware_and_the_switch(self) -> None:
+        # 3: this device has no Bluetooth (Nano turns its switch back off).
+        for has_bt, enabled, code in (("true", None, 0), ("true", "0", 0), (None, "1", 3),
+                                      ("false", "1", 3)):
+            with self.subTest(has_bt=has_bt, enabled=enabled):
+                self.tearDown()
+                self.setUp()
+                self.device(has_bt, enabled)
+                r = self.w.run(self.D35, "start", check=False)
+                self.assertEqual(r.returncode, code)
+                self.assertEqual(self.daemon_calls(), [])
+                self.assertFalse((self.w.root / "run/dbus-daemon.pid").exists())
+
+    def test_on_starts_the_bus_then_bluetoothd(self) -> None:
+        self.device("true", "1")
+        self.w.run(self.D35, "start")
+        # Both daemons are background jobs: their fakes may log after the script has returned.
+        end = time.monotonic() + 10
+        while len(self.daemon_calls()) < 3 and time.monotonic() < end:
+            time.sleep(0.05)
+        self.assertEqual(self.daemon_calls(),
+                         [("dbus-uuidgen", ["--ensure"]),
+                          ("dbus-daemon", ["--system", "--nofork", "--nopidfile"]),
+                          ("bluetoothd", ["-n"])])
+        for pid in ("run/dbus-daemon.pid", "run/bluetoothd.pid"):
+            self.assertTrue(self.w.read(pid).strip().isdigit(), pid)
+        self.assertTrue((self.w.root / "storage/.config/thimsy/bluetooth").is_dir())
+        self.assertIn("D-Bus and bluetoothd started", self.w.boot_log())
+        self.w.run(self.D35, "stop")
+        for pid in ("run/dbus-daemon.pid", "run/bluetoothd.pid"):
+            self.assertFalse((self.w.root / pid).exists(), pid)
+
+    def test_no_controller(self) -> None:
+        self.device("true", "1", controller=False)
+        t0 = time.monotonic()
+        r = self.w.run(self.D35, "start", check=False)
+        self.assertGreaterEqual(time.monotonic() - t0, 0.9)  # THIMSY_BT_WAIT_S=1
+        self.assertEqual(r.returncode, 3)
+        self.assertEqual(self.daemon_calls(), [])
+        self.assertIn("there is no controller", self.w.boot_log())
+
+    def test_no_bluetooth_in_the_kernel_does_not_wait(self) -> None:
+        conf = self.w.read("etc/thimsy/init.conf")
+        self.w.write("etc/thimsy/init.conf", conf + "THIMSY_BT_WAIT_S=30\n")
+        self.device("true", "1", controller=False, kernel=False)
+        t0 = time.monotonic()
+        r = self.w.run(self.D35, "start", check=False)
+        self.assertLess(time.monotonic() - t0, 15)
+        self.assertEqual(r.returncode, 3)
+        self.assertEqual(self.daemon_calls(), [])
+        self.assertIn("the kernel has no Bluetooth", self.w.boot_log())
+
+    def test_no_bus_no_bluetoothd(self) -> None:
+        self.device("true", "1")
+        r = self.w.run(self.D35, "start", check=False, env={"THIMSY_FAKE_FAIL": "dbus"})
+        self.assertEqual(r.returncode, 1)
+        self.assertNotIn("bluetoothd", [t for t, _ in self.daemon_calls()])
+        self.assertIn("the D-Bus system bus did not start", self.w.read("dev/kmsg"))
+        self.assertFalse((self.w.root / "run/dbus-daemon.pid").exists())
+
+    def test_stop_without_a_start(self) -> None:
+        self.w.run(self.D35, "stop")
+        self.assertEqual(self.daemon_calls(), [])
+
+    @unittest.skipUnless(os.name == "posix", "the shell's kill needs the processes' own pids")
+    def test_stop_ends_bluetoothd_then_the_bus(self) -> None:
+        # Two real processes stand in for the daemons, each noting its TERM; the fake /proc says
+        # which daemon each is.
+        log = self.w.root / "order.log"
+        procs = []
+        for name in ("bluetoothd", "dbus-daemon"):
+            script = 'trap \'echo %s >> "%s"; exit 0\' TERM; while :; do sleep 0.05; done' % (
+                name, posix(log))
+            procs.append(subprocess.Popen(SH + ["-c", script]))
+        try:
+            time.sleep(0.5)
+            self.w.write("run/bluetoothd.pid", "%d\n" % procs[0].pid)
+            self.w.write("run/dbus-daemon.pid", "%d\n" % procs[1].pid)
+            self.w.write("proc/%d/comm" % procs[0].pid, "bluetoothd\n")
+            self.w.write("proc/%d/comm" % procs[1].pid, "dbus-daemon\n")
+            self.w.run(self.D35, "stop")
+            for p in procs:
+                p.wait(timeout=10)
+            self.assertEqual(log.read_text(encoding="utf-8").split(), ["bluetoothd", "dbus-daemon"])
+        finally:
+            for p in procs:
+                if p.poll() is None:
+                    p.kill()
+
+
+    @unittest.skipUnless(os.name == "posix", "the shell's kill needs the processes' own pids")
+    def test_a_pid_that_is_not_the_daemon_is_left_alone(self) -> None:
+        # w5-linux-4: a daemon that died leaves its pidfile, and the pid may be another process's by
+        # now. stop does not signal it, and start does not take it for bluetoothd.
+        other = subprocess.Popen(["sleep", "60"])
+        try:
+            self.w.write("proc/%d/comm" % other.pid, "sleep\n")
+            for pid in ("run/bluetoothd.pid", "run/dbus-daemon.pid"):
+                self.w.write(pid, "%d\n" % other.pid)
+            self.w.run(self.D35, "stop")
+            time.sleep(0.3)
+            self.assertIsNone(other.poll())
+            for pid in ("run/bluetoothd.pid", "run/dbus-daemon.pid"):
+                self.assertFalse((self.w.root / pid).exists(), pid)
+            self.device("true", "1")
+            for pid in ("run/bluetoothd.pid", "run/dbus-daemon.pid"):
+                self.w.write(pid, "%d\n" % other.pid)
+            self.w.run(self.D35, "start")
+            end = time.monotonic() + 10
+            while len(self.daemon_calls()) < 3 and time.monotonic() < end:
+                time.sleep(0.05)
+            self.assertEqual([t for t, _ in self.daemon_calls()], ["dbus-uuidgen", "dbus-daemon", "bluetoothd"])
+            self.assertNotEqual(self.w.read("run/bluetoothd.pid").strip(), str(other.pid))
+            self.assertIsNone(other.poll())
+        finally:
+            other.kill()
+            other.wait()
+
+    @unittest.skipUnless(os.name == "posix" and shutil.which("flock") is not None,
+                         "needs flock(1) and fcntl")
+    def test_one_start_or_stop_at_a_time(self) -> None:
+        # w5-linux-5: rcD's start and Nano's switch may overlap. Each waits for the lock; start then
+        # reads the switch again.
+        import fcntl
+        (self.w.bin / "flock").unlink()  # the real flock(1)
+        self.device("true", "1")
+        lock = self.w.root / "run/thimsy/bluetooth.lock"
+        with open(str(lock), "a") as held:
+            fcntl.flock(held.fileno(), fcntl.LOCK_EX)
+            start = self.w.popen(self.D35, "start")
+            stop = self.w.popen(self.D35, "stop")
+            time.sleep(0.7)
+            self.assertIsNone(start.poll())
+            self.assertIsNone(stop.poll())
+            self.assertEqual(self.daemon_calls(), [])
+            # The switch went off meanwhile (its stop is the one waiting).
+            self.w.write("storage/.config/thimsy/persist.props", "persist.thimsy.bluetooth.enabled=0\n")
+            fcntl.flock(held.fileno(), fcntl.LOCK_UN)
+        self.assertEqual(start.wait(timeout=30), 0)
+        self.assertEqual(stop.wait(timeout=30), 0)
+        for p in (start, stop):
+            p.stdout.close()
+            p.stderr.close()
+        self.assertEqual(self.daemon_calls(), [])
+        self.assertFalse((self.w.root / "run/bluetoothd.pid").exists())
+
+
+class TestStateLinks(unittest.TestCase):
+    """post-build.d/15-state-links.sh: /var/lib/bluetooth links to the data partition."""
+
+    SCRIPT = LINUX / "board/common/post-build.d/15-state-links.sh"
+    LINK = "/storage/.config/thimsy/bluetooth"
+
+    def setUp(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp(prefix="test-rcs-links-"))
+        self.target = self.tmp / "target"
+        self.target.mkdir()
+
+    def tearDown(self) -> None:
+        shutil.rmtree(str(self.tmp), ignore_errors=True)
+
+    def run_part(self) -> subprocess.CompletedProcess:
+        assert SH is not None
+        return subprocess.run(SH + [posix(self.SCRIPT), posix(self.target)], stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, timeout=60)
+
+    @needs_links
+    def test_link_made_kept_and_replacing_an_empty_dir(self) -> None:
+        (self.target / "var/lib/bluetooth").mkdir(parents=True)  # BlueZ's install makes one
+        for _ in range(2):  # re-runnable
+            r = self.run_part()
+            self.assertEqual(r.returncode, 0, r.stderr)
+            p = self.target / "var/lib/bluetooth"
+            self.assertTrue(os.path.islink(str(p)))
+            self.assertEqual(os.readlink(str(p)), self.LINK)
+
+    def test_files_in_the_way_fail(self) -> None:
+        d = self.target / "var/lib/bluetooth"
+        d.mkdir(parents=True)
+        write_lf(d / "settings", "x\n")
+        r = self.run_part()
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn(b"would be hidden", r.stderr)
 
 
 # --- D60firstboot -----------------------------------------------------------------

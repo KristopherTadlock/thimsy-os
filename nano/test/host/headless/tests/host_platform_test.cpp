@@ -124,7 +124,8 @@ TEST(HostPlatform, CreateWiresTheChannel) {
                          "\", \"log_file\": \"" + (dir / "nano.log") +
                          "\", \"display\": {\"width\": 320, \"height\": 240, \"pace\": false},"
                          " \"record_props\": [\"sys.gammaos.\", \"persist.\"],"
-                         " \"volumes\": [{\"id\": \"9602-C755\", \"boot_disk\": true}]}"));
+                         " \"volumes\": [{\"id\": \"9602-C755\", \"boot_disk\": true}],"
+                         " \"network\": {\"connected\": \"Home\", \"networks\": [{\"ssid\": \"Home\", \"saved_id\": 0}]}}"));
     char prog[] = "nano-headless";
     char flag[] = "--host-config";
     std::vector<char> path(cfg.begin(), cfg.end());
@@ -149,6 +150,9 @@ TEST(HostPlatform, CreateWiresTheChannel) {
     ASSERT_TRUE(p->actions != nullptr);
     p->power->powerAction("reboot");
     EXPECT_TRUE(p->input != nullptr);  // G7-input: the fake input policy
+    ASSERT_TRUE(p->net != nullptr);  // G7-net: the config's scripted networks
+    EXPECT_EQ(p->net->wifiListRadio().connectedSsid, "Home");
+    p->net->startWifiScan();
     EXPECT_EQ(property_set("sys.gammaos.nano.launch_app", "com.example"), 0);
     EXPECT_EQ(property_set("persist.gammaos.nano.theme", "xmb"), 0);
     EXPECT_EQ(property_set("debug.unrecorded", "1"), 0);
@@ -157,6 +161,7 @@ TEST(HostPlatform, CreateWiresTheChannel) {
     EXPECT_NE(log.find("{\"ev\":\"display\""), std::string::npos);
     EXPECT_NE(log.find("\"op\":\"start\",\"w\":0,\"h\":0"), std::string::npos);
     EXPECT_NE(log.find("\"op\":\"action\",\"action\":\"reboot\""), std::string::npos);
+    EXPECT_NE(log.find("\"call\":\"wifi scan\""), std::string::npos);
     EXPECT_NE(log.find("\"key\":\"sys.gammaos.nano.launch_app\",\"value\":\"com.example\""), std::string::npos);
     EXPECT_NE(log.find("\"key\":\"persist.gammaos.nano.theme\",\"value\":\"xmb\""), std::string::npos);
     EXPECT_EQ(log.find("debug.unrecorded"), std::string::npos);

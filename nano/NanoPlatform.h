@@ -19,8 +19,8 @@
 //
 // Declared when used, not ahead: this header holds only the platform object and how it is made,
 // installed and reached. Each interface (Display, Launcher, Audio, Volumes, Power, SystemActions,
-// InputPolicy, and the Cap set) is declared by the step that moves the code behind it, in the same
-// commit as the move, sized to that code.
+// InputPolicy, Network, and the Cap set) is declared by the step that moves the code behind it, in
+// the same commit as the move, sized to that code.
 //
 // Who may use it. drastic-nano, gammaos-nano-scrape, the host tests and the other binaries built
 // from Nano's files never call install(). No file they compile may include this header or name
@@ -259,6 +259,141 @@ class SystemActions {
 };
 // --- end SystemActions ---------------------------------------------------------------------------
 
+// --- Network (G7-net) ----------------------------------------------------------------------------
+// The Wi-Fi and Bluetooth queries and operations of the Settings screens (NanoMenuSettings.cpp) and
+// of the HUD's network poll (NanoMenuNet.cpp): the commands they ran (`cmd wifi`, `dumpsys`,
+// `settings get`, the gammaos-net helper) and the parsing of their output. The firmware's is that
+// code, moved (platform/firmware/Network.cpp); Linux's asks wpa_supplicant's control socket and
+// bluetoothctl (platform/linux/actions/Network.cpp); the host's answers from the config's scripted
+// networks and devices (platform/host/FakeNetwork.cpp). Methods are named after their call sites.
+// NanoNetBridge, the firmware's resident system_server helper, stays at the call sites: it is
+// reached through sys.gammaos.nano.* properties that only the firmware's bridge publishes.
+//
+// Threads. Each call blocks for as long as its commands run: seconds, a pairing up to minutes. The
+// callers make them from their own worker threads, except wifiRadioEnabled, wifiAddresses and
+// wifiMacAndIp (the menu's render thread) and unpairBt (its input handling), as on the firmware,
+// where a timeout bounds each command; every platform bounds those to a few seconds.
+
+// A Wi-Fi network as the screens list it (NanoMenu::WifiNetEntry's fields).
+struct WifiNetEntry {
+    std::string ssid;
+    std::string bssid;
+    int rssi = -127;        // dBm; -127 when unknown
+    int security = 0;       // 0 open, 1 WEP, 2 WPA/WPA2, 3 WPA3, 4 OWE
+    int savedNetId = -1;    // the platform's id of the saved network, -1 when not saved
+    bool connected = false;
+};
+
+// A Bluetooth device as the screens list it (NanoMenu::BtDevEntry's fields).
+struct BtDevEntry {
+    std::string name;
+    std::string address;    // "AA:BB:CC:DD:EE:FF"
+    bool bonded = false;
+    bool connected = false;
+    int cod = 0;            // the class of device, 0 when unknown
+};
+
+class Network {
+ public:
+    virtual ~Network() = default;
+
+    // The HUD's levels; NanoMenu's WifiLevel and BtLevel have the same values.
+    enum WifiLevel {
+        kWifiLevel_Unknown = 0,
+        kWifiLevel_Off,
+        kWifiLevel_Disconnected,  // radio on, no network
+        kWifiLevel_Connected,
+    };
+    enum BtLevel {
+        kBtLevel_Unknown = 0,
+        kBtLevel_Off,
+        kBtLevel_On,
+        kBtLevel_Connected,       // at least one device connected
+    };
+
+    // The net poll thread (NanoMenuNet.cpp). autoEnableWifi: once at its start, turns the radio on
+    // when it is off and networks are saved (the firmware's "remember last on/off"). pollState:
+    // each tick the bridge did not answer, the state written in place over the caller's
+    // Unknown/0/"" (wifiBars 0-4, wifiSsid the connected network's, btConnected the devices
+    // connected); what can't be read is left as it was.
+    virtual void autoEnableWifi() = 0;
+    virtual void pollState(WifiLevel& wifiLevel, int& wifiBars, std::string& wifiSsid, BtLevel& btLevel,
+                           int& btConnected) = 0;
+
+    // refreshWifiList(): whether the radio is on and the network it is connected to (""), then,
+    // when it is on, the saved networks (savedNetId set, rssi -127) and the scan's results
+    // (savedNetId -1), one entry per line the platform gave (the caller merges them).
+    struct WifiRadio {
+        bool on = false;
+        std::string connectedSsid;
+    };
+    virtual WifiRadio wifiListRadio() = 0;
+    struct WifiLists {
+        std::vector<WifiNetEntry> saved;
+        std::vector<WifiNetEntry> scanned;
+    };
+    virtual WifiLists wifiLists() = 0;
+    // wifiScanThreadFunc(): asks for a fresh scan; its results reach a later wifiLists().
+    virtual void startWifiScan() = 0;
+    // connectToSavedWifi(): connects to the saved network savedNetId and waits for it; true when
+    // it connected.
+    virtual bool connectSavedWifi(int savedNetId) = 0;
+    // addAndConnectWifi(): saves (or, with force, overwrites) the network `ssid` with `security`
+    // (WifiNetEntry's) and `password` (ignored for open and OWE), connects unless it is already
+    // the connected one (force: always), and waits about 12 s for it, retrying once.
+    virtual void joinWifi(const std::string& ssid, int security, const std::string& password, bool force) = 0;
+    // wifiConnectWatch(): one look at a connect to `ssid` in progress.
+    enum class JoinCheck { Pending, Connected, WrongPassword };
+    virtual JoinCheck checkWifiJoin(const std::string& ssid) = 0;
+    // wifiRadioEnabled(): the radio is on.
+    virtual bool wifiRadioEnabled() = 0;
+    // buildNetStatusBody(): the interface's IPv4 address, and, when `connected`, the default
+    // gateway and two DNS servers; the Wi-Fi MAC. "" for what is not known.
+    struct WifiAddresses {
+        std::string ip, gw, dns, dns2, mac;
+    };
+    virtual WifiAddresses wifiAddresses(bool connected) = 0;
+    // buildSysInfoBody(): the Wi-Fi MAC and IPv4 address ("" when not known).
+    struct WifiMacAndIp {
+        std::string mac, ip;
+    };
+    virtual WifiMacAndIp wifiMacAndIp() = 0;
+    // startNetTest(): the IPv4 address (""), and whether the system found the link reaches the
+    // Internet (the firmware's VALIDATED).
+    struct WifiLink {
+        std::string ip;
+        bool validated = false;
+    };
+    virtual WifiLink wifiLink() = 0;
+
+    // refreshBtList(): whether the radio is on and, when it is, the bonded devices.
+    struct BtList {
+        bool on = false;
+        std::vector<BtDevEntry> devices;
+    };
+    virtual BtList btListState() = 0;
+    // discoverBtDevices(): an inquiry of about 8 s; the devices found (bonded set for bonded ones).
+    virtual std::vector<BtDevEntry> discoverBt() = 0;
+    // pairBtDevice(), unpairBtDevice(): bonds with / removes the bond of `mac`; true when done.
+    virtual bool pairBt(const std::string& mac) = 0;
+    virtual bool unpairBt(const std::string& mac) = 0;
+    // The Bluetooth wizard (btWiz*Async): the radio's real state; the bonded devices (connected
+    // set); turning the radio on or off, waiting for it; an inquiry of about 15 s; pairing `a`
+    // with `p` ("", a PIN, or "--ask": the user answers the device's question through
+    // sys.gammaos.bt.pair_request/pair_reply); accepting the inbound request of `a` (variant `v`,
+    // 0 a classic PIN); connecting, disconnecting and removing `a`. The bools are true when done.
+    virtual bool btRadioOn() = 0;
+    virtual std::vector<BtDevEntry> bondedBt() = 0;
+    virtual void setBtRadio(bool on) = 0;
+    virtual std::vector<BtDevEntry> btWizScan() = 0;
+    virtual bool btWizPair(const std::string& a, const std::string& p) = 0;
+    virtual void btConfirmInbound(const std::string& a, int v) = 0;
+    virtual bool btWizConnect(const std::string& a) = 0;
+    virtual bool btWizDisconnect(const std::string& a) = 0;
+    virtual bool btWizUnpair(const std::string& a) = 0;
+};
+// --- end Network ---------------------------------------------------------------------------------
+
 // --- InputPolicy (G7-input) ----------------------------------------------------------------------
 // Who else gets the pads' events while Nano reads them. Nano's own evdev code (opening
 // /dev/input/event*, reading, hotplug) is the same on every platform; what differs is silencing.
@@ -302,6 +437,7 @@ struct Platform {
     std::unique_ptr<Power> power;  // G7-power: never null once createPlatform() returns
     std::unique_ptr<SystemActions> actions;  // G7-power: never null once createPlatform() returns
     std::unique_ptr<InputPolicy> input;  // G7-input: never null once createPlatform() returns
+    std::unique_ptr<Network> net;  // G7-net: never null once createPlatform() returns
 };
 
 struct PlatformArgs {

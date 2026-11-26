@@ -102,7 +102,7 @@ TEST(Supervisor, NanoExitingForALaunchIsNotACrash) {
     EXPECT_EQ(s.nanoBackoff(), 1000);
     ASSERT_EQ(count(s.onTick(1500), SupKind::SpawnNano), 1);
     s.nanoStarted(1500, 200);
-    for (Ms t = 3000; t < 10000; t += 1500) {  // one short launch after another
+    for (Ms t = 3000; t <= 6000; t += 1500) {  // short launches, up to the free restarts
         EXPECT_TRUE(s.nanoExited(t, 0, true).empty());
         EXPECT_EQ(s.nanoBackoff(), 0);
         EXPECT_EQ(s.nextDeadline(), t);
@@ -206,4 +206,148 @@ TEST(Supervisor, RestartNanoStopsItAndStartsItAtOnce) {
     EXPECT_EQ(a[0].sig, SIGTERM);
     s.nanoExited(5100, 0);
     EXPECT_EQ(count(s.onTick(5100), SupKind::SpawnNano), 1);
+}
+
+// REV4-2 left a launch that fails at Nano's start on every run free to restart Nano at once forever.
+// Quick launch cycles (shorter than launchLoopWindowMs) are free up to launchLoopFreeRestarts in a
+// row, then wait the crash back-off; a long cycle ends the run and resets the back-off.
+TEST(Supervisor, ALaunchLoopBacksOff) {
+    Supervisor s = started();
+    s.firstFrame(0);
+    Ms t = 0;
+    for (int i = 0; i < 3; i++) {  // free: Nano at once
+        t += 500;
+        EXPECT_TRUE(s.nanoExited(t, 0, true).empty());
+        EXPECT_EQ(s.quickLaunches(), i + 1);
+        EXPECT_EQ(s.nanoBackoff(), 0);
+        ASSERT_EQ(count(s.onTick(t), SupKind::SpawnNano), 1);
+        s.nanoStarted(t, 200 + i);
+    }
+    for (Ms want : {1000, 2000, 4000, 8000, 16000, 30000, 30000}) {
+        t += 500;
+        EXPECT_TRUE(s.nanoExited(t, 0, true).empty());
+        EXPECT_EQ(s.nanoBackoff(), want);
+        EXPECT_EQ(s.nextDeadline(), t + want);
+        EXPECT_TRUE(s.onTick(t + want - 1).empty());
+        ASSERT_EQ(count(s.onTick(t + want), SupKind::SpawnNano), 1);
+        t += want;
+        s.nanoStarted(t, 300);
+    }
+    // A run as long as the window (the user browsed, then launched): at once, the run over.
+    t += 10000;
+    EXPECT_TRUE(s.nanoExited(t, 0, true).empty());
+    EXPECT_EQ(s.quickLaunches(), 0);
+    EXPECT_EQ(s.nanoBackoff(), 0);
+    ASSERT_EQ(count(s.onTick(t), SupKind::SpawnNano), 1);
+}
+
+// A game that ends soon after Nano started (it crashed at its start, say) makes a quick cycle too:
+// Nano is started again by onTick after the back-off, not by gameExited at once.
+TEST(Supervisor, AGameThatEndsAtOnceCountsAsAQuickCycle) {
+    Supervisor s = started();
+    s.firstFrame(0);
+    Ms t = 0;
+    for (int i = 0; i < 3; i++) {
+        t += 400;
+        ASSERT_EQ(count(s.nanoExited(t, 555, true), SupKind::WatchGame), 1);
+        t += 100;
+        ASSERT_EQ(count(s.gameExited(t), SupKind::SpawnNano), 1);
+        s.nanoStarted(t, 200);
+    }
+    t += 400;
+    ASSERT_EQ(count(s.nanoExited(t, 555, true), SupKind::WatchGame), 1);
+    t += 100;
+    EXPECT_TRUE(s.gameExited(t).empty());
+    EXPECT_FALSE(s.waitingForGame());
+    EXPECT_EQ(s.nanoBackoff(), 1000);
+    EXPECT_EQ(s.nextDeadline(), t + 1000);
+    EXPECT_TRUE(s.onTick(t + 999).empty());
+    ASSERT_EQ(count(s.onTick(t + 1000), SupKind::SpawnNano), 1);
+    s.nanoStarted(t + 1000, 300);
+    // A game played for a while: Nano at once when it ends, and the run of quick cycles is over.
+    t += 1000;
+    ASSERT_EQ(count(s.nanoExited(t + 400, 556, true), SupKind::WatchGame), 1);
+    ASSERT_EQ(count(s.gameExited(t + 600000), SupKind::SpawnNano), 1);
+    EXPECT_EQ(s.quickLaunches(), 0);
+    EXPECT_EQ(s.nanoBackoff(), 0);
+}
+
+// A restart asked for (park_restart, restart-nano) starts over: the next quick cycles are free.
+TEST(Supervisor, ARestartRequestEndsALaunchLoop) {
+    Supervisor s = started();
+    s.firstFrame(0);
+    Ms t = 0;
+    for (int i = 0; i < 4; i++) {
+        t += 500;
+        s.nanoExited(t, 0, true);
+        t += s.nanoBackoff();
+        ASSERT_EQ(count(s.onTick(t), SupKind::SpawnNano), 1);
+        s.nanoStarted(t, 200);
+    }
+    EXPECT_EQ(s.quickLaunches(), 4);
+    ASSERT_EQ(count(s.restartNano(t + 100), SupKind::SignalGroup), 1);
+    EXPECT_EQ(s.quickLaunches(), 0);
+    s.nanoExited(t + 200, 0);
+    ASSERT_EQ(count(s.onTick(t + 200), SupKind::SpawnNano), 1);
+    s.nanoStarted(t + 200, 300);
+    s.nanoExited(t + 700, 0, true);
+    EXPECT_EQ(s.quickLaunches(), 1);
+    EXPECT_EQ(s.nextDeadline(), t + 700);
+}
+
+// w5-linux-6: a user trying games that fail at once (a missing core, a bad ROM) has the menu on
+// screen for a few seconds before each launch: never held back, however quick the cycles. Only a
+// cycle in which Nano was on screen under launchLoopActMs (or never) is quick.
+TEST(Supervisor, AUserTryingGamesThatFailIsNotHeldBack) {
+    Supervisor s = started(true);
+    Ms t = 0;
+    for (int i = 0; i < 8; i++) {
+        s.firstFrame(t + 1500);  // Nano's menu up 1.5 s after its start
+        t += 1500 + 2500;        // the user picks a game 2.5 s later; it fails at once
+        EXPECT_TRUE(s.nanoExited(t, 0, true).empty());
+        EXPECT_EQ(s.quickLaunches(), 0);
+        EXPECT_EQ(s.nanoBackoff(), 0);
+        ASSERT_EQ(count(s.onTick(t), SupKind::SpawnNano), 1) << i;
+        s.nanoStarted(t, 200 + i);
+    }
+    // The same with a game that ends at once.
+    for (int i = 0; i < 8; i++) {
+        s.firstFrame(t + 1500);
+        t += 4000;
+        ASSERT_EQ(count(s.nanoExited(t, 555, true), SupKind::WatchGame), 1);
+        t += 200;
+        ASSERT_EQ(count(s.gameExited(t), SupKind::SpawnNano), 1) << i;
+        s.nanoStarted(t, 300 + i);
+    }
+    EXPECT_EQ(s.quickLaunches(), 0);
+}
+
+// An auto-launch: Nano asks for the launch as soon as its menu is up, or before.
+TEST(Supervisor, ALaunchRightAfterTheFirstFrameIsQuick) {
+    Supervisor s = started(true);
+    Ms t = 0;
+    for (int i = 0; i < 3; i++) {
+        s.firstFrame(t + 1500);
+        t += 1500 + 300;
+        EXPECT_TRUE(s.nanoExited(t, 0, true).empty());
+        EXPECT_EQ(s.quickLaunches(), i + 1);
+        ASSERT_EQ(count(s.onTick(t), SupKind::SpawnNano), 1);
+        s.nanoStarted(t, 200 + i);
+    }
+    s.firstFrame(t + 1500);
+    t += 1500 + 1999;
+    EXPECT_TRUE(s.nanoExited(t, 0, true).empty());
+    EXPECT_EQ(s.nanoBackoff(), 1000);
+    EXPECT_EQ(s.nextDeadline(), t + 1000);
+    // A first frame of an earlier Nano does not count for the next one: it was never on screen.
+    ASSERT_EQ(count(s.onTick(t + 1000), SupKind::SpawnNano), 1);
+    s.nanoStarted(t + 1000, 300);
+    EXPECT_TRUE(s.nanoExited(t + 1500, 0, true).empty());
+    EXPECT_EQ(s.nanoBackoff(), 2000);
+    // A first frame while no Nano runs is not taken for the next one's.
+    s.firstFrame(t + 2000);
+    ASSERT_EQ(count(s.onTick(t + 3500), SupKind::SpawnNano), 1);
+    s.nanoStarted(t + 3500, 301);
+    EXPECT_TRUE(s.nanoExited(t + 9000, 0, true).empty());
+    EXPECT_EQ(s.nanoBackoff(), 4000);
 }

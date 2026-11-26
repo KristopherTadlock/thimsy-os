@@ -822,6 +822,7 @@
   "NanoMenuNet.cpp": {
    "includes": [
     "nano:NanoMenu.h",
+    "nano:NanoPlatform.h",
     "shim:compat/include/cutils/properties.h",
     "shim:compat/include/log/log.h"
    ]
@@ -1766,12 +1767,26 @@
     "nano:NanoPlatform.h"
    ]
   },
+  "platform/firmware/Network.cpp": {
+   "includes": [
+    "nano:NanoPlatform.h",
+    "nano:platform/firmware/Network.h",
+    "shim:compat/include/cutils/properties.h",
+    "shim:compat/include/log/log.h"
+   ]
+  },
+  "platform/firmware/Network.h": {
+   "includes": [
+    "nano:NanoPlatform.h"
+   ]
+  },
   "platform/firmware/Platform.cpp": {
    "includes": [
     "nano:NanoPlatform.h",
     "nano:platform/firmware/Display.h",
     "nano:platform/firmware/InputPolicy.h",
     "nano:platform/firmware/Launcher.h",
+    "nano:platform/firmware/Network.h",
     "nano:platform/firmware/Power.h",
     "nano:platform/firmware/SystemActions.h",
     "nano:platform/firmware/Volumes.h"
@@ -1898,6 +1913,17 @@
     "nano:NanoPlatform.h"
    ]
   },
+  "platform/host/FakeNetwork.cpp": {
+   "includes": [
+    "nano:platform/host/FakeNetwork.h",
+    "nano:platform/host/HostControl.h"
+   ]
+  },
+  "platform/host/FakeNetwork.h": {
+   "includes": [
+    "nano:NanoPlatform.h"
+   ]
+  },
   "platform/host/FakePower.cpp": {
    "includes": [
     "nano:platform/host/FakePower.h",
@@ -1928,6 +1954,7 @@
   "platform/host/HostConfig.h": {
    "includes": [
     "nano:platform/host/FakeEvdev.h",
+    "nano:platform/host/FakeNetwork.h",
     "nano:platform/host/FakeVolumes.h",
     "nano:platform/host/HostControl.h",
     "nano:platform/host/ShellGateHost.h"
@@ -1945,6 +1972,7 @@
     "nano:platform/host/FakeDisplay.h",
     "nano:platform/host/FakeInput.h",
     "nano:platform/host/FakeLauncher.h",
+    "nano:platform/host/FakeNetwork.h",
     "nano:platform/host/FakePower.h",
     "nano:platform/host/HostConfig.h",
     "shim:compat/include/log/log.h",
@@ -2018,6 +2046,7 @@
     "nano:platform/linux/Launcher.h",
     "nano:platform/linux/Power.h",
     "nano:platform/linux/Volumes.h",
+    "nano:platform/linux/actions/Network.h",
     "nano:platform/linux/actions/SystemActions.h",
     "nano:platform/linux/display/Display.h"
    ]
@@ -2053,6 +2082,21 @@
   "platform/linux/Volumes.h": {
    "includes": [
     "nano:NanoPlatform.h"
+   ]
+  },
+  "platform/linux/actions/Network.cpp": {
+   "includes": [
+    "nano:platform/linux/actions/Network.h",
+    "nano:platform/linux/actions/SystemActions.h",
+    "nano:platform/linux/actions/WpaCtrl.h",
+    "shim:compat/include/cutils/properties.h",
+    "shim:compat/include/log/log.h"
+   ]
+  },
+  "platform/linux/actions/Network.h": {
+   "includes": [
+    "nano:NanoPlatform.h",
+    "nano:platform/linux/actions/Run.h"
    ]
   },
   "platform/linux/actions/Run.cpp": {
@@ -2168,6 +2212,7 @@
     "lib:libdrm:drm_mode.h",
     "missing:compat_test_util.h",
     "missing:display/Display.h",
+    "shim:compat/include/android/log.h",
     "shim:compat/include/cutils/properties.h"
    ]
   },
@@ -2195,6 +2240,15 @@
     "missing:Launcher.h",
     "missing:display/Display.h",
     "nano:NanoPlatform.h"
+   ]
+  },
+  "platform/linux/tests/network_test.cpp": {
+   "includes": [
+    "gtest:gtest/gtest.h",
+    "missing:actions/Network.h",
+    "missing:actions/Run.h",
+    "missing:compat_test_util.h",
+    "shim:compat/include/cutils/properties.h"
    ]
   },
   "platform/linux/tests/power_test.cpp": {
@@ -2725,6 +2779,15 @@
     "nano:test/host/headless/tests/headless_test_util.h",
     "shim:compat/include/cutils/properties.h",
     "shim:compat/include/nanocompat/nanocompat.h"
+   ]
+  },
+  "test/host/headless/tests/fake_network_test.cpp": {
+   "includes": [
+    "gtest:gtest/gtest.h",
+    "nano:platform/host/FakeNetwork.h",
+    "nano:platform/host/HostConfig.h",
+    "nano:platform/host/HostControl.h",
+    "nano:test/host/headless/tests/headless_test_util.h"
    ]
   },
   "test/host/headless/tests/fake_power_test.cpp": {
@@ -5221,6 +5284,12 @@
    ],
    "needs": {}
   },
+  "platform/firmware/Network.cpp": {
+   "modules": [
+    "gammaos-nano"
+   ],
+   "needs": {}
+  },
   "platform/firmware/Platform.cpp": {
    "modules": [
     "gammaos-nano"
@@ -5863,6 +5932,7 @@
    "platform/firmware/Power.cpp": "the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)",
    "platform/firmware/SystemActions.cpp": "the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)",
    "platform/firmware/InputPolicy.cpp": "the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)",
+   "platform/firmware/Network.cpp": "the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)",
    "NanoMenuDrmBuffers.cpp": "the AHardwareBuffer render-target back end (G9a); Linux links platform/linux/display/DrmBuffersGbm.cpp instead",
    "NanoMenuRgbFollow.cpp": "reaches GammaRgbProcess.h (a header outside Nano's folder (upstream.json siblings): v1 has neither Shares nor RGB follow on Linux)",
    "NanoMenuShares.cpp": "reaches share_config.h (a header outside Nano's folder (upstream.json siblings): v1 has neither Shares nor RGB follow on Linux)",

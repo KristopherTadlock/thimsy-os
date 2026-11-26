@@ -61,27 +61,25 @@ std::mutex& netHelperMutex() {
     return m;
 }
 
+}  // namespace
+
 // Thin popen() wrapper. gammaos-nano runs as root, so `cmd wifi` /
 // `cmd bluetooth_manager` / `dumpsys bluetooth_manager` pass their
 // Binder.getCallingUid() == ROOT_UID check and return real data.
 // Redirects stderr into stdout so the few tools that log warnings
 // on stderr (cmd wifi connect-network when the SSID is already
 // saved) don't bleed onto the render thread's stderr fd.
-static std::string runCmdUnlocked(const std::string& cmdline, int timeoutSecs);
-
-}  // namespace
+std::string runCmdUnlocked(const std::string& cmdline, int timeoutSecs);
 
 std::string runCmd(const std::string& cmdline, int timeoutSecs = 3) {
     std::lock_guard<std::mutex> lk(netHelperMutex());
     return runCmdUnlocked(cmdline, timeoutSecs);
 }
 
-namespace {
-
 // runCmd without the shared lock, for a helper that runs for minutes on its own worker (a pairing
 // that waits on the user), which would otherwise stall every other helper call, render-path ones
 // included, behind it.
-static std::string runCmdUnlocked(const std::string& cmdline, int timeoutSecs) {
+std::string runCmdUnlocked(const std::string& cmdline, int timeoutSecs) {
     std::string result;
     result.reserve(4096);
     std::string full = cmdline;
@@ -117,8 +115,6 @@ static std::string runCmdUnlocked(const std::string& cmdline, int timeoutSecs) {
     return result;
 }
 
-}  // namespace
-
 // Is the resident NanoNetBridge live? (published at least one generation, and not disabled).
 bool nanoNetBridgeUp() {
     if (!property_get_bool("persist.gammaos.net_bridge", true)) return false;
@@ -145,8 +141,6 @@ bool nanoNetBridgeCmd(const char* verb, const std::string& arg) {
     return property_set("sys.gammaos.nano.net_cmd", v.c_str()) == 0;
 }
 
-namespace {
-
 // POSIX single-quote wrap with escape for embedded single quotes.
 // Used for SSID / password values that may contain shell metacharacters.
 std::string shellQuote(const std::string& s) {
@@ -161,163 +155,14 @@ std::string shellQuote(const std::string& s) {
     return out;
 }
 
+namespace {
+
 int rssiToBars(int rssi) {
     if (rssi >= -55) return 4;
     if (rssi >= -66) return 3;
     if (rssi >= -77) return 2;
     if (rssi >= -88) return 1;
     return 0;
-}
-
-int securityFromFlags(const std::string& flags) {
-    // Scan-result "flags" column looks like: [WPA2-PSK-CCMP][ESS] or [ESS] (open)
-    // We just pick the strongest hint.
-    std::string f = flags;
-    for (auto& c : f) c = (char)toupper((unsigned char)c);
-    if (f.find("WPA3") != std::string::npos
-            || f.find("SAE") != std::string::npos) return 3;
-    if (f.find("WPA2") != std::string::npos
-            || f.find("WPA") != std::string::npos
-            || f.find("PSK") != std::string::npos) return 2;
-    if (f.find("WEP") != std::string::npos) return 1;
-    if (f.find("OWE") != std::string::npos) return 4;
-    return 0;
-}
-
-// Parse `cmd wifi list-networks` tabular output.
-// Typical line:
-//    Network Id  SSID                            Security type
-//     0          MyHomeWiFi                      WPA2_PSK
-std::vector<NanoMenu::WifiNetEntry> parseSavedNetworks(
-        const std::string& text) {
-    std::vector<NanoMenu::WifiNetEntry> out;
-    size_t p = 0;
-    bool skippedHeader = false;
-    while (p < text.size()) {
-        size_t eol = text.find('\n', p);
-        if (eol == std::string::npos) eol = text.size();
-        std::string line = text.substr(p, eol - p);
-        p = eol + 1;
-        // Strip trailing \r
-        while (!line.empty() && (line.back() == '\r' || line.back() == ' '))
-            line.pop_back();
-        if (line.empty()) continue;
-        // Skip the "Network Id" header line.
-        if (!skippedHeader) {
-            if (line.find("Network Id") != std::string::npos
-                    || line.find("No networks") != std::string::npos) {
-                skippedHeader = true;
-                continue;
-            }
-            skippedHeader = true;
-        }
-        // Try to read an integer id at the start.
-        size_t i = 0;
-        while (i < line.size() && isspace((unsigned char)line[i])) i++;
-        if (i >= line.size() || !isdigit((unsigned char)line[i])) continue;
-        int id = atoi(line.c_str() + i);
-        while (i < line.size() && !isspace((unsigned char)line[i])) i++;
-        while (i < line.size() && isspace((unsigned char)line[i])) i++;
-        if (i >= line.size()) continue;
-        // SSID can contain spaces; consume up to the last run of
-        // non-space characters for the Security column.
-        size_t secEnd = line.size();
-        while (secEnd > 0 && !isspace((unsigned char)line[secEnd - 1])) secEnd--;
-        // Now secEnd is the start of the security token.
-        size_t secStart = secEnd;
-        while (secEnd < line.size() && !isspace((unsigned char)line[secEnd])) secEnd++;
-        std::string secTok = line.substr(secStart, secEnd - secStart);
-        // SSID spans from i up to secStart with trailing spaces trimmed.
-        size_t ssidEnd = secStart;
-        while (ssidEnd > i && isspace((unsigned char)line[ssidEnd - 1])) ssidEnd--;
-        std::string ssid = line.substr(i, ssidEnd - i);
-        if (ssid.empty()) continue;
-
-        NanoMenu::WifiNetEntry e{};
-        e.ssid = ssid;
-        e.savedNetId = id;
-        e.rssi = -127;
-        std::string sec = secTok;
-        for (auto& c : sec) c = (char)toupper((unsigned char)c);
-        if (sec.find("SAE") != std::string::npos || sec == "WPA3_PSK") e.security = 3;
-        else if (sec.find("WPA") != std::string::npos || sec.find("PSK") != std::string::npos) e.security = 2;
-        else if (sec.find("WEP") != std::string::npos) e.security = 1;
-        else if (sec.find("OWE") != std::string::npos) e.security = 4;
-        else e.security = 0;
-        e.connected = false;
-        out.push_back(std::move(e));
-    }
-    return out;
-}
-
-// Parse `cmd wifi list-scan-results` column output.
-// Header line:
-//    BSSID   Frequency       RSSI    Age(sec)        SSID    Flags
-std::vector<NanoMenu::WifiNetEntry> parseScanResults(const std::string& text) {
-    std::vector<NanoMenu::WifiNetEntry> out;
-    size_t p = 0;
-    bool sawHeader = false;
-    while (p < text.size()) {
-        size_t eol = text.find('\n', p);
-        if (eol == std::string::npos) eol = text.size();
-        std::string line = text.substr(p, eol - p);
-        p = eol + 1;
-        while (!line.empty() && (line.back() == '\r' || line.back() == ' '))
-            line.pop_back();
-        if (line.empty()) continue;
-        if (!sawHeader) {
-            if (line.find("BSSID") != std::string::npos
-                    && line.find("SSID") != std::string::npos) {
-                sawHeader = true;
-                continue;
-            }
-            // Allow parsing even without the header (some tools skip it).
-        }
-        // The SSID column can contain spaces (real examples: "EE WiFi",
-        // "SkyBox-5-Downstairs", "The Wireless Signal is a Lie"). A naive
-        // whitespace column-split takes only the first word as the SSID, so
-        // nano stored (and tried to connect to) "The" -- an SSID no AP
-        // broadcasts, which fails with "network not found" and reads to the
-        // user as a wrong password. The output is fixed-width: the first four
-        // fields (BSSID, Frequency, RSSI, Age) are always single tokens, and
-        // the trailing Flags column always begins with '[' (e.g.
-        // "[WPA2-PSK-CCMP][ESS]"). So read the four leading tokens, then take
-        // everything up to the Flags as the space-preserving SSID.
-        size_t i = 0;
-        std::string toks[4];
-        bool haveTok = true;
-        for (int t = 0; t < 4 && haveTok; t++) {
-            while (i < line.size() && isspace((unsigned char)line[i])) i++;
-            if (i >= line.size()) { haveTok = false; break; }
-            size_t j = i;
-            while (j < line.size() && !isspace((unsigned char)line[j])) j++;
-            toks[t] = line.substr(i, j - i);
-            i = j;
-        }
-        if (!haveTok) continue;
-        while (i < line.size() && isspace((unsigned char)line[i])) i++;
-        std::string rest = line.substr(i);          // "<SSID padding> <Flags>"
-        size_t fl = rest.find('[');                 // Flags always start with '['
-        if (fl == std::string::npos) continue;      // no flags column -> not a result row
-        std::string ssid  = rest.substr(0, fl);     // may be empty (hidden AP)
-        std::string flags = rest.substr(fl);
-        while (!ssid.empty() && isspace((unsigned char)ssid.back())) ssid.pop_back();
-        if (ssid.size() >= 2 && ssid.front() == '"' && ssid.back() == '"')
-            ssid = ssid.substr(1, ssid.size() - 2);  // strip quotes if the tool emitted them
-
-        NanoMenu::WifiNetEntry e{};
-        e.bssid = toks[0];
-        e.rssi = atoi(toks[2].c_str());
-        if (e.rssi >= 0 || e.rssi < -120) e.rssi = -127;
-        e.ssid = ssid;
-        e.security = securityFromFlags(flags);
-        e.savedNetId = -1;
-        e.connected = false;
-        if (!e.ssid.empty() && e.ssid != "<unknown ssid>") {
-            out.push_back(std::move(e));
-        }
-    }
-    return out;
 }
 
 // Merge saved + scan results, dedup by SSID.
@@ -410,123 +255,33 @@ std::vector<NanoMenu::WifiNetEntry> mergeWifiLists(
     return scannedDedup;
 }
 
-// Extract currently-connected SSID from `cmd wifi status`.
-std::string connectedSsidFromStatus(const std::string& text) {
-    const char* key = "SSID:";
-    size_t p = text.find(key);
-    while (p != std::string::npos) {
-        size_t s = p + strlen(key);
-        while (s < text.size() && text[s] == ' ') s++;
-        size_t e = text.find(", BSSID:", s);
-        if (e == std::string::npos) e = text.find('\n', s);
-        if (e == std::string::npos) e = text.size();
-        std::string ssid = text.substr(s, e - s);
-        if (ssid.size() >= 2 && ssid.front() == '"' && ssid.back() == '"')
-            ssid = ssid.substr(1, ssid.size() - 2);
-        if (!ssid.empty() && ssid != "<unknown ssid>" && ssid != "<none>")
-            return ssid;
-        p = text.find(key, p + 1);
-    }
-    return "";
-}
-
-// Parse `gammaos-net bt list-bonded` output. TSV lines:
-//    AA:BB:CC:DD:EE:FF<TAB>Device Name<TAB>ClassOfDevice<TAB>Connected
-// The Connected column is "1" if the ACL link is live (reflected via
-// BluetoothDevice.isConnected()), "0" otherwise. Older output without
-// the 4th column is accepted for forward-compat; connected defaults
-// to false in that case.
-std::vector<NanoMenu::BtDevEntry> parseBondedDevices(const std::string& text) {
-    std::vector<NanoMenu::BtDevEntry> out;
-    size_t p = 0;
-    while (p < text.size()) {
-        size_t eol = text.find('\n', p);
-        if (eol == std::string::npos) eol = text.size();
-        std::string line = text.substr(p, eol - p);
-        p = eol + 1;
-        while (!line.empty() && (line.back() == '\r' || line.back() == ' '))
-            line.pop_back();
-        if (line.empty()) continue;
-        if (line.size() < 17) continue;
-        if (!isxdigit((unsigned char)line[0]) || !isxdigit((unsigned char)line[1]))
-            continue;
-        size_t t1 = line.find('\t');
-        if (t1 == std::string::npos) continue;
-        NanoMenu::BtDevEntry d{};
-        d.address = line.substr(0, t1);
-        size_t t2 = line.find('\t', t1 + 1);
-        size_t t3 = (t2 == std::string::npos) ? std::string::npos
-                                              : line.find('\t', t2 + 1);
-        if (t2 == std::string::npos) {
-            d.name = line.substr(t1 + 1);
-        } else {
-            d.name = line.substr(t1 + 1, t2 - t1 - 1);
-        }
-        if (d.name.empty()) d.name = d.address;
-        d.bonded = true;
-        d.connected = false;
-        // 3rd column = class-of-device, 4th = connected.
-        if (t2 != std::string::npos) {
-            const char* cp = line.c_str() + t2 + 1;
-            char* ce = nullptr; long c = strtol(cp, &ce, 10);
-            if (ce != cp) d.cod = (int)c;
-        }
-        if (t3 != std::string::npos) {
-            const char* startp = line.c_str() + t3 + 1;
-            char* endp = nullptr;
-            long v = strtol(startp, &endp, 10);
-            d.connected = (endp != startp) && v == 1;
-        }
-        out.push_back(std::move(d));
+// The platform's entries (nanoplat::Network, G7-net) as the screens keep them.
+std::vector<NanoMenu::WifiNetEntry> toMenu(std::vector<nanoplat::WifiNetEntry> in) {
+    std::vector<NanoMenu::WifiNetEntry> out;
+    out.reserve(in.size());
+    for (auto& n : in) {
+        NanoMenu::WifiNetEntry e{};
+        e.ssid = std::move(n.ssid);
+        e.bssid = std::move(n.bssid);
+        e.rssi = n.rssi;
+        e.security = n.security;
+        e.savedNetId = n.savedNetId;
+        e.connected = n.connected;
+        out.push_back(std::move(e));
     }
     return out;
 }
 
-// Parse `gammaos-net bt scan` output. TSV lines:
-//    AA:BB:CC:DD:EE:FF<TAB>Name<TAB>RSSI<TAB>ClassOfDevice<TAB>BondState
-// BondState is the android.bluetooth BOND_* int: 10=NONE, 11=BONDING, 12=BONDED.
-std::vector<NanoMenu::BtDevEntry> parseBtScanResults(const std::string& text) {
+std::vector<NanoMenu::BtDevEntry> toMenu(std::vector<nanoplat::BtDevEntry> in) {
     std::vector<NanoMenu::BtDevEntry> out;
-    size_t p = 0;
-    while (p < text.size()) {
-        size_t eol = text.find('\n', p);
-        if (eol == std::string::npos) eol = text.size();
-        std::string line = text.substr(p, eol - p);
-        p = eol + 1;
-        while (!line.empty() && (line.back() == '\r' || line.back() == ' '))
-            line.pop_back();
-        if (line.size() < 17) continue;
-        if (!isxdigit((unsigned char)line[0]) || !isxdigit((unsigned char)line[1]))
-            continue;
-        size_t t1 = line.find('\t');
-        if (t1 == std::string::npos) continue;
-        size_t t2 = line.find('\t', t1 + 1);
-        size_t t3 = (t2 == std::string::npos) ? std::string::npos
-                                              : line.find('\t', t2 + 1);
-        size_t t4 = (t3 == std::string::npos) ? std::string::npos
-                                              : line.find('\t', t3 + 1);
+    out.reserve(in.size());
+    for (auto& n : in) {
         NanoMenu::BtDevEntry d{};
-        d.address = line.substr(0, t1);
-        d.name = (t2 == std::string::npos) ? line.substr(t1 + 1)
-                                           : line.substr(t1 + 1, t2 - t1 - 1);
-        if (d.name.empty()) d.name = d.address;
-        // 4th column = class-of-device (between t3 and t4).
-        if (t3 != std::string::npos) {
-            const char* cp = line.c_str() + t3 + 1;
-            char* ce = nullptr; long c = strtol(cp, &ce, 10);
-            if (ce != cp) d.cod = (int)c;
-        }
-        int bondState = 10; // BOND_NONE
-        if (t4 != std::string::npos) {
-            // -fno-exceptions in AOSP builds rules out std::stoi; strtol
-            // silently returns 0 on a bad field, which we remap to BOND_NONE.
-            const char* startp = line.c_str() + t4 + 1;
-            char* endp = nullptr;
-            long v = strtol(startp, &endp, 10);
-            bondState = (endp != startp) ? static_cast<int>(v) : 10;
-        }
-        d.bonded = (bondState == 12); // BOND_BONDED
-        d.connected = false;
+        d.name = std::move(n.name);
+        d.address = std::move(n.address);
+        d.bonded = n.bonded;
+        d.connected = n.connected;
+        d.cod = n.cod;
         out.push_back(std::move(d));
     }
     return out;
@@ -667,13 +422,8 @@ void NanoMenu::refreshWifiList() {
         }
     }
 
-    std::string statusText = runCmd("cmd wifi status");
-    // Detect whether the Wi-Fi radio is currently on. When it is off,
-    // list-networks / list-scan-results return empty; we still want
-    // the toggle row visible so the user can flip it back on.
-    bool radioOn = !statusText.empty()
-                && statusText.find("Wifi is disabled") == std::string::npos
-                && statusText.find("is disabled") == std::string::npos;
+    const nanoplat::Network::WifiRadio radio = nanoplat::get().net->wifiListRadio();
+    bool radioOn = radio.on;
     // Cache the authoritative radio state for the net wizard's WS_APLIST empty-state
     // (which shows "Wi-Fi is off. Press <btn> to turn it on." and enables it on A/X).
     // refreshWifiList runs on the scan worker (it shells out), so this is off the render
@@ -696,11 +446,10 @@ void NanoMenu::refreshWifiList() {
         merged.push_back(std::move(toggle));
     }
     if (radioOn) {
-        std::string savedText = runCmd("cmd wifi list-networks");
-        std::string scanText = runCmd("cmd wifi list-scan-results");
-        auto saved = parseSavedNetworks(savedText);
-        auto scanned = parseScanResults(scanText);
-        std::string connSsid = connectedSsidFromStatus(statusText);
+        nanoplat::Network::WifiLists lists = nanoplat::get().net->wifiLists();
+        auto saved = toMenu(std::move(lists.saved));
+        auto scanned = toMenu(std::move(lists.scanned));
+        std::string connSsid = radio.connectedSsid;
         auto body = mergeWifiLists(std::move(saved), std::move(scanned), connSsid);
         for (auto& e : body) merged.push_back(std::move(e));
     }
@@ -734,7 +483,7 @@ void NanoMenu::wifiScanThreadFunc() {
     refreshWifiList();
     // Kick a fresh scan on the wifi radio and wait briefly for results
     // to land before re-reading the list (from the bridge when it is live).
-    if (!nanoNetBridgeCmd("wifi_scan", "")) (void)runCmd("cmd wifi start-scan");
+    nanoplat::get().net->startWifiScan();
     // 3 second sleep so the radio has time to produce a fresh scan.
     for (int i = 0; i < 30 && mWifiScanInProgress; i++) {
         usleep(100 * 1000);
@@ -754,8 +503,7 @@ void NanoMenu::wifiScanThreadFunc() {
     // just several tens of seconds in. The list populates live while the user is on the
     // AP list because it reads mWifiEntries, which each pass refreshes.
     for (int pass = 0; pass < 30 && mWifiScanInProgress && wifiRealApCount() == 0; pass++) {
-        if ((pass % 5) == 0 && !nanoNetBridgeCmd("wifi_scan", ""))
-            (void)runCmd("cmd wifi start-scan");   // ~every 15s
+        if ((pass % 5) == 0) nanoplat::get().net->startWifiScan();   // ~every 15s
         for (int i = 0; i < 30 && mWifiScanInProgress; i++) {
             usleep(100 * 1000);                                     // ~3s dwell per pass
         }
@@ -797,15 +545,7 @@ void NanoMenu::connectToSavedWifi(int savedNetId) {
             std::chrono::steady_clock::now().time_since_epoch()).count() + 35000;
     mDisplayDirty = true;
     std::thread([this, savedNetId]() {
-        char cmd[96];
-        snprintf(cmd, sizeof(cmd),
-                 "gammaos-net wifi connect-saved %d", savedNetId);
-        std::string result = runCmd(cmd, 30);   // association + DHCP can take >3s
-        bool ok = result.find("OK") != std::string::npos;
-        if (!ok) {
-            ALOGW("connectToSavedWifi id=%d failed: %s",
-                  savedNetId, result.c_str());
-        }
+        bool ok = nanoplat::get().net->connectSavedWifi(savedNetId);
         // Stop showing "Connecting..." the moment the helper returns.
         // Without this the HUD ran out the full 35s budget regardless
         // of how fast the real switch landed, so the UI looked frozen
@@ -823,70 +563,14 @@ void NanoMenu::connectToSavedWifi(int savedNetId) {
     }).detach();
 }
 
-// Forward declaration: the wrong-password detector is defined further down (next to
-// wifiConnectWatch) but addAndConnectWifi's verify-and-retry needs it here to tell a
-// silent no-association (retry) apart from an auth failure (let the re-prompt handle it).
-static bool wifiDumpWrongPassword(const std::string& dump, const std::string& ssid);
-
 void NanoMenu::addAndConnectWifi(const std::string& ssid, int security,
                                  const std::string& password, bool force) {
-    // cmd wifi connect-network SSID <security> <password>
-    // Accepts: open, owe, wpa2, wpa3, wep per WifiShellCommand#connectNetwork.
-    const char* secTok = "open";
-    switch (security) {
-    case 0: secTok = "open"; break;
-    case 1: secTok = "wep";  break;
-    case 2: secTok = "wpa2"; break;
-    case 3: secTok = "wpa3"; break;
-    case 4: secTok = "owe";  break;
-    }
-    std::string cmdline = "cmd wifi connect-network "
-                        + shellQuote(ssid) + " " + secTok;
-    if (security != 0 && security != 4) {
-        cmdline += " " + shellQuote(password);
-    }
     mWifiStatusMsg = trDyn("Connecting...");
     mWifiStatusMsgUntilMs = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count() + 22000;
     mDisplayDirty = true;
-    std::string ssidCapture = ssid;
-    std::thread([this, cmdline, ssidCapture, force]() {
-        // Don't tear down a working link: if we are already associated with this
-        // SSID, skip the (disruptive) reconnect. connect-network re-creates the
-        // profile and re-associates, which briefly drops an otherwise-good
-        // connection - and the wizard runs the connectivity test right after.
-        // force==true (an explicit "Change Password") always overwrites, even
-        // while connected, so a deliberate key change is not silently dropped.
-        std::string st = runCmd("cmd wifi status 2>/dev/null");
-        if (force || connectedSsidFromStatus(st) != ssidCapture) {
-            (void)runCmd(cmdline, 30);   // cmd wifi connect-network blocks until the association resolves
-        }
-        // Verify the association instead of firing a scan right away. A scan kicked
-        // while the supplicant is still associating can abort the association on a
-        // flaky driver - exactly the first-boot setup-wizard window - which left the
-        // user "saved" but never actually connected (the wizard would still show
-        // "Save completed" and offer the connectivity test). Poll the live SSID for
-        // ~12s; if nothing associated and it was not a wrong-password failure
-        // (wifiConnectWatch owns that re-prompt), retry the connect once for the
-        // flaky first-boot case, then re-poll. Refresh from cached results at the end
-        // (no start-scan) so the (Connected) marker updates without disturbing the link.
-        bool connected = false;
-        for (int i = 0; i < 24; i++) {
-            usleep(500 * 1000);
-            std::string s = runCmd("cmd wifi status 2>/dev/null");
-            if (connectedSsidFromStatus(s) == ssidCapture) { connected = true; break; }
-        }
-        if (!connected && !force) {
-            std::string dump = runCmd("dumpsys wifi 2>/dev/null");
-            if (!wifiDumpWrongPassword(dump, ssidCapture)) {
-                (void)runCmd(cmdline, 30);   // cmd wifi connect-network blocks until the association resolves                      // silent no-association: one retry
-                for (int i = 0; i < 20; i++) {
-                    usleep(500 * 1000);
-                    std::string s = runCmd("cmd wifi status 2>/dev/null");
-                    if (connectedSsidFromStatus(s) == ssidCapture) break;
-                }
-            }
-        }
+    std::thread([this, ssid, security, password, force]() {
+        nanoplat::get().net->joinWifi(ssid, security, password, force);
         refreshWifiList();
     }).detach();
     // Watch the outcome so a wrong password produces a clear message + re-prompt
@@ -947,11 +631,7 @@ void NanoMenu::forgetWifiNetwork(int savedNetId) {
 }
 
 bool NanoMenu::wifiRadioEnabled() {
-    std::string st = runCmd("cmd wifi status 2>/dev/null");
-    // "Wifi is enabled" / "Wifi is connected to ..." vs "Wifi is disabled".
-    if (st.find("Wifi is disabled") != std::string::npos) return false;
-    return st.find("Wifi is enabled") != std::string::npos
-        || st.find("is connected to") != std::string::npos;
+    return nanoplat::get().net->wifiRadioEnabled();
 }
 
 void NanoMenu::toggleWifiRadio(bool on) {
@@ -1073,29 +753,6 @@ void NanoMenu::handleWifiScreenY() {
 // Wi-Fi manage dialog (saved-network Connect / Change Password / Forget)
 // ---------------------------------------------------------------------------
 
-// Scan `dumpsys wifi` for a wrong-password disable reason co-located with the
-// given SSID. AOSP spells the reason a few ways across versions; match them all.
-static bool wifiDumpWrongPassword(const std::string& dump, const std::string& ssid) {
-    if (ssid.empty()) return false;
-    const std::string q = "\"" + ssid + "\"";
-    size_t p = dump.find(q);
-    while (p != std::string::npos) {
-        // Look within a window after the SSID (the per-network block that carries
-        // the NetworkSelectionStatus / recent-failure fields).
-        size_t win = 700;
-        size_t nl = dump.find("\n\n", p);
-        if (nl != std::string::npos && nl - p < win) win = nl - p;
-        std::string block = dump.substr(p, win);
-        if (block.find("WRONG_PASSWORD") != std::string::npos
-         || block.find("WRONG_PSWD")     != std::string::npos
-         || block.find("BY_WRONG_PASSWORD") != std::string::npos
-         || block.find("DISABLED_AUTHENTICATION_FAILURE") != std::string::npos)
-            return true;
-        p = dump.find(q, p + q.size());
-    }
-    return false;
-}
-
 void NanoMenu::wifiConnectWatch(const std::string& ssid, int security) {
     // Only secure networks can fail on a wrong password.
     if (security == 0 || security == 4) return;
@@ -1105,10 +762,9 @@ void NanoMenu::wifiConnectWatch(const std::string& ssid, int security) {
         // `dumpsys wifi` exposes the per-network disable reason.
         for (int i = 0; i < 32; i++) {
             usleep(500 * 1000);
-            std::string st = runCmd("cmd wifi status 2>/dev/null");
-            if (connectedSsidFromStatus(st) == ssid) return;  // connected: generic flow clears the HUD
-            std::string dump = runCmd("dumpsys wifi 2>/dev/null");
-            if (wifiDumpWrongPassword(dump, ssid)) {
+            const nanoplat::Network::JoinCheck check = nanoplat::get().net->checkWifiJoin(ssid);
+            if (check == nanoplat::Network::JoinCheck::Connected) return;  // connected: generic flow clears the HUD
+            if (check == nanoplat::Network::JoinCheck::WrongPassword) {
                 int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
                         std::chrono::steady_clock::now().time_since_epoch()).count();
                 mWifiStatusMsg = std::string(trDyn("Wrong password")) + ": " + ssid;
@@ -1350,71 +1006,6 @@ void NanoMenu::renderWifiManage() {
 // Network Settings dialogs backed by the live system state
 // ---------------------------------------------------------------------------
 
-// Trim leading/trailing whitespace + newlines from shell output.
-static std::string netTrim(std::string s) {
-    while (!s.empty() && (s.back() == '\n' || s.back() == '\r'
-                       || s.back() == ' ' || s.back() == '\t')) s.pop_back();
-    size_t b = 0;
-    while (b < s.size() && (s[b] == ' ' || s[b] == '\t')) b++;
-    return s.substr(b);
-}
-
-// Parse the WIFI network's LinkProperties out of `dumpsys connectivity` for the
-// default-route gateway and DNS servers. The legacy dhcp.wlan0.gateway / net.dns1
-// system properties are unset on modern Android (DHCP results live in
-// ConnectivityService's LinkProperties), and direct ip/ip route do not work in
-// nano's domain - but dumpsys (binder) does.
-static void netGwDnsFromDumpsys(std::string& gw, std::string& dns1, std::string& dns2) {
-    std::string d = runCmd("dumpsys connectivity 2>/dev/null");
-    size_t at = d.find("InterfaceName: wlan0");
-    if (at == std::string::npos) return;
-    size_t end = d.find("}  nc{", at);
-    if (end == std::string::npos) end = d.find("NetworkAgentInfo{", at + 1);
-    if (end == std::string::npos) end = d.size();
-    std::string b = d.substr(at, end - at);
-    auto splitCsv = [](const std::string& s) {
-        std::vector<std::string> out; std::string cur;
-        for (char c : s) { if (c == ',') { out.push_back(cur); cur.clear(); } else cur += c; }
-        if (!cur.empty()) out.push_back(cur);
-        return out;
-    };
-    // DnsAddresses: [ 8.8.8.8,8.8.4.4 ]   (comma-joined, each may have a leading '/')
-    { size_t p = b.find("DnsAddresses: [");
-      if (p != std::string::npos) { p += 15; size_t e = b.find(']', p);
-        std::string inside = b.substr(p, (e == std::string::npos ? b.size() : e) - p);
-        int idx = 0;
-        for (auto& s : splitCsv(inside)) {
-            std::string t = netTrim(s);
-            if (!t.empty() && t[0] == '/') t = t.substr(1);
-            if (t.empty()) continue;
-            if (idx == 0) dns1 = t; else { dns2 = t; break; }
-            idx++;
-        }
-      }
-    }
-    // Routes: [ 0.0.0.0/0 -> 192.168.0.1 wlan0 mtu 0, ... ]
-    { size_t p = b.find("Routes: [");
-      if (p != std::string::npos) { p += 9; size_t e = b.find(']', p);
-        std::string inside = b.substr(p, (e == std::string::npos ? b.size() : e) - p);
-        const std::string v4p = "0.0.0.0/0 -> ", v6p = "::/0 -> ";
-        std::string v4gw, v6gw;
-        for (auto& r : splitCsv(inside)) {
-            std::string t = netTrim(r);
-            if (t.rfind(v4p, 0) == 0) {
-                std::string g = t.substr(v4p.size());
-                g = g.substr(0, g.find(' '));
-                if (g != "0.0.0.0" && !g.empty()) v4gw = g;
-            } else if (t.rfind(v6p, 0) == 0) {
-                std::string g = t.substr(v6p.size());
-                g = g.substr(0, g.find(' '));
-                if (g != "::" && !g.empty()) v6gw = g;
-            }
-        }
-        gw = !v4gw.empty() ? v4gw : v6gw;
-      }
-    }
-}
-
 std::string NanoMenu::buildNetStatusBody() {
     std::string ssid; bool connected = false;
     {
@@ -1422,18 +1013,7 @@ std::string NanoMenu::buildNetStatusBody() {
         ssid = mWifiSsid;
         connected = (mWifiLevel == kWifiLevel_Connected);
     }
-    // IP from the framework status (binder); gateway + DNS from the connectivity
-    // dump's LinkProperties (the legacy dhcp.*/net.dns* props are unset). MAC via
-    // sysfs. Direct ip/ip route do not work in nano (see startNetTest).
-    std::string st = runCmd("cmd wifi status 2>/dev/null");
-    std::string ip;
-    { size_t p = st.find("IP: /");
-      if (p != std::string::npos) { p += 5; size_t e = p;
-        while (e < st.size() && (isdigit((unsigned char)st[e]) || st[e] == '.')) e++;
-        ip = st.substr(p, e - p); if (ip == "0.0.0.0") ip.clear(); } }
-    std::string gw, dns, dns2;
-    if (connected) netGwDnsFromDumpsys(gw, dns, dns2);
-    std::string mac = netTrim(runCmd("cat /sys/class/net/wlan0/address 2>/dev/null"));
+    auto [ip, gw, dns, dns2, mac] = nanoplat::get().net->wifiAddresses(connected);
     auto orDash = [](const std::string& s) { return s.empty() ? std::string("-") : s; };
     std::string body;
     body += std::string(trDyn("Connection Method")) + "  " + trDyn("Wireless (Wi-Fi)") + "\n";
@@ -1473,15 +1053,7 @@ std::string NanoMenu::buildSysInfoBody() {
     else { const std::string grel = prop("ro.thimsy.release", ""); if (!grel.empty()) gver += " " + grel; }
     std::string bdate = prop("ro.build.date", "");
 
-    // Wi-Fi MAC via sysfs; IPv4 from the framework status (binder), exactly like
-    // buildNetStatusBody (direct ip/route do not work in nano's restricted runtime).
-    std::string mac = netTrim(runCmd("cat /sys/class/net/wlan0/address 2>/dev/null"));
-    std::string st  = runCmd("cmd wifi status 2>/dev/null");
-    std::string ip;
-    { size_t p = st.find("IP: /");
-      if (p != std::string::npos) { p += 5; size_t e = p;
-        while (e < st.size() && (isdigit((unsigned char)st[e]) || st[e] == '.')) e++;
-        ip = st.substr(p, e - p); if (ip == "0.0.0.0") ip.clear(); } }
+    auto [mac, ip] = nanoplat::get().net->wifiMacAndIp();
 
     // System storage: the userdata (/data) partition is the meaningful free space.
     std::string storage;
@@ -1535,31 +1107,16 @@ void NanoMenu::startNetTest() {
         // Sleep in 100ms chunks so stopNetTest() stays responsive.
         auto nap = [&](int ms) { for (int k = 0; k < ms / 100 && alive(); k++)
             std::this_thread::sleep_for(std::chrono::milliseconds(100)); };
-        // Single source of truth that works in nano's restricted runtime: the
-        // framework "cmd wifi status" (binder). Direct ip/ping do NOT work here -
-        // ping needs CAP_NET_RAW (nano's init capabilities allowlist omits it) and
-        // the RTNETLINK read for `ip` is unavailable to the bootanim domain, so
-        // both return empty and every test row read "Failed" even when online.
-        // `cmd wifi status` reports the DHCP IP and Android's own INTERNET /
-        // VALIDATED capability (VALIDATED = the OS confirmed reachability + DNS).
-        auto ipFromStatus = [](const std::string& st) -> std::string {
-            size_t p = st.find("IP: /");
-            if (p == std::string::npos) return "";
-            p += 5; size_t e = p;
-            while (e < st.size() && (isdigit((unsigned char)st[e]) || st[e] == '.')) e++;
-            std::string v = st.substr(p, e - p);
-            return (v == "0.0.0.0") ? std::string() : v;
-        };
         // 1. Address from DHCP - poll up to ~12s (a fresh connect may settle).
         // WifiInfo carries the IPv4 address; on a dual-stack or IPv6-only network
         // the OS also assigns IPv6, which WifiInfo does not surface, so a VALIDATED
         // link (it has a working v4 OR v6 address) also counts as "address obtained".
         pub(L1 + trDyn("Testing...") + "\n");
-        std::string ip, st; bool validated = false;
+        std::string ip; bool validated = false;
         for (int t = 0; t < 24 && alive(); t++) {
-            st = runCmd("cmd wifi status 2>/dev/null");
-            ip = ipFromStatus(st);
-            validated = st.find("VALIDATED") != std::string::npos;
+            const nanoplat::Network::WifiLink link = nanoplat::get().net->wifiLink();
+            ip = link.ip;
+            validated = link.validated;
             if (!ip.empty() || validated) break;
             nap(500);
         }
@@ -1571,8 +1128,7 @@ void NanoMenu::startNetTest() {
         bool inet = validated;
         for (int t = 0; t < 16 && haveIp && alive() && !inet; t++) {
             nap(700);
-            st = runCmd("cmd wifi status 2>/dev/null");
-            if (st.find("VALIDATED") != std::string::npos) inet = true;
+            if (nanoplat::get().net->wifiLink().validated) inet = true;
         }
         if (!alive()) return;
         // 3. Name resolution - Android's validation probe resolves a hostname over
@@ -1715,28 +1271,9 @@ void NanoMenu::refreshBtList() {
         }
     }
 
-    // gammaos-net bt list-bonded is the same getBondedDevices() call
-    // Settings uses; it works whether or not `cmd bluetooth_manager`
-    // ever shipped a list-bonded-devices subcommand. We still parse
-    // dumpsys once to flip the connected bit on live links, because
-    // BluetoothManager has no public "is this one connected right now"
-    // query for classic HID/A2DP profiles.
-    //
-    // Detect radio state so the toggle row reflects reality. When BT is
-    // off we still want the list to render with just the toggle row.
-    std::string btState = runCmd("settings get global bluetooth_on");
-    bool btOn = false;
-    for (char c : btState) {
-        if (c == '1') { btOn = true; break; }
-        if (c == '0') { btOn = false; break; }
-        if (c != ' ' && c != '\n' && c != '\r') break;
-    }
-    std::string bondText = btOn ? runCmd("gammaos-net bt list-bonded", 12)
-                                : std::string();
-    auto devs = parseBondedDevices(bondText);
-    // Connection state now rides the 4th TSV column from gammaos-net bt
-    // list-bonded (BluetoothDevice.isConnected() on the framework side).
-    // The old dumpsys scrape was slow (~500 ms) and brittle.
+    nanoplat::Network::BtList list = nanoplat::get().net->btListState();
+    bool btOn = list.on;
+    auto devs = toMenu(std::move(list.devices));
     // If an active discovery landed non-bonded devices, preserve those
     // between refreshes so the list doesn't flash back to "bonded only"
     // while the user is still deciding which result to pair with.
@@ -1787,8 +1324,7 @@ void NanoMenu::discoverBtDevices() {
     // `gammaos-net bt scan` blocks until discovery finishes or the
     // timeout elapses (~8 s by default). Must NOT run on the UI thread;
     // callers go through startBtDiscoveryAsync() which spawns a thread.
-    std::string scanText = runCmd("gammaos-net bt scan 8", 30);
-    auto scanned = parseBtScanResults(scanText);
+    auto scanned = toMenu(nanoplat::get().net->discoverBt());
     // Merge into the live list: update existing entries in place so
     // their connected state isn't clobbered, and append new ones.
     std::lock_guard<std::mutex> lk(mBtListMutex);
@@ -1909,11 +1445,7 @@ void NanoMenu::pairBtDevice(const std::string& mac) {
                 for (auto& d : mBtEntries) if (d.address == macCopy && d.bonded) { ok = true; break; }
             }
         } else {
-            std::string cmd = "gammaos-net bt pair " + macCopy;
-            std::string result = runCmd(cmd.c_str(), 80);   // a BT bond takes 30s+ (SSP + profiles); never a 3s cap
-            ok = result.find("OK") != std::string::npos;
-            if (!ok) ALOGW("pairBtDevice %s failed: %s",
-                           macCopy.c_str(), result.c_str());
+            ok = nanoplat::get().net->pairBt(macCopy);
         }
         mBtStatusMsg = trDyn(ok ? "Paired" : "Pair failed");
         mBtStatusMsgUntilMs = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -1928,11 +1460,7 @@ void NanoMenu::unpairBtDevice(const std::string& mac) {
     if (nanoNetBridgeCmd("bt_unpair", mac)) {
         ok = true;   // fire-and-forget; the bond-state broadcast repopulates the list
     } else {
-        std::string cmd = "gammaos-net bt unpair " + mac;
-        std::string result = runCmd(cmd.c_str(), 20);
-        ok = result.find("OK") != std::string::npos;
-        if (!ok) ALOGW("unpairBtDevice %s failed: %s",
-                       mac.c_str(), result.c_str());
+        ok = nanoplat::get().net->unpairBt(mac);
     }
     mBtStatusMsg = trDyn(ok ? "Removed" : "Unpair failed");
     mBtStatusMsgUntilMs = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -1964,11 +1492,9 @@ void NanoMenu::btWizRefreshBondedAsync() {
         // toggle and hide the rest when off. Read dumpsys (not `settings global
         // bluetooth_on`, which is stale, and NOT gammaos-net, which auto-enables
         // the radio - that would re-enable BT every refresh while it is off).
-        std::string d = runCmd("dumpsys bluetooth_manager 2>/dev/null");
-        bool on = (d.find("enabled: true") != std::string::npos);
+        bool on = nanoplat::get().net->btRadioOn();
         mBtWizRadioOn = on;
-        std::string txt = on ? runCmd("gammaos-net bt list-bonded", 12) : std::string();
-        auto devs = parseBondedDevices(txt);
+        auto devs = on ? toMenu(nanoplat::get().net->bondedBt()) : std::vector<NanoMenu::BtDevEntry>();
         { std::lock_guard<std::mutex> lk(mBtWizMutex); mBtWizBonded.swap(devs); }
         mBtWizBondedGen++;
         mDisplayDirty = true;
@@ -1985,17 +1511,10 @@ void NanoMenu::btWizToggleRadioAsync(bool on) {
     if (!on) { std::lock_guard<std::mutex> lk(mBtWizMutex); mBtWizBonded.clear(); }
     mDisplayDirty = true;
     std::thread([this, on]() {
-        // BluetoothAdapter.enable()/disable() via the helper PERSISTS bluetooth_on,
-        // so the radio stays in the requested state - unlike `cmd bluetooth_manager`
-        // from nano's context, which left bluetooth_on=1 and let the service
-        // reconcile the radio back on.
-        if (!nanoNetBridgeCmd(on ? "bt_enable" : "bt_disable", ""))
-            runCmd(on ? "gammaos-net bt radio on" : "gammaos-net bt radio off", 20);   // waits ~10s for the adapter
-        std::string d = runCmd("dumpsys bluetooth_manager 2>/dev/null");
-        bool realOn = (d.find("enabled: true") != std::string::npos);
+        nanoplat::get().net->setBtRadio(on);
+        bool realOn = nanoplat::get().net->btRadioOn();
         mBtWizRadioOn = realOn;
-        std::string txt = realOn ? runCmd("gammaos-net bt list-bonded", 12) : std::string();
-        auto devs = parseBondedDevices(txt);
+        auto devs = realOn ? toMenu(nanoplat::get().net->bondedBt()) : std::vector<NanoMenu::BtDevEntry>();
         { std::lock_guard<std::mutex> lk(mBtWizMutex); mBtWizBonded.swap(devs); }
         mBtWizBondedGen++;
         mBtWizToggling = false;
@@ -2060,9 +1579,7 @@ void NanoMenu::btWizScanAsync() {
             }
             (void)nanoNetBridgeCmd("bt_scan_stop", "");
         } else {
-            // Legacy one-shot inquiry (15s) via the gammaos-net helper.
-            std::string txt = runCmd("gammaos-net bt scan 15", 40);
-            auto devs = parseBtScanResults(txt);
+            auto devs = toMenu(nanoplat::get().net->btWizScan());
             mergeInto(devs);
         }
         mBtWizBusy = false;
@@ -2077,21 +1594,9 @@ void NanoMenu::btWizPairAsync(const std::string& addr, const std::string& pin) {
     property_set("sys.gammaos.bt.pair_reply", "");
     std::string a = addr, p = pin;
     std::thread([this, a, p]() {
-        std::string cmd = "gammaos-net bt pair " + a;
-        if (!p.empty()) cmd += " " + p;           // a PIN, or --ask: the UI answers what the device asks
-        // A BT bond blocks for the whole SSP + profile-connect exchange (5-30s+, worst case ~75s
-        // with the transport fallback). runCmd's default 3s cap SIGTERMs it mid-bond, so the pair
-        // returns no "OK" and the wizard shows "could not be registered" - the exact regression the
-        // fb8b541745e watchdog-bound introduced. This runs on a detached worker, so a long cap is safe.
-        // --ask can wait on the user for up to a minute per prompt (a PIN typed from the manual),
-        // on each transport.
-        std::string r = runCmdUnlocked(cmd, p == "--ask" ? 320 : 80);
-        property_set("sys.gammaos.bt_autopair", "0");   // in case the helper was stopped mid-pair
-        mBtWizOpOk = r.find("OK") != std::string::npos;
-        if (!mBtWizOpOk) ALOGW("btWizPair %s failed: %s", a.c_str(), r.c_str());
+        mBtWizOpOk = nanoplat::get().net->btWizPair(a, p);
         // Refresh bonded so the freshly paired device appears in Manage.
-        std::string txt = runCmd("gammaos-net bt list-bonded", 12);
-        auto devs = parseBondedDevices(txt);
+        auto devs = toMenu(nanoplat::get().net->bondedBt());
         { std::lock_guard<std::mutex> lk(mBtWizMutex); mBtWizBonded.swap(devs); }
         mBtWizPairRunning = false;
         mBtWizBusy = false;
@@ -2121,18 +1626,13 @@ void NanoMenu::btWizInboundAcceptAsync(const std::string& addr, int variant) {
     mBtWizBusy = true; mBtWizOpOk = false;
     std::string a = addr; int v = variant;
     std::thread([this, a, v]() {
-        // Apply the user's accept to the pending inbound request, then wait for
-        // the bond to land (the BondStateMachine patch left it pending).
-        std::string cmd = "gammaos-net bt confirm " + a + " accept";
-        if (v == 0) cmd += " 0000";   // classic PIN inbound: default 0000
-        runCmd(cmd.c_str(), 20);
+        nanoplat::get().net->btConfirmInbound(a, v);
         // Poll for the bond to land. A real bond completes in the first couple of
         // iterations; the cap bounds the failure path (each list-bonded already
         // costs ~1.5s to spawn, so 8 iterations is ~15s worst case).
         for (int i = 0; i < 8 && !mBtWizOpOk; i++) {
             usleep(700 * 1000);
-            std::string txt = runCmd("gammaos-net bt list-bonded", 12);
-            auto devs = parseBondedDevices(txt);
+            auto devs = toMenu(nanoplat::get().net->bondedBt());
             bool bonded = false;
             for (auto& d : devs) if (d.address == a) { bonded = true; break; }
             { std::lock_guard<std::mutex> lk(mBtWizMutex); mBtWizBonded.swap(devs); }
@@ -2147,11 +1647,9 @@ void NanoMenu::btWizConnectAsync(const std::string& addr) {
     mBtWizBusy = true; mBtWizOpOk = false;
     std::string a = addr;
     std::thread([this, a]() {
-        std::string r = runCmd(("gammaos-net bt connect " + a).c_str(), 20);
-        mBtWizOpOk = r.find("OK") != std::string::npos;
+        mBtWizOpOk = nanoplat::get().net->btWizConnect(a);
         usleep(1200 * 1000);   // let the profiles attach before re-reading state
-        std::string txt = runCmd("gammaos-net bt list-bonded", 12);
-        auto devs = parseBondedDevices(txt);
+        auto devs = toMenu(nanoplat::get().net->bondedBt());
         { std::lock_guard<std::mutex> lk(mBtWizMutex); mBtWizBonded.swap(devs); }
         mBtWizBusy = false;
         mDisplayDirty = true;
@@ -2162,11 +1660,9 @@ void NanoMenu::btWizDisconnectAsync(const std::string& addr) {
     mBtWizBusy = true; mBtWizOpOk = false;
     std::string a = addr;
     std::thread([this, a]() {
-        std::string r = runCmd(("gammaos-net bt disconnect " + a).c_str(), 20);
-        mBtWizOpOk = r.find("OK") != std::string::npos;
+        mBtWizOpOk = nanoplat::get().net->btWizDisconnect(a);
         usleep(800 * 1000);
-        std::string txt = runCmd("gammaos-net bt list-bonded", 12);
-        auto devs = parseBondedDevices(txt);
+        auto devs = toMenu(nanoplat::get().net->bondedBt());
         { std::lock_guard<std::mutex> lk(mBtWizMutex); mBtWizBonded.swap(devs); }
         mBtWizBusy = false;
         mDisplayDirty = true;
@@ -2177,10 +1673,8 @@ void NanoMenu::btWizUnpairAsync(const std::string& addr) {
     mBtWizBusy = true; mBtWizOpOk = false;
     std::string a = addr;
     std::thread([this, a]() {
-        std::string r = runCmd(("gammaos-net bt unpair " + a).c_str(), 20);
-        mBtWizOpOk = r.find("OK") != std::string::npos;
-        std::string txt = runCmd("gammaos-net bt list-bonded", 12);
-        auto devs = parseBondedDevices(txt);
+        mBtWizOpOk = nanoplat::get().net->btWizUnpair(a);
+        auto devs = toMenu(nanoplat::get().net->bondedBt());
         { std::lock_guard<std::mutex> lk(mBtWizMutex); mBtWizBonded.swap(devs); }
         mBtWizBusy = false;
         mDisplayDirty = true;
