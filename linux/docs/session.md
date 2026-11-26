@@ -101,6 +101,7 @@ A malformed numbered request is answered `<seq>:error:<why>`; a malformed unnumb
 | `sys.thimsy.nano.first_frame` | Nano | `1` once its first frame is on screen: the session starts the deferred services. |
 | `sys.boot_completed` | Nano | `1` at the same moment (its control keys, G9-11): Nano gates sleep and its idle work on it. The session never writes it. |
 | `sys.thimsy.game.pid` | Nano | The pid of the game it launched (the game is its process group leader), written when the game starts. The session stops, continues and quits that group; when Nano has exited and left the game running, the session clears the key once that game ends. |
+| `sys.gammaos.nano.app_launched`, `sys.gammaos.nano.app_drawn` | Nano; the session | Android's framework sets them when an app starts and clears them when it returns to the home. On Linux Nano's launcher sets `app_launched=1` when it takes a launch (so its menu's exit path does not wait for it); the session sets both back to `0` when the game Nano left running ends, and before it starts Nano with no game running (a stale `1` would read as a game in front of Nano). |
 | `sys.powerctl` | Nano (Android's key) | `shutdown[,reason]` or `reboot[,reason]`: as the `poweroff` and `reboot` requests. |
 | `sys.gammaos.nano.scrape_run` | Nano | Any new value starts the scraper (decision I25), as `gammaos-nano.rc`'s trigger does. |
 | `sys.thimsy.volumes.serial` | session | Bumped after each write of `volumes.json`. |
@@ -145,7 +146,10 @@ exits while the game it launched still runs (as Android's home exits when it sta
 started again when that game ends, without a back-off. Nano exits after every launch: it starts the
 game, leaves it running and exits 0. An exit 0 with no game running (the game ended at once, or the
 launch could not start) is not a crash either: Nano is started again at once and the back-off is
-reset. A Nano whose menu ends with no launch exits 1, which counts as a crash. After `poweroff` or
+reset. A launch loop is held back, though: a launch cycle (from Nano's start until it is to start
+again, the game's run included) shorter than 10 s is quick, and after three quick cycles in a row
+the next ones wait the crash back-off (1, 2, 4 ... up to 30 s); a longer cycle, or a `restart-nano`
+request, ends the run. A Nano whose menu ends with no launch exits 1, which counts as a crash. After `poweroff` or
 `reboot` nothing is started again.
 
 Nano runs in its own mount namespace (B.5, decision I40): every node of an internal-storage disk

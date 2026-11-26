@@ -636,19 +636,30 @@ class RespawnedSession(SessionCase):
 
 # A Nano that launches, as thimsy-nano does since linux-host-impls-1: its first run starts a game in
 # its own session, writes sys.thimsy.game.pid and exits 0; its second exits 0 with no game (a launch
-# that could not start); later runs stay. Each run notes when it started (ms).
+# that could not start); later runs stay. Each run notes when it started (ms) and the app_launched
+# and app_drawn it found, and each launch sets app_launched=1 as Nano's launcher does (the first
+# app_drawn=1 too, as Android's framework would).
+NANO_SETS = r"""set_prop() {
+	printf '%s' "$2" > "$R/run/thimsy/props/.$1.tmp"
+	mv "$R/run/thimsy/props/.$1.tmp" "$R/run/thimsy/props/$1"
+}
+"""
 NANO_LAUNCHES = TOOL + r"""R=$THIMSY_ROOT
-n=$(cat "$R/nano.runs" 2>/dev/null || echo 0)
+""" + NANO_SETS + r"""n=$(cat "$R/nano.runs" 2>/dev/null || echo 0)
 n=$((n + 1))
 echo "$n" > "$R/nano.runs"
 echo "$(($(date +%s%N) / 1000000))" >> "$R/nano.starts"
+echo "$(cat "$R/run/thimsy/props/sys.gammaos.nano.app_launched" 2>/dev/null)/$(cat "$R/run/thimsy/props/sys.gammaos.nano.app_drawn" 2>/dev/null)" >> "$R/nano.app_state"
 case $n in
 1)
+	set_prop sys.gammaos.nano.app_launched 1
+	set_prop sys.gammaos.nano.app_drawn 1
 	setsid sleep 60 > /dev/null 2>&1 &
-	printf '%s' "$!" > "$R/run/thimsy/props/.sys.thimsy.game.pid.tmp"
-	mv "$R/run/thimsy/props/.sys.thimsy.game.pid.tmp" "$R/run/thimsy/props/sys.thimsy.game.pid"
+	set_prop sys.thimsy.game.pid "$!"
 	exit 0 ;;
-2) exit 0 ;;
+2)
+	set_prop sys.gammaos.nano.app_launched 1
+	exit 0 ;;
 esac
 exec sleep 1000
 """
@@ -663,6 +674,8 @@ class NanoLeavesAGameRunning(SessionCase):
     @classmethod
     def prepare(cls, r: Root) -> None:
         r.tool("thimsy-nano", NANO_LAUNCHES)
+        # Left by an earlier session of this boot (a Nano that crashed in front of its game).
+        r.write("/run/thimsy/props/sys.gammaos.nano.app_launched", "1")
 
     def test_nano_comes_back_after_the_game_and_after_a_failed_launch(self):
         wait_for(lambda: "Nano left game" in self.log(), what="the game watched")
@@ -680,6 +693,37 @@ class NanoLeavesAGameRunning(SessionCase):
         self.assertEqual(len(starts), 3)
         # Run 2 exited 0 at once with no game: run 3 follows without the 1 s back-off.
         self.assertLess(starts[2] - starts[1], 900)
+        # Every Nano starts with no app in front of it: the stale 1 at the session's start, the
+        # game's (cleared when it ended) and the failed launch's (cleared before run 3).
+        wait_for(lambda: len(self.r.read("/nano.app_state").split()) == 3, what="run 3's app state")
+        self.assertEqual(self.r.read("/nano.app_state").split(), ["0/", "0/0", "0/0"])
+        self.assertIn("sys.gammaos.nano.app_launched cleared (the game ended)", self.log())
+        self.assertIn("sys.gammaos.nano.app_drawn cleared (the game ended)", self.log())
+
+
+# A Nano whose launch fails at its start on every run (an auto-launch of a broken game, say): exit 0
+# with no game each time, at once.
+NANO_LAUNCH_LOOP = TOOL + r"""R=$THIMSY_ROOT
+echo "$(($(date +%s%N) / 1000000))" >> "$R/nano.starts"
+exit 0
+"""
+
+
+class ALaunchLoopBacksOff(SessionCase):
+    """REV4-2 restarts Nano at once after a launch with no game; a launch that fails at Nano's start
+    every time would then spin. After three quick launch cycles in a row the crash back-off applies."""
+
+    @classmethod
+    def prepare(cls, r: Root) -> None:
+        r.tool("thimsy-nano", NANO_LAUNCH_LOOP)
+
+    def test_the_fourth_quick_restart_waits(self):
+        wait_for(lambda: len(self.r.read("/nano.starts").split()) >= 6, timeout=15, what="six Nano starts")
+        starts = [int(x) for x in self.r.read("/nano.starts").split()]
+        gaps = [b - a for a, b in zip(starts, starts[1:])]
+        self.assertTrue(all(g < 900 for g in gaps[:3]), gaps)  # three free restarts
+        self.assertGreaterEqual(gaps[3], 950, gaps)            # then 1 s
+        self.assertGreaterEqual(gaps[4], 1950, gaps)           # and 2 s
 
 
 if __name__ == "__main__":
