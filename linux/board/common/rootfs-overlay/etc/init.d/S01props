@@ -4,8 +4,11 @@
 #
 # "thimsy-prop boot" writes /run/thimsy/props/ro/<key> from
 # /usr/share/thimsy/device.json, /storage/thimsy/install.json and
-# /usr/share/thimsy/build.props (IMPLEMENTATION B.3). The family it names
-# (ro.thimsy.family) picks the hooks under /usr/share/thimsy/family/.
+# /usr/share/thimsy/build.props (IMPLEMENTATION B.3); install.json is on the
+# data partition S00base mounted at /storage (G2e-14). The family it names
+# (ro.thimsy.family, device.json's "family") picks the hooks under
+# /usr/share/thimsy/family/; ro.thimsy.modules (device.json's "modules") is
+# S03modules' list.
 . "${THIMSY_ROOT:-}/usr/share/thimsy/init/lib.sh"
 
 TAG=S01props
@@ -13,7 +16,10 @@ TAG=S01props
 case ${1:-start} in
 start)
 	if command -v "$PROP" > /dev/null 2>&1; then
-		"$PROP" boot || thimsy_warn $TAG "thimsy-prop boot failed ($?)"
+		"$PROP" boot --device "$R/usr/share/thimsy/device.json" \
+			--install "$R/storage/thimsy/install.json" \
+			--build "$R/usr/share/thimsy/build.props" ||
+			thimsy_warn $TAG "thimsy-prop boot failed ($?)"
 	else
 		thimsy_warn $TAG "thimsy-prop is missing: no ro.* properties"
 	fi

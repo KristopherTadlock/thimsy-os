@@ -41,7 +41,7 @@ class PropTool : public ::testing::Test {
         thimsy_test::spit(dir / "device.json", R"({
             "id": "anbernic-rg-arc-d", "family": "rk3566", "model": "Anbernic RG ARC-D", "ram_mb": 2048,
             "panel": {"width": 480, "height": 640, "rotation": 90},
-            "pad": {"face_buttons": 6},
+            "pad": {"face_buttons": 6}, "modules": ["joypad", "rumble"],
             "product": {"manufacturer": "Anbernic", "model": "RG ARC-D"},
             "props": {"ro.gammaos.device": "arc-d"}
         })");
@@ -116,6 +116,10 @@ TEST_F(PropTool, BootWritesReadOnlyKeysAndSeals) {
     EXPECT_EQ(s->get("ro.thimsy.device.ram_mb"), "2048");
     EXPECT_EQ(s->get("ro.thimsy.device.panel.rotation"), "90");
     EXPECT_EQ(s->list("ro.thimsy.device.pad").size(), 0u);  // only top-level and panel scalars
+    // The names the init scripts, thimsy-session and Nano's control keys read.
+    EXPECT_EQ(s->get("ro.thimsy.family"), "rk3566");
+    EXPECT_EQ(s->get("ro.thimsy.device.family"), "rk3566");
+    EXPECT_EQ(s->get("ro.thimsy.modules"), "joypad rumble");
     // install.json may only add ro.thimsy.install.*.
     EXPECT_EQ(s->get("ro.thimsy.install.profile"), "small");
     EXPECT_EQ(s->get("ro.thimsy.install.ro_product_model"), "not me");
@@ -142,7 +146,21 @@ TEST_F(PropTool, BootPrecedenceAndFallbacks) {
     EXPECT_EQ(s->get("ro.product.vendor.model"), "DT Model");  // falls back to the device-tree model
     EXPECT_EQ(s->get("ro.board.platform"), "h700");            // falls back to the family
     EXPECT_EQ(s->get("ro.ok"), "yes");
+    EXPECT_EQ(s->get("ro.thimsy.family"), "h700");
+    EXPECT_EQ(s->get("ro.thimsy.modules"), "");                // no "modules": none
     EXPECT_TRUE(s->readOnlySealed());
+}
+
+TEST_F(PropTool, BootRefusesBadModuleNames) {
+    thimsy_test::spit(dir / "build.props", "ro.thimsy.version=1\n");
+    thimsy_test::spit(dir / "device.json", R"({"id": "dev", "family": "h700", "model": "M",
+                                               "modules": ["ok_1", "bad name", 3, "dash-ok"]})");
+    const auto r = run({"boot"});
+    EXPECT_EQ(r.code(), 2) << r.err;
+    EXPECT_NE(r.err.find("module name is ignored"), std::string::npos) << r.err;
+    auto s = store();
+    ASSERT_TRUE(s != nullptr);
+    EXPECT_EQ(s->get("ro.thimsy.modules"), "ok_1 dash-ok");
 }
 
 TEST_F(PropTool, BootWithBrokenOrMissingFiles) {

@@ -214,6 +214,14 @@ TEST_F(ShellGateTest, PowerCommandsGoThroughPowerctl) {
     EXPECT_EQ(props["sys.powerctl"], std::string("reboot,recovery"));
     system("svc power shutdown");
     EXPECT_EQ(props["sys.powerctl"], std::string("shutdown"));
+    // The usual Android spelling, by absolute path: still svc, not reboot.
+    props["sys.powerctl"] = "";
+    EXPECT_EQ(WEXITSTATUS(system("/system/bin/svc power shutdown")), 0);
+    EXPECT_EQ(props["sys.powerctl"], std::string("shutdown"));
+    system("/system/bin/svc power reboot");
+    EXPECT_EQ(props["sys.powerctl"], std::string("reboot"));
+    system("/system/bin/reboot -p");
+    EXPECT_EQ(props["sys.powerctl"], std::string("shutdown"));
     EXPECT_EQ(WEXITSTATUS(system("restorecon -R /data/x")), 0);
 }
 

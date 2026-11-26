@@ -6,6 +6,8 @@ A scenario is JSON lines: one step per line, `#` and `//` lines and blank lines 
 step is "boot". The runner writes the jail, the boot properties and nano-headless's host config,
 starts it, plays the steps against the event log and the jail's files, and at the end asks Nano to
 quit and checks that no shell command went unanswered (the host's shell gate is record-only).
+Every nano-headless process must end with status 0 (a signal, such as ASan's abort, or any other
+status fails the scenario), and its output must carry no sanitizer report (SANITIZER_MARKERS).
 
 Standard library only; Python 3.8 or later.
 """
@@ -47,6 +49,9 @@ DEFAULT_PAD = {
 BOOT_PROPS = {"persist.gammaos.nano.mlockall": "0"}
 LAUNCH_PREFIX = "sys.gammaos.nano."
 DEFAULT_WITHIN_MS = 10000
+# Lines of a sanitizer report in nano-headless's output (ASan, LSan, UBSan, TSan).
+SANITIZER_MARKERS = ("ERROR: AddressSanitizer", "ERROR: LeakSanitizer", "WARNING: ThreadSanitizer",
+                     "runtime error:", "SUMMARY: AddressSanitizer", "SUMMARY: UndefinedBehaviorSanitizer")
 
 STEPS = ("boot", "expect", "expect_prop", "expect_persist", "expect_file", "expect_launch", "expect_no_shell",
          "press", "frames", "barrier", "capture", "wait_ms", "set_prop", "child_exit", "quit")
@@ -311,6 +316,14 @@ class HeadlessRun:
         self.proc: Optional[subprocess.Popen] = None
         self.log_path = os.path.join(self.work, "nano-headless.log")
         self.starts = 0
+        # (start number, status) of every process that has ended: Popen's returncode, so -N for
+        # a signal. check_exits() fails the scenario on any but 0.
+        self.exits: List[Tuple[int, int]] = []
+        self.checked_exits = 0
+        # Launch commits count only from this index of events.all on: the current process's start,
+        # or just past the commit the last expect_launch matched (test-quality-6).
+        self.launch_from = 0
+        self.start_index = 0
 
     # -- life cycle
     def prepare(self) -> None:
@@ -340,6 +353,9 @@ class HeadlessRun:
         finally:
             log.close()
         self.wait_for(lambda: self._started(), 10000 * self.time_scale, "nano-headless's start event")
+        starts = [i for i, e in enumerate(self.events.all) if e.get("ev") == "start"]
+        self.start_index = starts[-1] if starts else len(self.events.all)
+        self.launch_from = max(self.launch_from, self.start_index)
 
     def _started(self) -> bool:
         self.events.poll()
@@ -348,6 +364,34 @@ class HeadlessRun:
     def running(self) -> bool:
         return self.proc is not None and self.proc.poll() is None
 
+    def _reap(self) -> None:
+        """Records the current process's status once it has ended."""
+        if self.proc is None or self.proc.poll() is None:
+            return
+        if not any(n == self.starts for n, _ in self.exits):
+            self.exits.append((self.starts, self.proc.returncode))
+
+    def check_exits(self) -> None:
+        """Fails on a process that ended other than with status 0, and on a sanitizer report in
+        the output (the scenarios run nano-headless with ASan and abort_on_error=1)."""
+        self._reap()
+        problems = []
+        for n, status in self.exits[self.checked_exits:]:
+            if status < 0:
+                problems.append("nano-headless #%d died of signal %d" % (n, -status))
+            elif status != 0:
+                problems.append("nano-headless #%d exited with status %d" % (n, status))
+        self.checked_exits = len(self.exits)
+        try:
+            with open(self.log_path, "r", encoding="utf-8", errors="replace") as f:
+                reports = [ln.rstrip() for ln in f if any(m in ln for m in SANITIZER_MARKERS)]
+        except OSError:
+            reports = []
+        if reports:
+            problems.append("sanitizer reports in %s:\n    %s" % (self.log_path, "\n    ".join(reports[:10])))
+        if problems:
+            raise ScenarioFailure("; ".join(problems))
+
     def stop(self) -> None:
         if self.running() and self.fifos is not None:
             try:
@@ -355,9 +399,11 @@ class HeadlessRun:
                 self.proc.wait(timeout=10 * self.time_scale)
             except (OSError, subprocess.TimeoutExpired):
                 pass
+        self._reap()
         if self.running():
             self.proc.kill()
             self.proc.wait()
+            self._reap()
         if self.fifos is not None:
             self.fifos.close()
 
@@ -369,6 +415,8 @@ class HeadlessRun:
             for step in self.steps[1:]:
                 self.do(step)
             self.check_shell()
+            self.stop()   # a quit; a process that does not end on it is killed, and that fails below
+            self.check_exits()
         except ScenarioFailure as e:
             raise ScenarioFailure("%s\n%s" % (e, self.context()))
         finally:
@@ -417,6 +465,7 @@ class HeadlessRun:
         elif kind == "expect_launch":
             self.wait_for(lambda: self._launched(v), self.within(step),
                           "%s launch %s (handshake now %s)" % (where, json.dumps(v), json.dumps(self.launch_state()[0])))
+            self.launch_from = len(self.events.all)   # this launch is used up
         elif kind == "expect_no_shell":
             self.events.poll()
             bad = [e["cmd"] for e in self.events.all if e.get("ev") == "shell"
@@ -442,6 +491,7 @@ class HeadlessRun:
         elif kind == "quit":
             self.fifos.control("quit")
             self.wait_for(lambda: not self.running(), self.within(step), "%s nano-headless to exit" % where)
+            self.check_exits()
 
     def _expect(self, v: Dict[str, Any]) -> bool:
         if "present_count_at_least" in v and self.presents() < v["present_count_at_least"]:
@@ -471,21 +521,26 @@ class HeadlessRun:
         return True
 
     def launch_state(self) -> Tuple[Dict[str, str], bool]:
-        """The launch handshake's keys as Nano last wrote them, and whether the launch was committed
-        (do_launch set to 1, or Nano exited with launch_app set, as the firmware's handshake ends)."""
+        """The launch handshake's keys as Nano last wrote them (the store keeps them across a
+        restart), and whether a launch was committed since launch_from: do_launch set to 1, or the
+        process ending cleanly (its "exit" event, or status 0) with launch_app set, as the
+        firmware's handshake ends. A crash is never a commit (test-quality-3), and an earlier
+        process's commit, or one an earlier expect_launch matched, does not count again."""
         keys: Dict[str, str] = {}
         committed = False
-        for e in self.events.all:
+        for i, e in enumerate(self.events.all):
+            fresh = i >= self.launch_from
             if e.get("ev") == "prop" and str(e.get("key", "")).startswith(LAUNCH_PREFIX):
                 k = e["key"][len(LAUNCH_PREFIX):]
                 keys[k] = e.get("value", "")
-                if k in ("launch_app", "launch_core", "launch_intent", "launch_rom"):
+                if fresh and k in ("launch_app", "launch_core", "launch_intent", "launch_rom"):
                     committed = False
-                if k == "do_launch" and e.get("value") == "1":
+                if fresh and k == "do_launch" and e.get("value") == "1":
                     committed = True
-            elif e.get("ev") == "exit" and keys.get("launch_app"):
+            elif fresh and e.get("ev") == "exit" and keys.get("launch_app"):
                 committed = True
-        if self.proc is not None and self.proc.poll() is not None and keys.get("launch_app"):
+        if self.proc is not None and self.proc.poll() == 0 and keys.get("launch_app") and \
+                self.start_index >= self.launch_from:
             committed = True
         return keys, committed
 
@@ -519,6 +574,7 @@ class HeadlessRun:
         pollChild reports the exit instead; this step then writes a control line.)"""
         self.wait_for(lambda: not self.running(), self.within(step), "%s Nano to exit after the launch"
                       % step["_where"])
+        self.check_exits()   # the hand-off is a clean exit, never a crash
         time.sleep(v.get("after_ms", 500) * self.time_scale / 1000.0)
         self.start()
 

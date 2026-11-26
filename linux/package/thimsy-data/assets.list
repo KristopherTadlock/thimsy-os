@@ -9,8 +9,7 @@ keep	gammaos-nano/i18n/*.json	data: Nano's translations (Apache-2.0)
 keep	nano_esde_assets/badges/*.svg	ASSETS.md:149 KEEP
 keep	nano_esde_assets/controllers/*.svg	ASSETS.md:149 KEEP
 keep	nano_esde_assets/help/*.svg	ASSETS.md:149 KEEP
-deny	nano_esde_themes/colorful-simplified-es-de/_inc/fonts/Akrobat-Bold.ttf	ASSETS.md:29 Akrobat counts as REPLACE
-keep	nano_esde_themes/colorful-simplified-es-de/_inc/fonts/Akrobat-Bold.ttf	ASSETS.md:151 KEEP
+deny	nano_esde_themes/colorful-simplified-es-de/_inc/fonts/Akrobat-Bold.ttf	ASSETS.md:151 REPLACE
 deny	nano_esde_themes/colorful-simplified-es-de/_inc/fonts/Gilroy-Bold.ttf	ASSETS.md:150 REPLACE
 deny	nano_esde_themes/colorful-simplified-es-de/_inc/fonts/Gilroy-Light.ttf	ASSETS.md:150 REPLACE
 deny	nano_esde_themes/colorful-simplified-es-de/_inc/fonts/Gilroy-Regular.ttf	ASSETS.md:150 REPLACE
@@ -139,10 +138,8 @@ keep	nano_xmb/controllers/LICENSE	data: the controller drawings' licence
 keep	nano_xmb/controllers/controllers.json	data: controller drawings' layout (CC BY-NC 4.0, ATTRIBUTION.md)
 keep	nano_xmb/controllers/svg/*.svg	data: controller drawings (CC BY-NC 4.0, ATTRIBUTION.md)
 keep	nano_xmb/daijishou/*.json	data: Daijishou's platform definitions (MIT, ATTRIBUTION.md)
-deny	nano_xmb/fonts/akrobat-regular.ttf	ASSETS.md:29 Akrobat counts as REPLACE
-keep	nano_xmb/fonts/akrobat-regular.ttf	ASSETS.md:85 KEEP
-deny	nano_xmb/fonts/akrobat-semibold.ttf	ASSETS.md:29 Akrobat counts as REPLACE
-keep	nano_xmb/fonts/akrobat-semibold.ttf	ASSETS.md:85 KEEP
+deny	nano_xmb/fonts/akrobat-regular.ttf	ASSETS.md:85 REPLACE
+deny	nano_xmb/fonts/akrobat-semibold.ttf	ASSETS.md:85 REPLACE
 keep	nano_xmb/fonts/fontawesome-webfont.ttf	ASSETS.md:86 KEEP
 deny	nano_xmb/fonts/ps3-rodin-bold.ttf	ASSETS.md:84 REPLACE
 deny	nano_xmb/fonts/ps3-rodin-light.ttf	ASSETS.md:84 REPLACE

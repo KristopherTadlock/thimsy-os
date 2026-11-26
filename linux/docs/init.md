@@ -153,10 +153,17 @@ release fragment, I37), else `dev`. The date is `SOURCE_DATE_EPOCH`'s.
 | `deferred` | `D05family` (sourced) | `schedutil`, `simple_ondemand` |
 | `sound-defaults` | `D20sound`, first boot only | `Playback Path` = `SPK_HP` |
 | `sleep-pre`, `sleep-post` | `thimsy-session` (run) | `deep` into `mem_sleep` |
+| `fixedperf-on`, `fixedperf-off` | Nano's control keys (run; `sys.gammaos.nano.fixedperf=1`/`0`, G9-13) | as `boot`, then as `deferred` |
 
-A hook must not call `exit`. Each family's files sit under
-`family/<family>/`, so a tier root can carry several families. The
-family's overlay must be in `BR2_ROOTFS_OVERLAY` (G2a's fragments).
+A hook must not call `exit`, and skips a governor file that is missing or
+refuses the value. Each family's files sit under `family/<family>/`, so a
+tier root can carry several families. The family's overlay is in its
+hardware pack's `BR2_ROOTFS_OVERLAY` (`hw-<family>.fragment`), and reaches
+each card's root when the card is put together (`post-image.d/lib/card.sh`).
+
+`ro.thimsy.family` and `ro.thimsy.modules` are written by `thimsy-prop boot`
+from `device.json`'s `family` and `modules` (the latter space-separated;
+`S03modules` loads them).
 
 ## Deferred services
 
@@ -206,7 +213,20 @@ The state is read from the GPT (`sfdisk --dump`) on every run:
 So at no moment is there a basic-data entry without a complete filesystem,
 and a power cut at any step leaves a state the next boot finishes. The
 tests cut the power before and after each of the four steps, and in the
-middle of the format, and check both.
+middle of the format, and check both. A cut inside one sfdisk write can
+tear the primary GPT (libfdisk writes the backup first, then the primary
+entries, then the primary header); U-Boot then reads the backup, and the
+kernel does too because the command line has `gpt` (tools/fit.py,
+run-qemu.sh). D60 ignores TERM while it holds `/run/thimsy/firstboot.lock`,
+and rcK waits up to 10 s for the lock before it signals everyone, so a
+shutdown never cuts the write (review finding device-safety-1).
+
+An entry 5 that is `missing` is also what a card looks like when an image is
+written again over a used Thimsy card (a repair, or an update before
+there is an updater): the old library's exFAT is still at the very offset
+step 1 computes, and step 2 formats over it. Telling the two apart, or
+ending the image with a gap so the old boot sector survives and can be
+adopted, is open for the owner (review finding device-safety-2).
 
 The partition is the alpha's library drive by default (I44): the
 session's volume policy accepts the boot disk's `games` partition and no

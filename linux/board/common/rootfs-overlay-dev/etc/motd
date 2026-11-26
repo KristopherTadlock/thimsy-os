@@ -1,0 +1,6 @@
+
+  Thimsy OS development image.
+
+  Root logs in without a password, on the serial console and over SSH
+  (configs/fragments/dev.fragment). Never publish this image or share the card.
+

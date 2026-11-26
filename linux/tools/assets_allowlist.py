@@ -11,6 +11,14 @@ Usage:
                       copy the files of SRC (an asset export, laid out as
                       /system/etc) that the list allows into DEST, and the
                       replacements of denied files (below) from DIR
+  assets_allowlist.py filter --list FILE SRC DEST
+                      the same copy without replacements, for linux/build.sh
+                      before it packs thimsy-data's source tarball: DEST gets
+                      only what the list allows, so the tarball legal-info
+                      publishes holds no REPLACE or ASK asset, and
+                      DEST/.thimsy-left-out.txt names (only names) what was
+                      left out, so "install" of DEST still knows which denied
+                      files to replace
 
 The list is generated, never written by hand, and never mirrors Android.bp's
 prebuilt_etc modules: what ships is what ASSETS.md marks KEEP. Every row of
@@ -441,12 +449,21 @@ def overlaps(entries: Sequence[Entry]) -> List[str]:
 
 # -- install -----------------------------------------------------------------
 
+LEFT_OUT = ".thimsy-left-out.txt"
+
+
 def install(list_path: Path, src: Path, dest: Path, report: Optional[Path],
-            replacements: Optional[Path] = None) -> int:
+            replacements: Optional[Path] = None, left_out: Optional[Path] = None) -> int:
     al = Allowlist(read_list(list_path))
     installed, left, replaced = [], [], []
     denied = set()
     src = src.resolve()
+    # A filtered export (filter, below) no longer has its denied files, only their names.
+    if (src / LEFT_OUT).is_file() and not (src / LEFT_OUT).is_symlink():
+        for line in (src / LEFT_OUT).read_text(encoding="utf-8").splitlines():
+            rel = line.split("\t", 1)[0]
+            if rel and not al.decide(rel)[0]:
+                denied.add(rel)
     for dirpath, dirs, files in os.walk(str(src)):
         dirs.sort()
         for name in sorted(files) + [d for d in dirs if os.path.islink(os.path.join(dirpath, d))]:
@@ -484,6 +501,11 @@ def install(list_path: Path, src: Path, dest: Path, report: Optional[Path],
             replaced.append("%s\t%s" % (rel, f))
     print("assets_allowlist: installed %d files into %s, left out %d, %d from replacements"
           % (len(installed), dest, len(left), len(replaced)))
+    if left_out is not None:
+        left_out.parent.mkdir(parents=True, exist_ok=True)
+        with open(str(left_out), "w", encoding="utf-8", newline="\n") as f:
+            for line in left:
+                f.write(line + "\n")
     if report is not None:
         report.parent.mkdir(parents=True, exist_ok=True)
         with open(str(report), "w", encoding="utf-8", newline="\n") as f:
@@ -506,16 +528,23 @@ def build(assets: Path, bp: Path) -> str:
 
 def main(argv: Optional[List[str]] = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    if argv and argv[0] == "install":
-        ap = argparse.ArgumentParser(prog="assets_allowlist.py install")
+    if argv and argv[0] in ("install", "filter"):
+        filtering = argv[0] == "filter"
+        ap = argparse.ArgumentParser(prog="assets_allowlist.py " + argv[0])
         ap.add_argument("--list", required=True, type=Path)
-        ap.add_argument("--report", type=Path)
-        ap.add_argument("--replacements", type=Path,
-                        help="the files REPLACEMENTS names (thimsy-data's downloads)")
+        if not filtering:
+            ap.add_argument("--report", type=Path)
+            ap.add_argument("--replacements", type=Path,
+                            help="the files REPLACEMENTS names (thimsy-data's downloads)")
         ap.add_argument("src", type=Path)
         ap.add_argument("dest", type=Path)
         args = ap.parse_args(argv[1:])
         try:
+            if filtering:
+                if args.dest.exists():
+                    print("assets_allowlist: filter: %s exists" % args.dest, file=sys.stderr)
+                    return 1
+                return install(args.list, args.src, args.dest, None, None, args.dest / LEFT_OUT)
             return install(args.list, args.src, args.dest, args.report, args.replacements)
         except (OSError, ValueError) as e:
             print("assets_allowlist: %s" % e, file=sys.stderr)

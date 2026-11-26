@@ -261,6 +261,14 @@ TEST(Proc, SpawnWaitAndPidFiles) {
     std::string text;
     ASSERT_TRUE(readFile(t.root() + "/out.log", &text));
     EXPECT_EQ(text, "hello\n");
+    // The child gets the log and /dev/null on 0-2 only: no stray copies above 2 (cxx-correctness-3).
+    SpawnSpec fds;
+    fds.argv = {"sh", "-c", "for f in /proc/$$/fd/*; do n=${f##*/}; [ \"$n\" -gt 2 ] && readlink \"$f\"; done; true"};
+    fds.logFile = t.root() + "/fds.log";
+    EXPECT_EQ(runWait(fds, 5000), 0);
+    ASSERT_TRUE(readFile(t.root() + "/fds.log", &text));
+    EXPECT_EQ(text.find("fds.log"), std::string::npos) << text;
+    EXPECT_EQ(text.find("/dev/null"), std::string::npos) << text;
     SpawnSpec missing;
     missing.argv = {t.root() + "/no-such-program"};
     EXPECT_EQ(runWait(missing, 5000), 127);

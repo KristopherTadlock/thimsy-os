@@ -47,6 +47,7 @@ set(_core_sources
     src/core/Supervisor.cpp
     src/core/Requests.cpp
     src/core/NanoJail.cpp
+    src/core/GpuEnv.cpp
     src/io/Sysfs.cpp
     src/io/Blkid.cpp
     src/io/Mounter.cpp
@@ -72,7 +73,7 @@ if(THIMSY_BUILD_TESTS)
     # The tests use libthimsy's GoogleTest stand-in (the Makefile's -I libthimsy/testing).
     set(_sanitize -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined)
     foreach(_t key_machine_test sleep_plan_test volume_policy_test supervisor_test requests_test nano_jail_test
-               blkid_test io_test)
+               blkid_test io_test gpu_env_test)
         add_executable(${_t} tests/${_t}.cpp ${_core_sources})
         target_include_directories(${_t} PRIVATE src tests)
         target_compile_options(${_t} PRIVATE -Wall -Wextra -Werror ${_sanitize})

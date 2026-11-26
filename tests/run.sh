@@ -5,9 +5,14 @@
 #           and check-unit-0 through tools/nano-tree/tests/test_nano_host.py)
 #   linux   linux/tests (linux/tests/run.sh)
 #   cxx     the small C++ suites with g++ and make, each behind linux/tools/build_guard.sh --light and
-#           the lock /tmp/thimsy-cxx.lock: libthimsy, Nano's compat shims and check-unit-0,
-#           thimsy-padd, thimsy-session. On Linux directly; elsewhere in WSL (THIMSY_WSL_DISTRO,
-#           default Ubuntu), on a copy under ~/.cache/thimsy/cxx-src when the checkout is on /mnt.
+#           the lock /tmp/thimsy-cxx.lock: libthimsy, Nano's compat shims, layer-2 stubs
+#           (check-stubs), check-unit-0 and check-headless-0, the Linux platform's shell gate and
+#           control keys (platform/linux/tests/platform.mk), thimsy-padd, thimsy-session. The stubs
+#           and headless suites run under check-unit-0's guard class, the platform one under
+#           check-compat's. On Linux directly; elsewhere in WSL (THIMSY_WSL_DISTRO,
+#           default Ubuntu), on a copy under ~/.cache/thimsy/cxx-src-<key> when the checkout is on /mnt.
+#           The whole run holds the lock, and every checkout builds under its own
+#           ~/.cache/thimsy/cxx-<key> (<key>: cksum of the checkout's path).
 #           A suite the guard refuses is reported as refused, and the mode fails.
 #
 # Usage: tests/run.sh [quick|slow|all|nano|linux|cxx] [unittest options, such as -v or -k NAME]
@@ -43,21 +48,35 @@ case "$mode" in
       # MSYS_NO_PATHCONV: Git Bash would turn the /mnt/... argument into a Windows path.
       MSYS_NO_PATHCONV=1 exec wsl.exe -d "${THIMSY_WSL_DISTRO:-Ubuntu}" -- bash "$wslroot/tests/run.sh" cxx "$@"
     fi
+    # One run at a time holds /tmp/thimsy-cxx.lock from the copy below through the last suite, so a
+    # run from another worktree can neither replace the copy under this one's suites nor build into
+    # the same objects meanwhile (test-quality-2). Fd 9 keeps it; children inherit it.
+    if command -v flock >/dev/null; then
+      : >>/tmp/thimsy-cxx.lock 2>/dev/null || true
+      exec 9</tmp/thimsy-cxx.lock
+      echo "=== waiting for /tmp/thimsy-cxx.lock"
+      flock 9
+    fi
+    # Every checkout gets its own copy and its own build trees, keyed by its path: make decides by
+    # mtime alone, and the copy keeps the sources' mtimes, so a shared tree would take another
+    # worktree's newer objects as up to date (test-quality-1).
+    key=$(printf '%s' "$ROOT" | cksum | cut -d' ' -f1)
+    out="$HOME/.cache/thimsy/cxx-$key"
     nano_data="$ROOT/work/nano-composed"
     case "$ROOT" in
       /mnt/*)
         # A Windows checkout seen through WSL's /mnt (9p): slow, and timing-sensitive tests (the
         # session E2E) time out there. Build and test a copy on the Linux side instead.
-        copy="$HOME/.cache/thimsy/cxx-src"
+        copy="$HOME/.cache/thimsy/cxx-src-$key"
         echo "=== copying the sources to $copy"
         rm -rf "$copy" && mkdir -p "$copy"
         tar -C "$ROOT" -cf - nano libthimsy linux | tar -C "$copy" -xf -
         cd "$copy"
         ROOT="$copy" ;;
     esac
+    echo "=== building under $out"
     [ -d "$nano_data" ] || nano_data=""
     guard="$ROOT/linux/tools/build_guard.sh"
-    lock() { if command -v flock >/dev/null; then flock /tmp/thimsy-cxx.lock "$@"; else "$@"; fi; }
     failed=""
     suite() {  # suite NAME GUARD-TARGET MAKE-ARGS...
       local name="$1" target="$2"
@@ -68,14 +87,19 @@ case "$mode" in
         failed="$failed $name(refused)"
         return 0
       fi
-      lock nice -n 19 make --no-print-directory -j1 "$@" || failed="$failed $name"
+      nice -n 19 make --no-print-directory -j1 "$@" || failed="$failed $name"
     }
-    suite libthimsy libthimsy -C libthimsy check
+    suite libthimsy libthimsy -C libthimsy check O="$out/libthimsy"
     # check-compat would run libthimsy's tests again; they ran just above.
-    suite nano-compat check-compat -C nano/test/host check-compat COMPAT_WITH_LIBTHIMSY=0
-    suite nano-unit-0 check-unit-0 -C nano/test/host check-unit-0 ${nano_data:+NANO_DATA="$nano_data"}
-    suite thimsy-padd thimsy-padd -C linux/src/thimsy-padd check
-    suite thimsy-session thimsy-session -C linux/src/thimsy-session check
+    host="O=$out/nano-host"
+    suite nano-compat check-compat -C nano/test/host check-compat COMPAT_WITH_LIBTHIMSY=0 "$host"
+    suite nano-stubs check-unit-0 -C nano/test/host check-stubs "$host"
+    suite nano-unit-0 check-unit-0 -C nano/test/host check-unit-0 "$host" ${nano_data:+NANO_DATA="$nano_data"}
+    suite nano-headless-0 check-unit-0 -C nano/test/host check-headless-0 "$host"
+    suite nano-platform-linux check-compat -f nano/platform/linux/tests/platform.mk check COMPAT_WITH_LIBTHIMSY=0 \
+      PLAT_O="$out/nano-host/platform-linux" COMPAT_O="$out/nano-host/compat"
+    suite thimsy-padd thimsy-padd -C linux/src/thimsy-padd check O="$out/thimsy-padd"
+    suite thimsy-session thimsy-session -C linux/src/thimsy-session check O="$out/thimsy-session"
     if [ -n "$failed" ]; then
       echo "tests/run.sh cxx: FAILED:$failed" >&2
       exit 1

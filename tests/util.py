@@ -184,6 +184,10 @@ def manifest_diff(a, b):
 
 
 def slurp(path, text=False):
-    """The contents of PATH (bytes, or str with TEXT)."""
-    with open(path, "r" if text else "rb") as f:
+    """The contents of PATH (bytes, or str decoded as UTF-8 with TEXT, whatever the locale's
+    encoding: Windows' cp1252 can't read the build's files)."""
+    if not text:
+        with open(path, "rb") as f:
+            return f.read()
+    with open(path, "r", encoding="utf-8") as f:
         return f.read()

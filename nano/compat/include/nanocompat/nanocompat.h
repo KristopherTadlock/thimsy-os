@@ -79,7 +79,9 @@ void removePropertyObserver(int id);
 void setLogMinPriority(int priority);
 // Also append every line to `path` (the Linux image uses /run/thimsy/log/nano.log): when the file
 // passes maxBytes / 2 it is renamed to `path`.1, replacing the older half, so the two together stay
-// under maxBytes. An empty path turns it off.
+// under maxBytes. An empty path turns it off. When stdout or stderr already is that file (the
+// session starts Nano with both on it), the ring takes them over: lines are not also written to
+// stderr, the size counts their writes, and each rotation moves them to the new half (dup2).
 void setLogFile(const std::string& path, size_t maxBytes = 256 * 1024);
 // Replaces stderr as the line sink (tests); nullptr restores stderr. The file above still gets
 // every line. The sink gets the priority, the tag ("" for none) and one message (without the

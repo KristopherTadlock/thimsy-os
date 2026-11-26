@@ -78,6 +78,10 @@ def build_block(layout: Layout, cfg: Upstream, fork: Fork, cache: Cache, committ
     if not cache.has_commit(cfg.base):
         raise NanoTreeError("the cache %s lacks the base commit %s: run nano_tree.py fetch "
                             "(or fetch --from-cache DIR)" % (cache.path, cfg.base))
+    stray = fork_only_sections(cfg, [committed_block] + list(extra_blocks or []))
+    if stray:
+        raise NanoTreeError("the Nano block has sections for fork-only paths (upstream.json fork_only), "
+                            "which nano/ never holds: %s" % ", ".join(stray[:5]))
     cache.alternates = [fork.objects_dir()]
     try:
         base_tree = cache.ls_tree("%s:%s" % (cfg.base, cfg.path))
@@ -88,6 +92,18 @@ def build_block(layout: Layout, cfg: Upstream, fork: Fork, cache: Cache, committ
     finally:
         cache.cleanup()
     return keep_committed_binaries(generated, [committed_block] + list(extra_blocks or []))
+
+
+def fork_only_sections(cfg: Upstream, blocks: List[bytes]) -> List[str]:
+    """The fork-only paths (relative to Nano's folder) that any of BLOCKS has a section for."""
+    out = set()
+    for b in blocks:
+        if not b:
+            continue
+        for s in Patch.parse(b).sections:
+            if s.path.startswith(cfg.prefix) and cfg.is_fork_only(s.path[len(cfg.prefix):]):
+                out.add(s.path[len(cfg.prefix):])
+    return sorted(out)
 
 
 def read_patch(layout: Layout) -> bytes:

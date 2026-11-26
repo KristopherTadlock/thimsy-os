@@ -1,14 +1,15 @@
 # Development images: never published (decision I37; tools/defconfig.py
 # --check refuses a publishable target that includes this fragment). adbd, a
-# serial console (the dev overlay's inittab), SSH at boot with passwords, root
-# login, and debugging tools.
+# serial console (Buildroot's BR2_TARGET_GENERIC_GETTY, which release.fragment
+# turns off; post-build.d/30-permissions.sh writes its inittab line), SSH at
+# boot with passwords, root login, and debugging tools.
 BR2_THIMSY_FLAVOUR_DEV=y
 # override: dev images allow root login, with an empty password; they stay with
 # their developer
 BR2_TARGET_ENABLE_ROOT_LOGIN=y
 BR2_TARGET_GENERIC_ROOT_PASSWD=""
-# override: the dev overlay goes on top of the common one: a serial getty in
-# its inittab and adbd's USB gadget set-up
+# override: the dev overlay goes on top of the common one: for now only its
+# etc/motd (adbd's USB gadget set-up is G10's, on a device)
 BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_THIMSY_PATH)/board/common/rootfs-overlay $(BR2_EXTERNAL_THIMSY_PATH)/board/common/rootfs-overlay-dev"
 BR2_PACKAGE_ANDROID_TOOLS=y
 # BR2_PACKAGE_ANDROID_TOOLS_FASTBOOT is not set

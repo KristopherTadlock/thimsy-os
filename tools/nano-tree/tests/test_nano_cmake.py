@@ -531,8 +531,8 @@ class Sections(Base):
         # One list per fact (Principle 5): no Nano .cpp is named in the CMake files, except the
         # platform sections' fixed entry points and the feature table.
         allowed = {"platform/linux/main_linux.cpp", "platform/linux/ShellGate.cpp",
-                   "platform/linux/display/DrmBuffersGbm.cpp", "test/host/headless/main_headless.cpp",
-                   "test/host/glstub/glue.c"}
+                   "platform/linux/display/DrmBuffersGbm.cpp", "platform/linux/display/EglWraps.cpp",
+                   "test/host/headless/main_headless.cpp", "test/host/glstub/glue.c"}
         args = " ".join(a for c in self.cmds for a in c.args)      # code only, comments left out
         named = set(re.findall(r"[\w/]+\.(?:cpp|c)\b", args))
         self.assertLessEqual(named, allowed)
@@ -586,7 +586,7 @@ class Targets(Base):
 
     def test_guarded_targets_check_their_entry_points(self):
         # Targets whose sources other steps write fail at configure with a message, not at link.
-        for var in ("NANO_LINUX_MAIN", "NANO_LINUX_DRM_BUFFERS", "NANO_HOST_MAIN"):
+        for var in ("NANO_LINUX_MAIN", "NANO_LINUX_DRM_BUFFERS", "NANO_LINUX_EGL_WRAPS", "NANO_HOST_MAIN"):
             self.assertRegex(self.text, r"if\(NOT %s IN_LIST NANO_SRC_(linux|host)\)" % var)
         self.assertIn('if(NANO_LINUX_SHELLGATE IN_LIST NANO_SRC_linux)', self.text)
         self.assertIn('NOT EXISTS "${NANO_DIR}/${NANO_GLSTUB_GLUE}"', self.text)
@@ -608,6 +608,66 @@ class Targets(Base):
         stubgen = _read(os.path.join(CMAKE_DIR, "stubgen.cmake"))
         self.assertIn("test/host/stubgen/gen.py", stubgen)
         self.assertTrue(os.path.isfile(os.path.join(NANO, "test", "host", "stubgen", "gen.py")))
+
+
+class LinuxPlatform(Base):
+    """thimsy-nano as G9's files make it (integ3): the default NANO_PLATFORM=linux configures with the
+    real sources.txt, and each piece goes where C.2 and B.8 say."""
+
+    def links(self, target):
+        out = []
+        for c in self.cmds:
+            if c.name == "target_link_libraries" and c.args and c.args[0] == target:
+                out += c.args[1:]
+        return out
+
+    def test_linux_entry_points_are_listed(self):
+        for var in ("NANO_LINUX_MAIN", "NANO_LINUX_SHELLGATE", "NANO_LINUX_DRM_BUFFERS", "NANO_LINUX_EGL_WRAPS"):
+            path = cmake_set(self.cmds, var)
+            self.assertEqual(len(path), 1, var)
+            self.assertIn(path[0], self.src["linux"], "%s (%s) is not in [linux]" % (var, path[0]))
+
+    def test_platform_library_sources(self):
+        # set(_plat ${NANO_SRC_linux} ${NANO_SRC_drm}) minus the main and the shell gate.
+        self.assertIn('list(REMOVE_ITEM _plat "${NANO_LINUX_MAIN}" "${NANO_LINUX_SHELLGATE}")', self.text)
+        plat = [p for p in self.src["linux"] + self.src["drm"]
+                if p not in ("platform/linux/main_linux.cpp", "platform/linux/ShellGate.cpp")]
+        for p in ("platform/linux/display/DrmBuffersGbm.cpp", "platform/linux/display/EglWraps.cpp",
+                  "platform/linux/ControlKeys.cpp", "NanoPlatform.cpp", "NanoMenuDrm.cpp"):
+            self.assertIn(p, plat)
+        # Android's back end and entry point never: the GBM back end and main_linux stand in for them.
+        for p in ("NanoMenuDrmBuffers.cpp", "main.cpp"):
+            self.assertNotIn(p, plat)
+            self.assertIn(p, self.src["firmware"])
+        self.assertEqual([p for p in plat if "/tests/" in p], [])
+
+    def test_links_gbm_egl_gles_and_the_stubs(self):
+        plat = self.links("nano_platform_linux")
+        for lib in ("nano_core", "nano_stubs", "nano_shellgate", "nano::gbm", "nano::egl", "nano::glesv2", "nano::drm"):
+            self.assertIn(lib, plat)
+        self.assertIn("nano_stubs", self.links("nano_platform_host"))
+        self.assertIn("nano_stubs", self.links("nano_core"))
+        # NANOSTUBS_CPPFLAGS reach nano_core through nano_stubs' PUBLIC usage requirements.
+        self.assertIn("target_compile_definitions(nano_stubs PUBLIC EGL_NO_PLATFORM_SPECIFIC_TYPES)", self.text)
+        self.assertIn('target_include_directories(nano_stubs PUBLIC "${NANO_DIR}/compat/stubs/include")', self.text)
+        self.assertIn('"${NANO_DIR}/compat/stubs/include"', self.text)
+        stubs_mk = _read(os.path.join(NANO, "compat", "stubs", "stubs.mk"))
+        self.assertIn("-DEGL_NO_PLATFORM_SPECIFIC_TYPES", stubs_mk)
+
+    def test_every_wrapped_symbol_has_its_wrapper_in_linux(self):
+        names = [ln.split("#")[0].strip() for ln in _read(LINUX_WRAPS).split("\n")]
+        names = [n for n in names if n]
+        code = "\n".join(_read(os.path.join(NANO, p)) for p in self.src["linux"])
+        for n in names:
+            self.assertRegex(code, r'extern "C" [^;{]*\b__wrap_%s\s*\(' % n,
+                             "linker-wraps.txt wraps %s; no [linux] file defines __wrap_%s" % (n, n))
+
+    def test_stubgen_reads_every_linux_archive(self):
+        call = [c for c in self.cmds if c.name == "nano_dropped_stubs" and c.args[1] == "linux"][0]
+        archives = call.args[call.args.index("ARCHIVES") + 1:call.args.index("FROM")]
+        self.assertEqual(archives, ["nano_linux_main", "nano_platform_linux", "nano_shellgate", "nano_core",
+                                    "nano_stubs", "nano_compat"])
+        self.assertIn('add_executable(thimsy-nano "${_linux_stubs}")', self.text)
 
 
 class Flags(Base):

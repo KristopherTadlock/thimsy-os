@@ -302,10 +302,19 @@ def import_blocks(layout: Layout, cfg: Upstream, fork: Fork, cache: Cache, old_b
     T = tree_with_block(cfg, cache, cfg.base, new_block)
     nano = worktree_entries(fork, cache, layout.root)
     M = composed_entries(cfg, base_tree, nano)
+    # nano/ never takes a fork-only path from a patch and regen never writes one, so a change the
+    # incoming side made to one would vanish without a word: a conflict instead (android-safety-2).
+    fork_only_changes = sorted(r for r in set(O) | set(T) if cfg.is_fork_only(r) and O.get(r) != T.get(r))
     for d in (O, T, M):
         for rel in [r for r in d if cfg.is_fork_only(r)]:
             del d[rel]
     plan = three_way(cache, O, T, M)
+    for rel in fork_only_changes:
+        plan.conflicts.append((rel, "the incoming patch %s this path, but it is fork-only (upstream.json "
+                                    "fork_only): nano/ never imports it and regen never writes it, so "
+                                    "the change would be lost. Carry it over by hand (outside nano/, or "
+                                    "narrow fork_only)" % ("adds" if rel not in O else "deletes" if rel not in T
+                                                           else "changes")))
     touched, modes = apply_plan(layout, cfg, plan, base_tree, nano, cache)
     if stage_result:
         stage(fork, touched, modes)
@@ -538,6 +547,20 @@ def compute_fork_merge(layout: Layout, fork: Fork, cache: Cache, fm: ForkMerge, 
     return new_data, digest
 
 
+def _dirty_nano(fork: Fork, cfg: Upstream) -> List[str]:
+    """nano/'s paths (relative to it) with uncommitted changes, untracked ones included; fork-only
+    paths, which never reach the patch, are left out."""
+    out = fork.git("status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all", "--", "nano/")
+    dirty = []
+    for rec in out.split(b"\0"):
+        if len(rec) < 4:
+            continue
+        path = rec[3:].decode("utf-8", "surrogateescape")
+        if path.startswith("nano/") and not cfg.is_fork_only(path[len("nano/"):]):
+            dirty.append(path[len("nano/"):])
+    return sorted(dirty)
+
+
 def _prune_store(store: str, age: float = 86400.0) -> None:
     now = time.time()
     for n in os.listdir(store):
@@ -583,6 +606,14 @@ def merge_patch(layout: Layout, cfg: Upstream, fork: Fork, cache: Cache, o_path:
         log("nanopatch: the base cache is missing (run nano_tree.py fetch); the patch was left "
             "as nano/'s side")
         return 1
+    # The block is regenerated from nano/ as it is on disk, so uncommitted or untracked files there
+    # would go into the merge commit's patch (android-safety-4).
+    dirty = _dirty_nano(fork, cfg)
+    if dirty:
+        log("nanopatch: nano/ has uncommitted changes or untracked files (%s%s); the patch was left as "
+            "this side's. Commit, stash or remove them, abort the merge and merge again."
+            % (", ".join(dirty[:5]), ", ..." if len(dirty) > 5 else ""))
+        return 1
     o_before, o_block, o_after = Patch.parse(o_data).split_block(cfg.prefix)
     a_before, a_block, a_after = Patch.parse(a_data).split_block(cfg.prefix)
     b_before, b_block, b_after = Patch.parse(b_data).split_block(cfg.prefix)
@@ -599,8 +630,13 @@ def merge_patch(layout: Layout, cfg: Upstream, fork: Fork, cache: Cache, o_path:
             "`nano_tree.py import-base` first." % e)
         return 1
     from .regen import regen_bytes
-    new_data, new_block = regen_bytes(layout, cfg, fork, cache, b_before + a_block + b_after,
-                                      extra_blocks=[b_block])
+    try:
+        new_data, new_block = regen_bytes(layout, cfg, fork, cache, b_before + a_block + b_after,
+                                          extra_blocks=[b_block])
+    except NanoTreeError as e:
+        report_conflicts(plan)
+        log("nanopatch: %s; the patch was left as this side's." % e)
+        return 1
     with open(a_path, "wb") as f:
         f.write(new_data)
     layout.write_block_sha(sha256(new_block))

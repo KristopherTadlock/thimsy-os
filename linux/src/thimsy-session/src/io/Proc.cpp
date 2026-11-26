@@ -80,14 +80,17 @@ pid_t spawn(const SpawnSpec& spec, std::string* err) {
     sigprocmask(SIG_SETMASK, &none, nullptr);
     for (int s : {SIGCHLD, SIGTERM, SIGINT, SIGHUP, SIGPIPE}) signal(s, SIG_DFL);
     if (spec.newSession) setsid();
-    int in = open("/dev/null", O_RDONLY);
-    int out = open(logFile.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
-    if (out < 0) out = open("/dev/null", O_WRONLY);
+    // O_CLOEXEC, so the originals never reach the program (dup2's copies on 0-2 are inheritable).
+    int in = open("/dev/null", O_RDONLY | O_CLOEXEC);
+    int out = open(logFile.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
+    if (out < 0) out = open("/dev/null", O_WRONLY | O_CLOEXEC);
     if (in >= 0) dup2(in, 0);
     if (out >= 0) {
         dup2(out, 1);
         dup2(out, 2);
     }
+    if (in > 2) close(in);
+    if (out > 2) close(out);
     if (spec.nice) {
         errno = 0;
         int r = nice(spec.nice);

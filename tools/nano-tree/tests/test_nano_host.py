@@ -46,21 +46,31 @@ def _wsl_has_distro() -> bool:
 
 
 # The shell script that runs a target (ROOT and TARGET are set before it: values in the script, run
-# with wsl.exe --exec, so no outer shell expands it). A checkout on /mnt (a
-# Windows drive seen from WSL, slow 9p) is copied to ~/.cache/thimsy/nano-host-src first, as
-# tests/run.sh cxx does; the base's assets (work/nano-composed) are read where they are.
+# with wsl.exe --exec, so no outer shell expands it). It holds the C++ lock from the copy through the
+# make, so another run can't replace the copy under it (test-quality-2). A checkout on /mnt (a
+# Windows drive seen from WSL, slow 9p) is copied to ~/.cache/thimsy/cxx-src-<key> first, as
+# tests/run.sh cxx does, and every checkout builds under its own ~/.cache/thimsy/cxx-<key>/nano-host
+# (<key>: cksum of the checkout's path; the same trees tests/run.sh cxx uses), so make never takes
+# another worktree's objects as up to date (test-quality-1). The base's assets (work/nano-composed)
+# are read where they are.
 SCRIPT = r"""set -e
 root=$ROOT; target=$TARGET
+if command -v flock >/dev/null; then
+  : >>/tmp/thimsy-cxx.lock 2>/dev/null || true
+  exec 9</tmp/thimsy-cxx.lock
+  flock 9
+fi
+key=$(printf '%s' "$root" | cksum | cut -d' ' -f1)
+out=$HOME/.cache/thimsy/cxx-$key/nano-host
 data=; [ -d "$root/work/nano-composed" ] && data="NANO_DATA=$root/work/nano-composed"
 case "$root" in
-  /mnt/*) copy=$HOME/.cache/thimsy/nano-host-src
+  /mnt/*) copy=$HOME/.cache/thimsy/cxx-src-$key
           rm -rf "$copy" && mkdir -p "$copy"
           tar -C "$root" -cf - nano libthimsy linux/tools | tar -C "$copy" -xf -
           root=$copy ;;
 esac
 cd "$root/nano/test/host"
-L=; command -v flock >/dev/null && L="flock /tmp/thimsy-cxx.lock"
-exec $L nice -n 19 make -j1 "$target" $data
+exec nice -n 19 make -j1 "$target" O="$out" $data
 """
 
 

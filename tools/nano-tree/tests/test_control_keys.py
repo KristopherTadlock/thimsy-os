@@ -30,6 +30,7 @@ PROPS = os.path.join(TOOL_DIR, "props.txt")
 CPP = os.path.join(NANO, "platform", "linux", "ControlKeys.cpp")
 RC = os.path.join(NANO, "gammaos-nano.rc")
 SESSION_DOC = os.path.join(ROOT, "linux", "docs", "session.md")
+SESSION_CPP = os.path.join(ROOT, "linux", "src", "thimsy-session", "src", "Session.cpp")
 
 
 def _derived():
@@ -79,7 +80,25 @@ class ControlKeys(unittest.TestCase):
             route = r.get("route", "")
             if route.startswith("session:"):
                 verb = route[len("session:"):]
-                self.assertIn("| `%s`" % verb, doc, "%s: verb %s is not in linux/docs/session.md" % (r["match"], verb))
+                # The verb in the first cell of a row of the verb table ("| `poweroff`, `reboot` |").
+                self.assertRegex(doc, r"(?m)^\| [^|\n]*`%s`" % re.escape(verb),
+                                 "%s: verb %s is not in linux/docs/session.md" % (r["match"], verb))
+
+    def test_session_keys_are_watched_by_the_session(self):
+        """A "session-key" row means thimsy-session reads the key itself (G9-8): session.md's key
+        table names it as Nano's, and Session.cpp watches that literal key."""
+        with open(SESSION_DOC, "r", encoding="utf-8") as f:
+            doc = f.read()
+        with open(SESSION_CPP, "r", encoding="utf-8") as f:
+            cpp = f.read()
+        keys = sorted({r["match"].split("=", 1)[0] for r in self.table["rows"] if r.get("route") == "session-key"})
+        self.assertIn("sys.powerctl", keys)
+        self.assertIn("sys.gammaos.nano.scrape_run", keys)
+        for key in keys:
+            self.assertRegex(doc, r"(?m)^\| `%s` \| Nano" % re.escape(key), "%s: not in session.md's key table" % key)
+            self.assertIn('"%s"' % key, cpp, "%s: thimsy-session's Session.cpp does not read it" % key)
+        # sys.boot_completed is ControlKeys' (first-frame), never the session's.
+        self.assertNotIn('"sys.boot_completed"', cpp)
 
     def test_routed_triggers_name_nanos_keys(self):
         props = load_props(PROPS)

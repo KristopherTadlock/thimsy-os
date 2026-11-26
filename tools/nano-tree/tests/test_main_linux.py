@@ -56,6 +56,29 @@ class MainLinux(unittest.TestCase):
         self.assertIn("int gEarlyDrmFd = -1;", text, "main.cpp's global, read by NanoMenu.cpp")
 
 
+SOURCES = os.path.join(ROOT, "nano", "build", "sources.txt")
+MAIN_HEADLESS = os.path.join(ROOT, "nano", "test", "host", "headless", "main_headless.cpp")
+
+
+@unittest.skipUnless(os.path.isfile(SOURCES) and os.path.isfile(MAIN_HEADLESS), "no sources.txt or main_headless.cpp")
+class MainGlobals(unittest.TestCase):
+    """What main.cpp defines and [core]/[drm] use must be defined by every other main, with
+    main.cpp's value: left to the [dropped-linux] stub generator, gEarlyDrmFd would be 0 (stdin's fd)
+    and NanoMenu::readyToRun would take stdin for the DRM card (G4's hand-off)."""
+
+    def test_main_cpp_globals_are_the_known_ones(self):
+        # sources.txt's [dropped-linux] comment names what [core]/[drm] use from main.cpp; a new name
+        # there needs a definition in both mains, and a line in this test.
+        m = re.search(r"^# main\.cpp: \[core\]/\[drm\] name what it defines: (.*)$", _read(SOURCES), re.M)
+        self.assertIsNotNone(m, "sources.txt's [dropped-linux] no longer lists main.cpp")
+        self.assertEqual(m.group(1).strip(), "gEarlyDrmFd")
+        self.assertRegex(_read(MAIN), r"(?m)^int gEarlyDrmFd = -1;")
+
+    def test_every_main_defines_gearlydrmfd_as_minus_one(self):
+        for path in (MAIN_LINUX, MAIN_HEADLESS):
+            self.assertRegex(_read(path), r"(?m)^int gEarlyDrmFd = -1;", path)
+
+
 if __name__ == "__main__":
     if sys.argv[1:] == ["--print"]:
         print(fingerprint(_read(MAIN)))

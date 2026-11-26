@@ -53,7 +53,16 @@ if [ -x "$R/etc/init.d/rcD" ]; then
 	"$R/etc/init.d/rcD" stop
 fi
 
-# 3. Everyone else. Never in a test root: that would signal the host.
+# 3. Everyone else, once the first boot's repartition is done: D60firstboot
+# ignores TERM while it holds its lock, so its sfdisk write is not torn, but
+# KILL would still cut it (device-safety-1). Ten seconds at most.
+i=0
+while [ -d "$R/run/thimsy/firstboot.lock" ] && [ "$i" -lt 100 ]; do
+	[ "$i" = 0 ] && thimsy_log rcK "waiting for D60firstboot"
+	sleep 0.1 2>/dev/null || sleep 1
+	i=$((i + 1))
+done
+# Never in a test root: that would signal the host.
 if [ -z "$R" ]; then
 	kill -TERM -1 2>/dev/null
 	i=0

@@ -122,6 +122,13 @@ echo "$(basename "$0") $*" >> "$THIMSY_ROOT/commands.log"
 
 LONG_RUNNING = TOOL + "exec sleep 1000\n"
 
+# Nano also records the GPU pack's environment it was given (gpu.json's "env").
+NANO = TOOL + 'echo "nano-env GALLIUM_DRIVER=${GALLIUM_DRIVER-unset}" >> "$THIMSY_ROOT/commands.log"\n' + \
+    "exec sleep 1000\n"
+
+# As thimsy-gpu-pack writes it for the swrast pack.
+GPU_JSON = {"driver": "swrast", "env": {"GALLIUM_DRIVER": "softpipe"}, "files": ["usr/lib/libEGL.so.1"]}
+
 DEVICE_JSON = {
     "id": "anbernic-rg-arc-d",
     "family": "rk3566",
@@ -252,13 +259,14 @@ def build_root(base: str) -> Root:
     os.makedirs(r.p("/run/thimsy/props/ro"), exist_ok=True)
     os.makedirs(r.p("/storage/.config/thimsy"), exist_ok=True)
     r.write("/usr/share/thimsy/device.json", json.dumps(DEVICE_JSON))
+    r.write("/usr/share/thimsy/gpu.json", json.dumps(GPU_JSON, indent=1))
     r.write("/usr/share/thimsy/family/rk3566/hook", TOOL.replace("$(basename \"$0\")", "hook"), 0o755)
     r.write("/etc/init.d/rcD", TOOL.replace("$(basename \"$0\")", "rcD"), 0o755)
     r.write("/etc/init.d/deferred/D30net", TOOL.replace("$(basename \"$0\")", "D30net"), 0o755)
 
     for name in ("mount", "umount", "fsck.exfat", "fsck.fat", "e2fsck", "amixer", "poweroff", "reboot"):
         r.tool(name)
-    r.tool("thimsy-nano", LONG_RUNNING)
+    r.tool("thimsy-nano", NANO)
     r.tool("thimsy-padd", LONG_RUNNING)
     r.tool("thimsy-nano-scrape", TOOL + "sleep 0.2\n")
     return r
@@ -387,6 +395,11 @@ class BootDrivesKeysAndRequests(SessionCase):
         self.assertTrue(os.path.exists(self.r.p("/run/thimsy/nano.pid")))
         self.assertTrue(os.path.exists(self.r.p("/run/thimsy/padd.pid")))
 
+    def test_01b_nano_gets_the_gpu_environment(self):
+        wait_for(lambda: self.ran("nano-env"), what="Nano's environment")
+        self.assertEqual(self.ran("nano-env"), ["nano-env GALLIUM_DRIVER=softpipe"])
+        self.assertIn("GPU environment for Nano: GALLIUM_DRIVER=softpipe", self.log())
+
     def test_02_first_frame_runs_the_deferred_services_once(self):
         self.assertEqual(self.ran("rcD"), [])
         self.set_prop("sys.thimsy.nano.first_frame", "1")
@@ -395,6 +408,8 @@ class BootDrivesKeysAndRequests(SessionCase):
         time.sleep(0.3)
         self.assertEqual(self.ran("rcD"), ["rcD start"])
         self.assertTrue(os.path.exists(self.r.p("/run/thimsy/session/deferred-started")))
+        # Nano's control keys set sys.boot_completed at its first frame (G9-11); the session never.
+        self.assertFalse(os.path.exists(self.r.p("/run/thimsy/props/sys.boot_completed")))
 
     def test_03_coldplug_mounts_only_the_second_cards_data_drive(self):
         for name, devtype in (("mmcblk0", "disk"), ("mmcblk0p1", "partition"), ("mmcblk0boot0", "disk"),
@@ -537,17 +552,56 @@ class BootDrivesKeysAndRequests(SessionCase):
         self.assertIn("thimsy-session: poweroff requested", self.r.read("/dev/kmsg"))
 
 
+class LateEmmc(SessionCase):
+    """An eMMC whose nodes appear after Nano started (a host controller that probes late): Nano is
+    started again, and its new plan masks them (security-3)."""
+
+    saved = {}
+
+    @classmethod
+    def prepare(cls, r: Root) -> None:
+        for n in ("mmcblk0", "mmcblk0boot0", "mmcblk0p1"):
+            p = r.p("/dev/" + n)
+            if os.path.lexists(p):
+                with open(p, "rb") as f:
+                    cls.saved[n] = f.read()
+                os.remove(p)
+
+    def test_nano_is_started_again_with_the_nodes_masked(self):
+        wait_for(lambda: self.ran("thimsy-nano"), what="Nano")
+        wait_for(lambda: os.path.exists(self.r.p("/run/thimsy/session/jail.plan")), what="the first plan")
+        self.assertEqual(self.r.read("/run/thimsy/session/jail.plan").split(), [])
+        time.sleep(0.3)
+        self.assertEqual(len(self.ran("thimsy-nano")), 1)
+        for n, data in self.saved.items():
+            with open(self.r.p("/dev/" + n), "wb") as f:
+                f.write(data)
+        self.uevent("add", "mmcblk0", "disk")
+        wait_for(lambda: len(self.ran("thimsy-nano")) == 2, what="Nano started again")
+        wait_for(lambda: self.r.read("/run/thimsy/session/jail.plan").split() ==
+                 ["/dev/mmcblk0", "/dev/mmcblk0boot0", "/dev/mmcblk0p1"], what="the new plan")
+        self.assertIn("eMMC nodes appeared after Nano started", self.log())
+        self.uevent("add", "mmcblk0p1", "partition")   # already masked: no third start
+        time.sleep(0.5)
+        self.assertEqual(len(self.ran("thimsy-nano")), 2)
+
+
 class RespawnedSession(SessionCase):
     """A session started again by init later in the boot: Nano from the old session is stopped,
-    the deferred services are not run again, and a drive still mounted is adopted, not remounted."""
+    so is a check (fsck) it left running, the deferred services are not run again, and a drive
+    still mounted is adopted, not remounted."""
 
     orphan = None
+    orphan_fsck = None
 
     @classmethod
     def prepare(cls, r: Root) -> None:
         cls.orphan = subprocess.Popen(["thimsy-nano-left-over", "60"], executable="/bin/sleep",
                                       start_new_session=True)
         r.write("/run/thimsy/nano.pid", "%d\n" % cls.orphan.pid)
+        cls.orphan_fsck = subprocess.Popen(["fsck.exfat-left-over", "60"], executable="/bin/sleep",
+                                           start_new_session=True)
+        r.write("/run/thimsy/session/fsck/mmcblk3p1.pid", "%d\n" % cls.orphan_fsck.pid)
         r.write("/run/thimsy/session/deferred-started", "1\n")
         r.write("/run/thimsy/props/sys.thimsy.nano.first_frame", "1")
         r.write("/proc/mounts", "/dev/mmcblk1p3 / erofs ro 0 0\n/dev/mmcblk1p4 /storage ext4 rw 0 0\n"
@@ -559,10 +613,17 @@ class RespawnedSession(SessionCase):
             cls.orphan.kill()
         if cls.orphan:
             cls.orphan.wait()
+        if cls.orphan_fsck and cls.orphan_fsck.poll() is None:
+            cls.orphan_fsck.kill()
+        if cls.orphan_fsck:
+            cls.orphan_fsck.wait()
         super().tearDownClass()
 
     def test_respawn(self):
         self.orphan.wait(timeout=10)  # stopped by the new session
+        self.orphan_fsck.wait(timeout=10)   # and the check it left (device-safety-4)
+        self.assertFalse(os.path.exists(self.r.p("/run/thimsy/session/fsck/mmcblk3p1.pid")))
+        self.assertIn("left by an earlier session", self.log())
         wait_for(lambda: self.ran("thimsy-nano"), what="Nano")
         wait_for(lambda: (self.volume("1234-ABCD") or {}).get("state") == "mounted", what="adopted drive")
         time.sleep(0.3)

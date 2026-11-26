@@ -18,9 +18,39 @@ start)
 		thimsy_warn $TAG "thimsy-padd is missing: no gamepad"
 	fi
 	;;
-stop) ;;
+stop)
+	# The pad daemon of /run/thimsy/padd.pid (this script's, or the one
+	# thimsy-session started instead): TERM, up to 2 s, then KILL. Only a
+	# process whose name is thimsy-padd, so a stale pid is never signalled.
+	pid=
+	if [ -r "$R/run/thimsy/padd.pid" ]; then
+		read -r pid < "$R/run/thimsy/padd.pid" || :
+	fi
+	comm=
+	case $pid in
+	'' | *[!0-9]*) pid= ;;
+	*)
+		if [ -r "$R/proc/$pid/comm" ]; then
+			read -r comm < "$R/proc/$pid/comm" || :
+		fi
+		;;
+	esac
+	if [ -n "$pid" ] && [ "$comm" = thimsy-padd ]; then
+		kill -TERM "$pid" 2>/dev/null || :
+		i=0
+		while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 20 ]; do
+			sleep 0.1 2>/dev/null || sleep 1 # rcs-allow: sleep
+			i=$((i + 1))
+		done
+		kill -KILL "$pid" 2>/dev/null || :
+		thimsy_log $TAG "stopped thimsy-padd ($pid)"
+	else
+		thimsy_log $TAG "thimsy-padd is not running"
+	fi
+	rm -f "$R/run/thimsy/padd.pid"
+	;;
 *)
-	echo "usage: $0 start" >&2
+	echo "usage: $0 start|stop" >&2
 	exit 2
 	;;
 esac

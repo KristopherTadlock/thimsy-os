@@ -157,6 +157,22 @@ TEST_F(ControlKeysTest, AndroidOnlyKeysAreRefusedOnce) {
     EXPECT_TRUE(requests.empty() && launches.empty() && hooks.empty());
 }
 
+TEST_F(ControlKeysTest, NanoActionRebootAndShutdownAreRequests) {
+    // NanoMenu::prepareShutdown ends in nano_action=<action>: the menu's Reboot and Power Off,
+    // the PS3 quick actions, the power-hold and the DRM-sleep timeout.
+    property_set("service.bootanim.nano_action", "shutdown");
+    property_set("service.bootanim.nano_action", "reboot");
+    std::vector<std::string> want = {"poweroff", "reboot"};
+    EXPECT_EQ(requests, want);
+    EXPECT_EQ(refusedCount(), 0u);
+    // Android, recovery and safe mode have no Linux counterpart.
+    property_set("service.bootanim.nano_action", "android");
+    property_set("service.bootanim.nano_action", "recovery");
+    EXPECT_EQ(refusedCount(), 1u);
+    EXPECT_EQ(requests, want);
+    EXPECT_TRUE(launches.empty() && hooks.empty());
+}
+
 TEST_F(ControlKeysTest, DefaultSessionRequestWritesTheKey) {
     uninstall();
     Handlers h;

@@ -96,6 +96,21 @@ class SchemaTest(unittest.TestCase):
             doc = json.loads((c.LINUX / rel).read_text(encoding="utf-8"))
             self.assertEqual(devicejson.check(doc), [], rel)
 
+    def test_thimsy_prop_fields(self):
+        """modules, product and props: the fields thimsy-prop boot reads (libthimsy/tools/thimsy-prop.cpp)."""
+        doc = json.loads((c.LINUX / self.BOARDS[0]).read_text(encoding="utf-8"))
+        ok = json.loads(json.dumps(doc))
+        ok["modules"] = ["joypad", "rocknix-singleadc-joypad"]
+        ok["product"] = {"manufacturer": "Anbernic", "model": "RG ARC-D", "platform": "rk3566"}
+        ok["props"] = {"ro.gammaos.device": "arc-d", "ro.thimsy.audio.volume_control": "Master", "ro.x.n": 3}
+        self.assertEqual(devicejson.check(ok), [])
+        for field, value in (("modules", ["bad name"]), ("modules", "joypad"), ("modules", ["a", "a"]),
+                             ("product", {"serial": "x"}), ("product", {"model": ""}),
+                             ("props", {"sys.x": "1"}), ("props", {"ro.x": ["list"]})):
+            bad = json.loads(json.dumps(doc))
+            bad[field] = value
+            self.assertTrue(devicejson.check(bad), "%s=%r accepted" % (field, value))
+
     def test_qemu_enter_is_south(self):
         doc = json.loads((c.LINUX / self.BOARDS[2]).read_text(encoding="utf-8"))
         self.assertIn({"source": "virtio-keyboard", "code": "KEY_ENTER", "to": "BTN_SOUTH"}, doc["pad"]["buttons"])

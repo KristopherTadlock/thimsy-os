@@ -49,7 +49,18 @@ struct LogState {
     size_t fileMax = 0;
     int fd = -1;
     off_t fileSize = 0;
+    // Set when the ring file is opened: stdout or stderr is that same file (thimsy-session starts
+    // Nano with both on /run/thimsy/log/nano.log). The ring then owns them: no second copy of each
+    // line goes to stderr, they follow every rotation (dup2), and the size is the file's own, so
+    // what children and stdio write counts too.
+    bool ownsOut = false;
+    bool ownsErr = false;
 };
+
+bool sameFile(int a, const struct stat& b) {
+    struct stat st;
+    return fstat(a, &st) == 0 && st.st_dev == b.st_dev && st.st_ino == b.st_ino;
+}
 
 // Never destroyed: threads may log while the process exits.
 LogState& logState() {
@@ -97,7 +108,17 @@ void appendToFileLocked(LogState& s, const std::string& text) {
         s.fd = ::open(s.filePath.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
         if (s.fd < 0) return;
         struct stat st;
-        s.fileSize = fstat(s.fd, &st) == 0 ? st.st_size : 0;
+        if (fstat(s.fd, &st) == 0) {
+            s.fileSize = st.st_size;
+            s.ownsOut = sameFile(STDOUT_FILENO, st);
+            s.ownsErr = sameFile(STDERR_FILENO, st);
+        } else {
+            s.fileSize = 0;
+        }
+    }
+    if (s.ownsOut || s.ownsErr) {
+        struct stat st;
+        if (fstat(s.fd, &st) == 0) s.fileSize = st.st_size;
     }
     if (s.fileMax > 0 && static_cast<size_t>(s.fileSize) + text.size() > s.fileMax / 2) {
         // This half is full: it becomes the older half, and a new one starts.
@@ -107,6 +128,13 @@ void appendToFileLocked(LogState& s, const std::string& text) {
         s.fd = ::open(s.filePath.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_APPEND | O_CLOEXEC, 0644);
         s.fileSize = 0;
         if (s.fd < 0) return;
+        // Stdio moves to the new half too, so nothing keeps the older half (soon unlinked) open.
+        // dup2 leaves 1 and 2 inheritable, as they were.
+        if (s.ownsOut) {
+            fflush(stdout);
+            dup2(s.fd, STDOUT_FILENO);
+        }
+        if (s.ownsErr) dup2(s.fd, STDERR_FILENO);
     }
     writeAll(s.fd, text.data(), text.size());
     s.fileSize += static_cast<off_t>(text.size());
@@ -124,6 +152,8 @@ void setLogFile(const std::string& path, size_t maxBytes) {
     s.fileSize = 0;
     s.filePath = path;
     s.fileMax = maxBytes;
+    s.ownsOut = false;
+    s.ownsErr = false;
 }
 
 void setLogSink(LogSink sink) {
@@ -164,7 +194,8 @@ void logMessage(int prio, const char* tag, const char* text) {
         std::lock_guard<std::mutex> lock(s.mu);
         sink = s.sink;
         appendToFileLocked(s, out);
-        if (!sink) writeAll(STDERR_FILENO, out.data(), out.size());  // one write per message
+        // One write per message; none when stderr is the ring file (it has the line already).
+        if (!sink && !(s.fd >= 0 && s.ownsErr)) writeAll(STDERR_FILENO, out.data(), out.size());
     }
     if (sink) (*sink)(prio, tag, text);
 }

@@ -60,7 +60,7 @@ MARKERS = [
     os.environ.get("THIMSY_QEMU_FRAME_MARKER", "nano: first frame"),
 ]
 MENU_MARKER = os.environ.get("THIMSY_QEMU_MENU_MARKER", "nano: menu opened")  # (guess)
-E9_APPEND = "root=/dev/vda3 rootfstype=erofs ro init=/init console=ttyAMA0"
+E9_APPEND = "root=/dev/vda3 rootfstype=erofs ro gpt init=/init console=ttyAMA0"
 
 
 def _skip_reason() -> Optional[str]:

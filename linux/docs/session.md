@@ -99,6 +99,7 @@ A malformed numbered request is answered `<seq>:error:<why>`; a malformed unnumb
 | Key | Who writes it | Meaning |
 |---|---|---|
 | `sys.thimsy.nano.first_frame` | Nano | `1` once its first frame is on screen: the session starts the deferred services. |
+| `sys.boot_completed` | Nano | `1` at the same moment (its control keys, G9-11): Nano gates sleep and its idle work on it. The session never writes it. |
 | `sys.thimsy.game.pid` | Nano | The pid of the game it launched (the game is its process group leader). The session stops, continues and quits that group. |
 | `sys.powerctl` | Nano (Android's key) | `shutdown[,reason]` or `reboot[,reason]`: as the `poweroff` and `reboot` requests. |
 | `sys.gammaos.nano.scrape_run` | Nano | Any new value starts the scraper (decision I25), as `gammaos-nano.rc`'s trigger does. |
@@ -120,7 +121,11 @@ requests: `sys.gammaos.nano.dosleep=1` into `sleep`, `sys.gammaos.nano.park_rest
 
 1. Opens the store, reads `device.json` (`power.mem_sleep`, `pad.hotkey.quit_combo`,
    `audio.card_index`), the family (`/run/thimsy/family`, else `ro.thimsy.family`, else the only
-   family directory) and the boot disk from `/run/thimsy/bootdisk`, which `S00base` wrote.
+   family directory) and the boot disk from `/run/thimsy/bootdisk`, which `S00base` wrote. Reads the
+   GPU pack's `/usr/share/thimsy/gpu.json` (`thimsy-gpu-pack`): its `"env"` object (for the swrast
+   pack `GALLIUM_DRIVER=softpipe`) is added to Nano's environment, and so to every game Nano starts.
+   Entries whose name is not a shell variable name or whose value is not a string are left out and
+   logged; no file, or a bad one, means no GPU environment.
 2. Makes `/` a shared mount (so drives mounted later reach Nano's namespace), stops a Nano left over
    by an earlier session (`/run/thimsy/nano.pid`), and **starts Nano at once** (`thimsy-session: nano
    started` in the kernel log). Nano's output goes to `/run/thimsy/log/nano.log`.
@@ -207,6 +212,7 @@ being checked stops the check and is never mounted; one pulled while mounted is 
 | Path | What |
 |---|---|
 | `/run/thimsy/volumes.json` | the drives (above) |
+| `/usr/share/thimsy/gpu.json` | read: the GPU pack's environment for Nano (At start) |
 | `/run/thimsy/nano.pid`, `/run/thimsy/padd.pid` | the processes it supervises |
 | `/run/thimsy/media_rw/<id>` | links to the mount points; the root's `/mnt/media_rw` must link here (G9's `10-android-links.sh`), since the root is read-only |
 | `/run/thimsy/session/deferred-started` | written when it starts `rcD`: a respawned session does not start it again |

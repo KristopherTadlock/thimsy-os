@@ -8,6 +8,12 @@
 #   deferred        (D05family)   back to the everyday governors
 #   sound-defaults  (D20sound)    the mixer on a first boot, with no saved state
 #   sleep-pre, sleep-post         (thimsy-session) around mem sleep
+#   fixedperf-on, fixedperf-off   (Nano's control keys: sys.gammaos.nano.
+#                                 fixedperf=1/0, G9-13) a game's fixed
+#                                 performance mode: full clock, then back
+#                                 to the everyday governors
+#
+# A governor file that is missing, read-only or refuses the value is skipped.
 #
 # Facts (all mainline RK3566): one cpufreq policy for the four A55 cores;
 # devfreq for the Mali GPU (fde60000.gpu) and the DDR controller (dmc, when
@@ -21,14 +27,15 @@ rk3566_governors() {
 	for g in "${THIMSY_ROOT:-}"/sys/class/devfreq/*/governor; do
 		[ -w "$g" ] && { echo "$2" > "$g"; } 2>/dev/null
 	done
+	return 0
 }
 
 rk3566_hook() {
 	case $1 in
-	boot)
+	boot | fixedperf-on)
 		rk3566_governors performance performance
 		;;
-	deferred)
+	deferred | fixedperf-off)
 		rk3566_governors schedutil simple_ondemand
 		;;
 	sound-defaults)

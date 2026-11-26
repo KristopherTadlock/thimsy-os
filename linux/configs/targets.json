@@ -44,7 +44,6 @@
     }
   },
   "pending_paths": {
-    "board/common/rootfs-overlay-dev": "G2e (init): the dev overlay this step's dev.fragment adds, with the serial getty",
     "board/rk3566/linux.fragment": "Phase 2a (RK3566 hand import)",
     "board/rk3566/uboot/uboot.fragment": "Phase 2a (FlipBase's U-Boot options)",
     "generated/rk3566/defconfig.fragment": "Phase 2a (RK3566 hand import), thimsy-import later",

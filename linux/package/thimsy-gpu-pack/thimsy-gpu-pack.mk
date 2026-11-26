@@ -9,7 +9,10 @@
 # src/gpu_pack.py as a target-finalize hook: it runs after every package has
 # installed and before the root image is made. The "source" is that script, in
 # this external tree (MIT), so a local site is enough.
-THIMSY_GPU_PACK_VERSION = 1.0
+# The version is the commit (build.sh passes THIMSY_GIT_SHA), so every commit
+# gets its own build directory and the sources are synced again: Buildroot
+# rsyncs a local site only once per build directory (build-integration-3).
+THIMSY_GPU_PACK_VERSION = $(or $(THIMSY_GIT_SHA),dev)
 THIMSY_GPU_PACK_SITE = $(BR2_EXTERNAL_THIMSY_PATH)/package/thimsy-gpu-pack/src
 THIMSY_GPU_PACK_SITE_METHOD = local
 THIMSY_GPU_PACK_LICENSE = MIT

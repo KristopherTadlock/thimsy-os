@@ -214,6 +214,22 @@ class Commit:
         return self.message.split("\n", 1)[0]
 
 
+def surface_diffs(head_block: Dict[str, bytes], base_block: Dict[str, bytes], surface: Set[str],
+                  head_files: Set[str]) -> Set[str]:
+    """The paths whose Nano-block section differs between HEAD and the merge base and that count as
+    Android-surface changes: every path of either block (not only HEAD's surface, which is computed
+    from nano/ at HEAD and so cannot see a path that is gone from it), counted when it is on HEAD's
+    surface or is not a file of nano/ at HEAD. The second covers a deleted file, an asset whose
+    section regen dropped because the file left nano/ (the image then ships the base copy, or
+    nothing, even where an Android.bp glob still matches), and a section for a file that was never
+    committed (android-safety-1)."""
+    out = set()
+    for p in set(head_block) | set(base_block):
+        if head_block.get(p) != base_block.get(p) and (p in surface or p not in head_files):
+            out.add(p)
+    return out
+
+
 def coverage(diffs: Set[str], commits: Sequence[Commit]) -> Tuple[List[str], List[Tuple[Commit, List[str]]]]:
     """(differing paths no annotated commit changed, [(unannotated commit, the differing paths it
     changed)]). A commit "changes" a path when the path's patch section differs from its parent's."""

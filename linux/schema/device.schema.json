@@ -28,6 +28,25 @@
       "properties": {"sensor": {"$ref": "#/definitions/syspath"}}
     },
     "power": {"$ref": "#/definitions/power"},
+    "modules": {"type": "array", "items": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"}, "uniqueItems": true, "description": "Kernel modules the kernel does not load by itself, loaded by S03modules in this order; thimsy-prop boot writes them to ro.thimsy.modules, space-separated."},
+    "product": {
+      "type": "object", "additionalProperties": false,
+      "description": "Android's product identity for Nano's device matching (decision I24): thimsy-prop boot writes ro.product.{,vendor.,odm.}<field> and ro.board.platform from it, falling back to model (model), id (device, name) and family (platform).",
+      "properties": {
+        "manufacturer": {"type": "string", "minLength": 1},
+        "model": {"type": "string", "minLength": 1},
+        "brand": {"type": "string", "minLength": 1},
+        "device": {"type": "string", "minLength": 1},
+        "name": {"type": "string", "minLength": 1},
+        "platform": {"type": "string", "minLength": 1}
+      }
+    },
+    "props": {
+      "type": "object",
+      "description": "Extra read-only properties, written as given by thimsy-prop boot (only ro.* keys; build.props wins a clash).",
+      "propertyNames": {"pattern": "^ro\\.[A-Za-z0-9_.-]+$"},
+      "additionalProperties": {"anyOf": [{"type": "string"}, {"type": "number"}, {"type": "boolean"}]}
+    },
     "profile_default": {"enum": ["small", "medium", "large", "ultra"]},
     "status": {"enum": ["imported", "built", "boots", "works", "certified"], "description": "imported: facts only, nothing built; then the catalog levels of plan section 8.3."},
     "quirk_facts": {

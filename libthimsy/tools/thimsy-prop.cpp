@@ -235,6 +235,27 @@ Source deviceSource(const json::Value& d, const std::string& path, int* warnings
         addUnique(&src, p + "name", name);
     }
     addUnique(&src, "ro.board.platform", platform);
+    // The keys the init scripts (lib.sh's thimsy_family, S03modules), thimsy-session and Nano's
+    // control keys read: the family, and "modules" (the out-of-tree modules S03modules loads) as one
+    // space-separated value.
+    std::string family;
+    if (scalarText(d["family"], &family)) addUnique(&src, "ro.thimsy.family", family);
+    const json::Value& modules = d["modules"];
+    if (!modules.isNull() && !modules.isArray()) {
+        fprintf(stderr, "thimsy-prop boot: %s: modules ignored (not an array)\n", path.c_str());
+        ++*warnings;
+    }
+    std::string mods;
+    for (const json::Value& m : modules.elements()) {
+        const std::string n = m.isString() ? m.asString() : std::string();
+        if (n.empty() || sanitizeKeyPart(n) != n) {
+            fprintf(stderr, "thimsy-prop boot: %s: a module name is ignored (not [A-Za-z0-9_-]+)\n", path.c_str());
+            ++*warnings;
+            continue;
+        }
+        mods += (mods.empty() ? "" : " ") + n;
+    }
+    addUnique(&src, "ro.thimsy.modules", mods);
     for (const auto& m : d.members()) {
         std::string v;
         if (scalarText(m.value, &v)) addUnique(&src, "ro.thimsy.device." + sanitizeKeyPart(m.key), v);
@@ -299,9 +320,9 @@ const char* envOr(const char* name, const char* def) {
 int cmdBoot(int argc, char** argv) {
     std::string devicePath = envOr("THIMSY_DEVICE_JSON", "/usr/share/thimsy/device.json");
     std::string buildPath = envOr("THIMSY_BUILD_PROPS", "/usr/share/thimsy/build.props");
-    // TODO(G2e): the card's thimsy/ directory is assumed to be mounted at /boot; S01props passes
-    // --install once the boot partition's mount point is fixed.
-    std::string installPath = envOr("THIMSY_INSTALL_JSON", "/boot/thimsy/install.json");
+    // The card's thimsy/ folder on the data partition, which S00base has mounted at /storage before
+    // S01props runs (G2e-14, linux/docs/init.md); S01props passes all three paths itself.
+    std::string installPath = envOr("THIMSY_INSTALL_JSON", "/storage/thimsy/install.json");
     for (int i = 0; i < argc; ++i) {
         if (i + 1 >= argc) return usage();
         if (strcmp(argv[i], "--device") == 0) devicePath = argv[++i];

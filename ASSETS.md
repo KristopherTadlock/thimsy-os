@@ -22,7 +22,7 @@ Path prefixes: `ps3xmb/` = `frameworks/base/cmds/gammaos-nano/ps3xmb/` and `nano
 
 ## Changes since the audit
 
-Made on 2026-11-12, after the audit; the tables below still show the state they audited.
+Made on 2026-11-12, after the audit; the tables below still show the state they audited, except the three Akrobat files' rows, which now say REPLACE (2026-11-25).
 
 - **Akrobat is not OFL.** ES-DE ships it under Fontfabric's Free Font EULA 2.0
   (`licenses/Akrobat_Fontfabric.pdf` in ES-DE's repository), which forbids redistributing the
@@ -42,7 +42,7 @@ Made on 2026-11-12, after the audit; the tables below still show the state they 
 
 ## Summary
 
-Rows that ship in the 1.0a image: **KEEP 22, REPLACE 22, ASK 8**. The ASK count includes Anbernic's
+Rows that ship in the 1.0a image: **KEEP 22, REPLACE 22, ASK 8** (the audit's count: the two Akrobat rows it counted as KEEP are REPLACE since). The ASK count includes Anbernic's
 charging pictures, already plan item M. On top of these:
 
 - 1 KEEP row is for the 1.2 base only (the ES-DE Magisk fix).
@@ -82,7 +82,7 @@ Corrections to `plan_remove_unlicensed_files.md`:
 | path | what it is | origin | evidence | licence | verdict |
 |---|---|---|---|---|---|
 | `ps3xmb/fonts/ps3-rodin-regular.ttf`, `-bold.ttf`, `-light.ttf` | XMB Latin UI font. Nano and drastic-nano load only Regular; Bold and Light ship through the `*.ttf` glob but nothing loads them | third party: Fontworks Japan, made for SCE | CONFIRMED: the name table says "Copyright (c)2006 Fontworks Japan, Inc. All Rights Reserved.", family "SCE-PS3 Rodin LATIN", vendor FWKS, fsType 4 | none (commercial) | REPLACE |
-| `ps3xmb/fonts/akrobat-regular.ttf`, `akrobat-semibold.ttf` | ES-DE's default face, used for theme text that has no `fontPath` | third party: Fontfabric (Plamen Motev), by way of ES-DE | the name table says "Copyright (c) 2016 by Fontfabric LLC. All rights reserved." with no licence field; plan 1.5 records it as OFL, which this audit could not verify offline | OFL per plan 1.5 (not in the file) | KEEP (verify, then ship the licence text) |
+| `ps3xmb/fonts/akrobat-regular.ttf`, `akrobat-semibold.ttf` | ES-DE's default face, used for theme text that has no `fontPath` | third party: Fontfabric (Plamen Motev), by way of ES-DE | the name table says "Copyright (c) 2016 by Fontfabric LLC. All rights reserved." with no licence field; plan 1.5 records it as OFL, which this audit could not verify offline | Fontfabric's Free Font EULA 2.0, not OFL (Changes since the audit) | REPLACE (both builds install Barlow Semi Condensed Medium and SemiBold under these two names, with Barlow's OFL.txt: Android's `mods/50-nano.sh`, Linux's `thimsy-data`) |
 | `ps3xmb/fonts/fontawesome-webfont.ttf` | icon glyph fallback (ES-DE's PUA glyphs) | third party: Font Awesome 4.7.0 (Dave Gandy) | CONFIRMED: the name table gives version 4.7.0, licence URL fontawesome.io/license | SIL OFL 1.1 (the font) | KEEP |
 | `ps3xmb/icons/xmb_icon_000..070.png`, `xmb_icon_psn.png` | XMB category and item icons, 512x512 RGBA white silhouettes (`xmb_icon_psn` is never loaded) | third party: Sony (PS3 firmware), ported by upstream | CONFIRMED by content: the PS3 XMB set (user smiley, PSP, Remote Play, trophy, PS3 tools), the **PSN logo with the PlayStation symbol** and the **Sony Walkman "W"** | none | REPLACE |
 | `ps3xmb/normalmaps/nmap_000..069.png` | 128x128 tangent-space normal maps for the glass relight of those icons | third party: derived from the Sony icons | CONFIRMED: `nmap_000`/`005`/`069` are the house-smiley, controller and finger icons, matching `xmb_icon_000`/`005`/`069` by index | none | REPLACE |
@@ -148,7 +148,7 @@ primary face (Rodin today, so it changes when Rodin does).
 | `slate-es-de.zip`: per-system `*/images/logo.svg` | console and brand logos | the trademark owners | the zip's `LICENSE` says "The used logos and trademarks are copyright of their respective owners" | none (excluded from the theme licence) | ASK (policy: nominative trademark use, which every ES-DE build ships) |
 | `nano/nano_esde_assets/{help,controllers,badges}/*.svg` | ES-DE help glyphs (including PS/Xbox/Switch face buttons), controller and badge icons | third party: ES-DE `resources/graphics` | per `Android.bp` ("Sourced from ES-DE resources/graphics"); Inkscape SVGs | ES-DE's licence (MIT, PLAUSIBLE) | KEEP |
 | `colorful/_inc/fonts/Gilroy-{Bold,Light,Regular,SemiBold}.ttf` | the theme's main font | third party: Radomir Tinkov | CONFIRMED: the name table says "Copyright (c) 2016 by Radomir Tinkov. All rights reserved.", vendor UKWN | none (commercial) | REPLACE |
-| `colorful/_inc/fonts/Akrobat-Bold.ttf` | secondary font | Fontfabric | the same notice as Nano's Akrobat | as Akrobat above | KEEP (verify) |
+| `colorful/_inc/fonts/Akrobat-Bold.ttf` | secondary font | Fontfabric | the same notice as Nano's Akrobat | as Akrobat above | REPLACE (Android's `mods/50-nano.sh` installs Barlow Semi Condensed Bold under this name; Linux ships no Colorful theme) |
 | `colorful/_inc/sounds/*.wav` (7) | theme navigation sounds, 44.1 kHz stereo | the theme author | `ISFT=FL Studio 20` / `Fission`; no third-party credit | CC BY-NC-SA 2.0 | KEEP |
 | `colorful/_inc/images/*` (SVG icons, `game-art-default.webp`, `space.png`) | theme UI art | the theme author | README | CC BY-NC-SA 2.0 | KEEP |
 | `colorful/_inc/systems/images/*.webp` (about 195) | per-system art: composites of console product photos and screens | viking & faeran (Colorful for LaunchBox), g-spawn (ckau-book) | README credits. The content uses manufacturers' product photography and marks: e.g. `ps2.webp` shows a Sony WEGA TV, a PS2 and the "Sony Computer Entertainment" boot screen | CC BY-NC-SA 2.0 from the theme authors; the photos and marks underneath are not theirs to license | ASK (the same policy question as the Slate logos) |

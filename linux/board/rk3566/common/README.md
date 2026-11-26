@@ -7,23 +7,30 @@ init design is in `linux/docs/init.md`.
 
 | Path | Installed as | What |
 |---|---|---|
-| `rootfs-overlay/usr/share/thimsy/family/rk3566/hook` | `/usr/share/thimsy/family/rk3566/hook` | the family's hook: `boot`, `deferred`, `sound-defaults`, `sleep-pre`, `sleep-post` |
+| `rootfs-overlay/usr/share/thimsy/family/rk3566/hook` | `/usr/share/thimsy/family/rk3566/hook` | the family's hook: `boot`, `deferred`, `sound-defaults`, `sleep-pre`, `sleep-post`, `fixedperf-on`, `fixedperf-off` |
 
-`rootfs-overlay/` must be listed in `BR2_ROOTFS_OVERLAY` after
-`board/common/rootfs-overlay` by every tier defconfig that can run on an
-RK3566 (today `thimsy_v8_2` and `thimsy_v8_0`; the fragments are G2a's).
-Each family's files sit under `family/<family>/`, so a tier root can carry
-several families without collisions; `S01props` picks one at boot
-(`ro.thimsy.family`, or the only family present).
+`rootfs-overlay/` is part of the RK3566 hardware pack: `hw-rk3566.fragment`
+lists it in `BR2_ROOTFS_OVERLAY` after `board/common/rootfs-overlay`, so the
+`thimsy_rk3566_hw` tree carries it, not the tier roots. When a card is put
+together (`board/common/post-image.d/lib/card.sh`, G8), each device's root
+is the tier root, then the family's GPU pack unpacked over it (G8-2, gfix-8),
+then the hardware pack's modules, firmware and this overlay, then the
+device's `device.json`. Each family's files sit under `family/<family>/`, so
+a root could carry several families without collisions; `S01props` picks
+one at boot (`ro.thimsy.family`, which `thimsy-prop boot` writes from
+`device.json`'s `family`, or the only family present) and writes it to
+`/run/thimsy/family`.
 
 ## Governors
 
 `boot` sets every cpufreq policy and every devfreq device to `performance`
 until Nano's first frame (plan 9.3, "performance governor until the menu is
 up"); `deferred` (run by `D05family` after the first frame) sets
-`schedutil` and `simple_ondemand`. A governor the kernel lacks is skipped
-silently. Per-game performance modes (`fixedperf`, IMPLEMENTATION B.2) are
-`thimsy-session`'s, not the hook's.
+`schedutil` and `simple_ondemand`. A governor file that is missing or
+refuses the value is skipped silently. A game's fixed performance mode
+(`sys.gammaos.nano.fixedperf=1`/`0`, IMPLEMENTATION B.2) is Nano's control
+keys running this hook as `sh hook fixedperf-on` / `fixedperf-off` (G9-13):
+the same governors as `boot`, then as `deferred`.
 
 ## Sleep
 
