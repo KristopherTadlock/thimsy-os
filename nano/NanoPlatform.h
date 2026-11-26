@@ -35,13 +35,40 @@
 #pragma once
 
 #include <memory>
+#include <string>
+#include <vector>
 
 namespace nanoplat {
 
-// The platform's services. Empty until the first G7 step declares one. Each platform library
-// derives from it to keep its own state; services added later are members here.
+// --- Volumes (G7-volumes) -------------------------------------------------------------------------
+// The removable volumes, a microSD card or a USB drive, as apps see them: /storage/<id>. What
+// NanoSdMove.cpp's and NanoEsdeStore.cpp's /storage and /mnt/media_rw scans asked the filesystem,
+// moved behind one interface. Any thread. Every call may touch the filesystem (on Linux it also
+// reads /run/thimsy/volumes.json when the session has changed it), so none is for a frame's hot path.
+class Volumes {
+ public:
+    virtual ~Volumes() = default;
+    // The microSD card: the first removable volume Nano can write to (/storage/<id>), the slot's
+    // before a USB drive's; "" when there is none (NanoMenu::sdCardRoot).
+    virtual std::string cardRoot() = 0;
+    // The volume at storagePath (/storage/<id>) is the microSD slot's (an MMC disk), not a USB
+    // drive's (NanoSdMove.cpp's sdIsSlot).
+    virtual bool isSlot(const std::string& storagePath) = 0;
+    // The volume `id` is in: its /storage/<id> is there (NanoMenu::esdeStoreFollowCard).
+    virtual bool present(const std::string& id) = 0;
+    // The volume `id` is not in: neither its raw mount nor /storage/<id> is there (NanoSdMove.cpp's
+    // sdVolumeAbsent).
+    virtual bool absent(const std::string& id) = 0;
+    // /storage/<id><rel> for each removable volume but `vol` where that is a folder Nano can write
+    // to, in no set order (NanoMenu::esdeStoreFollowCard: the ES-DE folder on another card).
+    virtual std::vector<std::string> writableFolders(const std::string& vol, const std::string& rel) = 0;
+};
+
+// The platform's services, one member per G7 area. Each platform library derives from it to keep
+// its own state, and its createPlatform() sets every member, so call sites use them untested.
 struct Platform {
     virtual ~Platform();
+    std::unique_ptr<Volumes> volumes;   // G7-volumes
 };
 
 struct PlatformArgs {

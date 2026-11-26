@@ -365,6 +365,7 @@
     "nano:NanoI18n.h",
     "nano:NanoJson.h",
     "nano:NanoMenu.h",
+    "nano:NanoPlatform.h",
     "shim:compat/include/cutils/properties.h",
     "shim:compat/include/log/log.h",
     "shim:compat/include/utils/SystemClock.h"
@@ -1435,6 +1436,7 @@
     "nano:NanoJson.h",
     "nano:NanoMenu.h",
     "nano:NanoMenuUtils.h",
+    "nano:NanoPlatform.h",
     "nano:NanoRaConfig.h",
     "nano:NanoScrapeQueue.h",
     "nano:NanoScraper.h",
@@ -1697,6 +1699,18 @@
    ]
   },
   "platform/firmware/Platform.cpp": {
+   "includes": [
+    "nano:NanoPlatform.h",
+    "nano:platform/firmware/Volumes.h"
+   ]
+  },
+  "platform/firmware/Volumes.cpp": {
+   "includes": [
+    "nano:NanoPlatform.h",
+    "nano:platform/firmware/Volumes.h"
+   ]
+  },
+  "platform/firmware/Volumes.h": {
    "includes": [
     "nano:NanoPlatform.h"
    ]
@@ -4708,6 +4722,12 @@
    ],
    "needs": {}
   },
+  "platform/firmware/Volumes.cpp": {
+   "modules": [
+    "gammaos-nano"
+   ],
+   "needs": {}
+  },
   "powerwatch/nano_powerwatch.cpp": {
    "modules": [
     "nano-powerwatch"
@@ -5295,6 +5315,7 @@
   "firmware": {
    "main.cpp": "reaches binder/ProcessState.h (not stubbed: Android's entry point (main.cpp) starts the binder thread pool; Linux has its own main); jni.h (not stubbed: the JNI shim of drastic-nano's runner (the DS player, not on Linux v1) and main.cpp's)",
    "platform/firmware/Platform.cpp": "the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)",
+   "platform/firmware/Volumes.cpp": "the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)",
    "NanoMenuDrmBuffers.cpp": "the AHardwareBuffer render-target back end (G9a); Linux links platform/linux/display/DrmBuffersGbm.cpp instead",
    "NanoMenuRgbFollow.cpp": "reaches GammaRgbProcess.h (a header outside Nano's folder (upstream.json siblings): v1 has neither Shares nor RGB follow on Linux)",
    "NanoMenuShares.cpp": "reaches share_config.h (a header outside Nano's folder (upstream.json siblings): v1 has neither Shares nor RGB follow on Linux)",

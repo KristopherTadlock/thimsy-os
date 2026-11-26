@@ -148,6 +148,8 @@ NanoMenuDrm.cpp
 main.cpp
 # platform/firmware/Platform.cpp: the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)
 platform/firmware/Platform.cpp
+# platform/firmware/Volumes.cpp: the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)
+platform/firmware/Volumes.cpp
 # NanoMenuDrmBuffers.cpp: the AHardwareBuffer render-target back end (G9a); Linux links platform/linux/display/DrmBuffersGbm.cpp instead
 NanoMenuDrmBuffers.cpp
 # NanoMenuRgbFollow.cpp: reaches GammaRgbProcess.h (a header outside Nano's folder (upstream.json siblings): v1 has neither Shares nor RGB follow on Linux)

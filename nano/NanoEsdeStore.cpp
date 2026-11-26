@@ -38,6 +38,7 @@
 #include "NanoEsdeSystemName.h"
 #include "NanoI18n.h"
 #include "NanoJson.h"
+#include "NanoPlatform.h"
 
 #include <cutils/properties.h>
 #include <dirent.h>
@@ -159,7 +160,7 @@ bool NanoMenu::esdeStoreFollowCard() {
     const size_t sl = dir.find('/', 9);
     const std::string vol = dir.substr(9, sl == std::string::npos ? std::string::npos : sl - 9);
     const std::string rel = sl == std::string::npos ? std::string() : dir.substr(sl);
-    if (vol.empty() || vol == "emulated" || vol == "self" || access(("/storage/" + vol).c_str(), F_OK) == 0) {
+    if (vol.empty() || vol == "emulated" || vol == "self" || nanoplat::get().volumes->present(vol)) {
         mEsdeCardGoneMs = 0;
         return false;
     }
@@ -168,19 +169,7 @@ bool NanoMenu::esdeStoreFollowCard() {
     const int64_t now = (int64_t)uptimeMillis();
     if (mEsdeCardGoneMs == 0) mEsdeCardGoneMs = now;
     if (now < 30000 || now - mEsdeCardGoneMs < 10000) return false;
-    std::vector<std::string> found;
-    if (DIR* d = opendir("/storage")) {
-        while (dirent* e = readdir(d)) {
-            const std::string n = e->d_name;
-            if (n == "." || n == ".." || n == "emulated" || n == "self" || n == vol) continue;
-            const std::string cand = "/storage/" + n + rel;
-            struct stat st;
-            if (access(("/mnt/media_rw/" + n).c_str(), F_OK) == 0 && stat(cand.c_str(), &st) == 0 && S_ISDIR(st.st_mode)
-                && access(cand.c_str(), W_OK) == 0)
-                found.push_back(cand);
-        }
-        closedir(d);
-    }
+    std::vector<std::string> found = nanoplat::get().volumes->writableFolders(vol, rel);
     if (found.empty()) return false;
     std::sort(found.begin(), found.end());
     char sc[PROPERTY_VALUE_MAX] = {};
