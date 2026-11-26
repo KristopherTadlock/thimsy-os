@@ -21,8 +21,11 @@
 //   with its control socket in /run/wpa_supplicant, and udhcpc).
 // - forgetWifiNetwork: REMOVE_NETWORK <id> and SAVE_CONFIG on wpa_supplicant's control socket
 //   (WpaCtrl.h); the id is wpa_supplicant's own network id.
-// - setBluetoothEnabled: `bluetoothctl power on|off`; connectBluetooth: `bluetoothctl connect <mac>`,
-//   run on demand (no daemon of Nano's own). An image without BlueZ logs that once per call.
+// - setBluetoothEnabled: persist.thimsy.bluetooth.enabled (1 or 0), which D35bluetooth reads at
+//   boot; on: `sh /etc/init.d/deferred/D35bluetooth start` (D-Bus and bluetoothd, only on a device
+//   whose device.json has "bluetooth": true and with a controller), then `bluetoothctl power on`
+//   (not when the script failed); off: `bluetoothctl power off`, then `D35bluetooth stop`.
+//   connectBluetooth: `bluetoothctl connect <mac>`. An image without BlueZ logs that once per call.
 // - setTimeFormat: nothing. persist.gammaos.nano.clock12, which Nano wrote just before, is the
 //   only clock format on Linux.
 // - setTimeZone: the zone's file must exist under /usr/share/zoneinfo; then the config's localtime
@@ -32,7 +35,8 @@
 //
 // The Wi-Fi, forget and Bluetooth commands take seconds, and Nano calls them from its render thread
 // (a menu row's press), so they run on a worker thread of their own, one at a time in the order
-// asked (Options::background); persist.thimsy.wifi.enabled is written at once. The time zone is set
+// asked (Options::background); persist.thimsy.wifi.enabled and persist.thimsy.bluetooth.enabled are
+// written at once. The time zone is set
 // on the caller's thread: it is quick, and Nano reads the zone back right after.
 #pragma once
 
@@ -54,6 +58,7 @@ struct Options {
     std::string wpaDir = "/run/wpa_supplicant";        // D30net's ctrl_interface
     std::string wpaLocalDir = "/tmp";                  // where this client binds its socket
     std::string netScript = "/etc/init.d/deferred/D30net";
+    std::string btScript = "/etc/init.d/deferred/D35bluetooth";
     // Runs a program; empty: runProgram (Run.h).
     std::function<RunResult(const std::vector<std::string>& argv, int timeoutMs)> run;
     // Makes this process follow the zone just set; empty: setenv("TZ", zone) and tzset().

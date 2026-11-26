@@ -294,20 +294,26 @@ TEST_F(ActionsTest, ForgetWithoutWpaSupplicant) {
     EXPECT_TRUE(runs.empty());
 }
 
-TEST_F(ActionsTest, BluetoothThroughBluetoothctl) {
+TEST_F(ActionsTest, BluetoothThroughD35AndBluetoothctl) {
     auto a = make();
+    const std::string script = o.root + "/etc/init.d/deferred/D35bluetooth";
     a->setBluetoothEnabled(true);
+    EXPECT_EQ(prop("persist.thimsy.bluetooth.enabled"), "1");
     a->setBluetoothEnabled(false);
+    EXPECT_EQ(prop("persist.thimsy.bluetooth.enabled"), "0");
     a->connectBluetooth("aa:BB:cc:00:11:22");
     a->connectBluetooth("aa:BB:cc:00:11");          // not an address
     a->connectBluetooth("aa:BB:cc:00:11:22; reboot");
-    next.status = 127;                              // no BlueZ on the image: logged
+    next.status = 1;                                // D35bluetooth could not start bluetoothd
     a->setBluetoothEnabled(true);
-    ASSERT_EQ(runs.size(), 4u);
-    EXPECT_EQ(runs[0], (std::vector<std::string>{"bluetoothctl", "power", "on"}));
-    EXPECT_EQ(runs[1], (std::vector<std::string>{"bluetoothctl", "power", "off"}));
-    EXPECT_EQ(runs[2], (std::vector<std::string>{"bluetoothctl", "connect", "aa:BB:cc:00:11:22"}));
-    EXPECT_EQ(runs[3], (std::vector<std::string>{"bluetoothctl", "power", "on"}));
+    ASSERT_EQ(runs.size(), 6u);
+    EXPECT_EQ(runs[0], (std::vector<std::string>{"/bin/sh", script, "start"}));  // the daemons first
+    EXPECT_EQ(runs[1], (std::vector<std::string>{"bluetoothctl", "power", "on"}));
+    EXPECT_EQ(runs[2], (std::vector<std::string>{"bluetoothctl", "power", "off"}));  // the radio first
+    EXPECT_EQ(runs[3], (std::vector<std::string>{"/bin/sh", script, "stop"}));
+    EXPECT_EQ(runs[4], (std::vector<std::string>{"bluetoothctl", "connect", "aa:BB:cc:00:11:22"}));
+    EXPECT_EQ(runs[5], (std::vector<std::string>{"/bin/sh", script, "start"}));  // failed: no bluetoothctl
+    EXPECT_GE(timeouts[0], 10000);
 }
 
 TEST_F(ActionsTest, SlowActionsRunOnAWorkerInOrder) {
@@ -339,7 +345,7 @@ TEST_F(ActionsTest, SlowActionsRunOnAWorkerInOrder) {
         release = true;
     }  // destroying the actions runs what is queued, then stops the worker
     EXPECT_FALSE(onCaller);
-    EXPECT_EQ(seen, (std::vector<std::string>{"start", "off", "00:11:22:33:44:55", "stop"}));
+    EXPECT_EQ(seen, (std::vector<std::string>{"start", "off", "stop", "00:11:22:33:44:55", "stop"}));
 }
 
 TEST_F(ActionsTest, TimeFormatIsTheStoresOnly) {

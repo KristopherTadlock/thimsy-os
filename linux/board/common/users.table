@@ -9,3 +9,11 @@
 # is only right while this table adds no user. A service that should drop
 # privileges adds its user here and its files' owners in device.table, and
 # then 10-erofs.sh must stop passing --all-root.
+#
+# One package adds a user of its own: Buildroot's dbus recipe makes "dbus",
+# which dbus-daemon drops to after it has made its socket (D35bluetooth starts
+# it only when Bluetooth is on). Its one file not owned by root is the
+# activation helper (/usr/libexec/dbus-daemon-launch-helper, root:dbus 4750),
+# which --all-root turns into root:root, so the bus cannot start services on
+# demand. Thimsy needs none: D35bluetooth starts bluetoothd itself (guess at
+# the recipe's user and modes, from Buildroot 2025.02).

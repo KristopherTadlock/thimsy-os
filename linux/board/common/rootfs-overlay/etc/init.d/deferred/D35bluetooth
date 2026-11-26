@@ -1,0 +1,142 @@
+#!/bin/sh
+# D35bluetooth: D-Bus and bluetoothd, when the device has Bluetooth and the
+# user left it on.
+# SPDX-License-Identifier: MIT
+#
+# Nothing starts unless device.json says "bluetooth": true
+# (ro.thimsy.device.bluetooth) and persist.thimsy.bluetooth.enabled=1 (off by
+# default): the plan's "no D-Bus at boot" (section 5.2). Nano turns
+# Bluetooth on and off through its system actions, which set the key and run
+# this script, then bluetoothctl (nano/platform/linux/actions). Both daemons
+# run in the foreground of background jobs, with their pids in /run, so stop
+# (rcK, through rcD stop) ends exactly them: bluetoothd first (it writes its
+# state on TERM), then the bus. The pairings live on the data partition:
+# /var/lib/bluetooth links to /storage/.config/thimsy/bluetooth
+# (post-build.d/15-state-links.sh).
+#
+# Exit status: 0 when nothing was asked for or bluetoothd runs; 1 when it was
+# asked for and could not start (no Bluetooth on this device, no controller,
+# or a daemon failed).
+. "${THIMSY_ROOT:-}/usr/share/thimsy/init/lib.sh"
+
+TAG=D35bluetooth
+DBUS_PID=$R/run/dbus-daemon.pid
+BTD_PID=$R/run/bluetoothd.pid
+# Buildroot's dbus: the system bus socket under /var/run/dbus (/run/dbus),
+# and /var/lib/dbus a link to /tmp/dbus for the machine id (guess at the
+# recipe's paths).
+DBUS_SOCKET=$R/run/dbus/system_bus_socket
+STATE_DIR=$THIMSY_CONFIG/bluetooth
+
+# BlueZ installs bluetoothd in its libexec directory, not on PATH.
+bluetoothd_path() {
+	BTD=$BLUETOOTHD
+	[ "$BTD" = bluetoothd ] || return 0
+	for p in /usr/libexec/bluetooth/bluetoothd /usr/sbin/bluetoothd; do
+		if [ -x "$R$p" ]; then
+			BTD=$R$p
+			return 0
+		fi
+	done
+	BTD=
+	return 1
+}
+
+# pid_alive FILE: true when FILE holds the pid of a running process.
+pid_alive() {
+	[ -r "$1" ] || return 1
+	pid=
+	read -r pid < "$1" || :
+	case $pid in
+	'' | *[!0-9]*) return 1 ;;
+	esac
+	kill -0 "$pid" 2>/dev/null
+}
+
+# stop_pidfile FILE: TERM the process FILE names, wait up to 2 s for it,
+# then KILL it.
+stop_pidfile() {
+	[ -r "$1" ] || return 0
+	pid=
+	read -r pid < "$1" || :
+	rm -f "$1"
+	case $pid in
+	'' | *[!0-9]*) return 0 ;;
+	esac
+	kill -TERM "$pid" 2>/dev/null || return 0
+	i=0
+	while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 20 ]; do
+		sleep 0.1 2>/dev/null || sleep 1
+		i=$((i + 1))
+	done
+	kill -KILL "$pid" 2>/dev/null || :
+}
+
+# wait_for_controller: true once the kernel has a Bluetooth controller (the
+# UART driver may probe after the first frame).
+wait_for_controller() {
+	i=0
+	while [ "$i" -le "$THIMSY_BT_WAIT_S" ]; do
+		for h in "$R"/sys/class/bluetooth/hci*; do
+			[ -e "$h" ] && return 0
+		done
+		[ "$i" -lt "$THIMSY_BT_WAIT_S" ] && sleep 1
+		i=$((i + 1))
+	done
+	return 1
+}
+
+start_bus() {
+	pid_alive "$DBUS_PID" && return 0
+	mkdir -p "$R/run/dbus" "$R/tmp/dbus"
+	"$DBUS_UUIDGEN" --ensure > /dev/null 2>&1 || thimsy_log $TAG "dbus-uuidgen failed ($?)"
+	rm -f "$DBUS_SOCKET"
+	"$DBUS_DAEMON" --system --nofork --nopidfile > /dev/null 2>&1 &
+	printf '%s\n' "$!" > "$DBUS_PID"
+	# bluetoothd needs the bus: wait for its socket, 3 s at most.
+	i=0
+	while [ ! -e "$DBUS_SOCKET" ] && [ "$i" -lt 30 ]; do
+		sleep 0.1 2>/dev/null || sleep 1
+		i=$((i + 1))
+	done
+	[ -e "$DBUS_SOCKET" ]
+}
+
+case ${1:-start} in
+start)
+	thimsy_persist persist.thimsy.bluetooth.enabled 0
+	[ "$PERSIST_OUT" = 1 ] || exit 0
+	thimsy_ro ro.thimsy.device.bluetooth false
+	if [ "$RO_OUT" != true ]; then
+		thimsy_log $TAG "Bluetooth is on, but this device has none (device.json)"
+		exit 1
+	fi
+	pid_alive "$BTD_PID" && exit 0
+	if ! bluetoothd_path; then
+		thimsy_warn $TAG "Bluetooth is on, but bluetoothd is not on this image"
+		exit 1
+	fi
+	if ! wait_for_controller; then
+		thimsy_log $TAG "Bluetooth is on, but there is no controller"
+		exit 1
+	fi
+	mkdir -p "$STATE_DIR"
+	chmod 0700 "$STATE_DIR"
+	if ! start_bus; then
+		thimsy_warn $TAG "the D-Bus system bus did not start"
+		stop_pidfile "$DBUS_PID"
+		exit 1
+	fi
+	"$BTD" -n > /dev/null 2>&1 &
+	printf '%s\n' "$!" > "$BTD_PID"
+	thimsy_log $TAG "D-Bus and bluetoothd started"
+	;;
+stop)
+	stop_pidfile "$BTD_PID"
+	stop_pidfile "$DBUS_PID"
+	;;
+*)
+	echo "usage: $0 start|stop" >&2
+	exit 2
+	;;
+esac

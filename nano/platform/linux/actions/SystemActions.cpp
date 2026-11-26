@@ -53,9 +53,11 @@ namespace actions {
 namespace {
 
 const char kWifiEnabledKey[] = "persist.thimsy.wifi.enabled";
+const char kBluetoothEnabledKey[] = "persist.thimsy.bluetooth.enabled";
 const char kTimezoneKey[] = "persist.sys.timezone";
 constexpr int kNetScriptMs = 30000;   // D30net start waits up to 5 s for the interface
 constexpr int kBtPowerMs = 10000;
+constexpr int kBtScriptMs = 20000;   // D35bluetooth start waits up to 5 s for the controller
 constexpr int kBtConnectMs = 20000;   // a profile connect (A2DP, HID) takes seconds
 constexpr int kWpaReplyMs = 3000;
 
@@ -94,7 +96,18 @@ class LinuxSystemActions : public nanoplat::SystemActions {
     }
 
     void setBluetoothEnabled(bool on) override {
-        post([this, on] { bluetoothctl({"bluetoothctl", "power", on ? "on" : "off"}, kBtPowerMs); });
+        // As Wi-Fi: the setting at once (D35bluetooth reads it at boot); the daemons and the radio on
+        // the worker. On: D-Bus and bluetoothd first, then the radio; off: the radio, then the daemons.
+        if (property_set(kBluetoothEnabledKey, on ? "1" : "0") != 0) ALOGE("could not write %s", kBluetoothEnabledKey);
+        post([this, on] {
+            if (on) {
+                if (!btScript(true)) return;
+                bluetoothctl({"bluetoothctl", "power", "on"}, kBtPowerMs);
+            } else {
+                bluetoothctl({"bluetoothctl", "power", "off"}, kBtPowerMs);
+                btScript(false);
+            }
+        });
     }
 
     void connectBluetooth(const std::string& mac) override {
@@ -173,6 +186,17 @@ class LinuxSystemActions : public nanoplat::SystemActions {
                   r.timedOut ? " (timed out)" : "");
         else
             ALOGI("Wi-Fi %s", on ? "on" : "off");
+    }
+
+    // D35bluetooth start|stop: true when it succeeded (start: bluetoothd runs).
+    bool btScript(bool on) {
+        RunResult r = o_.run({"/bin/sh", o_.root + o_.btScript, on ? "start" : "stop"}, kBtScriptMs);
+        if (r.status != 0) {
+            ALOGW("Bluetooth %s: %s exited %d%s", on ? "on" : "off", o_.btScript.c_str(), r.status,
+                  r.timedOut ? " (timed out)" : "");
+            return false;
+        }
+        return true;
     }
 
     void forget(int savedNetId) {

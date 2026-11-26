@@ -27,6 +27,7 @@
       "type": "object", "additionalProperties": false,
       "properties": {"sensor": {"$ref": "#/definitions/syspath"}}
     },
+    "bluetooth": {"type": "boolean", "description": "The device has a Bluetooth controller. thimsy-prop boot writes it to ro.thimsy.device.bluetooth; D35bluetooth starts D-Bus and bluetoothd only when it is true and the user turned Bluetooth on. Absent: false."},
     "power": {"$ref": "#/definitions/power"},
     "modules": {"type": "array", "items": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"}, "uniqueItems": true, "description": "Kernel modules the kernel does not load by itself, loaded by S03modules in this order; thimsy-prop boot writes them to ro.thimsy.modules, space-separated."},
     "product": {

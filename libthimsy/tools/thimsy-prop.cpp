@@ -199,7 +199,8 @@ bool loadJson(const std::string& path, json::Value* out, bool* missing, int* war
 }
 
 // device.json: explicit "props" (ro.* only), then the Android match keys from "product" (I24),
-// then ro.thimsy.device.<name> for top-level scalars and ro.thimsy.device.panel.<name>.
+// then ro.thimsy.device.<name> for top-level scalars, ro.thimsy.device.panel.<name> and
+// ro.thimsy.device.audio.<name> (the card D20sound waits for).
 Source deviceSource(const json::Value& d, const std::string& path, int* warnings) {
     Source src;
     src.name = path;
@@ -260,9 +261,12 @@ Source deviceSource(const json::Value& d, const std::string& path, int* warnings
         std::string v;
         if (scalarText(m.value, &v)) addUnique(&src, "ro.thimsy.device." + sanitizeKeyPart(m.key), v);
     }
-    for (const auto& m : d["panel"].members()) {
-        std::string v;
-        if (scalarText(m.value, &v)) addUnique(&src, "ro.thimsy.device.panel." + sanitizeKeyPart(m.key), v);
+    for (const char* section : {"panel", "audio"}) {
+        for (const auto& m : d[section].members()) {
+            std::string v;
+            if (scalarText(m.value, &v))
+                addUnique(&src, std::string("ro.thimsy.device.") + section + "." + sanitizeKeyPart(m.key), v);
+        }
     }
     return src;
 }

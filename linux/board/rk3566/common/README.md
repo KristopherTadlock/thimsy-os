@@ -42,11 +42,21 @@ refused and `s2idle` stays. Nothing is needed after resume yet (`sleep-post`).
 
 ## ALSA notes
 
-- The ARCs' codec is the RK817's (`rk817-codec`), one card (`card0`,
-  `rockchip,rk817-codec` in the device tree). Mainline names the output
-  selector `Playback Path` with values including `OFF`, `SPK`, `HP`,
-  `HP_NO_MIC`, `SPK_HP` *(from ROCKNIX's RK3566 quirks and the driver; check
-  on the unit)*.
+- The ARCs' codec is the RK817's (`rk817-codec`), on the `simple-audio-card`
+  named `rk817_ext` (ALSA id `rk817ext`). It is most likely **card 1**, not
+  card 0: the ARC's device tree includes `rk3566-anbernic-rgxx3.dtsi`, which
+  turns on HDMI and `hdmi_sound` (the ARC does not turn them off), so the HDMI
+  audio card is there too and usually registers first, and ROCKNIX sets
+  `ALSA_PRIMARY_CARD=1` for every RK3566 device (`050-audio_path`). Both ARC
+  `device.json` files say `audio.card_index` 1 and `audio.card` `rk817_ext`;
+  `D20sound` waits for that index and warns in the kernel log when the card
+  there is not `rk817ext` or when `rk817ext` has another index. **Phase 0
+  check:** `cat /proc/asound/cards` on each unit (expected: `0 [hdmisound]`,
+  `1 [rk817ext]`); if the order differs, fix `audio.card_index` (the session's
+  `ALSA_CARD`, `/etc/asound.conf` and `D20sound` all follow it). Mainline names
+  the output selector `Playback Path` with values including `OFF`, `SPK`,
+  `HP`, `HP_NO_MIC`, `SPK_HP` *(from ROCKNIX's RK3566 quirks and the driver;
+  check on the unit)*.
 - No ALSA UCM profile is shipped for the alpha: Nano and RetroArch open
   `default` and the path is set once. `default` is the common overlay's
   `/etc/asound.conf`: plug over a dmix on card `ALSA_CARD` (the session sets

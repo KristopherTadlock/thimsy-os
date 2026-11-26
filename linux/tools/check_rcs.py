@@ -44,15 +44,16 @@ INITTAB = OVERLAY + "/etc/inittab"
 
 # E.5's order, refined in docs/init.md (D05family added).
 S_ORDER = ["S00base", "S01props", "S02padd", "S03modules"]
-D_ORDER = ["D05family", "D10cards", "D20sound", "D30net", "D40time",
-           "D50ssh", "D60firstboot"]
+D_ORDER = ["D05family", "D10cards", "D20sound", "D30net", "D35bluetooth",
+           "D40time", "D50ssh", "D60firstboot"]
 RC_SCRIPTS = ["rcS", "rcD", "rcK"]
 
 # Programs the synchronous rcS path must not run (plan 9.3: nothing between
 # rcS and the first frame but /storage, the props and the pad).
 FORBIDDEN_SYNC = [
     "wpa_supplicant", "udhcpc", "dhcpcd", "dhclient", "ntpd", "ntpdate",
-    "chronyd", "hwclock", "dropbear", "sshd", "dbus-daemon", "bluetoothd",
+    "chronyd", "hwclock", "dropbear", "sshd", "dbus-daemon", "dbus-uuidgen",
+    "bluetoothd", "bluetoothctl",
     "alsactl", "sleep", "usleep", "mdev", "udevadm", "udevd", "fsck",
     "e2fsck", "mkfs", "sfdisk", "sgdisk", "gdisk", "parted", "partx",
     "resize2fs", "find", "ldconfig", "depmod", "sync", "wait",
@@ -60,7 +61,8 @@ FORBIDDEN_SYNC = [
 # The init library's tool variables for those programs.
 FORBIDDEN_SYNC_VARS = [
     "WPA", "UDHCPC", "NTPD", "DROPBEAR", "DROPBEARKEY", "ALSACTL",
-    "FSCK_EXT4", "SFDISK", "MKFS_EXFAT", "SYNC",
+    "FSCK_EXT4", "SFDISK", "MKFS_EXFAT", "SYNC", "DBUS_DAEMON", "DBUS_UUIDGEN",
+    "BLUETOOTHD",
 ]
 
 BASHISMS: List[Tuple[str, str]] = [
