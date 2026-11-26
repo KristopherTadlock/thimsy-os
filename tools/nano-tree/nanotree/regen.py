@@ -1,9 +1,10 @@
 """The Nano block of the patch, built from nano/ with pinned git plumbing (IMPLEMENTATION.md A.3)."""
 from __future__ import annotations
 
+import sys
 from typing import List, Optional, Tuple
 
-from .compose import Entries, worktree_entries
+from .compose import Entries, dirty_nano, worktree_entries
 from .config import Layout, NanoTreeError, Upstream
 from .gitcache import ZERO, Cache, Fork
 from .patchfile import Patch, first_difference, sha256
@@ -111,13 +112,34 @@ def read_patch(layout: Layout) -> bytes:
         return f.read()
 
 
+def _stderr(msg: str) -> None:
+    print(msg, file=sys.stderr)
+
+
+def warn_uncommitted(fork: Fork, cfg: Upstream, warn=_stderr, limit: int = 10) -> List[str]:
+    """Warn (not fail) when the block built from the working tree includes nano/ files that are
+    not committed: untracked, or with staged or unstaged changes. A commit of the regenerated
+    patch without them leaves a patch that the committed nano/ does not produce, and a merge
+    that git resolves without the driver (a trivial merge) carries that patch on unchecked
+    (review open problem android-safety-4). Returns the paths."""
+    dirty = dirty_nano(fork, cfg)
+    if dirty:
+        shown = ", ".join("nano/" + p for p in dirty[:limit])
+        more = " and %d more" % (len(dirty) - limit) if len(dirty) > limit else ""
+        warn("regen: warning: the block includes %d nano/ file(s) that are not committed "
+             "(untracked or changed): %s%s. Commit them together with the regenerated patch "
+             "and tools/nano-tree/block.sha256." % (len(dirty), shown, more))
+    return dirty
+
+
 def regen(layout: Layout, cfg: Upstream, fork: Fork, cache: Cache, check: bool = False,
-          force: bool = False, log=print) -> int:
+          force: bool = False, log=print, warn=_stderr) -> int:
     data = read_patch(layout)
     patch = Patch.parse(data)
     before, block, after = patch.split_block(cfg.prefix)
     new_block = build_block(layout, cfg, fork, cache, block)
     new_data = before + new_block + after
+    warn_uncommitted(fork, cfg, warn)
     recorded = layout.read_block_sha()
     if check:
         status = 0

@@ -266,7 +266,14 @@ if [ "$dry" = 0 ]; then
   assets="$BUILD_DIR/nano-assets-$SHA"
   rm -rf "$assets"
   "$PY" "$REPO/tools/nano-tree/nano_tree.py" export-assets "$assets/export"
+  # The licence texts legal-info saves with the package (thimsy-data.mk's
+  # LICENSE_FILES), at HEAD like the rest: ATTRIBUTION.md and NOTICE.
+  mkdir -p "$assets/licences"
+  for f in ATTRIBUTION.md NOTICE; do
+    git -C "$REPO" show "HEAD:$f" >"$assets/licences/$f" || die 1 "$f is not in HEAD"
+  done
   "$PY" "$HERE/tools/assets_allowlist.py" filter --list "$HERE/package/thimsy-data/assets.list" \
+    --licence "$assets/licences/ATTRIBUTION.md" --licence "$assets/licences/NOTICE" \
     "$assets/export" "$assets/nano-assets-$SHA"
   rm -rf "$assets/export"
   epoch="$(git -C "$REPO" log -1 --format=%ct HEAD)"

@@ -109,9 +109,6 @@ class CommittedTree(unittest.TestCase):
                 self.assertFalse(m.is_y("BR2_TARGET_GENERIC_GETTY"))
                 self.assertFalse(m.is_y("BR2_THIMSY_FLAVOUR_DEV"))
                 self.assertNotIn("rootfs-overlay-dev", m.value("BR2_ROOTFS_OVERLAY") or "")
-                if m.is_y("BR2_PACKAGE_DROPBEAR"):
-                    self.assertFalse(m.is_y("BR2_PACKAGE_THIMSY_SESSION_SSH_AT_BOOT"))
-                    self.assertFalse(m.is_y("BR2_PACKAGE_THIMSY_SESSION_SSH_PASSWORD"))
                 if t.kind == "tier":
                     self.assertTrue(m.is_y("BR2_THIMSY_FLAVOUR_RELEASE"))
 
@@ -318,14 +315,15 @@ class Scratch(unittest.TestCase):
         self.assertIn("adbd is enabled", err)
         self.assertIn("etc/inittab:2 starts a getty", err)
 
-    def test_release_with_ssh_at_boot_is_refused(self):
-        self.write("package/thimsy-foo/Config.in",
-                   'config BR2_PACKAGE_THIMSY_FOO\n\tbool "foo"\n'
-                   'config BR2_PACKAGE_THIMSY_SESSION_SSH_AT_BOOT\n\tbool "ssh"\n')
-        self.fragments["pkgs"] += "BR2_PACKAGE_DROPBEAR=y\nBR2_PACKAGE_THIMSY_SESSION_SSH_AT_BOOT=y\n"
+    def test_removed_ssh_options_are_refused(self):
+        """gfix2: the dead SSH_AT_BOOT / SSH_PASSWORD options are gone (D50ssh decides by
+        ro.thimsy.build.type); a fragment that names one again fails the lint."""
+        self.fragments["pkgs"] += ("BR2_PACKAGE_DROPBEAR=y\n"
+                                   "BR2_PACKAGE_THIMSY_SESSION_SSH_AT_BOOT=y\n")
         self.build()
         code, _, err = self.check()
-        self.assertIn("dropbear must be off at boot and key-only", err)
+        self.assertEqual(code, 1)
+        self.assertIn("BR2_PACKAGE_THIMSY_SESSION_SSH_AT_BOOT is not defined", err)
 
     def test_release_tier_needs_release_flavour(self):
         self.fragments["release"] = "# nothing\n"

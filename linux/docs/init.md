@@ -119,7 +119,7 @@ repeats it. Existing files are never removed.
     user/0 -> ../data   (as on Android: /data/user/0 is /data/data)
     media/0 -> /storage/emulated/0
   ssh/ (0700)           dropbear's host key
-  home/root/.ssh/       bind-mounted on /root by S00base every boot
+  home/root/.ssh/       root's home: bind-mounted on /root by S00base (below)
   localtime -> /usr/share/zoneinfo/Etc/UTC   (/etc/localtime links here; Nano rewrites it)
 /storage/.config/retroarch/
 /storage/thimsy/        the card's thimsy/ folder (install.json)
@@ -128,6 +128,20 @@ repeats it. Existing files are never removed.
 ```
 
 A later release that needs more bumps the stamp to `.tree-v2`.
+
+### Root's home
+
+`/root` in the read-only root is an empty 0700 directory. `S00base` binds
+`/storage/.config/thimsy/home/root` over it only where something can log in
+as root: dev builds (`ro.thimsy.build.type=dev`), and release builds once
+the user has turned SSH on (`persist.thimsy.ssh.enabled=1`; dropbear then
+runs key-only). A release build with SSH off has no root login at all and
+keeps the empty `/root`. The home is on the data partition (ext4, so Unix
+modes hold), never on the games exFAT. At every boot, before binding, S00base
+refuses a `home`, `home/root`, `.ssh` or `authorized_keys` that is a
+symbolic link (it warns and leaves `/root` unbound), and sets owner 0:0 and
+modes 0700 on the home and `.ssh` and 0600 on `authorized_keys`: dropbear
+refuses keys that others can write, and the card can be edited on a PC.
 
 ## Properties and the family
 
@@ -189,10 +203,12 @@ disk only and never on an eMMC:
 
 0. if the backup GPT sits at the image's end rather than the card's (more
    than 1 MiB short), `sfdisk --relocate gpt-bak-std`;
-1. if there is no entry 5: creates it with `sfdisk --force -N 5`, starting at
-   the first 1 MiB boundary after the end of the last entry (so a spare area
-   between entries is never used) and running to the end of the card, typed
-   **Linux reserved**, named `games`; not if less than 64 MiB is free.
+1. if there is no entry 5: creates it with `sfdisk --force -N 5`, starting
+   2 MiB (`GAP_MIB`) after the first 1 MiB boundary after the end of the last
+   entry (so a spare area between entries is never used; 2410 MiB on the
+   cards), and running to the end of the card, typed **Linux reserved**,
+   named `games`; not if less than 64 MiB is free. Unless the old library is
+   there (re-adoption, below);
    `--force` because the disk is in use (root and `/storage` are mounted):
    sfdisk refuses otherwise, and with `--force` it still adds the entry to
    the kernel's table (BLKPG);
@@ -205,6 +221,7 @@ The state is read from the GPT (`sfdisk --dump`) on every run:
 
 | Entry 5 | Action |
 |---|---|
+| missing, a THIMSY exFAT at the start | step 0, then re-adoption (below) |
 | missing | steps 0 to 3 |
 | Linux reserved, named `games` | ours, not finished: steps 2 and 3 (formatting again is safe: nothing can be on it) |
 | basic data | done |
@@ -221,12 +238,34 @@ run-qemu.sh). D60 ignores TERM while it holds `/run/thimsy/firstboot.lock`,
 and rcK waits up to 10 s for the lock before it signals everyone, so a
 shutdown never cuts the write (review finding device-safety-1).
 
+### Re-adoption (review finding device-safety-2)
+
 An entry 5 that is `missing` is also what a card looks like when an image is
-written again over a used Thimsy card (a repair, or an update before
-there is an updater): the old library's exFAT is still at the very offset
-step 1 computes, and step 2 formats over it. Telling the two apart, or
-ending the image with a gap so the old boot sector survives and can be
-adopted, is open for the owner (review finding device-safety-2).
+written again over a used Thimsy card (a repair, or an update before there
+is an updater). The written image ends 1 MiB after `data` (genimage.cfg's
+`size = 2409M`; its backup GPT is its last 33 sectors) and games starts
+1 MiB after that, so a re-write leaves the old library's exFAT whole, boot
+region (sectors 0 to 23: main and backup boot regions) and all.
+`tools/gpt_check.py` holds both sides: a written image must end exactly
+1 MiB after its last entry, and a booted card's games entry may not start
+before 2 MiB after it.
+
+Before step 1, D60 reads the boot sector at the computed start (`dd`, `od`).
+If it says `EXFAT   ` at byte 3 and ends in 55 AA, and the first cluster of
+the root directory has a volume-label entry (0x83) reading `THIMSY`, D60
+creates entry 5 over the filesystem's extent (`VolumeLength` shifted by
+`BytesPerSectorShift`, clamped to the card's last usable sector, at least
+64 MiB), typed **basic data** at once and named `games`, logs it, and runs
+no `mkfs`. That is one sfdisk write: a power cut leaves either no entry 5
+(adopted at the next boot) or the adopted entry, and the filesystem was
+complete before the entry existed, so a basic-data entry still never lacks
+one. Anything else at the start (another label, no label, a boot sector
+without its root directory, NTFS, zeros) is formatted as at a first boot,
+so a second-hand card still gets a fresh library. Not covered: a library
+the user relabelled (it is formatted), and a format that was cut between
+the boot sector and the root directory and then re-written over (its
+half-made exFAT can be adopted if its root directory already says THIMSY;
+the session's fsck then sees it).
 
 The partition is the alpha's library drive by default (I44): the
 session's volume policy accepts the boot disk's `games` partition and no
@@ -255,8 +294,11 @@ card in slot 1 and a second card in slot 2 that also has a `data`
 partition (optionally a clone with the same PARTUUIDs). Disks are JSON
 files under `$R/dev/` that the fake `sfdisk` and `mkfs.exfat`
 (`rcs_fake_tool.py`) read and write; the fake kernel view is regenerated
-from them as the kernel would at boot or on BLKPG. Other tools are small sh
-fakes that log their arguments. A power cut makes every later tool call
+from them as the kernel would at boot or on BLKPG. A disk may also have
+bytes, a sparse file `$R/dev/<disk>.img` that the fake `dd` reads for
+`if=$R/dev/<disk>` and the fake `mkfs.exfat` writes a small exFAT into (the
+re-adoption tests). Other tools are small sh fakes that log their
+arguments. A power cut makes every later tool call
 fail without effect; the test then "reboots" (empties `/run`, re-reads the
 tables) and runs the script again.
 

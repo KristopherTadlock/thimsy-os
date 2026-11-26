@@ -8,8 +8,10 @@
 # - /etc/localtime -> /storage/.config/thimsy/localtime (Nano rewrites the
 #   target; plan 5.2, "Time");
 # - /root stays the directory Buildroot's skeleton and system/device_table.txt
-#   ("/root d 700") make: S00base bind-mounts /storage/.config/thimsy/home/root
-#   over it at boot, so SSH keys and shell history survive. A link here would
+#   ("/root d 700") make: on dev builds, and release builds with SSH turned
+#   on, S00base bind-mounts /storage/.config/thimsy/home/root over it at boot
+#   (0700, owned by root), so SSH keys and shell history survive; release
+#   builds with SSH off keep it empty and read-only. A link here would
 #   point at a path that does not exist at build time, which makedevs (run on
 #   the device table under fakeroot) can't chmod and chown;
 # - /dev/block/by-name is never part of the root (IMPLEMENTATION B.5);

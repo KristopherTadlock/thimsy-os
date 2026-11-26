@@ -24,7 +24,8 @@ or is listed in targets.json's pending_paths; every override marker takes effect
 in some target; a hardware pack's external toolchain states the versions of its
 SDK tier's toolchain; and no target marked "publish": true, nor any named
 *_release, includes dev.fragment or lacks the release policy (decision I37:
-root login locked, no adbd, no serial getty, SSH off at boot and key-only).
+root login locked, no adbd, no serial getty; SSH off at boot and key-only
+follows, since D50ssh decides by ro.thimsy.build.type, which those make).
 With --buildroot DIR (a Buildroot tree at the pinned version), every other
 symbol must exist in that tree and not be a legacy one, and no package of this
 tree may share a name with one of Buildroot's.
@@ -363,11 +364,6 @@ def release_problems(tree: Tree, m: Merge) -> List[str]:
                       ("BR2_TARGET_GENERIC_GETTY", "a serial getty")):
         if m.is_y(sym):
             no("%s is enabled (%s=y)" % (what, sym))
-    if m.is_y("BR2_PACKAGE_DROPBEAR"):
-        for sym in ("BR2_PACKAGE_THIMSY_SESSION_SSH_AT_BOOT",
-                    "BR2_PACKAGE_THIMSY_SESSION_SSH_PASSWORD"):
-            if m.is_y(sym):
-                no("dropbear must be off at boot and key-only, but %s=y" % sym)
     for p in ext_paths(m.value("BR2_ROOTFS_OVERLAY")):
         if p.rstrip("/").endswith("-dev"):
             no("uses the dev overlay %s" % p)
