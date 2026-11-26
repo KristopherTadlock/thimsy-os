@@ -114,7 +114,9 @@ A malformed numbered request is answered `<seq>:error:<why>`; a malformed unnumb
 
 The control table of Nano's Linux platform (G9's `ControlKeys.cpp`) turns Android's own triggers into
 requests: `sys.gammaos.nano.dosleep=1` into `sleep`, `sys.gammaos.nano.park_restart=1` into
-`restart-nano`.
+`restart-nano`, and `service.bootanim.nano_action=reboot` or `=shutdown` into `reboot` or `poweroff`.
+Nano's own Reboot and Power Off (the last step of its shutdown, `Power::powerAction`) write the
+`reboot` or `poweroff` request directly; the `nano_action` rows are for a write from elsewhere.
 
 ## What the session does
 
@@ -149,7 +151,8 @@ launch could not start) is not a crash either: Nano is started again at once and
 reset. A launch loop is held back, though: a launch cycle (from Nano's start until it is to start
 again, the game's run included) shorter than 10 s is quick, and after three quick cycles in a row
 the next ones wait the crash back-off (1, 2, 4 ... up to 30 s); a longer cycle, or a `restart-nano`
-request, ends the run. A Nano whose menu ends with no launch exits 1, which counts as a crash. After `poweroff` or
+request, ends the run. A Nano whose menu ends with no launch exits 1, which counts as a crash, as does exit 2 (its platform
+did not start). After `poweroff` or
 `reboot` nothing is started again.
 
 Nano runs in its own mount namespace (B.5, decision I40): every node of an internal-storage disk

@@ -191,7 +191,7 @@ Written fresh with Android's signatures (no AOSP code copied; Apache-2.0 headers
 
 `String8` and `String16` (7 uses in 4 files) get shims only if a file `nano_core` compiles needs them (G4 decides).
 
-**Control keys.** Some property writes are messages to the framework, not settings. A launch is a handshake of about ten keys followed by Nano exiting (`NanoMenu.cpp:2047-2055` writes `launch_app`, `launched_pkg`, `launch_intent`, `launch_core`, `return_recent`, `service.bootanim.nano_retroarch` and `drop_input`, then sets `mExitRequested`; `4040-4048` writes `handoff_fired`, `pending_exit`, `drop_input` and `do_launch`), and some of those keys are read back as state elsewhere (`NanoControlCenter.cpp:1103-1106` and `1835`, `NanoButtonMap.cpp:1360`). So the store never lets a handler swallow a write: **the store writes first, and handlers observe** (`addObserver`, B.3). The trigger table is derived, not hand-listed: `tools/nano-tree/nanotree/controlkeys.py` reads every `on ... property:` trigger of `nano/*.rc`, the rc triggers elsewhere in the patch that name one of Nano's keys, the framework listeners (Nano's `props.txt` keys found as string literals in the patch's other sections), and `ctl.*`, `sys.powerctl` and `service.bootanim.*`; `tools/nano-tree/control-keys.json` gives each one a disposition on Linux: `routed` (to what), `store-only` (state read back by Nano; nothing else happens), `refused` (logged once) or `not-reached` (nothing on Linux writes the key) (G9-8). A routed row names its route kind: `session:<verb>` (a `<seq>:<verb>` request in `sys.thimsy.session.request`, seq one past the key's current number, G9-14), `session-key` (`thimsy-session` watches the key itself), `launcher` (the launch handshake), `hook:<action>` (the family hook, run in the background), `first-frame` and `rc-reset` (only the rc's reset of the key, as for `dowake=1`). A row may add `value` (the triggering value), `reset` (the rc's setprop, written before the action) or `source: manual` (a listener the patch does not show, such as `do_launch`'s). `tools/nano-tree/tests/test_control_keys.py` fails when a trigger has no row or a row is stale, and checks the C++ table `kControlRows` in `nano/platform/linux/ControlKeys.cpp` (kept by hand, G9-9) against the JSON, the session verbs against `linux/docs/session.md`, and that every `session-key` is one `thimsy-session` reads. The rows: the launch handshake is `launcher`, one request debounced over 3 s on `do_launch=1` or `service.bootanim.nano_retroarch=1` (G9-12), and it stays the launch protocol until G7-launch replaces it; `dosleep=1` is `session:sleep` and `park_restart=1` `session:restart-nano` (each reset to 0, as the rc does), `dowake=1` only the reset; `service.bootanim.nano_action=reboot` and `=shutdown`, the last step of `NanoMenu::prepareShutdown` (the menu's Reboot and Power Off, the PS3 quick actions, the 7 s power hold, the DRM-sleep timeout), are `session:reboot` and `session:poweroff` (a row for an exact value overrides the key's catch-all row; Nano never writes `sys.powerctl` itself); `sys.powerctl` and `scrape_run` are `session-key` (`scrape_run` starts `thimsy-nano-scrape`, C.2); `fixedperf=1`/`0` are `hook:fixedperf-on`/`-off`; `drm_active=1` (Nano's splash on the panel) is `first-frame`: `sys.thimsy.nano.first_frame=1` and `sys.boot_completed=1`, once per process (G9-11; the session never writes `sys.boot_completed`); settings are one `persist.*` row, `store-only`; `ctl.*`, `ota.prestage`, `drastic_nano.start`, the Bluetooth pairing keys, the other `nano_action` values (`android`, `recovery`, `safemode`) and the overlay triggers are refused while the Quick Menu and the DS player are out of scope. On the host the fakes record them, and the E2E test asserts on them. The launcher plan's app needs the same table (`android_launcher_plan.md`, Phase 0 results).
+**Control keys.** Some property writes are messages to the framework, not settings. A launch is a handshake of about ten keys followed by Nano exiting. Since G7-launch-a every site builds its writes as a `LaunchTuple`, in the order it always wrote them, and hands it to `commitLaunch()` (`NanoLaunchCommit.h`; 69 calls in nine files), which passes it to `Launcher::commit` (B.6). For example, threadLoop's DrasticSf launch writes `launch_app`, `launched_pkg`, `launch_intent`, the ROM path (`setLaunchRomPath`), `launch_core`, `return_recent`, `service.bootanim.nano_retroarch` and `drop_input`, then sets `mExitRequested`; its DraStic launch ends with `handoff_fired`, `pending_exit` and `do_launch`. Some of those keys are read back as state elsewhere (`NanoControlCenter.cpp:1105` and `1838`, `NanoButtonMap.cpp:1360`; line numbers at wave 5). So the store never lets a handler swallow a write: **the store writes first, and handlers observe** (`addObserver`, B.3). The trigger table is derived, not hand-listed: `tools/nano-tree/nanotree/controlkeys.py` reads every `on ... property:` trigger of `nano/*.rc`, the rc triggers elsewhere in the patch that name one of Nano's keys, the framework listeners (Nano's `props.txt` keys found as string literals in the patch's other sections), and `ctl.*`, `sys.powerctl` and `service.bootanim.*`; `tools/nano-tree/control-keys.json` gives each one a disposition on Linux: `routed` (to what), `store-only` (state read back by Nano; nothing else happens), `refused` (logged once) or `not-reached` (nothing on Linux writes the key) (G9-8). A routed row names its route kind: `session:<verb>` (a `<seq>:<verb>` request in `sys.thimsy.session.request`, seq one past the key's current number, G9-14), `session-key` (`thimsy-session` watches the key itself), `launcher` (the launch handshake), `hook:<action>` (the family hook, run in the background), `first-frame` and `rc-reset` (only the rc's reset of the key, as for `dowake=1`). A row may add `value` (the triggering value), `reset` (the rc's setprop, written before the action) or `source: manual` (a listener the patch does not show, such as `do_launch`'s). `tools/nano-tree/tests/test_control_keys.py` fails when a trigger has no row or a row is stale, and checks the C++ table `kControlRows` in `nano/platform/linux/ControlKeys.cpp` (kept by hand, G9-9) against the JSON, the session verbs against `linux/docs/session.md`, and that every `session-key` is one `thimsy-session` reads. The rows: the launch handshake is `launcher`, one request debounced over 3 s on `do_launch=1` or `service.bootanim.nano_retroarch=1` (G9-12). It is still the Linux launch protocol after G7-launch: the Linux `Launcher::commit` writes the keys as the firmware does, and the trigger's write reaches the launcher through this table (`controlkeys::setLaunchHandler`, set after `install()`). Only a trigger written inside Nano's own `commit()` is a launch; one from another process is logged and refused (G7-launch-b-14). The launcher queues the request and sets `sys.gammaos.nano.app_launched=1`, so threadLoop's exit path does not wait for it. Nano then exits, and `main_linux.cpp` starts the game (B.7, REV4-1). `dosleep=1` is `session:sleep` and `park_restart=1` `session:restart-nano` (each reset to 0, as the rc does), `dowake=1` only the reset. `service.bootanim.nano_action=reboot` and `=shutdown` are `session:reboot` and `session:poweroff` (a row for an exact value overrides the key's catch-all row). Nano itself no longer writes them on Linux: since G7-power the last step of `NanoMenu::prepareShutdown` (the menu's Reboot and Power Off, the PS3 quick actions, the 7 s power hold, the DRM-sleep timeout) is `Power::powerAction`. The firmware's writes the `nano_action` key as before; the Linux one sends the `reboot` or `poweroff` session request itself (G7-power-9). The two rows are kept for a write from elsewhere, and Nano never writes `sys.powerctl` itself; `sys.powerctl` and `scrape_run` are `session-key` (`scrape_run` starts `thimsy-nano-scrape`, C.2); `fixedperf=1`/`0` are `hook:fixedperf-on`/`-off`; `drm_active=1` (Nano's splash on the panel) is `first-frame`: `sys.thimsy.nano.first_frame=1` and `sys.boot_completed=1`, once per process (G9-11; the session never writes `sys.boot_completed`); settings are one `persist.*` row, `store-only`; `ctl.*`, `ota.prestage`, `drastic_nano.start`, the Bluetooth pairing keys, the other `nano_action` values (`android`, `recovery`, `safemode`) and the overlay triggers are refused while the Quick Menu and the DS player are out of scope. On the host the fakes record them, and the E2E test asserts on them. The launcher plan's app needs the same table (`android_launcher_plan.md`, Phase 0 results).
 
 ### B.3 The config store: `libthimsy/`
 
@@ -260,139 +260,185 @@ Stubs, not edits, for two reasons: `NanoMenu` derives from `Thread` and `IBinder
 
 Small interfaces in `nano/NanoPlatform.h`, implemented in `platform/firmware/`, `platform/linux/` and `platform/host/`. Names follow plan 4.1: `platform/firmware` is today's Android firmware code, `platform/android` is reserved for the launcher plan's app (decision I3; the task's "nano_platform_android" is `nano_platform_firmware` here).
 
-**Declared when used, not ahead.** The sketch below is the expected shape, not a frozen header. G5 declares only `Platform`, `createPlatform`, `install` and `get`, with no service in it; each G7 step declares its own interface, sized to the code it moves, in the same commit as the move. `Clock` is dropped (B.2: no fake clock). `Cap` gains a value only with the step that hides a row by it.
+**Declared when used, not ahead.** G5 declared only `Platform`, `createPlatform`, `install` and `get`, with no service in it. Each G7 step then declared its own interface, sized to the code it moves, in the same commit as the move (I27). The sketch below is what waves 4 and 5 declared, shortened: comments are cut and some parameters are elided. `nano/NanoPlatform.h` is the reference. The first draft's shape is in the history. Its members that no moved code used are not declared: `Display::open`, `mode`, `present`, `setPanelPower` and `hotplugPending`; `Audio`'s volume; `Volumes::list`, `onChange` and `eject`; `Power::sleep` and `setBusy`; `SystemActions`' `Action` enum, `run` and `supported`; `InputPolicy::isBuiltInPad` and `deviceMatchKeys`; and `Cap` with `Platform::has`. `Clock` is dropped (B.2: no fake clock). `Cap` gains a value only with the step that hides a row by it (G7-caps).
 
 **Who may call `get()`.** `drastic-nano`, `gammaos-nano-scrape` and the `cc_test_host` modules compile some of Nano's files and never call `install()`. Rule, held by a ratchet in `test_nano_ratchets.py`: no file in `drastic_nano_shared_srcs`, in `gammaos-nano-scrape`'s `srcs` or in any `cc_test_host` module's `srcs` (read from `Android.bp` by `androidbp.py`) may include `NanoPlatform.h` or call `nanoplat::`. Those files are frozen-API for the seam: they reach platform behaviour through layers 1 to 3 (property shims, link-time substitution), or take what they need as parameters from a caller outside the set. Platform code calls into them, never the reverse. So `drastic-nano/Android.bp` and `main.cpp`, which sit outside the Nano block, never need an edit; if one ever does, it is a declared exception to `test_outside_block_unchanged`, landed on `nano-144` first.
 
 ```cpp
-// nano/NanoPlatform.h (C++17). Namespace nanoplat; no Android or Linux system header included.
+// nano/NanoPlatform.h (C++17), as declared after G7-net. Namespace nanoplat; no Android or Linux
+// system header included. Shortened: see the header for every comment.
 #pragma once
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
-#include <optional>
+
+namespace android { struct LaunchTuple; }   // NanoLaunchCommit.h (G7-launch-a)
 
 namespace nanoplat {
 
-enum class Cap : uint32_t {           // what this platform can do; rows that need a missing cap are hidden
-  Wifi, Bluetooth, Mtp, OverlayOverGame, MediaPlayers, AndroidApps, Sensors,
-  SetTime, SetTimeZone, Ota, Typec, MonitorModes, Syncthing, Shares, DsPlayer, QuickResume,
-};
-
-struct DisplayMode { int width = 0, height = 0; int refreshMilliHz = 0; int rotationDeg = 0;
-                     bool internal = true; std::string connector; };
-
-class Display {                        // render thread only, after open()
+class Display {                        // render thread only (G7-display)
  public:
   virtual ~Display() = default;
-  virtual bool open() = 0;             // creates EGL display, context and surface; makes it current
-  virtual DisplayMode mode() const = 0;
-  virtual void present() = 0;          // swap or page flip; rotation applied here (plan 5.3)
-  virtual bool releaseForChild() = 0;  // Linux: wait for the flip, disable planes, drmDropMaster
-  virtual bool reacquire() = 0;        // Linux: drmSetMaster, full modeset, re-commit
-  virtual void setPanelPower(bool on) = 0;
-  virtual bool hotplugPending() = 0;   // a connector changed since the last call
+  // readyToRun()'s DRM splash decision: takes the panel unless this process presents through
+  // SurfaceFlinger; returns the early DRM fd still held, or -1 (sDrmActive says whose the panel is)
+  virtual int startScanout(int earlyDrmFd, bool overlayMode, bool (*forceSfPath)()) = 0;
+  virtual bool releaseForChild() = 0;  // Linux: finish the GPU, wait for the flip, planes off, free the
+                                       // ring, drop master; firmware: does nothing, false
+  virtual bool reacquire() = 0;        // Linux: master back (retrying), modeset, ring rebuilt; firmware: false
 };
 
-struct LaunchRequest {
-  enum class Kind { Core, Package, Intent, Argv } kind = Kind::Core;
-  std::string system, rom, core, package, intentTemplate;   // Nano's stored launch tuple (plan 6.4)
-  std::vector<std::string> argv; std::vector<std::pair<std::string, std::string>> env;
+struct LaunchRequest {                 // the handshake's keys when its trigger is written (G7-launch-b)
+  enum class Kind { Core, Package };
+  Kind kind = Kind::Core;
+  std::string package, core, rom, system, intent;   // launch_app, launch_core, launch_rom (else
+                                                    // launch_game), launch_system, launch_intent
+  std::string trigger;                              // the key whose write fired the launch
 };
 struct ChildExit { int pid = 0; int status = 0; bool signaled = false; };
 
-class Launcher {                       // UI (render) thread
+class Launcher {
  public:
   virtual ~Launcher() = default;
-  virtual bool nanoExitsOnLaunch() const = 0;   // firmware: true (today's behaviour); Linux: false
-  virtual bool launch(const LaunchRequest&, std::string* error) = 0;
+  virtual bool nanoExitsOnLaunch() const = 0;   // the intended contract: firmware true, Linux false
+                                                // (resident Nano); nothing reads it yet
+  virtual void commit(const android::LaunchTuple&) = 0;   // commitLaunch(): one site's writes, in order
+  virtual bool launch(const LaunchRequest&, std::string* error) = 0;   // firmware: always false;
+                                                // Linux: checks and queues (started after the menu ends)
   virtual bool childRunning() const = 0;
-  virtual std::optional<ChildExit> pollChild() = 0;   // non-blocking
-  virtual void requestChildQuit() = 0;               // Linux: SIGTERM to the process group
+  virtual std::optional<ChildExit> pollChild() = 0;   // non-blocking; reported once
+  virtual void requestChildQuit() = 0;                // SIGTERM to the child's process group
 };
 
-class Audio {                          // one output stream, pull model as NanoAudio's AAudio callback is
+struct AudioFormat { const char* name = ""; int rate = 0, channels = 0; bool lowLatency = false; };
+class AudioStream {                    // made paused; destroying it stops and closes it (G7-audio)
+ public:
+  virtual ~AudioStream() = default;
+  virtual bool start() = 0;
+  virtual void pause() = 0;
+  virtual int sampleRate() const = 0;  // what the output agreed to
+  virtual int channelCount() const = 0;
+};
+class Audio {                          // a stream factory: NanoAudio keeps several streams open
  public:
   virtual ~Audio() = default;
-  using Fill = std::function<int(int16_t* frames, int count)>;   // called on the platform's audio thread
-  virtual bool open(int rate, int channels, Fill fill, std::function<void()> onError) = 0;
-  virtual bool start() = 0;            // firmware: AAudioStream_requestStart; Linux: the ALSA thread runs
-  virtual bool pause() = 0;
-  virtual void close() = 0;
-  virtual int volumePercent() const = 0;                        // any thread
-  virtual void setVolumePercent(int) = 0;
+  static constexpr int kFillContinue = 0, kFillStop = 1;          // AAudio's callback results
+  using Fill = std::function<int(int16_t* frames, int count)>;   // on the platform's audio thread
+  using OnDisconnect = std::function<void()>;                     // the device went away
+  virtual std::unique_ptr<AudioStream> open(const AudioFormat&, Fill, OnDisconnect) = 0;  // null: failed
 };
 
-struct Volume { std::string id, path, label, fsType; bool removable = true, mounted = false, readOnly = false; };
-class Volumes {                        // any thread; callback on a platform thread
+class Volumes {                        // any thread; may touch the filesystem (G7-volumes)
  public:
   virtual ~Volumes() = default;
-  virtual std::vector<Volume> list() = 0;
-  virtual void onChange(std::function<void()>) = 0;   // callers post to Nano's queue and wake the frame flag
-  virtual bool eject(const std::string& id, std::string* error) = 0;
+  virtual std::string cardRoot() = 0;                      // NanoMenu::sdCardRoot
+  virtual bool isSlot(const std::string& storagePath) = 0; // sdIsSlot
+  virtual bool present(const std::string& id) = 0;         // esdeStoreFollowCard
+  virtual bool absent(const std::string& id) = 0;          // sdVolumeAbsent
+  virtual std::vector<std::string> writableFolders(const std::string& vol, const std::string& rel) = 0;
 };
 
-struct Battery { int percent = -1; bool charging = false, present = false; };
-class Power {                          // any thread
+class Power {                          // G7-power
  public:
   virtual ~Power() = default;
-  virtual Battery battery() = 0;
-  virtual bool sleep() = 0;            // Linux: asks thimsy-session; returns after resume
-  virtual void reboot() = 0;
-  virtual void powerOff() = 0;
-  virtual int brightnessPercent() = 0;
-  virtual void setBrightnessPercent(int) = 0;
-  virtual void setBusy(bool) = 0;      // keeps auto-sleep away (plan 5.2: Nano's own busy state)
+  virtual void readBattery(int& percent, bool& charging) = 0;   // pollBattery(), render thread
+  virtual bool setBrightnessViaHal(int level) = 0;  // firmware: the lights HAL; Linux: false
+  virtual void mirrorBrightness(int level) = 0;     // syncBrightnessToAndroid(); does not block
+  virtual int savedBrightness() = 0;                // readAndroidBrightness(); -1 when none
+  virtual void powerAction(const char* action) = 0; // prepareShutdown()'s last step: "reboot",
+                                                    // "shutdown" (firmware also recovery, safemode, android)
 };
 
-enum class Action { WifiEnable, WifiScan, WifiConnect, WifiForget, BtEnable, BtScan, BtPair,
-                    SetTime, SetTimeZone, SetLocale, SyncTime, FactoryReset };
-class SystemActions {                  // worker threads; may block
+class SystemActions {                  // input and worker threads; may block (G7-power)
  public:
   virtual ~SystemActions() = default;
-  virtual bool supported(Action) const = 0;
-  virtual bool run(Action, const std::vector<std::string>& args, std::string* out) = 0;
+  virtual void setWifiEnabled(bool on) = 0;
+  virtual void forgetWifiNetwork(int savedNetId) = 0;
+  virtual void setBluetoothEnabled(bool on) = 0;
+  virtual void connectBluetooth(const std::string& mac) = 0;
+  virtual void setTimeFormat(bool h12) = 0;
+  virtual void setTimeZone(const std::string& tz) = 0;
 };
 
-struct InputDeviceId { std::string name; uint16_t bus = 0, vendor = 0, product = 0; };
-class InputPolicy {                    // any thread
+struct WifiNetEntry { std::string ssid, bssid; int rssi = -127, security = 0, savedNetId = -1;
+                      bool connected = false; };                 // NanoMenu::WifiNetEntry's fields
+struct BtDevEntry { std::string name, address; bool bonded = false, connected = false; int cod = 0; };
+class Network {                        // G7-net: methods named after their call sites; each blocks
+ public:
+  virtual ~Network() = default;
+  enum WifiLevel { kWifiLevel_Unknown = 0, kWifiLevel_Off, kWifiLevel_Disconnected, kWifiLevel_Connected };
+  enum BtLevel { kBtLevel_Unknown = 0, kBtLevel_Off, kBtLevel_On, kBtLevel_Connected };
+  // NanoMenuNet.cpp's poll thread
+  virtual void autoEnableWifi() = 0;
+  virtual void pollState(WifiLevel&, int& wifiBars, std::string& wifiSsid, BtLevel&, int& btConnected) = 0;
+  // the Wi-Fi screens (results: WifiRadio, WifiLists, WifiAddresses, WifiMacAndIp, WifiLink structs)
+  virtual WifiRadio wifiListRadio() = 0;
+  virtual WifiLists wifiLists() = 0;
+  virtual void startWifiScan() = 0;
+  virtual bool connectSavedWifi(int savedNetId) = 0;
+  virtual void joinWifi(const std::string& ssid, int security, const std::string& password, bool force) = 0;
+  enum class JoinCheck { Pending, Connected, WrongPassword };
+  virtual JoinCheck checkWifiJoin(const std::string& ssid) = 0;
+  virtual bool wifiRadioEnabled() = 0;                     // render thread, bounded
+  virtual WifiAddresses wifiAddresses(bool connected) = 0; // render thread, bounded
+  virtual WifiMacAndIp wifiMacAndIp() = 0;                 // render thread, bounded
+  virtual WifiLink wifiLink() = 0;
+  // the Bluetooth screens and wizard (btWiz*)
+  virtual BtList btListState() = 0;
+  virtual std::vector<BtDevEntry> discoverBt() = 0;
+  virtual bool pairBt(const std::string& mac) = 0;
+  virtual bool unpairBt(const std::string& mac) = 0;       // input handling, bounded
+  virtual bool btRadioOn() = 0;
+  virtual std::vector<BtDevEntry> bondedBt() = 0;
+  virtual void setBtRadio(bool on) = 0;
+  virtual std::vector<BtDevEntry> btWizScan() = 0;
+  virtual bool btWizPair(const std::string& a, const std::string& p) = 0;
+  virtual void btConfirmInbound(const std::string& a, int v) = 0;
+  virtual bool btWizConnect(const std::string& a) = 0;
+  virtual bool btWizDisconnect(const std::string& a) = 0;
+  virtual bool btWizUnpair(const std::string& a) = 0;
+};
+
+class InputPolicy {                    // per device, because the firmware grabs per fd at open (G7-input)
  public:
   virtual ~InputPolicy() = default;
-  virtual void silenceGamePad(bool) = 0;      // firmware: EVIOCGRAB as today; Linux: padd intercept
-  virtual bool isBuiltInPad(const InputDeviceId&) const = 0;
-  virtual std::vector<std::string> deviceMatchKeys() const = 0; // the ro.product.* values Nano's tables match,
-                                                                 // on every platform (Linux: written from device.json)
+  enum class Opened { AtStart, Hotplugged, Swept };   // openInputDevices, IN_CREATE, the sweep
+  virtual void deviceOpened(int fd, const char* path, Opened where) = 0;   // render thread
+  virtual void deviceClosing(int fd) = 0;                                  // render thread
+  virtual void silenceGamePad(bool on) = 0;   // any thread; Linux: padd's intercept; firmware: nothing
 };
 
-struct Platform {
-  std::unique_ptr<Display> display; std::unique_ptr<Launcher> launcher;
-  std::unique_ptr<Audio> audio; std::unique_ptr<Volumes> volumes; std::unique_ptr<Power> power;
-  std::unique_ptr<SystemActions> actions; std::unique_ptr<InputPolicy> input;
-  std::function<bool(Cap)> has;
+struct Platform {                      // each platform derives from it; createPlatform sets every member
+  virtual ~Platform();
+  std::unique_ptr<Display> display;  std::unique_ptr<Launcher> launcher;
+  std::unique_ptr<Audio> audio;      std::unique_ptr<Volumes> volumes;
+  std::unique_ptr<Power> power;      std::unique_ptr<SystemActions> actions;
+  std::unique_ptr<InputPolicy> input; std::unique_ptr<Network> net;
 };
 
 struct PlatformArgs { int argc = 0; char** argv = nullptr; };
-std::unique_ptr<Platform> createPlatform(const PlatformArgs&);  // defined once per platform library
-Platform& get();                                                // after install(); never null
+std::unique_ptr<Platform> createPlatform(const PlatformArgs&);  // once per platform library; null: failed
 void install(std::unique_ptr<Platform>);                       // main(), before any Nano thread
+Platform& get();                                                // after install(); never null
 }  // namespace nanoplat
 ```
 
 **Ownership and threading.** `main()` calls `createPlatform`, then `install`, before `NanoMenu` is made; the services live until exit (`get()` returns a reference, so call sites never test for null; it aborts with a message if `install()` was never called, which the rule above keeps out of the binaries that don't call it). Which platform is linked is a link-time choice (one `createPlatform` per library), not a registry. The settings store is not an interface here: Nano reaches it through the property shims (layer 1), and Linux and host back the shims with `libthimsy`'s store. Paths are not an interface yet: the filesystem mapping (B.5) covers Linux and the host jail; a `Paths` interface (state, asset, font and storage roots) is added when the launcher plan's app needs it, which can't use links.
 
-**What each area moves.** The firmware implementation of each interface is today's code, moved verbatim into `platform/firmware/<Area>.cpp`, with the call site replaced by `nanoplat::get().<area>-><call>`:
+**What each area moves.** The firmware implementation of each interface is today's code, moved verbatim into `platform/firmware/<Area>.cpp`, with the call site replaced by `nanoplat::get().<area>-><call>`. As done in waves 4 and 5 (`docs/linux/DECISIONS.md`, "Wave 4" and later); what a step left at its call site is in its decisions:
 
-| Area | Firmware code that moves (from) | Linux implementation | Host fake |
+| Area | Firmware code that moved (from) | Linux implementation | Host fake |
 |---|---|---|---|
-| Display | the DRM and SurfaceFlinger set-up and present calls in `NanoMenu.cpp` (`readyToRun`) and `NanoMenuRender.cpp`; not `NanoMenuDrm.cpp`, which is in `drastic_nano_shared_srcs` and is handled at layer 3 (B.5) | `platform/linux/display/`: the hand-off and the rotation contract, on `NanoMenuDrm.cpp`'s KMS code with the GBM back end | `DrmHost.cpp` (B.5) plus a `FakeDisplay` that records the size it was given |
-| Launch | the handshake writes, which sit mostly in `NanoMenu.cpp`'s `threadLoop` (lines 2047-2055 and 4040-4048) and in `NanoMenuXmb.cpp`, `NanoMenuPS3Menu.cpp`, `NanoMenuOverlay.cpp`, `NanoControlCenter.cpp`, `NanoMenuInput.cpp`, `NanoMenuSearch.cpp`, `NanoButtonMap.cpp` and `NanoMenuState.cpp` (counts of the launch keys: 44, 17, 10, 8, 6, 5, 2, 2, 1; `NanoMenuEsdeMenu.cpp` has none); Nano's exit after launch. First a behaviour-neutral commit gathers the handshake into one helper, `commitLaunch(const LaunchTuple&)` in a new `NanoLaunchCommit.cpp`; then the seam swaps that one function | `platform/linux/Launcher.cpp`: argv from the emulator definition's Linux block (plan 6.4), `fork` plus `setsid` plus `execve` after `Display::releaseForChild`, `waitpid` polling, `SIGTERM` to the group | `FakeLauncher`: records requests; `pollChild` returns an exit after a scripted delay |
-| Audio | `NanoAudio.cpp`'s AAudio output (callback mode, start and pause), `NanoBootChime.cpp`'s tinyalsa | `platform/linux/AudioAlsa.cpp`: ALSA `default` PCM (dmix) on its own thread calling `Fill`, mixer calls through alsa-lib | `FakeAudio`: pulls and counts frames |
-| Volumes | the `/storage` and `/mnt/media_rw` scans in `NanoEsdeStore.cpp`, `NanoMenuFileExplorer.cpp`, `NanoSdMove.cpp` | `platform/linux/Volumes.cpp`: reads `/run/thimsy/volumes.json` written by `thimsy-session`, watches its key | `FakeVolumes`: a scripted list |
-| Power | `NanoMenuSystem.cpp`, `NanoControlCenter.cpp` (battery, brightness, sleep, reboot) | `platform/linux/Power.cpp`: `/sys/class/power_supply`, `/sys/class/backlight`, requests to `thimsy-session` | `FakePower` |
-| System actions | the `settings`, `cmd wifi`, `svc`, `cmd bluetooth_manager` calls in `NanoMenuNet.cpp`, `NanoMenuSettings.cpp`, `NanoMenuSetupWizard.cpp` | `platform/linux/actions/`: `wpa_ctrl` (hostap's BSD file, vendored under `nano/third_party/wpa_ctrl/`), `bluetoothctl` on demand, time and zone (plan 5.2) | `FakeActions`: records calls |
-| Input policy | `EVIOCGRAB` silencing in `NanoMenuInput.cpp`. Not `NanoDeviceKeys.cpp`, which is in `drastic_nano_shared_srcs`: it keeps reading `ro.product.*` through the property shim, and on Linux `thimsy-prop boot` writes those match keys from `device.json` (layer 1) | `platform/linux/InputPolicy.cpp`: `sys.thimsy.padd.intercept` | `FakeInput` |
+| Display | `readyToRun`'s DRM splash decision in `NanoMenu.cpp` (`Display.cpp`; G7D-1). Not moved: the headless pbuffer EGL set-up, the SurfaceFlinger window surface and `NanoMenuRender.cpp`'s present (G7D-2, G7D-3: `NanoMenu.h` is frozen), and `NanoMenuDrm.cpp`, which is in `drastic_nano_shared_srcs` and is handled at layer 3 (B.5) | `platform/linux/display/`: the hand-off (`releaseForChild`, `reacquire`) and the rotation contract (`PanelOrientation.cpp`, G7D-11), on `NanoMenuDrm.cpp`'s KMS code with the GBM back end | `DrmHost.cpp` (B.5) plus `FakeDisplay`, which records what it did |
+| Launch | the handshake writes. G7-launch-a, a behaviour-neutral commit, gathered them from `NanoMenu.cpp`'s `threadLoop`, `NanoMenuXmb.cpp`, `NanoMenuPS3Menu.cpp`, `NanoMenuOverlay.cpp`, `NanoControlCenter.cpp`, `NanoMenuInput.cpp`, `NanoMenuSearch.cpp` and `NanoMenuState.cpp` into `commitLaunch(const LaunchTuple&)` in a new `NanoLaunchCommit.cpp` (69 calls; every other property write stays in place between two commits). G7-launch-b moved `commitLaunch`'s writes into `Launcher::commit` (`Launcher.cpp`); the firmware's `launch()` refuses, and it never has a child. Nano's exit after a launch is unchanged on every platform | `platform/linux/Launcher.cpp`: `commit` writes the keys; the control keys' trigger queues the request (B.2). After the menu thread ends, `main_linux.cpp`'s `leaveQueued()` runs `Display::releaseForChild`, `fork`, `setsid`, signals reset, descriptors above 2 closed, `execve` (RetroArch on the matching Linux core until plan 6.4's emulator definitions exist). It writes `sys.thimsy.game.pid`, clears the handshake and exits, leaving the game to `thimsy-session` (REV4-1, REV4-3). The resident path (`pollChild`, `requestChildQuit`, `reacquire`) is kept for later | `FakeLauncher`: writes the keys, records each trigger as a `launch` event; `pollChild` reports an exit after a scripted delay |
+| Audio | `NanoAudio.cpp`'s AAudio output from `NanoAudioPlayer` and `NanoSfxPlayer` (one builder, callback mode, start, pause, stop, close; `Audio.cpp`). Not moved: the player's gain, the system volume (G7-audio-2) and `NanoBootChime.cpp` | `AudioPull.cpp` (the testable pull core) and `AudioAlsa.cpp` (the ALSA `default` PCM, a plug over dmix per `/etc/asound.conf`; not compiled here: needs alsa-lib headers) | `FakeAudio`: pulls and counts frames |
+| Volumes | the `/storage` and `/mnt/media_rw` scans of `NanoSdMove.cpp` (`sdCardRoot`, `sdIsSlot`, `sdVolumeAbsent`) and `NanoEsdeStore.cpp` (`esdeStoreFollowCard`'s; `Volumes.cpp`). `NanoSdMove.cpp` keeps one-line forwarders (G7V-1) | `platform/linux/Volumes.cpp`: reads `/run/thimsy/volumes.json`, written by `thimsy-session`, when its serial changed | `FakeVolumes`: a scripted list from the host config |
+| Power | `NanoMenuSystem.cpp`'s battery read, lights-HAL brightness, Settings brightness mirror and read, and `prepareShutdown`'s `nano_action` write (`Power.cpp`). Not moved: `NanoControlCenter.cpp` (already sysfs) and sleep (already a session request through `dosleep`) (G7-power-3 to -6) | `platform/linux/Power.cpp`: `/sys/class/power_supply`; no HAL (`NanoBacklight.h` writes the backlight on every platform); `powerAction` is a `reboot` or `poweroff` session request (G7-power-8, -9) | `FakePower`: records |
+| System actions | the Wi-Fi radio, forget, Bluetooth radio and connect, time-format and time-zone commands of `NanoMenuSettings.cpp` and `NanoMenuSetupWizard.cpp`, as six typed methods (`SystemActions.cpp`; G7-power-1). `runCmd` got external linkage (G7-power-2) | `platform/linux/actions/SystemActions.cpp`: Wi-Fi on and off through `persist.thimsy.wifi.enabled` and `D30net`, forget through the `WpaCtrl` client (`actions/WpaCtrl.cpp`, Thimsy's own MIT control-socket client, not hostap's vendored `wpa_ctrl`; G7-power-10), Bluetooth through `persist.thimsy.bluetooth.enabled`, `D35bluetooth` and `bluetoothctl`, and the time zone link (G7-power-11 to -13). Programs run through `actions/Run.cpp` (fork, `setsid`, no inherited descriptors) | `FakeActions`: records calls |
+| Network | the Wi-Fi and Bluetooth queries and operations of the Settings screens (`NanoMenuSettings.cpp`) and of the HUD's poll (`NanoMenuNet.cpp`), with the parsers of their output (`Network.cpp`; G7-net). `runCmdUnlocked` and `shellQuote` got external linkage. `NanoNetBridge` stays at the call sites. Not moved: `NanoControlCenter.cpp`'s `wifi_on` read, `NanoBtStable.cpp` and the airplane commands | `platform/linux/actions/Network.cpp`: Wi-Fi through `WpaCtrl` (`STATUS`, `SIGNAL_POLL`, `LIST_NETWORKS`, `SCAN_RESULTS`, `SCAN`, `SELECT_NETWORK`, `ADD_NETWORK`/`SET_NETWORK`, `REMOVE_NETWORK`, `SAVE_CONFIG`; gateway from `/proc/net/route`, DNS from `/etc/resolv.conf`), Bluetooth through `bluetoothctl`; every call time-bounded, the render- and input-thread ones to a few seconds | `FakeNetwork`: the host config's scripted networks and devices |
+| Input policy | the home's per-device `EVIOCGRAB` silencing in `NanoMenuInput.cpp` (`openInputDevices`, `checkInputHotplug`'s `IN_CREATE`, `IN_DELETE` and sweep; `InputPolicy.cpp`; G7-input-1). Not moved: `NanoMenu.cpp`'s exit-time grab of every fd and its destructor's release; not `NanoDeviceKeys.cpp`, which is in `drastic_nano_shared_srcs`: it keeps reading `ro.product.*` through the property shim, and on Linux `thimsy-prop boot` writes those match keys from `device.json` (layer 1) | `platform/linux/InputPolicy.cpp`: never grabs padd's pad; `silenceGamePad` connects to padd's tap, then sets `sys.thimsy.padd.intercept` (G7-input-4 to -6). No site calls it yet | `FakeInput`: grabs as the firmware does and records |
 
 Evdev reading stays in shared code: the kernel interface is the same on both platforms (plan 5.1), and on Linux Nano reads padd's single pad. Plan 4.3's "input source" interface is therefore not cut. On the host, input reaches Nano without an input seam: the jail's `/dev/input/eventN` are FIFOs, and the host link wraps `ioctl` (`platform/host/FakeEvdev.cpp`) to answer `EVIOCGNAME`, `EVIOCGID`, `EVIOCGBIT`, `EVIOCGABS` and `EVIOCGRAB` for those descriptors from the scenario's device description (D.3); every other `ioctl` passes to `__real_ioctl`.
 
@@ -406,26 +452,26 @@ Evdev reading stays in shared code: the kernel interface is the same on both pla
 | P1 | `compat/` shims, `libthimsy/`, host build of the 24 tested files (G1) | none | identical: new files only, none listed in `Android.bp` |
 | P2 | `compat/stubs/`, every `nano_core` file written for the host, the Linux display back end and shell substitution, `platform/linux/` skeleton, CMake (G4, G6, G9) | one: G9a's mechanical split of `NanoMenuDrm.cpp`'s buffer back end into `NanoMenuDrmBuffers.cpp`, added to `gammaos-nano` and `drastic_nano_shared_srcs` (B.5) | same code, moved; an Android-surface change under H's rules |
 | P3 | `NanoPlatform.h` (no services yet), `platform/host/`, the headless E2E (G5) | none: `main_linux.cpp` links `nano_platform_linux` and `main_headless.cpp` links `nano_platform_host`, each with its own `createPlatform`; the firmware `createPlatform` does not exist yet | identical |
-| P4 | the interfaces, one area per commit (G7), **G7-main first** | G7-main: `main.cpp` calls `install(createPlatform())`, and `Android.bp` adds `NanoPlatform.cpp` and `platform/firmware/Platform.cpp` (an empty firmware platform) to `gammaos-nano`'s `srcs`. Then per area, the files in B.6's table, each commit adding its own `platform/firmware/<Area>.cpp` to `srcs` | changes; behaviour the same (section H). Every P4 commit updates the Android surface with an `android-surface:` line |
+| P4 | the interfaces, one area per commit (G7), **G7-main first** | G7-main: `main.cpp` calls `install(createPlatform())` as its first statement, its boot steps move into `NanoBootSequence.cpp`, and `Android.bp` adds `NanoBootSequence.cpp`, `NanoPlatform.cpp` and `platform/firmware/Platform.cpp` (an empty firmware platform) to `gammaos-nano`'s `srcs`. Then per area, the files in B.6's table, each commit adding its own `platform/firmware/<Area>.cpp` to `srcs` (and G7-launch-a `NanoLaunchCommit.cpp`). Done in waves 4 and 5 for Display, Launch, Audio, Volumes, Power and system actions, Input policy and Network; none of it compiled with the Android toolchain yet (H.7) | changes; behaviour the same (section H). Every P4 commit updates the Android surface with an `android-surface:` line |
 
-So the first refactor pass (P0 to P3) edits one existing Nano file, by a move. Edits start at P4, after the Linux alpha can already be built on layers 1 to 3. `main.cpp`'s portable boot steps (the early splash and its ordering around `main.cpp:1002-1010`) move into a shared `nanoBootSequence()` in G7-main, so `main_linux.cpp` calls it rather than copying it; until then `main_linux.cpp` holds only what the Linux alpha needs, and a test lists the `main.cpp` steps it mirrors.
+So the first refactor pass (P0 to P3) edits one existing Nano file, by a move. Edits start at P4, after the Linux alpha can already be built on layers 1 to 3. G7-main moved `main.cpp`'s portable boot steps into a shared `nanoBootSequence(void (*platformSteps)())` (`NanoBootSequence.cpp`, with `main.cpp`'s `LOG_TAG`): `setpriority(ANDROID_PRIORITY_DISPLAY)`, the start log line, `sys.gammaos.nano.drm_active=0`, then the callback, then `new NanoMenu` and `run("GammaOSNano", PRIORITY_DISPLAY)`. `main.cpp` passes `firmwareBootSteps()` (DraStic's patch, preload, init and QR watcher; binder's thread pool), so the firmware's order and thread are exact (G7-main-1). `main_linux.cpp` calls it with no callback rather than copying the steps.
 
-`nano/platform/linux/main_linux.cpp` (G9-17) first sets up the platform, before any thread: `nanocompat::setLogFile("/run/thimsy/log/nano.log")`, `nanocompat::init` on `/storage/.config/thimsy/persist.props` and `/run/thimsy/props` with watching on, then `nanolinux::controlkeys::install()` (the shell gate needs no set-up: it is linked in with `--wrap`). It defines `main.cpp`'s `gEarlyDrmFd` as -1, as `main_headless.cpp` does (left to the `[dropped-linux]` stub generator it would be 0, stdin). Then it mirrors `main.cpp`'s non-overlay path:
+`nano/platform/linux/main_linux.cpp` (G9-17, G7-main, REV4-1) first sets up the platform, before any thread: `nanocompat::setLogFile("/run/thimsy/log/nano.log")`, `nanocompat::init` on `/storage/.config/thimsy/persist.props` and `/run/thimsy/props` with watching on (a failure is logged and Nano runs on default settings), then `nanolinux::controlkeys::install()` (the shell gate needs no set-up: it is linked in with `--wrap`). Then `createPlatform()` (`LinuxPlatform.cpp`; null: exit 2), `install()`, and `controlkeys::setLaunchHandler(launchFromHandshake)`, so a trigger written before the launcher exists is only logged (G7-launch-b-15). It defines `main.cpp`'s `gEarlyDrmFd` as -1, as `main_headless.cpp` does (left to the `[dropped-linux]` stub generator it would be 0, stdin). Against `main.cpp`'s path:
 
 | `main.cpp` step | `main_linux.cpp` |
 |---|---|
-| `--overlay` (the in-game SurfaceFlinger overlay) | refused: exit 0 (no SurfaceFlinger) |
+| `install(createPlatform())`, the first statement | after the set-up above (store and control keys first) |
+| `--overlay` (the in-game SurfaceFlinger overlay) | refused: exit 0 (no SurfaceFlinger), after `install()` as in `main.cpp` |
 | drastic-nano relaunch (`auto_relaunch`) | left out: the DS player is out of scope |
 | `overlay_home` stray-instance guard | left out: no overlay, so no stray |
-| early DRM master grab on `/dev/dri/card0` | left out: no HWComposer to beat; `readyToRun`'s `drmEarlySplash` opens the card itself (`gEarlyDrmFd` stays -1, as on Qualcomm) |
-| `setpriority(ANDROID_PRIORITY_DISPLAY)` | kept |
-| `sys.gammaos.nano.drm_active=0` | kept |
-| drastic patch, preload, init, QR watcher | left out (`drasticNanoAvailable()` is false) |
-| `ProcessState` thread pool | left out: no binder |
-| `new NanoMenu`, `run("GammaOSNano", PRIORITY_DISPLAY)` | kept |
-| `IPCThreadState::joinThreadPool()` | `NanoMenu::join()`: on Android the process ends in `threadLoop`'s `stopProcess()`; the layer-2 `stopProcess` only logs, so `main` returns when the thread ends, after `controlkeys::uninstall()` |
+| early DRM master grab on `/dev/dri/card0` | left out: no HWComposer to beat; `readyToRun`'s `drmEarlySplash` (through `Display::startScanout`) opens the card itself (`gEarlyDrmFd` stays -1, as on Qualcomm) |
+| `nanoBootSequence(firmwareBootSteps)` | `nanoBootSequence(nullptr)`: the priority, `drm_active=0`, `NanoMenu` and its thread are shared; `firmwareBootSteps()` (DraStic, binder) is left out |
+| `IPCThreadState::joinThreadPool()` | `NanoMenu::join()`: on Android the process ends in `threadLoop`'s `stopProcess()`; the layer-2 `stopProcess` only logs, so `main` goes on when the thread ends. `run()`'s status is not checked (G7-main-7) |
+| (Android's framework starts the launched activity as the home exits) | `nano.clear()` (`~NanoMenu` releases and closes the pads), then `leaveQueued()`: the launch the control keys queued is started in its own session and left running with `sys.thimsy.game.pid` set, and the handshake is cleared (B.6's Launch row). `controlkeys::uninstall()`, then exit |
 
-SIGPIPE stays at its default, as on Android. `tools/nano-tree/tests/test_main_linux.py` fingerprints `main.cpp`'s `main()`, so a change there (a merge from `nano-144`) fails until this table is reviewed, and checks the set-up order and `gEarlyDrmFd` in both mains. G7-main replaces the kept steps with `nanoBootSequence()` and adds `install(createPlatform())` after the set-up.
+Nano exits after every launch on Linux, as Android's home does (REV4-1), so threads `~NanoMenu` leaves behind (the render watchdog, the scan workers) end with the process instead of outliving the menu for the game's length. The exit status tells `thimsy-session` how the menu ended (REV4-2; `linux/docs/session.md`): 0 (`kExitLaunchOver`) after a launch, started or not, 1 (`kExitNoLaunch`) when the menu ended without one, 2 when the platform did not start. The session restarts Nano when the game ends, or at once after a 0 with no game running, and holds back a quick launch loop with the crash back-off. `Launcher::nanoExitsOnLaunch()` still says false for Linux: a resident Nano that hands the panel over and polls the child is the intended contract, not yet built.
+
+SIGPIPE stays at its default, as on Android. `tools/nano-tree/tests/test_main_linux.py` fingerprints `main.cpp` from `firmwareBootSteps()` to the end, so a change there (a merge from `nano-144`) fails until this table is reviewed. It also checks the set-up order, that the platform is installed first, `nanoBootSequence()`'s order and tag, and `gEarlyDrmFd` in every main (G7-main-6). `main_headless.cpp` does not call `nanoBootSequence()` yet: it still mirrors `main.cpp` by hand and cites old line numbers (DECISIONS.md, open items from wave 4).
 
 ### B.8 The DRM buffer back end's contract
 
@@ -564,7 +610,7 @@ After G10: THIMSY_TEST_MODE=slow tests/run.sh nano                   (adds the h
 
 `nano-headless` runs `nano_core` over `nano_platform_host` with `nano_glstub` (every GLES 2 and EGL entry point Nano calls, generated from the link's undefined symbols by `nano/test/host/glstub/gen.py`; ids increment, compiles succeed, `glReadPixels` returns zeros, `glGetError` returns 0). No GPU, no window. Golden screenshots need a real renderer (Mesa llvmpipe) and come later. It is written in G5 and first built in G10 (its headers are not installed now, section 0).
 
-**The driver runs Nano as Nano runs.** `NanoMenu::threadLoop` is not a per-frame function: it holds the whole session (set-up, its own frame loop, teardown, `stopProcess`), and `threadLoop` and `readyToRun` are private. So `main_headless.cpp` does what `main.cpp` does: it creates `NanoMenu` and calls `run()` through the compat `android::Thread`, on real time. On the host, `readyToRun` takes the DRM path because `DrmHost.cpp`'s `drmEarlySplash` sets `sDrmActive` (B.5); without it, it would reach the SurfaceFlinger branch and fail with "No displays found".
+**The driver runs Nano as Nano runs.** `NanoMenu::threadLoop` is not a per-frame function: it holds the whole session (set-up, its own frame loop, teardown, `stopProcess`), and `threadLoop` and `readyToRun` are private. So `main_headless.cpp` does what `main.cpp` does: it installs the host platform (`createPlatform`, `install`), creates `NanoMenu` and calls `run()` through the compat `android::Thread`, on real time, then joins the thread. It still mirrors `main.cpp`'s steps by hand rather than calling `nanoBootSequence()` (B.7). On the host, `readyToRun` takes the DRM path because `DrmHost.cpp`'s `drmEarlySplash` sets `sDrmActive` (B.5); without it, it would reach the SurfaceFlinger branch and fail with "No displays found".
 
 **Stepping.** Every flip in `DrmHost.cpp` is a present, and each present passes a **frame barrier**: it increments `present_count` and, when the scenario asks for it, blocks until the driver grants the next frame. So a scenario can stop Nano between frames, inspect the store, files and fakes, inject input, and release N frames. Between barriers Nano runs on real time; its helper threads (scan, net poll) are real threads. `expect` steps wait on a condition with a wall-clock deadline (`within_ms`), polling the store, the files and the fakes; there is no fake clock (B.2).
 
@@ -586,7 +632,7 @@ After G10: THIMSY_TEST_MODE=slow tests/run.sh nano                   (adds the h
 {"expect_no_shell": ["am", "settings"]}
 ```
 
-First scenarios: boot to the home and present a frame; open a system and launch a game (core and standalone); a launch's state files written; a setting changed and persisted to `persist.props`; a drive appearing (`FakeVolumes`) adds its library; the quit request reaching the launcher. Until G7-launch moves launching behind `Launcher`, `expect_launch` reads the handshake keys (`sys.gammaos.nano.launch_*`, `do_launch`) the store recorded; after it, the fake launcher's requests. The same scenario passes before and after, which is P4's behaviour check on the host. Deadlines are generous (seconds, not frames) so a slow `-O0` ASan build under `nice` does not flake; a scenario that needs exact frame counts uses the barrier instead.
+First scenarios: boot to the home and present a frame; open a system and launch a game (core and standalone); a launch's state files written; a setting changed and persisted to `persist.props`; a drive appearing (`FakeVolumes`) adds its library; the quit request reaching the launcher. Written so far (`nano/test/host/scenarios/README.md`): `boot_home`, `navigate`, `launch_game` (core only) and `setting_persisted`, their key sequences first guesses marked `TODO(G10)`; the drive and quit scenarios are not written. Since G7-launch-b, `commitLaunch` reaches the host's `FakeLauncher`, which writes the handshake keys as the firmware does and records a `launch` event at the trigger's write; `expect_launch` waits for that event. Nano's launch sites still exit after a launch, so `child_exit` waits for Nano to exit and starts it again in the same jail, as `thimsy-session` would. The same scenario is meant to pass before and after each G7 step, which is P4's behaviour check on the host; none has run yet (G10, with the merged platform). Deadlines are generous (seconds, not frames) so a slow `-O0` ASan build under `nice` does not flake; a scenario that needs exact frame counts uses the barrier instead.
 
 Runs: `slow` mode only (the build is long the first time); each scenario takes seconds.
 
@@ -1006,7 +1052,7 @@ All by Claude (autonomous; for owner audit), 2026-11-25. Also listed in `docs/li
 | I25 | The scraper runs on Linux as its own binary, `thimsy-nano-scrape`, built from `gammaos-nano-scrape`'s six files and started by `thimsy-session` when Nano writes `sys.gammaos.nano.scrape_run` | the plan makes the scraper a v1 feature (5.4), and a separate process keeps a scrape beside a game to a few MB, as on Android | memory proving no issue on Linux (then in-process) |
 | I26 | The Linux build compiles `NanoMenuDrm.cpp` and substitutes only its buffer back end, after a mechanical split (G9a) into `NanoMenuDrmBuffers.cpp`, the one edit to an existing Nano file before P4, flagged for cherry-pick to `nano-144`; the host substitutes all of `NanoMenuDrm.h`'s API in `DrmHost.cpp`, under a symbol-set test; B.8 writes down the ring contract | a full Linux substitute of a 3,577-line, actively tuned file would drift silently; the host has no DRM device | the split not being mechanical (then the full substitute with the same test and contract) |
 | I27 | `NanoPlatform.h` interfaces are declared in the G7 step that moves their code, sized to it; `Clock` is dropped; `deviceModel()` becomes `deviceMatchKeys()`; `Audio` takes the pull shape of NanoAudio's AAudio callback; G7-main is the first P4 step; hiding rows by `Cap` is its own step (G7-caps) after the alpha | interfaces designed ahead of use would be frozen wrong; P4 commits must each leave the Android build linkable | none foreseen |
-| I28 | Launching: a behaviour-neutral commit first gathers the handshake into `commitLaunch(const LaunchTuple&)`, then the seam swaps that one function; until then the `do_launch` handshake is the Linux launch protocol. Control-key handlers observe after the store writes and never consume; the trigger table is derived from `gammaos-nano.rc` and the framework listeners, with a disposition per trigger | the keys are written from nine files and some are read back as state; a consuming handler would break those readers | none foreseen |
+| I28 | Launching: a behaviour-neutral commit first gathers the handshake into `commitLaunch(const LaunchTuple&)`, then the seam swaps that one function (done: G7-launch-a, then G7-launch-b's `Launcher::commit`). The `do_launch` handshake stays the Linux launch protocol: the Linux `commit` writes the keys, and the trigger, observed by the control keys, is a launch only when written inside Nano's own `commit` (G7-launch-b-14); Nano then exits and leaves the game to `thimsy-session` (REV4-1, B.7). Control-key handlers observe after the store writes and never consume; the trigger table is derived from `gammaos-nano.rc` and the framework listeners, with a disposition per trigger | the keys are written from nine files and some are read back as state; a consuming handler would break those readers | none foreseen |
 | I29 | No hand-written `NanoMenu::` stubs: the media, overlay and SD-move files compile on Linux against the layer-2 stubs; a file that truly can't compile gets stubs generated at build time from the link's undefined symbols; `[dropped-linux]` is a subset of `[firmware]` | hundreds of methods would drift with every `NanoMenu.h` change on `nano-144` | none foreseen |
 | I30 | `android/imagedecoder.h` and `android/bitmap.h` get a real Linux and host implementation on libpng, libjpeg-turbo, libwebp and giflib; HEIF and AVIF are unsupported on Linux v1 | the ES-DE theme, the Linux v1 UI (D9), decodes every image through `AImageDecoder`; system libraries avoid vendoring and are Buildroot packages | a theme set needing HEIF or AVIF (then libheif or libavif) |
 | I31 | Bionic-only libc extras (`mallopt` parameters, `strlcpy`, `strlcat`, `getprogname`) come from a force-included `nanocompat/bionic.h`, with a ratchet on Bionic-only identifiers | glibc 2.31 lacks them; force-including edits no Nano file | none foreseen |
