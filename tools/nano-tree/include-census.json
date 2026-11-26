@@ -822,6 +822,7 @@
   "NanoMenuNet.cpp": {
    "includes": [
     "nano:NanoMenu.h",
+    "nano:NanoPlatform.h",
     "shim:compat/include/cutils/properties.h",
     "shim:compat/include/log/log.h"
    ]
@@ -1766,12 +1767,26 @@
     "nano:NanoPlatform.h"
    ]
   },
+  "platform/firmware/Network.cpp": {
+   "includes": [
+    "nano:NanoPlatform.h",
+    "nano:platform/firmware/Network.h",
+    "shim:compat/include/cutils/properties.h",
+    "shim:compat/include/log/log.h"
+   ]
+  },
+  "platform/firmware/Network.h": {
+   "includes": [
+    "nano:NanoPlatform.h"
+   ]
+  },
   "platform/firmware/Platform.cpp": {
    "includes": [
     "nano:NanoPlatform.h",
     "nano:platform/firmware/Display.h",
     "nano:platform/firmware/InputPolicy.h",
     "nano:platform/firmware/Launcher.h",
+    "nano:platform/firmware/Network.h",
     "nano:platform/firmware/Power.h",
     "nano:platform/firmware/SystemActions.h",
     "nano:platform/firmware/Volumes.h"
@@ -5221,6 +5236,12 @@
    ],
    "needs": {}
   },
+  "platform/firmware/Network.cpp": {
+   "modules": [
+    "gammaos-nano"
+   ],
+   "needs": {}
+  },
   "platform/firmware/Platform.cpp": {
    "modules": [
     "gammaos-nano"
@@ -5863,6 +5884,7 @@
    "platform/firmware/Power.cpp": "the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)",
    "platform/firmware/SystemActions.cpp": "the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)",
    "platform/firmware/InputPolicy.cpp": "the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)",
+   "platform/firmware/Network.cpp": "the firmware platform (B.6); Linux and the host link their own (platform/linux, platform/host)",
    "NanoMenuDrmBuffers.cpp": "the AHardwareBuffer render-target back end (G9a); Linux links platform/linux/display/DrmBuffersGbm.cpp instead",
    "NanoMenuRgbFollow.cpp": "reaches GammaRgbProcess.h (a header outside Nano's folder (upstream.json siblings): v1 has neither Shares nor RGB follow on Linux)",
    "NanoMenuShares.cpp": "reaches share_config.h (a header outside Nano's folder (upstream.json siblings): v1 has neither Shares nor RGB follow on Linux)",

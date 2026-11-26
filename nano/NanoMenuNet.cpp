@@ -30,105 +30,9 @@
 #include <log/log.h>
 
 #include "NanoMenu.h"
+#include "NanoPlatform.h"
 
 namespace android {
-
-namespace {
-
-// popen() wrapper that caps total output at 16 KiB and total time at
-// about 4 s so a hung service call can't freeze the worker thread or
-// bloat memory. Returns the collected stdout; stderr is redirected
-// into it because a lot of the `cmd` shell-outs mix warnings into
-// stdout anyway.
-std::string runCmdShellout(const char* command) {
-    std::string out;
-    out.reserve(1024);
-    FILE* f = popen(command, "r");
-    if (!f) return out;
-    char buf[512];
-    const size_t kMax = 16 * 1024;
-    while (fgets(buf, sizeof(buf), f)) {
-        out.append(buf);
-        if (out.size() > kMax) {
-            out.resize(kMax);
-            break;
-        }
-    }
-    pclose(f);
-    return out;
-}
-
-bool strContainsCI(const std::string& hay, const char* needle) {
-    size_t n = strlen(needle);
-    if (hay.size() < n) return false;
-    for (size_t i = 0; i + n <= hay.size(); i++) {
-        size_t k = 0;
-        while (k < n
-               && tolower((unsigned char)hay[i + k]) ==
-                      tolower((unsigned char)needle[k])) {
-            k++;
-        }
-        if (k == n) return true;
-    }
-    return false;
-}
-
-// Parse the SSID and RSSI out of the free-form `cmd wifi status` output.
-// The relevant line looks like:
-//   mWifiInfo SSID: <name>, BSSID: ..., MAC: ..., Security type: ...,
-//       Supplicant state: COMPLETED, Rssi: -55, Link speed: ...
-// SSID can contain commas, so we stop at ", BSSID:". Rssi is a signed
-// integer; 0 or positive means uninitialised (treat as -127).
-void parseWifiInfo(const std::string& text,
-                   std::string* outSsid, int* outRssi) {
-    outSsid->clear();
-    *outRssi = -127;
-
-    // SSID
-    static const char* kSsidKey = "SSID:";
-    size_t p = text.find(kSsidKey);
-    while (p != std::string::npos) {
-        size_t s = p + strlen(kSsidKey);
-        while (s < text.size() && text[s] == ' ') s++;
-        size_t e = text.find(", BSSID:", s);
-        if (e == std::string::npos) e = text.find('\n', s);
-        if (e == std::string::npos) e = text.size();
-        std::string ssid = text.substr(s, e - s);
-        // Strip surrounding quotes if present.
-        if (ssid.size() >= 2 && ssid.front() == '"' && ssid.back() == '"') {
-            ssid = ssid.substr(1, ssid.size() - 2);
-        }
-        if (!ssid.empty()
-                && ssid != "<unknown ssid>"
-                && ssid != "<none>") {
-            *outSsid = ssid;
-            break;
-        }
-        p = text.find(kSsidKey, p + 1);
-    }
-
-    // RSSI
-    static const char* kRssiKey = "Rssi:";
-    p = text.find(kRssiKey);
-    if (p != std::string::npos) {
-        size_t s = p + strlen(kRssiKey);
-        while (s < text.size() && text[s] == ' ') s++;
-        int rssi = atoi(text.c_str() + s);
-        if (rssi < 0) *outRssi = rssi;
-    }
-}
-
-// Map an RSSI in dBm to a 0..4 bars level. Matches the Android stock
-// ScanResult.calculateSignalLevel thresholds closely enough for a HUD.
-int rssiToBars(int rssi) {
-    if (rssi >= -55) return 4;
-    if (rssi >= -66) return 3;
-    if (rssi >= -77) return 2;
-    if (rssi >= -88) return 1;
-    return 0;
-}
-
-} // namespace
 
 // ---------------------------------------------------------------------------
 // Background polling thread
@@ -152,41 +56,7 @@ void NanoMenu::stopNetPollThread() {
 
 void NanoMenu::netPollThreadFunc() {
     ALOGI("GammaOS Nano: net poll thread start");
-    // Auto-enable Wi-Fi if it's off and we have saved networks -- mirrors
-    // the "remember last on/off" behaviour of stock Android. We only
-    // try this once at thread start so a user who explicitly disabled
-    // Wi-Fi from the settings screen isn't fought every 2 seconds.
-    {
-        std::string status = runCmdShellout("cmd wifi status 2>/dev/null");
-        bool wifiOff = status.empty()
-                    || strContainsCI(status, "Wifi is disabled")
-                    || strContainsCI(status, "is disabled");
-        if (wifiOff) {
-            std::string saved = runCmdShellout(
-                    "cmd wifi list-networks 2>/dev/null");
-            // The header line itself ends with "Security type"; we want
-            // to know if there's at least one numeric network id row
-            // after the header.
-            bool anySaved = false;
-            size_t p = 0;
-            while (p < saved.size()) {
-                size_t eol = saved.find('\n', p);
-                if (eol == std::string::npos) eol = saved.size();
-                size_t q = p;
-                while (q < eol && isspace((unsigned char)saved[q])) q++;
-                if (q < eol && isdigit((unsigned char)saved[q])) {
-                    anySaved = true;
-                    break;
-                }
-                p = eol + 1;
-            }
-            if (anySaved) {
-                ALOGI("GammaOS Nano: auto-enabling Wi-Fi (saved networks present)");
-                (void)runCmdShellout(
-                        "cmd wifi set-wifi-enabled enabled 2>/dev/null");
-            }
-        }
-    }
+    nanoplat::get().net->autoEnableWifi();
     // First tick happens immediately so the HUD has something other
     // than "Unknown" within a few hundred ms of the XMB drawing.
     int64_t nextPollMs = 0;
@@ -268,52 +138,21 @@ void NanoMenu::netPollThreadFunc() {
         }
 
         if (!fromBridge) {
-            // --- WiFi (shell fallback) --------------------------------
-            std::string status = runCmdShellout("cmd wifi status 2>/dev/null");
-            if (status.empty()) {
-                // Service missing or binder refused. Leave as Unknown.
-            } else if (strContainsCI(status, "Wifi is disabled")
-                    || strContainsCI(status, "is disabled")) {
-                wifiLevel = kWifiLevel_Off;
-            } else {
-                std::string ssid;
-                int rssi = -127;
-                parseWifiInfo(status, &ssid, &rssi);
-                if (!ssid.empty()) {
-                    wifiLevel = kWifiLevel_Connected;
-                    // Fall back to a mid-strength 2-bar hint if the
-                    // output didn't include a parsable Rssi line --
-                    // the connection itself is real (SSID proves it),
-                    // we just don't know how strong.
-                    wifiBars = (rssi > -127) ? rssiToBars(rssi) : 2;
-                    wifiSsid = ssid;
-                } else {
-                    wifiLevel = kWifiLevel_Disconnected;
-                }
-            }
-
-            // --- Bluetooth (shell fallback) ---------------------------
-            // Read the REAL adapter state from dumpsys. `settings get global
-            // bluetooth_on` is NOT reliable: `cmd bluetooth_manager enable/disable`
-            // (which the radio toggle uses) does not update that setting, so it
-            // stays stale. dumpsys reports the live "enabled: true/false" and is
-            // also the source for the connected count, so one query covers both.
-            std::string d = runCmdShellout("dumpsys bluetooth_manager 2>/dev/null");
-            bool on = (d.find("enabled: true") != std::string::npos);
-            if (!on) {
-                btLevel = kBtLevel_Off;
-            } else {
-                btLevel = kBtLevel_On;
-                // Count connected devices. The relevant lines look like:
-                //       Connected = true
-                // mapping onto audio + input + wearable profiles.
-                size_t p = 0;
-                while ((p = d.find("Connected = true", p)) != std::string::npos) {
-                    btConnected++;
-                    p += 16;
-                }
-                if (btConnected > 0) btLevel = kBtLevel_Connected;
-            }
+            // The platform's Wi-Fi and Bluetooth state (G7-net). NanoMenu's levels are its.
+            static_assert((int)kWifiLevel_Unknown == (int)nanoplat::Network::kWifiLevel_Unknown
+                          && (int)kWifiLevel_Off == (int)nanoplat::Network::kWifiLevel_Off
+                          && (int)kWifiLevel_Disconnected == (int)nanoplat::Network::kWifiLevel_Disconnected
+                          && (int)kWifiLevel_Connected == (int)nanoplat::Network::kWifiLevel_Connected
+                          && (int)kBtLevel_Unknown == (int)nanoplat::Network::kBtLevel_Unknown
+                          && (int)kBtLevel_Off == (int)nanoplat::Network::kBtLevel_Off
+                          && (int)kBtLevel_On == (int)nanoplat::Network::kBtLevel_On
+                          && (int)kBtLevel_Connected == (int)nanoplat::Network::kBtLevel_Connected,
+                          "NanoMenu's network levels are nanoplat::Network's");
+            nanoplat::Network::WifiLevel w = static_cast<nanoplat::Network::WifiLevel>(wifiLevel);
+            nanoplat::Network::BtLevel b = static_cast<nanoplat::Network::BtLevel>(btLevel);
+            nanoplat::get().net->pollState(w, wifiBars, wifiSsid, b, btConnected);
+            wifiLevel = static_cast<WifiLevel>(w);
+            btLevel = static_cast<BtLevel>(b);
         }
 
         // Bluetooth was just switched from the chooser: the radio takes a moment to follow, so the
