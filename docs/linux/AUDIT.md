@@ -6,7 +6,7 @@ A short list, per implementation wave, of the autonomous decisions most worth au
 
 Source: `docs/linux/DECISIONS.md`, section "Implementation decisions (waves 1 and 2)" and "Open items from waves 1 and 2".
 
-## (a) Decisions to audit (12)
+### (a) Decisions to audit (12)
 
 1. **G9a-1, G9a-2:** Android Nano source changed: `drmAllocAhbTarget` moved to a new `NanoMenuDrmBuffers.cpp` and added to `Android.bp`; never compiled, so the Android build's safety rests on the AOSP build (H.7) and a cherry-pick to nano-144.
 2. **G0-7 (with G0-5):** the merge driver that regenerates `0001-thimsy.patch` on every merge exits 1 and leaves the merge to finish by hand, and `regen` mis-hashed `git add -N` files once (caught); the Android patch's integrity depends on these tools.
@@ -21,7 +21,7 @@ Source: `docs/linux/DECISIONS.md`, section "Implementation decisions (waves 1 an
 11. **G2d-12, G2d-13 (with G2c-10):** what ships: the asset allowlist denies Akrobat and the whole `slate-es-de.zip` (user-visible: fonts fall back, no default theme yet), keeps undocumented data files under ATTRIBUTION.md's licences; firmware ships only with a WHENCE licence.
 12. **G3b-11 (with G2c-22):** a long power press powers off at once when Nano isn't running, with no software hard power-off; the ARC's hotkey is a guessed mapping of the home key to BTN_MODE.
 
-## (b) Deferred to the owner or needing hardware
+### (b) Deferred to the owner or needing hardware
 
 Owner:
 - GPT partition and disk UUIDs: random (non-reproducible images) or pinned (two cards from one image collide in an ARC-D).
