@@ -689,6 +689,8 @@ class NanoLeavesAGameRunning(SessionCase):
         wait_for(lambda: "the game Nano left running ended" in self.log(), what="the game's end")
         wait_for(lambda: len(self.ran("thimsy-nano")) == 3, what="Nano started twice more")
         self.assertEqual(self.prop("sys.thimsy.game.pid"), "")  # the session cleared it
+        # The tool's record comes before the run's own note: under load the third may lag.
+        wait_for(lambda: len(self.r.read("/nano.starts").split()) == 3, what="run 3's start noted")
         starts = [int(x) for x in self.r.read("/nano.starts").split()]
         self.assertEqual(len(starts), 3)
         # Run 2 exited 0 at once with no game: run 3 follows without the 1 s back-off.
