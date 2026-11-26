@@ -9,7 +9,7 @@ import tempfile
 import time
 from typing import Dict, List, Optional, Tuple
 
-from .compose import (MARKER, Entries, composed_entries, files_problems,
+from .compose import (MARKER, Entries, composed_entries, dirty_nano, files_problems,
                       tracked_entries, worktree_entries, write_file)
 from .config import PATCH_REL, Layout, NanoTreeError, Upstream, base_from_fetch_script
 from .gitcache import Cache, Fork, posix
@@ -547,18 +547,7 @@ def compute_fork_merge(layout: Layout, fork: Fork, cache: Cache, fm: ForkMerge, 
     return new_data, digest
 
 
-def _dirty_nano(fork: Fork, cfg: Upstream) -> List[str]:
-    """nano/'s paths (relative to it) with uncommitted changes, untracked ones included; fork-only
-    paths, which never reach the patch, are left out."""
-    out = fork.git("status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all", "--", "nano/")
-    dirty = []
-    for rec in out.split(b"\0"):
-        if len(rec) < 4:
-            continue
-        path = rec[3:].decode("utf-8", "surrogateescape")
-        if path.startswith("nano/") and not cfg.is_fork_only(path[len("nano/"):]):
-            dirty.append(path[len("nano/"):])
-    return sorted(dirty)
+_dirty_nano = dirty_nano
 
 
 def _prune_store(store: str, age: float = 86400.0) -> None:

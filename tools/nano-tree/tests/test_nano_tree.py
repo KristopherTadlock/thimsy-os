@@ -429,6 +429,35 @@ class Regen(Base):
         self.g("add", "nano/compat/include/z.h")
         self.assertEqual(self.tool("regen", "--check")[0], 0)
 
+    def test_warns_about_uncommitted_nano_files(self):
+        """gfix2 (android-safety-4): regen warns, without failing, when the block it builds
+        includes nano/ files that are untracked or not committed."""
+        self.make_fork()
+        rc, out, err = self.tool("regen")
+        self.assertEqual(rc, 0, err)
+        self.assertNotIn("warning", err)
+        write(self.nano("compat/include/u.h"), b"int u;\n")                       # untracked
+        write(self.nano("a.cpp"), edit_line(read(self.nano("a.cpp")), 3, "line3 dirty"))   # unstaged
+        write(self.nano("platform/linux/f.cpp"), b"int f;\n")                    # fork-only: never in the block
+        rc, out, err = self.tool("regen")
+        self.assertEqual(rc, 0, err)
+        self.assertIn("regen: warning: the block includes 2 nano/ file(s) that are not committed", err)
+        self.assertIn("nano/a.cpp", err)
+        self.assertIn("nano/compat/include/u.h", err)
+        self.assertNotIn("platform/linux", err)
+        self.assertIn(b"+int u;", self.patch())
+        rc, out, err = self.tool("regen", "--check")
+        self.assertEqual(rc, 0, out + err)
+        self.assertIn("regen: warning", err)
+        self.g("add", "nano/compat/include/u.h", "nano/a.cpp")                     # staged, not committed
+        rc, out, err = self.tool("regen")
+        self.assertEqual(rc, 0, err)
+        self.assertIn("includes 2 nano/ file(s)", err)
+        self.g("commit", "-q", "-m", "nano/ and its patch", "--", "nano/compat/include/u.h", "nano/a.cpp")
+        rc, out, err = self.tool("regen")
+        self.assertEqual(rc, 0, err)
+        self.assertNotIn("warning", err)
+
     def test_mode_from_index(self):
         self.make_fork()
         self.g("update-index", "--chmod=+x", "nano/keep.h")
