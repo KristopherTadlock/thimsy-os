@@ -26,7 +26,9 @@
 #                  "SKIP <program>: missing <header>" (heavy: refused while an Android build may run)
 #   syntax-core    g++ -fsyntax-only of every [core] file, no sanitizers (heavy; SKIPs without the
 #                  library headers or G4's compat/stubs)
-#   headless       nano-headless for the host E2E (heavy; SKIPs until G5's files and the headers exist)
+#   headless       nano-headless for the host E2E (heavy; SKIPs until the headers and G4's stubs exist)
+#   check-headless-0  the host platform's small programs (NanoPlatform.cpp, the host platform but
+#                  DrmHost.cpp, the GL stub with gen.py's output), linked as nano-headless links
 #   list-unit      each test program, its production files, its needs and whether check-unit-0 has it
 #   clean          removes O's unit, syntax and headless trees (compat-clean removes compat's)
 #   check          check-compat and check-unit-0 (the default)
@@ -63,7 +65,7 @@ CXX ?= g++
 SOURCES_TXT := $(NANO)/build/sources.txt
 CLOSURE_TXT := $(NANO)/build/unit-closure.txt
 
-.PHONY: check check-unit-0 check-unit syntax-core headless list-unit clean host-guard
+.PHONY: check check-unit-0 check-unit syntax-core headless check-headless-0 list-unit clean host-guard
 .SUFFIXES:
 .DEFAULT_GOAL := check
 
@@ -243,23 +245,38 @@ syntax-core:
 	echo "nano syntax-core: $$n files$${bad:+, failed:$$bad}"; \
 	[ -z "$$bad" ]
 
-# --- headless (written, not compiled: G5 writes its sources, G10 builds and runs it) ---------------
+# --- headless (written, not compiled: G5 wrote its sources, G10 builds and runs it) ---------------
+# nano-headless = [core] + [host] (the host platform, DrmHost.cpp instead of NanoMenuDrm.cpp, and
+# main_headless.cpp) + the GL stub: glstub/glue.c, plus the generic stubs glstub/gen.py writes from
+# the objects' undefined GL and EGL symbols at link time (nothing generated is committed).
 HEADLESS_MAIN := $(NANO)/test/host/headless/main_headless.cpp
 HEADLESS_O := $(O)/headless
 HEADLESS_SRCS := $(SRC_core) $(SRC_host)
 HEADLESS_OBJS := $(patsubst %.cpp,$(HEADLESS_O)/obj/%.o,$(filter %.cpp,$(HEADLESS_SRCS)))
-GLSTUB_OBJS := $(patsubst $(NANO)/%.c,$(HEADLESS_O)/obj/%.o,$(wildcard $(NANO)/test/host/glstub/*.c))
+GLSTUB_DIR := $(NANO)/test/host/glstub
+GLSTUB_GEN_PY := $(GLSTUB_DIR)/gen.py
+PYTHON ?= python3
+HEADLESS_GLUE_OBJ := $(HEADLESS_O)/obj/test/host/glstub/glue.o
+HEADLESS_GLSTUB_GEN := $(HEADLESS_O)/glstub/glstub_gen.c
+GLSTUB_OBJS := $(HEADLESS_GLUE_OBJ) $(HEADLESS_GLSTUB_GEN:.c=.o)
 HEADLESS_WRAP := -Wl,--wrap=system,--wrap=popen,--wrap=pclose,--wrap=execv,--wrap=execvp,--wrap=execve,--wrap=ioctl
 HEADLESS_LDLIBS := -ltinyxml2 -lcurl -lssl -lcrypto -lz -lfreetype -lpng
+# The host platform's files include libthimsy's headers (thimsy/json.h) besides the compat layer's.
+HEADLESS_CPPFLAGS := $(CORE_CPPFLAGS) -I$(LIBTHIMSY)/include
 HEADLESS_MISSING = $(if $(wildcard $(HEADLESS_MAIN)),,nano/test/host/headless/main_headless.cpp (G5)) \
 	$(if $(SRC_host),,sources.txt [host] (G5)) $(CORE_MISSING)
 
 $(HEADLESS_O)/obj/%.o: $(NANO)/%.cpp | host-guard compat-guard
 	@mkdir -p $(@D)
-	$(COMPAT_CC_RUN) $(CXX) $(UNIT_STD) -Wall $(GCC_SUPPRESS) $(UNIT_FLAGS) $(CORE_CPPFLAGS) -MMD -MP -c $< -o $@
+	$(COMPAT_CC_RUN) $(CXX) $(UNIT_STD) -Wall $(GCC_SUPPRESS) $(UNIT_FLAGS) $(HEADLESS_CPPFLAGS) -MMD -MP -c $< -o $@
 $(HEADLESS_O)/obj/%.o: $(NANO)/%.c | host-guard compat-guard
 	@mkdir -p $(@D)
 	$(COMPAT_CC_RUN) $(CC) $(COMPAT_CSTD) -Wall $(UNIT_FLAGS) -c $< -o $@
+$(HEADLESS_GLSTUB_GEN): $(HEADLESS_OBJS) $(HEADLESS_GLUE_OBJ) $(GLSTUB_GEN_PY)
+	@mkdir -p $(@D)
+	$(PYTHON) $(GLSTUB_GEN_PY) --out $@ --objects $(HEADLESS_OBJS) --defined-objects $(HEADLESS_GLUE_OBJ)
+$(HEADLESS_GLSTUB_GEN:.c=.o): $(HEADLESS_GLSTUB_GEN) | host-guard compat-guard
+	$(COMPAT_CC_RUN) $(CC) $(COMPAT_CSTD) -Wall $(UNIT_FLAGS) -I$(GLSTUB_DIR) -c $< -o $@
 $(HEADLESS_O)/nano-headless: $(HEADLESS_OBJS) $(GLSTUB_OBJS) $(COMPAT_ASAN_LIB) $(COMPAT_LIBTHIMSY_ASAN) | host-guard compat-guard
 	$(COMPAT_CC_RUN) $(CXX) $(UNIT_FLAGS) $(HEADLESS_WRAP) $(filter %.o,$^) $(HEADLESS_LDLIBS) $(NANOCOMPAT_ASAN_LIBS) -o $@
 
@@ -271,11 +288,64 @@ headless:
 	@echo "SKIP headless: missing $(strip $(HEADLESS_MISSING))"
 endif
 
+# --- check-headless-0: the host platform's small programs (G5) ---------------------------------
+# What of nano-headless builds without Nano and without outside headers: NanoPlatform.cpp, the host
+# platform minus DrmHost.cpp (which needs the EGL, GLES and libdrm headers), and the GL stub's glue
+# with gen.py's output, each linked the way nano-headless links (the same --wrap set). g++ only,
+# so the guard treats it as check-unit-0.
+HL_O := $(O)/headless0
+HL_TEST_DIR := $(NANO)/test/host/headless/tests
+HL_TESTS := seam_test host_control_test fake_evdev_test shell_gate_test host_platform_test glstub_test
+HL_PLATFORM_SRCS := NanoPlatform.cpp platform/host/HostControl.cpp platform/host/FakeEvdev.cpp \
+	platform/host/ShellGateHost.cpp platform/host/HostConfig.cpp platform/host/HostPlatform.cpp
+HL_PLATFORM_OBJS := $(patsubst %.cpp,$(HL_O)/obj/%.o,$(HL_PLATFORM_SRCS))
+HL_CPPFLAGS := $(NANOCOMPAT_CPPFLAGS) -I$(LIBTHIMSY)/include -I$(NANO) -I$(LIBTHIMSY)/testing -I$(HL_TEST_DIR)
+HL_WARN := -Wall -Wextra -Werror
+hl_bin = $(HL_O)/bin/$(1)
+
+$(HL_O)/obj/%.o: $(NANO)/%.cpp | host-guard compat-guard
+	@mkdir -p $(@D)
+	$(COMPAT_CC_RUN) $(CXX) $(UNIT_STD) $(HL_WARN) $(UNIT_FLAGS) $(HL_CPPFLAGS) -MMD -MP -c $< -o $@
+$(HL_O)/obj/%.o: $(NANO)/%.c | host-guard compat-guard
+	@mkdir -p $(@D)
+	$(COMPAT_CC_RUN) $(CC) $(COMPAT_CSTD) $(HL_WARN) $(UNIT_FLAGS) -c $< -o $@
+$(HL_O)/glstub/glstub_test_gen.c: $(HL_O)/obj/test/host/headless/tests/glstub_test.o \
+		$(HL_O)/obj/test/host/glstub/glue.o $(GLSTUB_GEN_PY)
+	@mkdir -p $(@D)
+	$(PYTHON) $(GLSTUB_GEN_PY) --out $@ --objects $< --defined-objects $(HL_O)/obj/test/host/glstub/glue.o
+$(HL_O)/glstub/glstub_test_gen.o: $(HL_O)/glstub/glstub_test_gen.c | host-guard compat-guard
+	$(COMPAT_CC_RUN) $(CC) $(COMPAT_CSTD) $(HL_WARN) $(UNIT_FLAGS) -I$(GLSTUB_DIR) -c $< -o $@
+
+hl_extra_glstub_test := $(HL_O)/obj/test/host/glstub/glue.o $(HL_O)/glstub/glstub_test_gen.o
+define HL_RULE
+$(call hl_bin,$(1)): $(HL_O)/obj/test/host/headless/tests/$(1).o $(HL_PLATFORM_OBJS) $(hl_extra_$(1)) \
+		$(COMPAT_ASAN_LIB) $(COMPAT_LIBTHIMSY_ASAN) | host-guard compat-guard
+	@mkdir -p $$(@D)
+	$$(COMPAT_CC_RUN) $$(CXX) $$(UNIT_FLAGS) $$(HEADLESS_WRAP) $$(filter %.o,$$^) $$(NANOCOMPAT_ASAN_LIBS) -o $$@
+endef
+$(foreach t,$(HL_TESTS),$(eval $(call HL_RULE,$(t))))
+
+check-headless-0: host-guard $(foreach t,$(HL_TESTS),$(call hl_bin,$(t)))
+	@mkdir -p $(HL_O)/log $(HL_O)/tmp; total=0; failed=0; bad=""; \
+	for t in $(HL_TESTS); do \
+		echo "== $$t"; log=$(HL_O)/log/$$t.log; \
+		if (cd $(HL_O)/tmp && TMPDIR=$(HL_O)/tmp GLSTUB_QUIET=1 $(COMPAT_TEST_ENV) $(COMPAT_TEST_RUN) \
+			$(HL_O)/bin/$$t $(TEST_ARGS)) >$$log 2>&1; then ok=1; else ok=0; fi; \
+		cat $$log; \
+		line=$$(grep -E '^[0-9]+ tests, [0-9]+ failed$$' $$log | tail -n 1); \
+		n=$$(echo "$$line" | awk '{print $$1}'); m=$$(echo "$$line" | awk '{print $$3}'); \
+		total=$$((total + $${n:-0})); failed=$$((failed + $${m:-0})); \
+		if [ $$ok = 0 ] || [ -z "$$line" ]; then bad="$$bad $$t"; fi; \
+	done; \
+	echo "nano check-headless-0: $$total tests, $$failed failed, in $(words $(HL_TESTS)) programs"; \
+	if [ -n "$$bad" ]; then echo "nano check-headless-0: FAILED:$$bad" >&2; exit 1; fi
+
 check: check-compat check-unit-0
 
 clean:
 	@test -n "$(O)" && test "$(O)" != "/"
-	rm -rf -- "$(UNIT_O)" "$(O)/syntax" "$(HEADLESS_O)" "$(O)/lists.mk"
+	rm -rf -- "$(UNIT_O)" "$(O)/syntax" "$(HEADLESS_O)" "$(HL_O)" "$(O)/lists.mk"
 
 -include $(wildcard $(UNIT_O)/obj/*.d $(UNIT_O)/obj/*/*.d $(UNIT_O)/obj/*/*/*.d $(HEADLESS_O)/obj/*.d \
-	$(HEADLESS_O)/obj/*/*.d $(HEADLESS_O)/obj/*/*/*.d $(HEADLESS_O)/obj/*/*/*/*.d)
+	$(HEADLESS_O)/obj/*/*.d $(HEADLESS_O)/obj/*/*/*.d $(HEADLESS_O)/obj/*/*/*/*.d \
+	$(HL_O)/obj/*.d $(HL_O)/obj/*/*/*.d $(HL_O)/obj/*/*/*/*/*.d)

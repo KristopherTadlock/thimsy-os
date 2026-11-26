@@ -156,9 +156,18 @@ DrasticSettings.cpp
 # The Linux platform (G9): platform/linux/**.cpp and main_linux.cpp. Empty until they exist.
 [linux]
 
-# The host platform (G5): platform/host/**.cpp and test/host/headless/main_headless.cpp. Empty
-# until they exist.
+# The host platform (G5): platform/host/**.cpp and test/host/headless/main_headless.cpp, plus
+# NanoPlatform.cpp (install and get), which moves to [core] when G7-main adds it to gammaos-nano's
+# srcs; until then each platform section lists it ([linux] too, G9).
 [host]
+NanoPlatform.cpp
+platform/host/DrmHost.cpp
+platform/host/FakeEvdev.cpp
+platform/host/HostConfig.cpp
+platform/host/HostControl.cpp
+platform/host/HostPlatform.cpp
+platform/host/ShellGateHost.cpp
+test/host/headless/main_headless.cpp
 
 # gammaos-nano-scrape's six files, for thimsy-nano-scrape (C.2).
 [scrape]
