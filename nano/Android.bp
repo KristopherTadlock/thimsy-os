@@ -47,6 +47,7 @@ cc_binary {
         "main.cpp",
         "NanoMenu.cpp",
         "NanoMenuDrm.cpp",
+        "NanoMenuDrmBuffers.cpp", // the render targets' buffer back end (AHardwareBuffer, gralloc)
         "NanoMenuRgbFollow.cpp",
         "NanoMenuXmb.cpp",
         "NanoMenuShaders.cpp",
@@ -727,6 +728,7 @@ filegroup {
     name: "drastic_nano_shared_srcs",
     srcs: [
         "NanoMenuDrm.cpp",
+        "NanoMenuDrmBuffers.cpp",
         "DrasticRunner.cpp",
         "DrasticGpu3d.cpp",
         "DrasticSettings.cpp",
