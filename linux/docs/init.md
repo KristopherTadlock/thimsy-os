@@ -119,7 +119,7 @@ repeats it. Existing files are never removed.
     user/0 -> ../data   (as on Android: /data/user/0 is /data/data)
     media/0 -> /storage/emulated/0
   ssh/ (0700)           dropbear's host key
-  home/root/.ssh/       /root links to home/root (30-permissions.sh)
+  home/root/.ssh/       bind-mounted on /root by S00base every boot
   localtime -> /usr/share/zoneinfo/Etc/UTC   (/etc/localtime links here; Nano rewrites it)
 /storage/.config/retroarch/
 /storage/thimsy/        the card's thimsy/ folder (install.json)

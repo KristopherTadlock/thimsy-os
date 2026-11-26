@@ -6,8 +6,12 @@
 # - the init scripts executable (a checkout that lost its modes still works);
 # - mount points: /storage (the data partition, S00base);
 # - /etc/localtime -> /storage/.config/thimsy/localtime (Nano rewrites the
-#   target; plan 5.2, "Time") and /root -> /storage/.config/thimsy/home/root
-#   (SSH keys and shell history survive; S00base makes the target);
+#   target; plan 5.2, "Time");
+# - /root stays the directory Buildroot's skeleton and system/device_table.txt
+#   ("/root d 700") make: S00base bind-mounts /storage/.config/thimsy/home/root
+#   over it at boot, so SSH keys and shell history survive. A link here would
+#   point at a path that does not exist at build time, which makedevs (run on
+#   the device table under fakeroot) can't chmod and chown;
 # - /dev/block/by-name is never part of the root (IMPLEMENTATION B.5);
 # - dev images (BR2_TARGET_GENERIC_GETTY=y) get a getty line in inittab,
 #   release images none (decision I37). The overlay's inittab replaces the
@@ -38,10 +42,12 @@ mkdir -p "$target/storage" "$target/run" "$target/tmp"
 
 # Links into the data partition.
 ln -sfn /storage/.config/thimsy/localtime "$target/etc/localtime"
-if [ -d "$target/root" ] && [ ! -L "$target/root" ]; then
-	rm -rf "$target/root"
+# /root: a plain directory (an earlier build of this tree made it a link).
+if [ -L "$target/root" ]; then
+	rm -f "$target/root"
 fi
-ln -sfn /storage/.config/thimsy/home/root "$target/root"
+mkdir -p "$target/root"
+chmod 0700 "$target/root"
 
 # Never a by-name directory in the root.
 if [ -e "$target/dev/block/by-name" ]; then
