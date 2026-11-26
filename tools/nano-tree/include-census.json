@@ -2089,6 +2089,7 @@
     "nano:platform/linux/actions/Network.h",
     "nano:platform/linux/actions/SystemActions.h",
     "nano:platform/linux/actions/WpaCtrl.h",
+    "shim:compat/include/cutils/properties.h",
     "shim:compat/include/log/log.h"
    ]
   },
@@ -2246,7 +2247,8 @@
     "gtest:gtest/gtest.h",
     "missing:actions/Network.h",
     "missing:actions/Run.h",
-    "missing:compat_test_util.h"
+    "missing:compat_test_util.h",
+    "shim:compat/include/cutils/properties.h"
    ]
   },
   "platform/linux/tests/power_test.cpp": {
