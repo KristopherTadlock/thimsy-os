@@ -5,8 +5,11 @@
 #           and check-unit-0 through tools/nano-tree/tests/test_nano_host.py)
 #   linux   linux/tests (linux/tests/run.sh)
 #   cxx     the small C++ suites with g++ and make, each behind linux/tools/build_guard.sh --light and
-#           the lock /tmp/thimsy-cxx.lock: libthimsy, Nano's compat shims and check-unit-0,
-#           thimsy-padd, thimsy-session. On Linux directly; elsewhere in WSL (THIMSY_WSL_DISTRO,
+#           the lock /tmp/thimsy-cxx.lock: libthimsy, Nano's compat shims, layer-2 stubs
+#           (check-stubs), check-unit-0 and check-headless-0, the Linux platform's shell gate and
+#           control keys (platform/linux/tests/platform.mk), thimsy-padd, thimsy-session. The stubs
+#           and headless suites run under check-unit-0's guard class, the platform one under
+#           check-compat's. On Linux directly; elsewhere in WSL (THIMSY_WSL_DISTRO,
 #           default Ubuntu), on a copy under ~/.cache/thimsy/cxx-src when the checkout is on /mnt.
 #           A suite the guard refuses is reported as refused, and the mode fails.
 #
@@ -73,7 +76,10 @@ case "$mode" in
     suite libthimsy libthimsy -C libthimsy check
     # check-compat would run libthimsy's tests again; they ran just above.
     suite nano-compat check-compat -C nano/test/host check-compat COMPAT_WITH_LIBTHIMSY=0
+    suite nano-stubs check-unit-0 -C nano/test/host check-stubs
     suite nano-unit-0 check-unit-0 -C nano/test/host check-unit-0 ${nano_data:+NANO_DATA="$nano_data"}
+    suite nano-headless-0 check-unit-0 -C nano/test/host check-headless-0
+    suite nano-platform-linux check-compat -f nano/platform/linux/tests/platform.mk check COMPAT_WITH_LIBTHIMSY=0
     suite thimsy-padd thimsy-padd -C linux/src/thimsy-padd check
     suite thimsy-session thimsy-session -C linux/src/thimsy-session check
     if [ -n "$failed" ]; then
