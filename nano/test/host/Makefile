@@ -46,8 +46,8 @@
 #
 # Test data: the programs read test/fixtures and, some of them, the asset folders. nano/ has only the
 # asset files the patch changes, so each run lays out $(O)/unit/data the way Soong installs `data`:
-# test/fixtures from nano/, each asset folder from NANO_DATA overlaid with nano/'s (as compose does),
-# all as symbolic links. A program whose test names an asset folder (@<folder> in unit-closure.txt)
+# test/fixtures from nano/, each asset folder from NANO_DATA (linked) overlaid with nano/'s (copied),
+# as compose does. A program whose test names an asset folder (@<folder> in unit-closure.txt)
 # is skipped, with the reason, when NANO_DATA is not set.
 
 HOST_DIR := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
@@ -162,12 +162,14 @@ UNIT_DATA := $(UNIT_O)/data
 UNIT_ENV = NANO_TEST_FIXTURES=$(UNIT_DATA)/test/fixtures NANO_DAIJISHOU_DIR=$(UNIT_DATA)/ps3xmb/daijishou \
 	TMPDIR=$(UNIT_O)/tmp $(COMPAT_TEST_ENV)
 ASSET_DIRS := ps3xmb nano_esde_themes nano_esde_assets
-# Real directories holding links to files, so a test's "fixtures/../../ps3xmb" stays in the data tree.
+# Real directories, so a test's "fixtures/../../ps3xmb" stays in the data tree. nano/'s files are
+# copied (android::base::ReadFileToString refuses a symbolic link, as on Android); the base's asset
+# files, tens of MB, are linked (no test reads them that way today).
 define UNIT_DATA_SETUP
-rm -rf $(UNIT_DATA) && mkdir -p $(UNIT_DATA)/test && cp -Rs $(NANO)/test/fixtures $(UNIT_DATA)/test/ && \
+rm -rf $(UNIT_DATA) && mkdir -p $(UNIT_DATA)/test && cp -R $(NANO)/test/fixtures $(UNIT_DATA)/test/ && \
 	for d in $(ASSET_DIRS); do \
 		if [ -n "$(NANO_DATA_ABS)" ] && [ -d "$(NANO_DATA_ABS)/$$d" ]; then cp -Rs "$(NANO_DATA_ABS)/$$d" $(UNIT_DATA)/ || exit 1; fi; \
-		if [ -d $(NANO)/$$d ]; then mkdir -p $(UNIT_DATA)/$$d && cp -Rsf $(NANO)/$$d/. $(UNIT_DATA)/$$d/ || exit 1; fi; \
+		if [ -d $(NANO)/$$d ]; then mkdir -p $(UNIT_DATA)/$$d && cp -R --remove-destination $(NANO)/$$d/. $(UNIT_DATA)/$$d/ || exit 1; fi; \
 	done
 endef
 define UNIT_RUN
@@ -195,10 +197,10 @@ $(UNIT_DATA_SETUP); \
 endef
 
 UNIT0_RUNNABLE := $(filter-out $(UNIT_NODATA),$(UNIT0_SELECTED))
-nodata_skips = $(foreach p,$(filter $(UNIT_NODATA),$(1)),echo "SKIP $(p): needs the base's$(UNIT_ASSETS_$(p)) (set NANO_DATA, or run: py -3.12 tools/nano-tree/nano_tree.py compose work/nano-composed)";)
+nodata_skips = $(foreach p,$(filter $(UNIT_NODATA),$(1)),echo "SKIP $(p): needs the base's $(UNIT_ASSETS_$(p)) (set NANO_DATA, or run: py -3.12 tools/nano-tree/nano_tree.py compose work/nano-composed)";)
 
 check-unit-0: host-guard $(foreach p,$(UNIT0_RUNNABLE),$(call unit_bin,$(p)))
-	@$(foreach p,$(filter-out $(UNIT0_SELECTED),$(UNIT_SELECTED)),echo "not in check-unit-0: $(p) (needs$(UNIT_NEEDS_$(p)))";)
+	@$(foreach p,$(filter-out $(UNIT0_SELECTED),$(UNIT_SELECTED)),echo "not in check-unit-0: $(p) (needs $(UNIT_NEEDS_$(p)))";)
 	@$(call nodata_skips,$(UNIT0_SELECTED))
 	@$(call UNIT_RUN,$(UNIT0_RUNNABLE),check-unit-0)
 
@@ -275,4 +277,5 @@ clean:
 	@test -n "$(O)" && test "$(O)" != "/"
 	rm -rf -- "$(UNIT_O)" "$(O)/syntax" "$(HEADLESS_O)" "$(O)/lists.mk"
 
--include $(wildcard $(UNIT_O)/obj/*.d $(UNIT_O)/obj/*/*.d $(UNIT_O)/obj/*/*/*.d $(HEADLESS_O)/obj/*.d $(HEADLESS_O)/obj/*/*.d)
+-include $(wildcard $(UNIT_O)/obj/*.d $(UNIT_O)/obj/*/*.d $(UNIT_O)/obj/*/*/*.d $(HEADLESS_O)/obj/*.d \
+	$(HEADLESS_O)/obj/*/*.d $(HEADLESS_O)/obj/*/*/*.d $(HEADLESS_O)/obj/*/*/*/*.d)
