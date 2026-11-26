@@ -59,7 +59,6 @@ const Row kControlRows[] = {
     {"sys.gammaos.ota.prestage", "1", Action::Refuse, "", ""},
     {"sys.gammaos.drastic_nano.start", "1", Action::Refuse, "", ""},
     {"sys.gammaos.drastic_nano.start", "2", Action::Refuse, "", ""},
-    {"sys.gammaos.drastic_nano.start_sf", "1", Action::Refuse, "", ""},
     {"ctl.start", "", Action::Refuse, "", ""},
     {"ctl.stop", "", Action::Refuse, "", ""},
     {"ctl.restart", "", Action::Refuse, "", ""},
