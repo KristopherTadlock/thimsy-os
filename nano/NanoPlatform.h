@@ -107,7 +107,9 @@ class Launcher {
 
     // Whether a launched game runs only once Nano has exited: the firmware's true (Android starts
     // the activity, and the panel is freed, as the home exits); Linux's false (Nano hands the panel
-    // to the child). Nano's launch sites still exit after a launch on every platform.
+    // to the child). The value states the intended contract, not today's behaviour: nothing reads
+    // it yet, Nano's launch sites still exit after a launch on every platform, and until threadLoop
+    // polls the child the Linux launcher holds the game until Nano's menu has ended.
     virtual bool nanoExitsOnLaunch() const = 0;
 
     // commitLaunch(): one call site's handshake writes, in its order, on the calling thread.
@@ -115,7 +117,8 @@ class Launcher {
 
     // Starts `request` as a child in its own session and process group, after handing the panel
     // over (Display::releaseForChild). False, with *error, when it can't be started. The firmware
-    // launches only through the handshake, so its launch() always returns false. Render thread.
+    // launches only through the handshake, so its launch() always returns false; Linux's checks the
+    // request and queues it until Nano's menu has ended (platform/linux/Launcher.h).
     virtual bool launch(const LaunchRequest& request, std::string* error) = 0;
     // A child was started and pollChild() has not yet reported its end.
     virtual bool childRunning() const = 0;

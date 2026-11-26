@@ -24766,10 +24766,10 @@ index 00000000000..c5771f81017
 +}  // namespace nanolaunch
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoLaunchCommit.cpp b/frameworks/base/cmds/gammaos-nano/NanoLaunchCommit.cpp
 new file mode 100644
-index 00000000000..ccf178fcfc3
+index 00000000000..d3a0342a1ca
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/NanoLaunchCommit.cpp
-@@ -0,0 +1,54 @@
+@@ -0,0 +1,56 @@
 +/*
 + * Copyright (C) 2026 GammaOS
 + * Copyright (C) 2026 The Thimsy OS Project
@@ -24791,7 +24791,9 @@ index 00000000000..ccf178fcfc3
 +// The LOG_TAG is the call sites' (NanoMenu.cpp and the files split from it), for NanoMenuUtils.h's
 +// inline helpers; commitLaunch itself logs nothing.
 +// The writes are the platform launcher's (NanoPlatform.h, G7-launch-b): the firmware's are the
-+// handshake that was here (platform/firmware/Launcher.cpp); Linux and the host add their own launch.
++// handshake that was here (platform/firmware/Launcher.cpp, under the same LOG_TAG, with the
++// NanoMenuUtils.h helpers it was defined for); Linux and the host add their own launch. This file no
++// longer includes NanoMenuUtils.h and logs nothing; the LOG_TAG is kept as G7-launch-a left it.
 +
 +#define LOG_TAG "GammaOSNano"
 +
@@ -63770,10 +63772,10 @@ index 00000000000..1cf7b6955b2
 +}  // namespace nanoplat
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoPlatform.h b/frameworks/base/cmds/gammaos-nano/NanoPlatform.h
 new file mode 100644
-index 00000000000..d4bbd726599
+index 00000000000..8739efca925
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/NanoPlatform.h
-@@ -0,0 +1,154 @@
+@@ -0,0 +1,157 @@
 +/*
 + * Copyright (C) 2026 The Thimsy OS Project
 + *
@@ -63883,7 +63885,9 @@ index 00000000000..d4bbd726599
 +
 +    // Whether a launched game runs only once Nano has exited: the firmware's true (Android starts
 +    // the activity, and the panel is freed, as the home exits); Linux's false (Nano hands the panel
-+    // to the child). Nano's launch sites still exit after a launch on every platform.
++    // to the child). The value states the intended contract, not today's behaviour: nothing reads
++    // it yet, Nano's launch sites still exit after a launch on every platform, and until threadLoop
++    // polls the child the Linux launcher holds the game until Nano's menu has ended.
 +    virtual bool nanoExitsOnLaunch() const = 0;
 +
 +    // commitLaunch(): one call site's handshake writes, in its order, on the calling thread.
@@ -63891,7 +63895,8 @@ index 00000000000..d4bbd726599
 +
 +    // Starts `request` as a child in its own session and process group, after handing the panel
 +    // over (Display::releaseForChild). False, with *error, when it can't be started. The firmware
-+    // launches only through the handshake, so its launch() always returns false. Render thread.
++    // launches only through the handshake, so its launch() always returns false; Linux's checks the
++    // request and queues it until Nano's menu has ended (platform/linux/Launcher.h).
 +    virtual bool launch(const LaunchRequest& request, std::string* error) = 0;
 +    // A child was started and pollChild() has not yet reported its end.
 +    virtual bool childRunning() const = 0;

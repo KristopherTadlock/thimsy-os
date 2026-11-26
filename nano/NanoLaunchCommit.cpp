@@ -19,7 +19,9 @@
 // The LOG_TAG is the call sites' (NanoMenu.cpp and the files split from it), for NanoMenuUtils.h's
 // inline helpers; commitLaunch itself logs nothing.
 // The writes are the platform launcher's (NanoPlatform.h, G7-launch-b): the firmware's are the
-// handshake that was here (platform/firmware/Launcher.cpp); Linux and the host add their own launch.
+// handshake that was here (platform/firmware/Launcher.cpp, under the same LOG_TAG, with the
+// NanoMenuUtils.h helpers it was defined for); Linux and the host add their own launch. This file no
+// longer includes NanoMenuUtils.h and logs nothing; the LOG_TAG is kept as G7-launch-a left it.
 
 #define LOG_TAG "GammaOSNano"
 
