@@ -21,12 +21,16 @@
 //   platform's {"ev":"prop"} events show every write in order).
 // - A write of the trigger (do_launch=1, service.bootanim.nano_retroarch=1) in a commit is a launch,
 //   as the control keys make it on Linux: the request is read from the store's handshake keys at
-//   that write, and a second trigger with the same request within 3 s is the same launch.
+//   that write (with the full value commit() wrote to a key wherever the store kept an older one:
+//   it refuses a value too long for a property), and a second trigger with the same request within
+//   3 s is the same launch.
 // - launch() records the request and tells the runner with a {"ev":"launch"} event ("kind" Core or
 //   Package, "package", "core", "rom", "system", "intent", "trigger"), which the scenarios'
 //   expect_launch reads (tests/e2e/nano_scenario.py). The display is not handed over: Nano's launch
 //   sites still exit after a launch, and the runner starts Nano again (child_exit).
 // - The "child" ends by itself after a scripted delay (pollChild), or on requestChildQuit (SIGTERM).
+//   When pollChild reports its end, launch_app, launch_intent, launch_core and launch_rom are
+//   cleared, as Android's framework and the Linux launcher do at a launch's end.
 #pragma once
 
 #include <memory>

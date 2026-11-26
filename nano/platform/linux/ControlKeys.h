@@ -70,8 +70,8 @@ struct LaunchRequest {
 
 struct Handlers {
     // Defaults: the session request key with a sequence number; a log line (main_linux.cpp gives
-    // launch the Linux launcher, launcher::launchFromHandshake in Launcher.h); the family hook, run
-    // in the background.
+    // the Linux launcher's, launcher::launchFromHandshake in Launcher.h, through setLaunchHandler);
+    // the family hook, run in the background.
     std::function<void(const std::string& verb)> sessionRequest;
     std::function<void(const LaunchRequest&)> launch;
     std::function<void(const std::string& action)> runHook;
@@ -82,6 +82,11 @@ struct Handlers {
 // Calling it again replaces the handlers (tests).
 void install(Handlers handlers = Handlers());
 void uninstall();
+
+// Replaces the launch handler (nullptr: the default's log line). thimsy-nano's main registers the
+// observers before the platform exists and gives the launcher's handler once the platform is
+// installed, so no launch reaches nanoplat::get() before install() (G7-launch-b).
+void setLaunchHandler(std::function<void(const LaunchRequest&)> launch);
 
 // The request the default sessionRequest writes: "<seq>:<verb>", seq one past the number in the
 // key's current value (Nano is its only writer; the session ignores a repeated seq).

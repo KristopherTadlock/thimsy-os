@@ -89,9 +89,9 @@ int main(int argc, char** argv) {
         // default settings is better than no menu.
         ALOGE("property store %s, %s: %s", kPersistFile, kRunDir, err.c_str());
     }
-    nanolinux::controlkeys::Handlers handlers;
-    handlers.launch = nanolinux::launcher::launchFromHandshake;  // the handshake starts the game (G7-launch-b)
-    nanolinux::controlkeys::install(std::move(handlers));
+    // The observers now; the launch handler once the platform is installed (it reaches the platform's
+    // launcher), so a trigger written in between is only logged (G7-launch-b).
+    nanolinux::controlkeys::install();
 
     nanoplat::PlatformArgs args;
     args.argc = argc;
@@ -103,6 +103,7 @@ int main(int argc, char** argv) {
         return 2;
     }
     nanoplat::install(std::move(platform));
+    nanolinux::controlkeys::setLaunchHandler(nanolinux::launcher::launchFromHandshake);  // G7-launch-b
 
     for (int i = 1; i < argc; i++) {
         if (argv[i] && strcmp(argv[i], "--overlay") == 0) {
@@ -116,12 +117,13 @@ int main(int argc, char** argv) {
     // run()'s status is not returned (main.cpp ignores it too): when the thread did not start
     // (logged by run()), join() returns at once and main exits as after a normal end.
     nano->join();
-    // A launch ends the menu thread (Nano's launch sites still exit), while the game runs in its own
-    // session. Drop the menu first (~NanoMenu lets go of the pads threadLoop grabbed on its way out
-    // and closes them), then wait for the game, so the session's restart of Nano never takes the
+    // A launch ends the menu thread (Nano's launch sites still exit); the launcher has queued the
+    // game. Drop the menu first (~NanoMenu lets go of the pads threadLoop grabbed on its way out
+    // and closes them), then start the game in its own session and wait for it, so nothing Nano
+    // does after the trigger runs beside the game and the session's restart of Nano never takes the
     // panel or the pad from it (G7-launch-b).
     nano.clear();
-    if (std::optional<nanoplat::ChildExit> e = nanolinux::launcher::waitForChild(*nanoplat::get().launcher))
+    if (std::optional<nanoplat::ChildExit> e = nanolinux::launcher::runQueued())
         ALOGI("Thimsy Nano: the launched game (pid %d) ended", e->pid);
     ALOGI("Thimsy Nano: menu thread ended, exiting");
     nanolinux::controlkeys::uninstall();

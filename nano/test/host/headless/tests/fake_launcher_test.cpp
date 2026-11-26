@@ -183,6 +183,42 @@ TEST_F(FakeLauncherTest, TheScriptedChild) {
     EXPECT_NE(headless_test::readFile(events).find("{\"ev\":\"launch_quit\""), std::string::npos);
 }
 
+// A ROM on a long card path (over a property's 91 bytes) after a launch on a short one: the request
+// has the long path, not the store's older value.
+TEST_F(FakeLauncherTest, ALongRomPathAfterAShortOne) {
+    std::unique_ptr<nanoplat::Launcher> l = createFakeLauncher();
+    retroarchLaunch(*l, "/storage/1234-ABCD/ROMs/snes/a.sfc");
+    const std::string longRom = "/storage/1234-ABCD/ROMs/snes/Super Long Game Name - " + std::string(70, 'x') + ".sfc";
+    retroarchLaunch(*l, longRom);
+    char v[PROPERTY_VALUE_MAX] = {};
+    property_get("sys.gammaos.nano.launch_rom", v, "");
+    EXPECT_STREQ(v, "/storage/1234-ABCD/ROMs/snes/a.sfc");  // the store refused the long path
+    const LaunchRecord r = launchRecord();
+    ASSERT_EQ(r.requests.size(), 2u);
+    EXPECT_EQ(r.requests[1].rom, longRom);
+    EXPECT_NE(headless_test::readFile(events).find(longRom), std::string::npos);
+}
+
+// The child's end clears what the framework clears when it returns to Nano: a trigger alone after a
+// core launch is a package launch, not the last game again.
+TEST_F(FakeLauncherTest, TheEndClearsTheHandshake) {
+    std::unique_ptr<nanoplat::Launcher> l = createFakeLauncher();
+    retroarchLaunch(*l, "/storage/1234-ABCD/ROMs/snes/a.sfc");
+    ASSERT_TRUE(l->pollChild().has_value());   // childExitAfterMs 0: it has ended
+    for (const char* k : {"sys.gammaos.nano.launch_app", "sys.gammaos.nano.launch_intent",
+                          "sys.gammaos.nano.launch_core", "sys.gammaos.nano.launch_rom"}) {
+        char v[PROPERTY_VALUE_MAX] = {};
+        property_get(k, v, "");
+        EXPECT_STREQ(v, "") << k;
+    }
+    l->commit(LaunchTuple().retroarch("1"));
+    const LaunchRecord r = launchRecord();
+    ASSERT_EQ(r.requests.size(), 2u);
+    EXPECT_TRUE(r.requests[1].kind == LaunchRequest::Kind::Package);
+    EXPECT_EQ(r.requests[1].core, "");
+    EXPECT_EQ(r.requests[1].package, "");
+}
+
 TEST_F(FakeLauncherTest, ExitsOnLaunchIsScripted) {
     FakeLauncherOptions o;
     o.exitsOnLaunch = true;

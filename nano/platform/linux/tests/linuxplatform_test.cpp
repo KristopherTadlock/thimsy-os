@@ -23,6 +23,7 @@
 
 #include <gtest/gtest.h>
 
+#include "Launcher.h"
 #include "NanoPlatform.h"
 #include "display/Display.h"
 
@@ -83,6 +84,7 @@ TEST(LinuxPlatform, HasEveryService) {
     // The launcher (G7-launch-b): Nano stays; nothing is running until a launch.
     ASSERT_TRUE(p->launcher != nullptr);
     EXPECT_FALSE(p->launcher->nanoExitsOnLaunch());
+    EXPECT_TRUE(dynamic_cast<nanolinux::launcher::LinuxLauncher*>(p->launcher.get()) != nullptr);
     EXPECT_FALSE(p->launcher->childRunning());
     EXPECT_FALSE(p->launcher->pollChild().has_value());
 }

@@ -15,9 +15,10 @@
  */
 
 // The Linux launcher (Launcher.h) on a scratch property store: the argv, the handshake's request,
-// the writes, and real children (small sh scripts standing in for RetroArch): fork, setsid, execve
-// after the display's release, waitpid polling, SIGTERM to the group, a failed execve; and the whole
-// path from a commit through the control keys to a started child.
+// the writes, the queue until Nano's menu has ended, and real children (small sh scripts standing
+// in for RetroArch): fork, setsid, execve after the display's release, waitpid polling, SIGTERM to
+// the group, a failed execve, the handshake cleared at a launch's end; and the whole path from a
+// commit through the control keys to a started child, with a ROM path too long for a property.
 
 #include "Launcher.h"
 
@@ -43,6 +44,7 @@
 #include "compat_test_util.h"
 
 using android::LaunchTuple;
+using nanolinux::launcher::LinuxLauncher;
 using nanolinux::launcher::Options;
 using nanoplat::LaunchRequest;
 
@@ -72,6 +74,22 @@ class RecordingDisplay : public nanoplat::Display {
     bool childRanBeforeRelease = false;
 };
 
+// The installed platform's launcher: the current test's (install() runs once per process).
+class ForwardingLauncher : public LinuxLauncher {
+ public:
+    bool nanoExitsOnLaunch() const override { return to->nanoExitsOnLaunch(); }
+    void commit(const android::LaunchTuple& tuple) override { to->commit(tuple); }
+    bool launch(const LaunchRequest& request, std::string* error) override { return to->launch(request, error); }
+    bool childRunning() const override { return to->childRunning(); }
+    std::optional<nanoplat::ChildExit> pollChild() override { return to->pollChild(); }
+    void requestChildQuit() override { to->requestChildQuit(); }
+    LaunchRequest requestFor(const nanolinux::controlkeys::LaunchRequest& h) const override { return to->requestFor(h); }
+    bool inCommit() const override { return to->inCommit(); }
+    bool queued() const override { return to->queued(); }
+    bool startQueued(std::string* error) override { return to->startQueued(error); }
+    LinuxLauncher* to = nullptr;
+};
+
 bool writeExecutable(const std::string& path, const std::string& text, mode_t mode = 0755) {
     FILE* f = fopen(path.c_str(), "w");
     if (!f) return false;
@@ -97,7 +115,34 @@ class LauncherTest : public compat_test::StoreTest {
                                                            "'\ncut -d' ' -f5,6 /proc/$$/stat >> '" + out + "'\n" +
                                                            tail));
     }
-    std::unique_ptr<nanoplat::Launcher> make() { return nanolinux::launcher::create(&display, options); }
+    void TearDown() override {
+        nanolinux::controlkeys::uninstall();
+        compat_test::StoreTest::TearDown();
+    }
+    std::unique_ptr<LinuxLauncher> make() { return nanolinux::launcher::create(&display, options); }
+    // launch(), then startQueued() as main_linux.cpp's runQueued() does once the menu has ended.
+    bool launchNow(LinuxLauncher& l, const LaunchRequest& r, std::string* err) {
+        return l.launch(r, err) && l.startQueued(err);
+    }
+    // The platform as main_linux.cpp installs it, and the control keys with the launcher's handler.
+    // install() runs once per process, so the installed launcher forwards to this test's.
+    LinuxLauncher* installPlatform() {
+        static ForwardingLauncher* forward = [] {
+            std::unique_ptr<nanoplat::Platform> platform(new nanoplat::Platform);
+            ForwardingLauncher* f = new ForwardingLauncher;
+            platform->launcher.reset(f);
+            nanoplat::install(std::move(platform));
+            return f;
+        }();
+        installed = make();
+        forward->to = installed.get();
+        nanolinux::controlkeys::Handlers h;
+        h.sessionRequest = [](const std::string&) {};
+        h.runHook = [](const std::string&) {};
+        nanolinux::controlkeys::install(h);
+        nanolinux::controlkeys::setLaunchHandler(nanolinux::launcher::launchFromHandshake);
+        return nanolinux::launcher::linuxLauncher();
+    }
 
     LaunchRequest core(const std::string& rom = "/storage/1234-ABCD/ROMs/snes/a.sfc") {
         LaunchRequest r;
@@ -112,6 +157,7 @@ class LauncherTest : public compat_test::StoreTest {
     std::string out;
     Options options;
     RecordingDisplay display;
+    std::unique_ptr<LinuxLauncher> installed;  // installPlatform()'s
 };
 
 std::string get(const char* key) {
@@ -159,6 +205,9 @@ TEST(LauncherArgv, CorePackageAndRefusals) {
     ASSERT_TRUE(nanolinux::launcher::argvFor(p, o, &argv, &err));
     EXPECT_EQ(argv, (std::vector<std::string>{"/usr/bin/retroarch", "--config",
                                               "/storage/.config/retroarch/retroarch.cfg"}));
+    p.package = "";  // launch_app "": RetroArch, as Nano and the framework read it
+    ASSERT_TRUE(nanolinux::launcher::argvFor(p, o, &argv, &err));
+    EXPECT_EQ(argv.size(), 3u);
     p.package = "org.ppsspp.ppsspp";
     EXPECT_FALSE(nanolinux::launcher::argvFor(p, o, &argv, &err));
     EXPECT_NE(err.find("org.ppsspp.ppsspp"), std::string::npos);
@@ -198,7 +247,7 @@ TEST_F(LauncherTest, CommitWritesTheHandshakeInOrder) {
         if (k == "sys.gammaos.nano.launch_time") v = "<time>";
         seen.push_back(std::string(k) + "=" + std::string(v));
     });
-    std::unique_ptr<nanoplat::Launcher> l = make();
+    std::unique_ptr<LinuxLauncher> l = make();
     EXPECT_FALSE(l->nanoExitsOnLaunch());
     l->commit(LaunchTuple()
                       .romPath("")
@@ -223,13 +272,25 @@ TEST_F(LauncherTest, CommitWritesTheHandshakeInOrder) {
                  "sys.gammaos.nano.launch_intent=\n"
                  "sys.gammaos.nano.do_launch=1\n");
     EXPECT_FALSE(l->childRunning());  // no control keys here: a commit alone starts nothing
+    EXPECT_FALSE(l->queued());
 }
 
-TEST_F(LauncherTest, StartsTheChildInItsOwnSessionAfterTheRelease) {
+TEST_F(LauncherTest, TheLaunchWaitsForTheMenusEnd) {
     script("exit 3\n");
-    std::unique_ptr<nanoplat::Launcher> l = make();
+    std::unique_ptr<LinuxLauncher> l = make();
     std::string err;
     ASSERT_TRUE(l->launch(core(), &err)) << err;
+    // Queued: nothing runs and the panel stays Nano's while Nano finishes its launch site.
+    EXPECT_TRUE(l->queued());
+    EXPECT_FALSE(l->childRunning());
+    EXPECT_EQ(display.joined(), "");
+    EXPECT_FALSE(l->launch(core(), &err));  // one launch at a time
+    EXPECT_NE(err.find("already queued"), std::string::npos) << err;
+    usleep(50 * 1000);
+    EXPECT_NE(access(out.c_str(), F_OK), 0);
+
+    ASSERT_TRUE(l->startQueued(&err)) << err;
+    EXPECT_FALSE(l->queued());
     EXPECT_TRUE(l->childRunning());
     std::optional<nanoplat::ChildExit> e = nanolinux::launcher::waitForChild(*l, 5);
     ASSERT_TRUE(e.has_value());
@@ -244,13 +305,16 @@ TEST_F(LauncherTest, StartsTheChildInItsOwnSessionAfterTheRelease) {
     EXPECT_EQ(text, "-L " + (dir_ / "snes9x_libretro.so") + " --config " + (dir_ / "retroarch.cfg") +
                             " /storage/1234-ABCD/ROMs/snes/a.sfc\n" + std::to_string(e->pid) + " " +
                             std::to_string(e->pid) + "\n");  // its own process group and session
+    // Nothing queued: nothing starts.
+    EXPECT_FALSE(l->startQueued(&err));
+    EXPECT_EQ(err, "");
 }
 
 TEST_F(LauncherTest, AChildOnlyAfterTheLastOneEnded) {
     script("sleep 30 & echo $! > '" + (dir_ / "sleep.pid") + "'\nwait\n");
-    std::unique_ptr<nanoplat::Launcher> l = make();
+    std::unique_ptr<LinuxLauncher> l = make();
     std::string err;
-    ASSERT_TRUE(l->launch(core(), &err)) << err;
+    ASSERT_TRUE(launchNow(*l, core(), &err)) << err;
     EXPECT_FALSE(l->launch(core(), &err));
     EXPECT_NE(err.find("already running"), std::string::npos);
     EXPECT_FALSE(l->pollChild().has_value());
@@ -270,7 +334,7 @@ TEST_F(LauncherTest, AChildOnlyAfterTheLastOneEnded) {
     }));
     l->requestChildQuit();  // no child: nothing
     script("exit 0\n");
-    ASSERT_TRUE(l->launch(core(), &err)) << err;
+    ASSERT_TRUE(launchNow(*l, core(), &err)) << err;
     e = nanolinux::launcher::waitForChild(*l, 5);
     ASSERT_TRUE(e.has_value());
     EXPECT_EQ(e->status, 0);
@@ -279,16 +343,22 @@ TEST_F(LauncherTest, AChildOnlyAfterTheLastOneEnded) {
 TEST_F(LauncherTest, AFailedExecveGivesThePanelBack) {
     // Executable but no format execve knows (no #! line): ENOEXEC from the child, through the pipe.
     ASSERT_TRUE(writeExecutable(options.retroarch, std::string("\x7f" "garbage", 8)));
-    std::unique_ptr<nanoplat::Launcher> l = make();
+    std::unique_ptr<LinuxLauncher> l = make();
+    l->commit(LaunchTuple().core("/c/snes9x_libretro_android.so").app("com.retroarch.aarch64"));
     std::string err;
-    EXPECT_FALSE(l->launch(core(), &err));
+    ASSERT_TRUE(l->launch(core(), &err)) << err;
+    EXPECT_FALSE(l->startQueued(&err));
     EXPECT_NE(err.find("execve " + options.retroarch), std::string::npos) << err;
     EXPECT_FALSE(l->childRunning());
+    EXPECT_FALSE(l->queued());
     EXPECT_EQ(display.joined(), "release reacquire");
+    // The launch is over: the handshake is cleared, as the framework clears it.
+    EXPECT_EQ(get("sys.gammaos.nano.launch_core"), "");
+    EXPECT_EQ(get("sys.gammaos.nano.launch_app"), "");
 }
 
 TEST_F(LauncherTest, NothingStartsWithoutTheProgramOrTheCore) {
-    std::unique_ptr<nanoplat::Launcher> l = make();
+    std::unique_ptr<LinuxLauncher> l = make();
     std::string err;
     EXPECT_FALSE(l->launch(core(), &err));  // no retroarch yet
     EXPECT_NE(err.find(options.retroarch), std::string::npos);
@@ -300,7 +370,14 @@ TEST_F(LauncherTest, NothingStartsWithoutTheProgramOrTheCore) {
     LaunchRequest p;
     p.kind = LaunchRequest::Kind::Package;
     p.package = "org.ppsspp.ppsspp";
+    l->commit(LaunchTuple().app("org.ppsspp.ppsspp").intent("file"));
     EXPECT_FALSE(l->launch(p, &err));
+    EXPECT_FALSE(l->queued());
+    // At the menu's end: nothing to start, and the refused launch is over (its handshake cleared).
+    EXPECT_FALSE(l->startQueued(&err));
+    EXPECT_EQ(err, "");
+    EXPECT_EQ(get("sys.gammaos.nano.launch_app"), "");
+    EXPECT_EQ(get("sys.gammaos.nano.launch_intent"), "");
     EXPECT_EQ(display.joined(), "");  // the panel never left
     EXPECT_FALSE(l->childRunning());
 }
@@ -308,26 +385,45 @@ TEST_F(LauncherTest, NothingStartsWithoutTheProgramOrTheCore) {
 TEST_F(LauncherTest, APanelThatWasNotNanosIsNotTakenBack) {
     display.releaseOk = false;
     ASSERT_TRUE(writeExecutable(options.retroarch, std::string("\x7f" "garbage", 8)));
-    std::unique_ptr<nanoplat::Launcher> l = make();
+    std::unique_ptr<LinuxLauncher> l = make();
     std::string err;
-    EXPECT_FALSE(l->launch(core(), &err));
+    EXPECT_FALSE(launchNow(*l, core(), &err));
     EXPECT_EQ(display.joined(), "release");
+}
+
+TEST_F(LauncherTest, RequestForPrefersTheFullValuesItWrote) {
+    std::unique_ptr<LinuxLauncher> l = make();
+    const std::string longRom = "/storage/1234-ABCD/ROMs/snes/" + std::string(100, 'x') + ".sfc";
+    l->commit(LaunchTuple().romPath("/r/short.sfc").core("/c/snes9x_libretro_android.so"));
+    l->commit(LaunchTuple().romPath(longRom).game("snes", longRom, "/c/snes9x_libretro_android.so"));
+    // The store refused the long value: launch_rom keeps the older path, launch_game stays "".
+    ASSERT_EQ(get("sys.gammaos.nano.launch_rom"), "/r/short.sfc");
+    ASSERT_EQ(get("sys.gammaos.nano.launch_game"), "");
+    nanolinux::controlkeys::LaunchRequest h;
+    h.trigger = "sys.gammaos.nano.do_launch";
+    h.keys["sys.gammaos.nano.launch_rom"] = get("sys.gammaos.nano.launch_rom");
+    h.keys["sys.gammaos.nano.launch_game"] = "";
+    h.keys["sys.gammaos.nano.launch_core"] = get("sys.gammaos.nano.launch_core");
+    h.keys["sys.gammaos.nano.launch_system"] = get("sys.gammaos.nano.launch_system");
+    LaunchRequest r = l->requestFor(h);
+    EXPECT_EQ(r.rom, longRom);
+    EXPECT_EQ(r.system, "snes");
+    EXPECT_EQ(r.core, "/c/snes9x_libretro_android.so");
+    // Another process changed a key since: its value, not the launcher's.
+    h.keys["sys.gammaos.nano.launch_rom"] = "/r/other.sfc";
+    h.keys["sys.gammaos.nano.launch_core"] = "/c/mgba_libretro_android.so";
+    r = l->requestFor(h);
+    EXPECT_EQ(r.rom, "/r/other.sfc");
+    EXPECT_EQ(r.core, "/c/mgba_libretro_android.so");
 }
 
 // The whole Linux path, as thimsy-nano wires it: the call site's commits reach the installed
 // platform's launcher, the control keys see the trigger (one launch for do_launch and then
-// nano_retroarch), and launchFromHandshake starts the child.
+// nano_retroarch), launchFromHandshake queues it, and runQueued starts the child at the menu's end.
 TEST_F(LauncherTest, FromACommitThroughTheControlKeysToAChild) {
     script("exit 0\n");
-    std::unique_ptr<nanoplat::Platform> platform(new nanoplat::Platform);
-    platform->launcher = make();
-    nanoplat::Launcher* launcher = platform->launcher.get();
-    nanoplat::install(std::move(platform));
-    nanolinux::controlkeys::Handlers h;
-    h.launch = nanolinux::launcher::launchFromHandshake;
-    h.sessionRequest = [](const std::string&) {};
-    h.runHook = [](const std::string&) {};
-    nanolinux::controlkeys::install(h);
+    LinuxLauncher* launcher = installPlatform();
+    ASSERT_TRUE(launcher != nullptr);
 
     android::commitLaunch(LaunchTuple()
                                   .romPath("/storage/1234-ABCD/ROMs/snes/b.sfc")
@@ -335,19 +431,86 @@ TEST_F(LauncherTest, FromACommitThroughTheControlKeysToAChild) {
                                   .core("/c/snes9x_libretro_android.so")
                                   .app("com.retroarch.aarch64")
                                   .intent(""));
-    EXPECT_FALSE(launcher->childRunning());
+    EXPECT_FALSE(launcher->queued());
     android::commitLaunch(LaunchTuple().handoffFired("1").pendingExit("0").dropInput("1"));
     android::commitLaunch(LaunchTuple().doLaunch("1"));
-    EXPECT_TRUE(launcher->childRunning());
+    EXPECT_TRUE(launcher->queued());
+    EXPECT_FALSE(launcher->childRunning());
     android::commitLaunch(LaunchTuple().retroarch("1"));   // the same launch: no second request
-    std::optional<nanoplat::ChildExit> e = nanolinux::launcher::waitForChild(*launcher, 5);
-    nanolinux::controlkeys::uninstall();
+    std::optional<nanoplat::ChildExit> e = nanolinux::launcher::runQueued(5);
     ASSERT_TRUE(e.has_value());
     EXPECT_EQ(e->status, 0);
     EXPECT_EQ(display.joined(), "release");
     EXPECT_NE(compat_test::readFile(out).find("/storage/1234-ABCD/ROMs/snes/b.sfc"), std::string::npos);
-    EXPECT_EQ(get("sys.gammaos.nano.launch_rom"), "/storage/1234-ABCD/ROMs/snes/b.sfc");  // the store keeps it
+    // The launch is over: the keys the framework clears are cleared; the rest stays in the store.
+    EXPECT_EQ(get("sys.gammaos.nano.launch_rom"), "");
+    EXPECT_EQ(get("sys.gammaos.nano.launch_core"), "");
+    EXPECT_EQ(get("sys.gammaos.nano.launch_app"), "");
+    EXPECT_EQ(get("sys.gammaos.nano.launch_game"), "/storage/1234-ABCD/ROMs/snes/b.sfc");
     EXPECT_EQ(get("sys.gammaos.nano.do_launch"), "1");
+    EXPECT_FALSE(nanolinux::launcher::runQueued(5).has_value());  // nothing more
+}
+
+// A ROM on a long card path (over a property's 91 bytes) after a launch on a short one: the child
+// gets the long path, not the store's older value.
+TEST_F(LauncherTest, ALongRomPathAfterAShortOne) {
+    script("exit 0\n");
+    LinuxLauncher* launcher = installPlatform();
+    ASSERT_TRUE(launcher != nullptr);
+    const std::string shortRom = "/storage/1234-ABCD/ROMs/snes/a.sfc";
+    const std::string longRom =
+            "/storage/1234-ABCD/ROMs/snes/Super Long Game Name - " + std::string(70, 'x') + ".sfc";
+    ASSERT_GT(longRom.size(), 115u);
+    const std::string core = "/c/snes9x_libretro_android.so";
+    android::commitLaunch(LaunchTuple().romPath(shortRom).game("snes", shortRom, core).core(core).doLaunch("1"));
+    ASSERT_TRUE(nanolinux::launcher::runQueued(5).has_value());
+    EXPECT_NE(compat_test::readFile(out).find(shortRom), std::string::npos);
+
+    // Nano commits the short path again without a trigger (the store keeps it), then the long one.
+    android::commitLaunch(LaunchTuple().romPath(shortRom));
+    android::commitLaunch(LaunchTuple().romPath(longRom).game("snes", longRom, core).core(core));
+    EXPECT_EQ(get("sys.gammaos.nano.launch_rom"), shortRom);  // the store refused the long path
+    android::commitLaunch(LaunchTuple().doLaunch("1"));
+    ASSERT_TRUE(launcher->queued());
+    ASSERT_TRUE(nanolinux::launcher::runQueued(5).has_value());
+    const std::string text = compat_test::readFile(out);
+    EXPECT_NE(text.find(" " + longRom + "\n"), std::string::npos) << text;
+    EXPECT_EQ(text.find(shortRom), std::string::npos) << text;
+}
+
+// After a core launch, the main menu's RetroArch item writes only the trigger
+// (armAppLaunchTrigger): plain RetroArch, not the last game's core.
+TEST_F(LauncherTest, ATriggerAloneAfterACoreLaunchStartsRetroArch) {
+    script("exit 0\n");
+    LinuxLauncher* launcher = installPlatform();
+    ASSERT_TRUE(launcher != nullptr);
+    const std::string core = "/c/snes9x_libretro_android.so";
+    android::commitLaunch(LaunchTuple()
+                                  .romPath("/r/a.sfc")
+                                  .game("snes", "/r/a.sfc", core)
+                                  .core(core)
+                                  .app("com.retroarch.aarch64")
+                                  .doLaunch("1"));
+    ASSERT_TRUE(nanolinux::launcher::runQueued(5).has_value());
+    EXPECT_NE(compat_test::readFile(out).find("-L "), std::string::npos);
+
+    android::commitLaunch(LaunchTuple().retroarch("1"));
+    ASSERT_TRUE(launcher->queued());
+    ASSERT_TRUE(nanolinux::launcher::runQueued(5).has_value());
+    const std::string text = compat_test::readFile(out);
+    EXPECT_EQ(text.substr(0, text.find('\n')), "--config " + (dir_ / "retroarch.cfg")) << text;
+}
+
+// A trigger another process writes is not a launch while Nano runs.
+TEST_F(LauncherTest, ATriggerFromOutsideCommitLaunchIsRefused) {
+    script("exit 0\n");
+    LinuxLauncher* launcher = installPlatform();
+    ASSERT_TRUE(launcher != nullptr);
+    property_set("sys.gammaos.nano.launch_app", "com.retroarch.aarch64");
+    property_set("sys.gammaos.nano.do_launch", "1");
+    EXPECT_FALSE(launcher->queued());
+    EXPECT_FALSE(nanolinux::launcher::runQueued(5).has_value());
+    EXPECT_EQ(get("sys.gammaos.nano.launch_app"), "com.retroarch.aarch64");  // not Nano's launch: untouched
 }
 
 }  // namespace

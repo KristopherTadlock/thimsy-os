@@ -23,6 +23,8 @@
 #include <signal.h>
 #include <stdint.h>
 
+#include <functional>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -44,21 +46,31 @@ constexpr int kFakePid = 4242;
 std::mutex gRecordMu;
 LaunchRecord gRecord;  // guarded by gRecordMu
 
-std::string prop(const char* name) {
+// What Android's framework clears when it returns to Nano (nanoStopAppToHome), as Linux does at a
+// launch's end.
+constexpr const char* kClearedAtEnd[] = {
+    "sys.gammaos.nano.launch_app",
+    "sys.gammaos.nano.launch_intent",
+    "sys.gammaos.nano.launch_core",
+    "sys.gammaos.nano.launch_rom",
+};
+
+std::string getProp(const char* name) {
     char v[PROPERTY_VALUE_MAX] = {};
-    property_get((std::string("sys.gammaos.nano.") + name).c_str(), v, "");
+    property_get(name, v, "");
     return v;
 }
 
-// The request in the store's handshake keys, as Linux reads them when the trigger fires.
-nanoplat::LaunchRequest requestFromStore(const char* trigger) {
+// The request in the store's handshake keys, each read through `value` ("launch_app" and the rest),
+// as Linux reads them when the trigger fires.
+nanoplat::LaunchRequest requestFrom(const std::function<std::string(const char*)>& value, const char* trigger) {
     nanoplat::LaunchRequest r;
-    r.package = prop("launch_app");
-    r.core = prop("launch_core");
-    r.rom = prop("launch_rom");
-    if (r.rom.empty()) r.rom = prop("launch_game");
-    r.system = prop("launch_system");
-    r.intent = prop("launch_intent");
+    r.package = value("launch_app");
+    r.core = value("launch_core");
+    r.rom = value("launch_rom");
+    if (r.rom.empty()) r.rom = value("launch_game");
+    r.system = value("launch_system");
+    r.intent = value("launch_intent");
     r.trigger = trigger;
     r.kind = r.core.empty() ? nanoplat::LaunchRequest::Kind::Package : nanoplat::LaunchRequest::Kind::Core;
     return r;
@@ -82,17 +94,25 @@ class FakeLauncher : public nanoplat::Launcher {
 
     bool nanoExitsOnLaunch() const override { return options_.exitsOnLaunch; }
 
+    // As the firmware writes the handshake, each key's full value noted beside what the store kept
+    // of it (the store refuses a value too long for a property: a ROM on a card's long path).
     void commit(const android::LaunchTuple& tuple) override {
         for (const android::LaunchTuple::Write& w : tuple.writes) {
             switch (w.key) {
                 case android::LaunchKey::RomPath:
                     android::setLaunchRomPath(w.value);
+                    note("sys.gammaos.nano.launch_rom", w.value);
+                    note("sys.gammaos.nano.launch_system", "");
+                    note("sys.gammaos.nano.launch_game", "");
                     break;
                 case android::LaunchKey::Game:
                     android::setLaunchGame(w.value, w.rom, w.core);
+                    note("sys.gammaos.nano.launch_system", w.value);
+                    note("sys.gammaos.nano.launch_game", w.rom);
                     break;
                 default:
                     property_set(android::launchKeyProperty(w.key), w.value.c_str());
+                    note(android::launchKeyProperty(w.key), w.value);
                     break;
             }
             if (isTrigger(w)) fire(android::launchKeyProperty(w.key));
@@ -131,19 +151,27 @@ class FakeLauncher : public nanoplat::Launcher {
     }
 
     std::optional<nanoplat::ChildExit> pollChild() override {
-        std::lock_guard<std::mutex> lock(mu_);
-        if (!running_) return std::nullopt;
         nanoplat::ChildExit e;
-        e.pid = kFakePid;
-        if (quit_) {
-            e.signaled = true;
-            e.status = SIGTERM;
-        } else if (monotonicMs() - startedMs_ >= options_.childExitAfterMs) {
-            e.status = options_.childExitStatus;
-        } else {
-            return std::nullopt;
+        {
+            std::lock_guard<std::mutex> lock(mu_);
+            if (!running_) return std::nullopt;
+            e.pid = kFakePid;
+            if (quit_) {
+                e.signaled = true;
+                e.status = SIGTERM;
+            } else if (monotonicMs() - startedMs_ >= options_.childExitAfterMs) {
+                e.status = options_.childExitStatus;
+            } else {
+                return std::nullopt;
+            }
+            running_ = false;
         }
-        running_ = false;
+        // The launch is over: the keys the framework clears when it returns to Nano, as on Linux.
+        for (const char* k : kClearedAtEnd) {
+            property_set(k, "");
+            std::lock_guard<std::mutex> lock(mu_);
+            written_.erase(k);
+        }
         return e;
     }
 
@@ -164,7 +192,7 @@ class FakeLauncher : public nanoplat::Launcher {
     // A trigger was written: one launch, unless the last one was this request moments ago (Nano
     // often writes do_launch and then nano_retroarch for one launch).
     void fire(const char* trigger) {
-        const nanoplat::LaunchRequest request = requestFromStore(trigger);
+        const nanoplat::LaunchRequest request = requestFor(trigger);
         const int64_t now = monotonicMs();
         {
             std::lock_guard<std::mutex> lock(mu_);
@@ -176,8 +204,34 @@ class FakeLauncher : public nanoplat::Launcher {
         if (!launch(request, &error)) ALOGW("fake launcher: launch by %s not started: %s", trigger, error.c_str());
     }
 
+    struct Written {
+        std::string full;    // the value commit() wrote
+        std::string stored;  // what the store held right after
+    };
+
+    void note(const char* name, const std::string& full) {
+        const std::string stored = getProp(name);
+        std::lock_guard<std::mutex> lock(mu_);
+        written_[name] = Written{full, stored};
+    }
+
+    // The store's handshake, with a key's full value wherever the store still holds what it held
+    // right after commit() wrote it.
+    nanoplat::LaunchRequest requestFor(const char* trigger) const {
+        std::lock_guard<std::mutex> lock(mu_);
+        return requestFrom(
+                [&](const char* name) {
+                    const std::string full = std::string("sys.gammaos.nano.") + name;
+                    const std::string stored = getProp(full.c_str());
+                    auto it = written_.find(full);
+                    return it != written_.end() && it->second.stored == stored ? it->second.full : stored;
+                },
+                trigger);
+    }
+
     const FakeLauncherOptions options_;
     mutable std::mutex mu_;
+    std::map<std::string, Written> written_;  // by property name
     bool running_ = false;
     bool quit_ = false;
     int64_t startedMs_ = 0;

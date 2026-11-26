@@ -292,6 +292,11 @@ void install(Handlers h) {
     for (const std::string& k : keys) gObserverIds.push_back(nanocompat::addPropertyObserver(k, onWrite));
 }
 
+void setLaunchHandler(std::function<void(const LaunchRequest&)> launch) {
+    std::lock_guard<std::mutex> l(gMu);
+    gHandlers.launch = launch ? std::move(launch) : defaultLaunch;
+}
+
 void uninstall() {
     std::vector<int> ids;
     {

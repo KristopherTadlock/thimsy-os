@@ -1955,6 +1955,7 @@
   "platform/linux/tests/linuxplatform_test.cpp": {
    "includes": [
     "gtest:gtest/gtest.h",
+    "missing:Launcher.h",
     "missing:display/Display.h",
     "nano:NanoPlatform.h"
    ]

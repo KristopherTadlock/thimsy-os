@@ -50,7 +50,7 @@ PLAT_TESTS := shellgate_test controlkeys_test linuxplatform_test display_test la
 # PLAT_SRCS_<test>: files of platform/linux; PLAT_NANO_SRCS_<test>: files of nano/.
 PLAT_SRCS_shellgate_test := ShellGate.cpp
 PLAT_SRCS_controlkeys_test := ControlKeys.cpp
-PLAT_SRCS_linuxplatform_test := LinuxPlatform.cpp display/Display.cpp display/PanelOrientation.cpp 	Launcher.cpp ShellGate.cpp
+PLAT_SRCS_linuxplatform_test := LinuxPlatform.cpp display/Display.cpp display/PanelOrientation.cpp Launcher.cpp ShellGate.cpp
 PLAT_SRCS_display_test := display/Display.cpp display/PanelOrientation.cpp
 # The launcher (G7-launch-b) runs children: it links the shell gate for its execve (--wrap), and
 # commitLaunch (NanoLaunchCommit.cpp) and the control keys for the path from a commit to a child.
