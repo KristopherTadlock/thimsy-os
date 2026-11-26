@@ -901,7 +901,7 @@ Step `integ3` joined wave 3's pieces (merge `ab0bf62`). A review of the whole fo
 
 Wave 4 moved Android code behind the platform seam one area at a time. Each step's commit on the Android surface is a verbatim move checked with `git diff --color-moved=zebra --color-moved-ws=allow-indentation-change` (H.3) and carries an `android-surface:` line and "Flagged for cherry-pick to nano-144 after the AOSP job." Each step had an adversarial verifier and up to three repair rounds; all eight ended clean. step/g7-merge joined them with gfix2 (union resolutions, no fix commits), every suite including `tests/run.sh cxx` passed, then an Android- and Linux-focused review ran: 5 findings confirmed, 2 rejected, all 5 fixed (REV4). Merged into linux on top of `12173e1`. None of the firmware code has been compiled with the Android toolchain.
 
-Cherry-pick order to nano-144 (after the AOSP job, gated by the AOSP build and the owner's device smoke test, H.7): G9a's `6d6314c`, then G5's NanoPlatform.h/.cpp (`004f1a1`, which G7-main's `6675c1a` depends on but which never had an H.3 listing), then each G7 step's Android-surface commit in merge order (main, display, launch-a, launch-b, audio, volumes, power, input).
+Cherry-pick order to nano-144 (after the AOSP job, gated by the AOSP build and the owner's device smoke test, H.7): G9a's `6d6314c`, then G5's NanoPlatform.h/.cpp (`004f1a1`, which G7-main's `6675c1a` depends on but which never had an H.3 listing), then each G7 step's Android-surface commit in merge order (main, display, launch-a, launch-b, audio, volumes, power, input), then G7-net's `b823c2f` (wave 5; it needs G7-power's runCmd linkage).
 
 ### G7-main. Boot sequence and platform install
 
@@ -1023,3 +1023,59 @@ Cherry-pick order to nano-144 (after the AOSP job, gated by the AOSP build and t
 - Rotation direction (sDrmRotationDeg against the device tree's rotation) and touch rotation.
 - The dmix settings (48 kHz, period 512, buffer 2048) and alsa-lib's `@func getenv` card in a plain pcm; D20sound waits for card0 while both ARC device.json files say card_index 1.
 - genimage honouring the image-level size with the backup GPT at its end; busybox dd and od on the target; dropbear key login as root.
+
+## Wave 5: G7-net, Linux launch and session fixes, Bluetooth, docs sync
+
+Two steps ran in parallel, each adversarially verified and repaired until clean: G7-net (Android surface: the Wi-Fi and Bluetooth screens' commands and the net poll behind `nanoplat::Network`) and linux-ux (fork-only). step/w5-merge joined them without conflicts and synced IMPLEMENTATION.md (B.2, B.6, B.7, D.3, I28), linux/docs/session.md and init.md with waves 4 and 5. A Linux-focused and an Android-focused review followed: 7 findings confirmed (all Linux, all fixed, REV5), 2 rejected; the Android dimension found nothing. Every suite passed, including `tests/run.sh cxx` (run only while thimsy-aosp was not running).
+
+### G7-net. Wi-Fi and Bluetooth behind the seam
+
+- **G7-net-1:** A new `nanoplat::Network` interface (25 methods named after their call sites) rather than growing SystemActions: its calls return data; SystemActions keeps its fire-and-forget actions. The wizard's persisting BT radio toggle (setBtRadio) and startWifiScan sit in Network beside the queries that read their results.
+- **G7-net-3/4:** Plain entries `nanoplat::WifiNetEntry` and `BtDevEntry` with NanoMenu's fields; the moved parsers change only their type name and Settings copies into NanoMenu's types. WifiLevel/BtLevel reuse NanoMenu's names and values, static_asserted at the call site.
+- **G7-net-5:** The NanoNetBridge paths stay at the call sites (they write NanoMenu members and are gated on bridge-only keys, inert on Linux).
+- **G7-net-6:** runCmdUnlocked and shellQuote get external linkage (the G7-power-2 precedent).
+- **G7-net-7:** connectWithWizardSettings (`gammaos-net wifi configure`) is not moved: it is built from a dozen private wizard members. On Linux, static IP, proxy and MTU have no path yet.
+- **G7-net-8 to -11 (Linux Wi-Fi):** wrong password = the network shows [TEMP-DISABLED]; "validated" = an address, a default route and a nameserver, no probe; a WPA3 join sets `key_mgmt SAE WPA-PSK`, ieee80211w 1, sae_password and psk for transition networks; SELECT_NETWORK is followed by ENABLE_NETWORK all, and only a join runs SAVE_CONFIG. EAP networks are shown as WPA2-personal.
+- **G7-net-12, -13 (Linux Bluetooth):** Unknown when bluetoothctl or bluetoothd is missing (30 s back-off); pairing uses `--agent NoInputNoOutput`, then info, trust and connect. PIN prompts and inbound pairing are logged and not supported.
+- **G7-net-14:** Linux autoEnableWifi does nothing; D30net restores the radio from persist.thimsy.wifi.enabled.
+- **G7-net-16:** The host fake's network state is separate from FakeActions'.
+- Still Android-only: NanoControlCenter's wifi_on tile, NanoBtStable's A2DP dumpsys, the PS3 menu's discoverable and radio rows (G7-caps).
+
+### linux-ux. Launch delay, launch loops, sound card, Bluetooth userspace
+
+- **linux-ux-1/2:** The Linux launcher sets `sys.gammaos.nano.app_launched=1` for every launch Nano writes (including refused ones, since the menu ends either way), so threadLoop's exit path no longer waits about 10 s. Nano never clears it; thimsy-session writes 0 to app_launched and app_drawn when the watched game ends and before every Nano spawn with no game running.
+- **linux-ux-3:** Quick Resume's app_drawn holds are left alone (unreachable while LibretroRunner and DrasticRunner are stubs on Linux).
+- **linux-ux-4:** releaseForChild on a panel the menu already stopped logs at info, not as a warning.
+- **linux-ux-5 (refined by REV5-f):** A launch-loop guard in the Supervisor: three quick cycles in a row are free, then the crash back-off; a crash leaves the count alone; a long cycle or restart-nano resets it.
+- **linux-ux-6/7:** thimsy-prop writes device.json's audio scalars (`ro.thimsy.device.audio.*`); D20sound waits for `card<audio.card_index>` and warns, not fails, on an id or index mismatch.
+- **linux-ux-8:** The ARCs keep audio.card_index 1 (rgxx3.dtsi enables hdmi_sound and ROCKNIX uses ALSA_PRIMARY_CARD=1); the rk3566 README's "one card (card0)" was wrong. /proc/asound/cards is a Phase 0 check.
+- **linux-ux-9:** device.json gains a top-level boolean `bluetooth`: ARC-D true, ARC-S false (both from Anbernic's spec, unverified).
+- **linux-ux-10:** BlueZ (bluez5_utils with bluetoothctl and bluetoothd) and D-Bus go in userland.fragment, so every tier carries them; a test keeps them only while some device.json says Bluetooth exists. Root size growth is not measured.
+- **linux-ux-11, -12, -17, -18:** D35bluetooth (deferred, after Nano's first frame) starts D-Bus and bluetoothd only when the device has Bluetooth and `persist.thimsy.bluetooth.enabled=1` (default off, so no D-Bus at boot, as the plan says). It waits for the bus socket before bluetoothd and stops bluetoothd before the bus. Exit 3 means "no Bluetooth here" and Nano turns the switch back off; `bluetoothctl power on` is retried 5 times.
+- **linux-ux-13:** bluetoothd's state at /var/lib/bluetooth links to /storage/.config/thimsy/bluetooth (new post-build part 15-state-links.sh).
+- **linux-ux-14:** `--all-root` stays; the dbus recipe's user only disables the unused activation helper.
+- **linux-ux-15:** Nano's runProgram (used for D30net and D35bluetooth) forks with PATH resolved first, setsid, reset signals and mask, closes fds 3 and up, and calls the raw SYS_execve, which bypasses the shell gate's execve wrap (these are Thimsy's own fixed commands). This fixes an evdev-grab leak into the daemons and process-group kills. For owner audit, since it is a deliberate hole in the gate.
+- **linux-ux-16:** Daemons started from Nano stay in NanoJail's mount namespace (it masks only the eMMC).
+- **linux-ux-19, -20:** ALSA_CARD stays the index until Phase 0; the kernel side of Bluetooth (BT, HCIUART with SERDEV and RTL, BT_RTL, HIDP, UHID, hci_uart in modules, rtl_bt firmware, the DT node) is a Phase 0 (b) check. Until then the ARC-D's D35bluetooth exits 3.
+
+### Docs sync
+
+- IMPLEMENTATION.md B.6 now shows what was declared (not the first sketch) and lists the sketch's members never declared (I27); B.2 describes commitLaunch and the own-commit rule; B.7 describes nanoBootSequence, main_linux's order and exit statuses 0, 1 and 2; D.3 lists the scenarios (none run yet, TODO(G10)); I28 is done. nano_action reboot/shutdown rows are kept for writes from outside Nano; Nano's own power path on Linux is Power::powerAction's session request.
+
+### Review fixes (REV5)
+
+- **REV5-a:** Linux setBtRadio (the PS3 Bluetooth wizard) is the whole switch through a shared `actions::switchBluetooth` (key, D35bluetooth start or stop, power), run synchronously, and it resets the bluetoothctl back-off (w5-linux-1).
+- **REV5-b:** Bluetooth reads Off without forking bluetoothctl unless the device has Bluetooth, the key is 1 and the bus socket exists (w5-linux-3).
+- **REV5-c:** pair() rescans for 5 s when BlueZ has dropped a scanned device (its 30 s TemporaryTimeout), instead of changing main.conf (w5-linux-9).
+- **REV5-d:** D35bluetooth start and stop are serialized with flock on /run/thimsy/bluetooth.lock (BusyBox CONFIG_FLOCK=y added), re-reading the key under the lock (w5-linux-5).
+- **REV5-e:** Pidfiles are trusted only while /proc/PID/comm is the daemon's name (w5-linux-4).
+- **REV5-f:** A launch cycle is quick only if under 10 s and Nano's first frame was on screen under 2 s (or never), so a user trying several broken games is not held back; the session resets sys.thimsy.nano.first_frame to 0 before each spawn (w5-linux-6, -7).
+- Rejected: a Bluetooth back-off armed while off (bluetoothctl fails fast without a bus) and the fixed ALSA card index (a documented Phase 0 choice).
+
+## Open items from wave 5
+
+- Not checked against real wpa_supplicant, BlueZ or BusyBox flock; bluetoothctl's exit statuses and wording vary by version; the comm names dbus-daemon and bluetoothd are assumed.
+- Each poll tick with Bluetooth on still runs bluetoothctl N+2 times (show, devices, one info per paired device).
+- Sleep does not stop or restart Bluetooth; bluez-alsa (Bluetooth audio) is not added; the launch-loop limits are untuned.
+- A controller missing at a later boot makes that boot's D35bluetooth wait 5 s with the key still 1.
+- tools/nano-tree/control-keys.json's notes on the nano_action rows, G's "G7-power and actions" row (names nano/third_party/wpa_ctrl), and upstream.json's fork_only `third_party/wpa_ctrl/**` glob are stale but harmless; NanoMenuSettings.cpp's and NanoMenuNet.cpp's file headers still describe `cmd wifi`.
