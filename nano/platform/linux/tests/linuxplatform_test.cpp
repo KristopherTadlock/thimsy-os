@@ -125,6 +125,8 @@ TEST(LinuxPlatform, HasEveryService) {
     ASSERT_TRUE(p->settings != nullptr);
     EXPECT_TRUE(p->settings->supports(nanoplat::SettingSource::kProp, "persist.gammaos.nano.kiosk"));
     EXPECT_FALSE(p->settings->supports(nanoplat::SettingSource::kGlobal, "airplane_mode_on"));
+    // The Wi-Fi switch through the platform's own actions (the Quick Menu's Wi-Fi row).
+    EXPECT_TRUE(p->settings->supports(nanoplat::SettingSource::kGlobal, "wifi_on"));
     EXPECT_FALSE(p->settings->supports(nanoplat::SettingSource::kProp, "persist.gammaos.nano.unknown_row"));
 }
 

@@ -29,7 +29,13 @@
 //   Linux implements itself, each kept as a property Nano reads (Settings.cpp's kNative): Font Size
 //   (system font_scale, kept as the persist.gammaos.nano.fontscale Nano's render loop applies) and
 //   Screen Timeout (system screen_off_timeout, kept as persist.thimsy.system.screen_off_timeout, the
-//   value Nano's own idle sleep reads through this dispatcher).
+//   value Nano's own idle sleep reads through this dispatcher); and the radio switches the Quick
+//   Menu's Wi-Fi and Bluetooth rows are bound to (Settings.cpp's kRadios: global wifi_on and
+//   bluetooth_on). A radio read is its switch's key (persist.thimsy.wifi.enabled or
+//   persist.thimsy.bluetooth.enabled: "1", else "0"); a write of 1 or true, 0 or false is the system
+//   actions' setWifiEnabled or setBluetoothEnabled, the action Nano's own switches take, and nothing
+//   when the switch is already there. Bluetooth is supported only when ro.thimsy.device.bluetooth is
+//   true, and neither radio without the system actions.
 // - kNone and an empty key are unsupported.
 //
 // An unsupported setting reads as its default. A write to it changes nothing, returns false and is
@@ -45,7 +51,9 @@
 namespace nanolinux {
 namespace settings {
 
-std::unique_ptr<nanoplat::Settings> create();
+// `radios`: the platform's system actions, which turn the Wi-Fi and Bluetooth switches (they must
+// outlive the settings); nullptr leaves both radios unsupported.
+std::unique_ptr<nanoplat::Settings> create(nanoplat::SystemActions* radios);
 
 // The table, for tests and the menus' audits.
 // Whether the property `key` is one of Nano's own preferences.

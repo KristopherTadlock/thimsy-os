@@ -46,6 +46,8 @@ std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs&
     platform->net = nanolinux::net::create();  // G7-net: wpa_supplicant and bluetoothctl
     platform->boot = nanolinux::boot::create();  // W6-boot: Nano always owns the boot; nothing waits
     platform->caps = nanolinux::caps::create();  // W6-caps: only what Linux implements
-    platform->settings = nanolinux::settings::create();  // W6-caps: Nano's preferences; unknown keys fail closed
+    // W6-caps: Nano's preferences; unknown keys fail closed. The Wi-Fi and Bluetooth switches go
+    // through the actions above (Platform declares actions before settings, so they outlive it).
+    platform->settings = nanolinux::settings::create(platform->actions.get());
     return platform;
 }

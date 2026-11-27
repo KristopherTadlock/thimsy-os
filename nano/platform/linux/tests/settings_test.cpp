@@ -16,8 +16,9 @@
 
 // The Linux settings table and capabilities (Settings.h, Capabilities.h; W6-caps) on a scratch
 // property store: Nano's preferences round-trip, Android's settings tables and the keys another
-// Android process acts on are unsupported, an unknown key fails closed, and no capability is
-// claimed that Linux does not implement.
+// Android process acts on are unsupported, an unknown key fails closed, the Wi-Fi and Bluetooth
+// switches go through the system actions, and no capability is claimed that Linux does not
+// implement.
 
 #include "Capabilities.h"
 #include "Settings.h"
@@ -43,16 +44,30 @@ std::string prop(const char* key) {
     return v;
 }
 
+// The system actions, recording the radio switches the settings ask for.
+class FakeRadios : public nanoplat::SystemActions {
+ public:
+    void setWifiEnabled(bool on) override { calls.push_back(on ? "wifi on" : "wifi off"); }
+    void forgetWifiNetwork(int /*savedNetId*/) override {}
+    void setBluetoothEnabled(bool on) override { calls.push_back(on ? "bluetooth on" : "bluetooth off"); }
+    void connectBluetooth(const std::string& /*mac*/) override {}
+    void setTimeFormat(bool /*h12*/) override {}
+    void setTimeZone(const std::string& /*tz*/) override {}
+
+    std::vector<std::string> calls;
+};
+
 class LinuxSettingsTest : public ::testing::Test {
  protected:
     void SetUp() override {
         std::string err;
         ASSERT_TRUE(nanocompat::init(compat_test::storeOptions(dir), &err)) << err;
-        settings = nanolinux::settings::create();
+        settings = nanolinux::settings::create(&radios);
         ASSERT_TRUE(settings != nullptr);
     }
 
     ScratchDir dir;
+    FakeRadios radios;   // outlives settings (declared first)
     std::unique_ptr<nanoplat::Settings> settings;
 };
 
@@ -116,6 +131,66 @@ TEST_F(LinuxSettingsTest, SystemSettingsLinuxImplementsAreKeptAsNanoReadsThem) {
     EXPECT_EQ(nanolinux::settings::nativeStoreKey(SettingSource::kSystem, "screen_off_timeout"),
               "persist.thimsy.system.screen_off_timeout");
     EXPECT_EQ(nanolinux::settings::nativeStoreKey(SettingSource::kProp, "font_scale"), "");
+}
+
+TEST_F(LinuxSettingsTest, WifiSwitchIsTheSystemActionsSwitch) {
+    EXPECT_TRUE(settings->supports(SettingSource::kGlobal, "wifi_on"));
+    // Unset: off, as D30net defaults, whatever the row's default.
+    EXPECT_EQ(settings->read(SettingSource::kGlobal, "wifi_on", "1"), "0");
+    EXPECT_TRUE(settings->write(SettingSource::kGlobal, "wifi_on", "1"));
+    EXPECT_EQ(radios.calls, std::vector<std::string>({"wifi on"}));
+    EXPECT_EQ(prop("wifi_on"), "<unset>");   // nothing kept under Android's name
+    // The real action writes the switch's key at once; the read follows it.
+    ASSERT_EQ(property_set("persist.thimsy.wifi.enabled", "1"), 0);
+    EXPECT_EQ(settings->read(SettingSource::kGlobal, "wifi_on", "0"), "1");
+    // Already on: D30net is not started a second time.
+    EXPECT_TRUE(settings->write(SettingSource::kGlobal, "wifi_on", "true"));
+    EXPECT_EQ(radios.calls.size(), 1u);
+    EXPECT_TRUE(settings->write(SettingSource::kGlobal, "wifi_on", "0"));
+    EXPECT_EQ(radios.calls, std::vector<std::string>({"wifi on", "wifi off"}));
+    // The row's Scan option is the menu's own; as a value it is refused and does nothing.
+    EXPECT_FALSE(settings->write(SettingSource::kGlobal, "wifi_on", "scan"));
+    EXPECT_EQ(radios.calls.size(), 2u);
+    // Only Android's global table names it.
+    EXPECT_FALSE(settings->supports(SettingSource::kSystem, "wifi_on"));
+    EXPECT_FALSE(settings->supports(SettingSource::kSecure, "wifi_on"));
+    EXPECT_FALSE(settings->supports(SettingSource::kProp, "wifi_on"));
+    EXPECT_FALSE(settings->write(SettingSource::kProp, "wifi_on", "1"));
+    EXPECT_EQ(radios.calls.size(), 2u);
+}
+
+TEST_F(LinuxSettingsTest, BluetoothSwitchNeedsADeviceWithBluetooth) {
+    // device.json without "bluetooth": true: unsupported, the row hides.
+    EXPECT_FALSE(settings->supports(SettingSource::kGlobal, "bluetooth_on"));
+    EXPECT_EQ(settings->read(SettingSource::kGlobal, "bluetooth_on", "def"), "def");
+    EXPECT_FALSE(settings->write(SettingSource::kGlobal, "bluetooth_on", "1"));
+    EXPECT_TRUE(radios.calls.empty());
+
+    ASSERT_EQ(property_set("ro.thimsy.device.bluetooth", "true"), 0);   // as thimsy-prop boot writes it
+    EXPECT_TRUE(settings->supports(SettingSource::kGlobal, "bluetooth_on"));
+    EXPECT_EQ(settings->read(SettingSource::kGlobal, "bluetooth_on", "1"), "0");   // off by default
+    EXPECT_TRUE(settings->write(SettingSource::kGlobal, "bluetooth_on", "1"));
+    EXPECT_EQ(radios.calls, std::vector<std::string>({"bluetooth on"}));
+    ASSERT_EQ(property_set("persist.thimsy.bluetooth.enabled", "1"), 0);
+    EXPECT_EQ(settings->read(SettingSource::kGlobal, "bluetooth_on", "0"), "1");
+    EXPECT_TRUE(settings->write(SettingSource::kGlobal, "bluetooth_on", "1"));   // already on
+    EXPECT_TRUE(settings->write(SettingSource::kGlobal, "bluetooth_on", "false"));
+    EXPECT_EQ(radios.calls, std::vector<std::string>({"bluetooth on", "bluetooth off"}));
+    EXPECT_EQ(prop("bluetooth_on"), "<unset>");
+}
+
+TEST(LinuxSettingsRadios, UnsupportedWithoutTheSystemActions) {
+    ScratchDir dir;
+    std::string err;
+    ASSERT_TRUE(nanocompat::init(compat_test::storeOptions(dir), &err)) << err;
+    ASSERT_EQ(property_set("ro.thimsy.device.bluetooth", "true"), 0);
+    std::unique_ptr<nanoplat::Settings> settings = nanolinux::settings::create(nullptr);
+    ASSERT_TRUE(settings != nullptr);
+    EXPECT_FALSE(settings->supports(SettingSource::kGlobal, "wifi_on"));
+    EXPECT_FALSE(settings->supports(SettingSource::kGlobal, "bluetooth_on"));
+    EXPECT_FALSE(settings->write(SettingSource::kGlobal, "wifi_on", "1"));
+    EXPECT_EQ(prop("persist.thimsy.wifi.enabled"), "<unset>");
+    EXPECT_TRUE(settings->supports(SettingSource::kProp, "persist.gammaos.nano.nav_sounds"));   // the rest stays
 }
 
 TEST_F(LinuxSettingsTest, UnknownKeysFailClosed) {

@@ -138,8 +138,43 @@ constexpr NativeSetting kNative[] = {
     {SettingSource::kSystem, "screen_off_timeout", "persist.thimsy.system.screen_off_timeout"},
 };
 
+// The radio switches, Android's global wifi_on and bluetooth_on: the Quick Menu's Wi-Fi and
+// Bluetooth rows are bound to them. Linux implements both itself (actions/SystemActions.h). Each
+// switch is kept in a key of its own, which D30net and D35bluetooth act on at boot; a write is
+// SystemActions::setWifiEnabled or setBluetoothEnabled, the action Nano's own Wi-Fi and Bluetooth
+// switches take (the key at once, the script on the actions' worker), never Android's table. A read
+// is the switch's state in that key ("1" on; "0" off or unset, as both scripts default off), not the
+// radio's live state: that needs wpa_supplicant or bluetoothctl and can block, and the menus read
+// these on the render thread. Bluetooth only on a device whose description says it has Bluetooth.
+struct RadioSetting {
+    const char* key;
+    const char* switchKey;
+    bool bluetooth;
+};
+constexpr RadioSetting kRadios[] = {
+    {"wifi_on", "persist.thimsy.wifi.enabled", false},
+    {"bluetooth_on", "persist.thimsy.bluetooth.enabled", true},
+};
+// device.json's "bluetooth" (thimsy-prop boot), as Network.cpp's btDaemonsUp reads it.
+constexpr const char kDeviceBluetoothKey[] = "ro.thimsy.device.bluetooth";
+
 bool lessCStr(const char* a, const char* b) {
     return strcmp(a, b) < 0;
+}
+
+bool propIs(const char* key, const char* want) {
+    char buf[PROPERTY_VALUE_MAX] = {};
+    property_get(key, buf, "");
+    return strcmp(buf, want) == 0;
+}
+
+// The radio switch (source, key) names, or nullptr: only Android's global table holds them.
+const RadioSetting* radioFor(SettingSource source, const std::string& key) {
+    if (source != SettingSource::kGlobal) return nullptr;
+    for (const RadioSetting& r : kRadios) {
+        if (key == r.key) return &r;
+    }
+    return nullptr;
 }
 
 const char* sourceName(SettingSource source) {
@@ -168,11 +203,14 @@ std::string storeKeyFor(SettingSource source, const std::string& key) {
 
 class LinuxSettings : public nanoplat::Settings {
  public:
+    explicit LinuxSettings(nanoplat::SystemActions* radios) : radios_(radios) {}
+
     bool supports(SettingSource source, const std::string& key) const override {
-        return !storeKeyFor(source, key).empty();
+        return radio(source, key) != nullptr || !storeKeyFor(source, key).empty();
     }
 
     std::string read(SettingSource source, const std::string& key, const std::string& def) override {
+        if (const RadioSetting* r = radio(source, key)) return propIs(r->switchKey, "1") ? "1" : "0";
         const std::string store = storeKeyFor(source, key);
         if (store.empty()) return def;
         char buf[PROPERTY_VALUE_MAX] = {};
@@ -185,6 +223,7 @@ class LinuxSettings : public nanoplat::Settings {
             refusedOnce(source, key, "is read-only");
             return false;
         }
+        if (const RadioSetting* r = radio(source, key)) return switchRadio(*r, value);
         const std::string store = storeKeyFor(source, key);
         if (store.empty()) {
             refusedOnce(source, key, "is not supported on Linux");
@@ -199,12 +238,45 @@ class LinuxSettings : public nanoplat::Settings {
     }
 
  private:
+    // The radio switch this platform can turn for (source, key), or nullptr: none without the system
+    // actions, and Bluetooth only on a device that has it.
+    const RadioSetting* radio(SettingSource source, const std::string& key) const {
+        const RadioSetting* r = radioFor(source, key);
+        if (r == nullptr || radios_ == nullptr) return nullptr;
+        if (r->bluetooth && !propIs(kDeviceBluetoothKey, "true")) return nullptr;
+        return r;
+    }
+
+    // "1" or "true" turns the radio on, "0" or "false" off; any other value is refused. A switch
+    // already in that state is left alone: D30net start is not idempotent (a second wpa_supplicant
+    // fails on the control socket and a second udhcpc starts).
+    bool switchRadio(const RadioSetting& r, const std::string& value) {
+        bool on = false;
+        if (value == "1" || value == "true") {
+            on = true;
+        } else if (value == "0" || value == "false") {
+            on = false;
+        } else {
+            ALOGW("settings: global %s: not an on or off value (%zu bytes); the write does nothing", r.key,
+                  value.size());
+            return false;
+        }
+        if (propIs(r.switchKey, "1") == on) return true;
+        if (r.bluetooth) {
+            radios_->setBluetoothEnabled(on);
+        } else {
+            radios_->setWifiEnabled(on);
+        }
+        return true;
+    }
+
     void refusedOnce(SettingSource source, const std::string& key, const char* why) {
         std::lock_guard<std::mutex> lock(mu_);
         if (!refused_.insert(std::string(sourceName(source)) + " " + key).second) return;
         ALOGW("settings: %s %s %s; the write does nothing", sourceName(source), key.c_str(), why);
     }
 
+    nanoplat::SystemActions* const radios_;  // the platform's; may be null (then no radio is supported)
     std::mutex mu_;
     std::set<std::string> refused_;  // guarded by mu_: the settings already logged
 };
@@ -234,8 +306,8 @@ std::string nativeStoreKey(nanoplat::SettingSource source, const std::string& ke
     return "";
 }
 
-std::unique_ptr<nanoplat::Settings> create() {
-    return std::unique_ptr<nanoplat::Settings>(new LinuxSettings);
+std::unique_ptr<nanoplat::Settings> create(nanoplat::SystemActions* radios) {
+    return std::unique_ptr<nanoplat::Settings>(new LinuxSettings(radios));
 }
 
 }  // namespace settings
