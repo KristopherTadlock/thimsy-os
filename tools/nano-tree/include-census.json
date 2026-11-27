@@ -464,6 +464,16 @@
     "nano:NanoPlatform.h"
    ]
   },
+  "NanoManual.cpp": {
+   "includes": [
+    "nano:NanoManual.h"
+   ]
+  },
+  "NanoManual.h": {
+   "includes": [
+    "nano:NanoArchive.h"
+   ]
+  },
   "NanoMenu.cpp": {
    "includes": [
     "lib:egl:EGL/eglext.h",
@@ -660,6 +670,7 @@
     "nano:NanoI18n.h",
     "nano:NanoJson.h",
     "nano:NanoLaunch.h",
+    "nano:NanoManual.h",
     "nano:NanoMenu.h",
     "nano:NanoMenuShaders.h",
     "nano:NanoUtf8Case.h",
@@ -1049,9 +1060,13 @@
    "includes": [
     "lib:gles:GLES2/gl2.h",
     "lib:pdfium:fpdfview.h",
+    "nano:NanoArchive.h",
     "nano:NanoI18n.h",
+    "nano:NanoManual.h",
     "nano:NanoMenu.h",
     "nano:NanoMenuShaders.h",
+    "shim:compat/include/android/bitmap.h",
+    "shim:compat/include/android/imagedecoder.h",
     "shim:compat/include/utils/SystemClock.h"
    ]
   },
@@ -1495,10 +1510,12 @@
     "lib:gles:GLES2/gl2.h",
     "lib:libpng:png.h",
     "lib:tinyxml2:tinyxml2.h",
+    "nano:NanoArchive.h",
     "nano:NanoEsdeSystemName.h",
     "nano:NanoEsdeTheme.h",
     "nano:NanoEsdeThemeFallback.h",
     "nano:NanoI18n.h",
+    "nano:NanoManual.h",
     "nano:NanoMenu.h",
     "nano:NanoMenuShaders.h",
     "nano:NanoScraper.h",
@@ -2800,6 +2817,7 @@
     "gtest:gtest/gtest.h",
     "lib:zlib:zlib.h",
     "nano:NanoArchive.h",
+    "nano:NanoManual.h",
     "nano:test/unit/nano_test_util.h"
    ]
   },
@@ -3186,6 +3204,12 @@
     "nano:NanoJson.h",
     "nano:NanoLaunch.h",
     "nano:test/unit/nano_test_fs.h"
+   ]
+  },
+  "test/unit/NanoManual_test.cpp": {
+   "includes": [
+    "gtest:gtest/gtest.h",
+    "nano:NanoManual.h"
    ]
   },
   "test/unit/NanoMenuUtils_test.cpp": {
@@ -3817,6 +3841,14 @@
   "NanoLaunchCommit.cpp": {
    "modules": [
     "gammaos-nano"
+   ],
+   "needs": {}
+  },
+  "NanoManual.cpp": {
+   "modules": [
+    "gammaos-nano",
+    "gammaos_nano_archive_tests",
+    "gammaos_nano_unit_tests"
    ],
    "needs": {}
   },
@@ -5934,6 +5966,12 @@
    ],
    "needs": {}
   },
+  "test/unit/NanoManual_test.cpp": {
+   "modules": [
+    "gammaos_nano_unit_tests"
+   ],
+   "needs": {}
+  },
   "test/unit/NanoMenuUtils_test.cpp": {
    "modules": [
     "gammaos_nano_unit_tests"
@@ -6054,6 +6092,7 @@
    "NanoThemeEngine.cpp": "",
    "NanoMenuEsdeMenu.cpp": "",
    "NanoMenuPdf.cpp": "",
+   "NanoManual.cpp": "",
    "NanoMenuPS3Clock.cpp": "",
    "NanoControlCenter.cpp": "",
    "NanoMenuPS3Globe.cpp": "",

@@ -19,6 +19,8 @@
 #include "NanoUtf8Case.h"
 #include "NanoMenuShaders.h"   // FONT_CHAR_H
 #include "NanoScraper.h"       // cacheKey (the ES-DE return position)
+#include "NanoManual.h"        // nanomanual::kManualExts
+#include "NanoArchive.h"       // nanoarc: whether a comic book manual's format can be read
 #include <tinyxml2.h>          // parse ES-DE gamelist.xml for per-game metadata (matches the control)
 #include "nanosvg.h"           // vendored SVG parser (declarations; impl in libnanosvg_nano)
 #include "nanosvgrast.h"       // vendored SVG rasterizer
@@ -1852,12 +1854,20 @@ static const std::vector<std::string>& esdeMediaRoots() {
     return roots;
 }
 
-// File extensions a media subfolder holds. ES-DE also opens comic book archives as manuals.
+// File extensions a media subfolder holds, best first. ES-DE opens only PDF manuals; Nano also opens
+// comic book archives with the same name (OA-42), after the PDF.
 static const char* const* esdeMediaExts(const std::string& subdir) {
     static const char* const kImage[] = {".png", ".jpg", ".jpeg", ".webp", nullptr};
-    static const char* const kManual[] = {".pdf", ".cbz", ".cbr", ".cb7", nullptr};
     static const char* const kVideo[] = {".mp4", ".mkv", ".webm", ".avi", nullptr};
-    return subdir == "manuals" ? kManual : subdir == "videos" ? kVideo : kImage;
+    if (subdir == "manuals") return nanomanual::kManualExts;
+    return subdir == "videos" ? kVideo : kImage;
+}
+
+// Whether the manual reader opens this manual: a PDF, or a comic book archive in a format nanoarc
+// reads, judged by its content as the reader judges it (NanoMenuPdf.cpp).
+static bool esdeManualOpens(const std::string& path) {
+    if (nanomanual::kindOf(path) != nanomanual::Kind::Comic) return true;
+    return nanoarc::canRead(nanomanual::comicFormat(path, nanoarc::formatFromContent(path)));
 }
 
 // Where a game's ES-DE media can be: the system folder names to try and the file names (without
@@ -2049,13 +2059,24 @@ std::string NanoMenu::esdeGameMediaPath(const std::string& romPath, const std::s
         while (!tok.empty() && (tok.back() == ' ')) tok.pop_back();
         auto it = kSub.find(tok);
         if (it != kSub.end()) {
+            // A manual the reader can't open (a .cbr where nanoarc has no RAR reader) gives way to
+            // one of the game's manuals it can open, wherever that is; it is offered only when the
+            // game has no other, and says why when opened (OA-42, OA-4).
+            const bool manuals = it->second == "manuals";
+            std::string unopenable;
             for (const auto& root : roots) {
                 for (const auto& sd : sysDirs) {
                     for (const auto& nm : names) {
                         std::string stem = root + sd + "/" + it->second + "/" + nm;
                         for (const char* const* ext = esdeMediaExts(it->second); *ext; ext++) {
                             std::string p = stem + *ext;
-                            if (access(p.c_str(), R_OK) == 0 && !(skipIcons && androidGamesIcon(p))) { found = p; break; }
+                            if (access(p.c_str(), R_OK) != 0 || (skipIcons && androidGamesIcon(p))) continue;
+                            if (manuals && !esdeManualOpens(p)) {
+                                if (unopenable.empty()) unopenable = p;
+                                continue;
+                            }
+                            found = p;
+                            break;
                         }
                         if (!found.empty()) break;
                     }
@@ -2063,6 +2084,7 @@ std::string NanoMenu::esdeGameMediaPath(const std::string& romPath, const std::s
                 }
                 if (!found.empty()) break;
             }
+            if (found.empty()) found = unopenable;
         }
         if (comma == std::string::npos) break;
         start = comma + 1;
