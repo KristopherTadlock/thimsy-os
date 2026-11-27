@@ -43,6 +43,7 @@
 #include "NanoI18n.h"      // trDyn() runtime translation of hardcoded UI strings
 #include "NanoMenuStrings.h" // NanoLocale/LocaleInfo + nanoGetLocale/SetLocale/ApplyLocaleToSystem (System Language picker)
 #include "NanoOtaCheck.h"  // nano::kOnlineOtaEnabled for the System Update dialog
+#include "NanoPlatform.h" // nanoplat::Cap: the Power submenu's reboot modes (W6-caps)
 #include "stb_image.h"     // stbi_load for the cinfo hover background JPEG (impl lives in NanoMenuPS3Icons.cpp)
 #include <utils/SystemClock.h>  // android::uptimeMillis() for touch-gesture timing (long-press, tap, velocity)
 
@@ -894,7 +895,9 @@ void NanoMenu::buildDataSubmenu(const Ps3DataItem* node, Ps3Level& out, const st
         // Skip a child the user has hidden (Theme Settings > Home Categories item show/hide). The
         // compound id is "<hidePrefix><name>"; when no prefix was threaded in the check is inert.
         if (!hidePrefix.empty() && childName && isItemHidden(hidePrefix + childName)) continue;
-        out.items.push_back(makeDataItem(&node->children[i], hidePrefix));
+        Ps3Item item = makeDataItem(&node->children[i], hidePrefix);
+        if (!ps3BindingSupported(item.binding)) continue;   // a setting this platform lacks (W6-caps)
+        out.items.push_back(std::move(item));
     }
 }
 
@@ -1635,7 +1638,9 @@ void NanoMenu::buildPs3Cats() {
             if (dc.items[ii].name && isItemHidden(catHidePrefix + dc.items[ii].name))
                 continue;
             if (!themeSettingRowVisible(dc.items[ii].name)) continue;   // e.g. Slide Behaviour, no slide
-            c.items.push_back(makeDataItem(&dc.items[ii], catHidePrefix));
+            Ps3Item item = makeDataItem(&dc.items[ii], catHidePrefix);
+            if (!ps3BindingSupported(item.binding)) continue;   // a setting this platform lacks (W6-caps)
+            c.items.push_back(std::move(item));
         }
         if (strcmp(dc.id, "game") == 0)     gameCatRuntimeIdx     = (int)mPs3Cats.size();
         if (strcmp(dc.id, "music") == 0)    musicCatRuntimeIdx    = (int)mPs3Cats.size();
@@ -1866,6 +1871,7 @@ void NanoMenu::quickLeafItem(std::vector<Ps3Item>& out, const char* label, const
     if (qsTileHidden(spec)) return;
     Ps3Item it; it.label = label; it.kind = PS3_DATA_LEAF; it.action = 1;
     it.binding = ps3BindingFor(bindLabel ? bindLabel : label);
+    if (!ps3BindingSupported(it.binding)) return;   // a setting this platform lacks (W6-caps)
     if (it.binding) it.value = resolvePs3ItemValue(it);
     if (desc) it.desc = desc;
     it.iconTex = iconTexForIcon(icon); it.nmapTex = nmapForIcon(icon);
@@ -2041,9 +2047,11 @@ void NanoMenu::buildQuickPowerSubmenu(Ps3Level& out) {
     };
     q("Restart",      QA_RESTART,       8);   // refresh arrows
     q("Power Off",    QA_POWEROFF,     54);   // power glyph
-    q("Recovery",     QA_RECOVERY,     22);   // wrench
-    q("Safe Mode",    QA_SAFEMODE,     18);   // wrench + lock
-    q("Boot Android", QA_BOOT_ANDROID, 44);   // android robot
+    // The reboot modes the platform has (W6-caps): Android's recovery, safe mode and own home.
+    const nanoplat::Platform& platform = nanoplat::get();
+    if (platform.has(nanoplat::Cap::RebootRecovery)) q("Recovery",     QA_RECOVERY,     22);   // wrench
+    if (platform.has(nanoplat::Cap::RebootSafeMode)) q("Safe Mode",    QA_SAFEMODE,     18);   // wrench + lock
+    if (platform.has(nanoplat::Cap::RebootAndroid))  q("Boot Android", QA_BOOT_ANDROID, 44);   // android robot
 }
 
 // Open the Quick Menu -> Power submenu directly. Triggered by a power-button HOLD while the home
@@ -2718,6 +2726,7 @@ static bool qsTileHidden(const char* spec) {
 void NanoMenu::gpLeaf(Ps3Level& out, const char* label, const char* bindLabel, int icon) {
     Ps3Item it; it.label = label; it.kind = PS3_DATA_LEAF; it.action = 1;
     it.binding = ps3BindingFor(bindLabel ? bindLabel : label);
+    if (!ps3BindingSupported(it.binding)) return;   // a setting this platform lacks (W6-caps)
     it.iconTex = iconTexForIcon(icon); it.nmapTex = nmapForIcon(icon); it.iconR = it.iconG = it.iconB = 1.0f;
     out.items.push_back(it);
 }
@@ -3624,6 +3633,7 @@ void NanoMenu::buildMouseSubmenu(Ps3Level& out) {
     auto leaf = [&](const char* label, const char* bindLabel, int icon) {
         Ps3Item it; it.label = label; it.kind = PS3_DATA_LEAF; it.action = 1;
         it.binding = ps3BindingFor(bindLabel ? bindLabel : label);
+        if (!ps3BindingSupported(it.binding)) return;   // a setting this platform lacks (W6-caps)
         it.iconTex = iconTexForIcon(icon); it.nmapTex = nmapForIcon(icon); it.iconR = it.iconG = it.iconB = 1.0f;
         out.items.push_back(it);
     };

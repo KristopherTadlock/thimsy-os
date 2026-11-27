@@ -9,6 +9,7 @@ deliberate change of property keys (or after the merge driver imported new ones 
 from __future__ import annotations
 
 import os
+import re
 import sys
 import unittest
 
@@ -256,6 +257,135 @@ class BootOwnerInFirmware(unittest.TestCase):
                     'const char* c = "ctl.start";\nconst char* d = "bootanim";\n')
         self.assertEqual([(h[0], h[1]) for h in boot_owner_hits(tmp, ["A.cpp", "Missing.cpp"])],
                          [("A.cpp", 2), ("A.cpp", 3)])
+
+
+# --- The settings dispatcher's stores are the platform's (W6-caps) ----------------------------------
+# readSettingValue and writeSettingValue (NanoMenuSettingsTree.cpp) ran Android's `settings` tool for
+# every kGlobal, kSecure and kSystem row. That code moved behind nanoplat::Settings, into
+# platform/firmware/Settings.cpp (docs/linux/ARCHITECTURE-AUDIT.md step 3). No "settings get" or
+# "settings put" string literal may come back to the dispatcher's files, and the other files Linux
+# compiles from Nano's shared code may not gain one: SETTINGS_TOOL_CEILINGS are their counts, which
+# only shrink as later steps (SystemSettings, Session) move the rest. Lower a ceiling when a count
+# drops; never raise one.
+SETTINGS_TOOL = re.compile(r"\bsettings (?:get|put)\b")
+SETTINGS_DISPATCHER_FILES = ("NanoMenuSettingsTree.cpp", "NanoMenuSettingsTree.h")
+SETTINGS_TOOL_CEILINGS = {
+    "NanoControlCenter.cpp": 4,
+    "NanoMenu.cpp": 1,
+    "NanoMenuOverlay.cpp": 6,
+    "NanoMenuPS3Menu.cpp": 6,
+    "NanoMenuRender.cpp": 1,
+    "NanoMenuSetupWizard.cpp": 4,
+}
+
+
+def settings_tool_literals(nano_dir, files):
+    """{file: [(line, literal)]} for the string literals in FILES that run `settings get` or `settings put`."""
+    from nanotree.ratchets import lex
+    out = {}
+    for rel in files:
+        path = os.path.join(nano_dir, *rel.split("/"))
+        if not os.path.isfile(path):
+            continue
+        with open(path, "rb") as fh:
+            _, strings = lex(fh.read().decode("utf-8", "replace"))
+        for line, text in strings:
+            if SETTINGS_TOOL.search(text):
+                out.setdefault(rel, []).append((line, text))
+    return out
+
+
+@unittest.skipUnless(os.path.isfile(os.path.join(NANO, "build", "sources.txt")), "no nano/build/sources.txt")
+class SettingsDispatcherInFirmware(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from nanotree.ratchets import linux_shared_sources
+        cls.files = linux_shared_sources(NANO)
+        cls.hits = settings_tool_literals(NANO, cls.files)
+
+    def test_the_dispatcher_runs_no_settings_tool(self):
+        for f in SETTINGS_DISPATCHER_FILES:
+            self.assertIn(f, self.files)
+            self.assertNotIn(f, self.hits, "%s runs Android's settings tool again; it belongs in "
+                             "platform/firmware/Settings.cpp behind nanoplat::Settings (W6-caps): %s" %
+                             (f, self.hits.get(f)))
+
+    def test_shared_code_gains_no_settings_tool_literal(self):
+        problems = []
+        for f in sorted(set(self.hits) | set(SETTINGS_TOOL_CEILINGS)):
+            n, cap = len(self.hits.get(f, [])), SETTINGS_TOOL_CEILINGS.get(f, 0)
+            if n > cap:
+                problems.append("%s: %d, ceiling %d (%s); OA-4: reach the platform's settings through "
+                                "nanoplat::Settings (readSettingValue/writeSettingValue) instead" %
+                                (f, n, cap, "; ".join("%d %s" % h for h in self.hits[f][:5])))
+            elif n < cap:
+                problems.append("%s: %d, ceiling %d: lower SETTINGS_TOOL_CEILINGS in this file" % (f, n, cap))
+        self.assertFalse(problems, "settings get/put literals in Linux-compiled shared code:\n  " +
+                         "\n  ".join(problems))
+
+    def test_the_firmware_keeps_them(self):
+        hits = settings_tool_literals(NANO, ["platform/firmware/Settings.cpp"])
+        texts = [t for _l, t in hits.get("platform/firmware/Settings.cpp", [])]
+        self.assertEqual(texts, ["settings get ", "settings put "])
+
+    def test_checker(self):
+        import shutil
+        import tempfile
+        tmp = tempfile.mkdtemp(prefix="nano-settings-")
+        self.addCleanup(shutil.rmtree, tmp)
+        with open(os.path.join(tmp, "A.cpp"), "w", encoding="utf-8", newline="\n") as f:
+            f.write('// settings get in a comment is fine\n'
+                    'void a() { system("settings put global x 1"); popen("settings get system y", "r");\n'
+                    '  const char* s = "Settings"; const char* t = "mysettings get"; }\n')
+        self.assertEqual(settings_tool_literals(tmp, ["A.cpp", "Missing.cpp"]),
+                         {"A.cpp": [(2, "settings put global x 1"), (2, "settings get system y")]})
+
+
+# The Linux settings table (platform/linux/Settings.cpp's kNanoPreferences, W6-caps) holds only Nano's
+# own preferences that the dispatcher reaches: each key is a literal of the settings rows or of a
+# dispatcher call, and none is a key another Android process acts on (inv_props.md class 1b).
+LINUX_SETTINGS = os.path.join(NANO, "platform", "linux", "Settings.cpp")
+SETTINGS_ROW_FILES = ("NanoMenuSettingsTree.cpp", "NanoMenuPS3Menu.cpp")
+ANDROID_CONSUMED_PREFIXES = ("persist.gammaos.gamepad.", "persist.gammaos.hotkeys.", "persist.gammaos.rotate.",
+                             "persist.gammaos.shader.", "persist.gammaos.rgb.", "persist.gammaos.bfi.",
+                             "persist.gammaos.dualstack.", "persist.gammaos.nano.screencal.", "persist.sys.spk.",
+                             "ro.", "sys.")
+ANDROID_CONSUMED_KEYS = ("persist.gammaos.nano.orientation", "persist.gammaos.nano.orient_mode",
+                         "persist.gammaos.nano.ctrl_screen", "persist.gammaos.nano.mode_quick_settings",
+                         "persist.gammaos.nano.display.reading", "persist.gammaos.nano.display.saturation",
+                         "persist.gammaos.nano.display.cal_r", "persist.gammaos.nano.display.cal_g",
+                         "persist.gammaos.nano.display.cal_b", "persist.gammaos.nano.browser_pkg",
+                         "persist.gammaos.nano.emu_sd", "persist.gammaos.nano.pspclock.freezeapp",
+                         "persist.gammaos.nano.pspclock.liveapp")
+
+
+def linux_nano_preferences(path):
+    """The keys of kNanoPreferences in PATH, in file order."""
+    from nanotree.ratchets import lex
+    with open(path, "rb") as fh:
+        text = fh.read().decode("utf-8", "replace")
+    m = re.search(r"kNanoPreferences\[\] = \{\n(.*?)\n\};", text, re.S)
+    if not m:
+        return []
+    _, strings = lex(m.group(1))
+    return [s for _l, s in strings]
+
+
+@unittest.skipUnless(os.path.isfile(LINUX_SETTINGS), "no nano/platform/linux/Settings.cpp")
+class LinuxSettingsTable(unittest.TestCase):
+    def test_the_table_is_nanos_own_preferences(self):
+        from nanotree.ratchets import lex
+        keys = linux_nano_preferences(LINUX_SETTINGS)
+        self.assertGreater(len(keys), 40)
+        self.assertEqual(keys, sorted(set(keys)), "kNanoPreferences must be sorted (strcmp) and unique")
+        literals = set()
+        for rel in SETTINGS_ROW_FILES:
+            with open(os.path.join(NANO, rel), "rb") as fh:
+                literals.update(s for _l, s in lex(fh.read().decode("utf-8", "replace"))[1])
+        unused = [k for k in keys if k not in literals]
+        self.assertEqual(unused, [], "keys no settings row or dispatcher call names (stale; remove them)")
+        android = [k for k in keys if k.startswith(ANDROID_CONSUMED_PREFIXES) or k in ANDROID_CONSUMED_KEYS]
+        self.assertEqual(android, [], "keys another Android process acts on are unsupported on Linux (OA-4)")
 
 
 if __name__ == "__main__":

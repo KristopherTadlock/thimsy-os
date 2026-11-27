@@ -41,16 +41,23 @@
 //                "networks": [{"ssid": "Home", "bssid": "", "rssi": -60, "security": 2, "saved_id": 0,
 //                              "in_range": true, "password": ""}],
 //                "bt_on": true, "bt_devices": [{"address": "AA:BB:CC:DD:EE:FF", "name": "Pad",
-//                              "bonded": false, "connected": false, "cod": 0, "in_range": true}]}}
+//                              "bonded": false, "connected": false, "cod": 0, "in_range": true}]},
 //                                                        the Wi-Fi and Bluetooth (FakeNetwork.h)
+//    "caps": {"FactoryReset": false},                    capabilities answered (FakeCapabilities.h);
+//                                                        every one not named is true
+//    "settings": {"unsupported": ["global", "secure:location_mode"],
+//                 "values": {"system:screen_off_timeout": "300000"}}}
+//                                                        the settings stores (FakeSettings.h)
 #pragma once
 
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "FakeCapabilities.h"
 #include "FakeEvdev.h"
 #include "FakeNetwork.h"
+#include "FakeSettings.h"
 #include "FakeVolumes.h"
 #include "HostControl.h"
 #include "ShellGateHost.h"
@@ -72,6 +79,8 @@ struct HostConfig {
     std::vector<std::string> recordProps = {""};
     std::vector<FakeVolume> volumes;
     FakeNetConfig network;
+    CapAnswers caps;              // W6-caps (FakeCapabilities.h)
+    FakeSettingsConfig settings;  // W6-caps (FakeSettings.h)
 };
 
 // Parses `text` over the defaults in *out. false, with *err naming the member, on a syntax error,

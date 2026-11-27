@@ -65,13 +65,16 @@ struct SettingListOption {
 
 std::vector<SettingListOption> parseListOptions(const std::string& opts);
 
-// Direct setting read/write primitives (kProp -> property_get/set; kGlobal/
-// kSecure/kSystem -> settings get/put). Shared by the legacy tree and the PS3
-// settings-binding path.
+// Direct setting read/write primitives, through the platform's settings stores
+// (nanoplat::Settings, NanoPlatform.h; W6-caps). Shared by the legacy tree and the PS3
+// settings-binding path. A setting the platform does not support reads as `def`, and a
+// write to it does nothing.
 std::string readSettingValue(SettingSource src, const std::string& key,
                              const std::string& def);
 void writeSettingValue(SettingSource src, const std::string& key,
                        const std::string& val);
+// Whether the platform supports the setting: the menus hide a row bound to one it does not.
+bool settingSupported(SettingSource src, const std::string& key);
 
 // A declarative binding from a PS3-XMB settings leaf (matched by label) to a real
 // backing setting. options uses the parseListOptions "value:Label,..." format; a
@@ -85,6 +88,8 @@ struct Ps3SettingBinding {
 };
 const Ps3SettingBinding* ps3BindingFor(const std::string& label);
 const Ps3SettingBinding* ps3BindingForItem(const std::string& label, const std::string& path);
+// True for no binding (nullptr) or one whose setting the platform supports (settingSupported).
+bool ps3BindingSupported(const Ps3SettingBinding* b);
 
 class SettingsTreeBuilder {
 public:

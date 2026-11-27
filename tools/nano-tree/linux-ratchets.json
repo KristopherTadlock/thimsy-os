@@ -11,11 +11,11 @@
   "spawners": {
     "execv": 2,
     "fork": 2,
-    "popen": 25,
-    "system": 73
+    "popen": 24,
+    "system": 71
   },
   "android_tool_literals": {
-    "total": 143
+    "total": 140
   },
   "android_includes": {
     "total": 106

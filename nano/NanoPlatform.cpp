@@ -34,6 +34,10 @@ std::atomic<Platform*> gPlatform{nullptr};
 
 Platform::~Platform() = default;
 
+bool Platform::has(Cap cap) const {
+    return caps != nullptr && caps->has(cap);
+}
+
 void install(std::unique_ptr<Platform> platform) {
     LOG_ALWAYS_FATAL_IF(!platform, "nanoplat::install: null platform");
     Platform* expected = nullptr;
