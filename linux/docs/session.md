@@ -163,8 +163,15 @@ did not start). After `poweroff` or
 Nano runs in its own mount namespace (B.5, decision I40): every node of an internal-storage disk
 (`mmcblkN` whose `device/type` is `MMC`, its partitions, `bootN` and `rpmb`) has `/dev/null` bound
 read-only over it, and `CAP_MKNOD` is out of its bounding set, so neither Nano nor a game it starts
-can open the eMMC or make a node for it. If the namespace can't be set up, Nano is not started
-(fail closed). The namespace is a slave of the session's, so drives mounted later appear in it.
+can open the eMMC or make a node for it. `/sys/class/typec` has an empty read-only tmpfs over it on
+every start (OA-4 migration step 1): Android's USB-C role flipper in Nano's shared code writes a
+port's `port_type` under a crash guard Linux refuses, and with the class empty it finds no port. A
+masked path or directory that does not exist is skipped. If the namespace can't be set up otherwise,
+Nano is not started (fail closed). The namespace is a slave of the session's, so drives mounted
+later appear in it, once the session has made `/` shared. If that fails (kmsg says so), a device with
+no eMMC to mask starts Nano in the session's own namespace with `/sys/class/typec` visible, rather
+than leave Nano blind to SD cards and USB drives inserted later. The `nano started` kmsg line counts
+the directories actually hidden (those that exist).
 
 ### Deferred services
 
@@ -259,7 +266,7 @@ as libthimsy's Makefile, and runs:
 `R/run/fake-hw/uevent` (and once from `R/run/fake-hw/uevent.replay`) as text records
 (`add@/devices/...`, then `KEY=VALUE` lines, then a blank line), reads the input nodes
 `R/dev/input/eventN` as FIFOs of text lines (`KEY_POWER 1 [<ms>]`), mounts through the `mount` and
-`umount` programs, and writes Nano's namespace plan to `R/run/thimsy/session/jail.plan` instead of
-applying it. `--tooldir T` makes programs in `T` replace the system's by base name (Nano, padd, the
+`umount` programs, and writes Nano's namespace plan to `R/run/thimsy/session/jail.plan` (the
+masked nodes) and `jail.dirs` (the hidden directories) instead of applying it. `--tooldir T` makes programs in `T` replace the system's by base name (Nano, padd, the
 scraper, `fsck.*`, `amixer`, `poweroff`), and the session passes `THIMSY_ROOT` and `THIMSY_TOOLDIR`
 to everything it starts, as the init scripts expect (`docs/init.md`).

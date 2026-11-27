@@ -114,3 +114,21 @@ The runner talks to `nano-headless` through `/run/thimsy/headless/` (`nano/platf
 
 The key sequences of `launch_game` and `setting_persisted` are first guesses at the XMB's layout,
 marked `TODO(G10)`: they are fixed from the first run's captures and events.
+
+### Android command strings (to rewrite in OA-4 migration steps 3 and 6)
+
+OA-4 (docs/linux/DECISIONS.md) says shared code expresses intent through `nanoplat` and no Android
+command reaches Linux; the Linux shell gate refuses them all by default (migration step 1). These
+scenarios still script or expect Android command strings. Their semantics are left as they are while
+nano-headless is unbuilt (they skip, G10); when the settings dispatcher (step 3,
+`Settings::read/write/supports`) and the area interfaces (step 6: Apps, SystemSettings) land, each
+assertion becomes one on a platform event (the fake platform's `launch` or a settings event) instead:
+
+| File | Line | Android string | Becomes |
+|---|---|---|---|
+| `launch_game.jsonl` | 7 | shell rule `am start` | nothing: the launch already goes through the fake launcher's `launch` event |
+| `launch_game.jsonl` | 20 | `expect_no_shell`: `settings put`, `pm uninstall` | no `shell` event at all |
+| `setting_persisted.jsonl` | 6 | shell rules `settings put system font_scale `, `settings get ` | a fake `Settings` write of the font scale (step 3) |
+| `setting_persisted.jsonl` | 18 | `shell` event with rule 0 (`settings put system font_scale`) | the fake `Settings` event |
+| `boot_home.jsonl` | 16 | `expect_no_shell`: `am start`, `am force-stop`, `pm uninstall`, `reboot` | no `shell` event at all |
+| `navigate.jsonl` | 21 | `expect_no_shell`: `am start` | no `shell` event at all |

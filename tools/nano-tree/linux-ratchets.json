@@ -1,0 +1,52 @@
+{
+  "_about": [
+    "Ceilings for what OA-4 says Nano's Linux-compiled shared code must not hold (docs/linux/DECISIONS.md",
+    "OA-4, docs/linux/ARCHITECTURE-AUDIT.md migration step 0, IMPLEMENTATION.md H.4). Counted by",
+    "tools/nano-tree/nanotree/ratchets.py over linux_shared_sources(): sources.txt [core] + [drm] + [scrape]",
+    "(less the feature-switch files, off on Linux) and the top-level nano/*.h and *.inc; never platform/**.",
+    "Each ceiling may only shrink, towards 0. tools/nano-tree/tests/test_linux_ratchets.py fails when a",
+    "count goes over its ceiling (move the new code behind nanoplat instead) and when it drops under it",
+    "(lower the ceiling: py -3.12 tools/nano-tree/tests/test_linux_ratchets.py --lower, which never raises one)."
+  ],
+  "spawners": {
+    "execv": 2,
+    "fork": 2,
+    "popen": 25,
+    "system": 73
+  },
+  "android_tool_literals": {
+    "total": 143
+  },
+  "android_includes": {
+    "total": 106
+  },
+  "android_paths": {
+    "/config": 6,
+    "/data": 316,
+    "/mnt": 59,
+    "/sdcard": 32,
+    "/storage": 141,
+    "/system": 96,
+    "/vendor": 2
+  },
+  "device_literals": {
+    "baseparameter": 7,
+    "fde60000": 4,
+    "gpu-thermal": 1,
+    "lcd-backlight": 3,
+    "panel0-backlight": 1,
+    "rfkill0": 1,
+    "rk356x": 1,
+    "route-dsi": 1,
+    "sc98": 2,
+    "sc99": 2,
+    "sharkl": 2,
+    "soc-thermal": 1,
+    "sprd_": 1,
+    "ums": 2,
+    "vop@": 1
+  },
+  "android_named_members": {
+    "total": 4
+  }
+}

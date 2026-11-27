@@ -23,9 +23,12 @@
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
+#include <sched.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -50,108 +53,269 @@ namespace nanolinux {
 namespace shellgate {
 namespace {
 
-// ---------------------------------------------------------------------------------------- tables
-// One table, read by both the shell-string and the exec decisions. A row's word is a bare command
-// name; an absolute Android path (/system/bin/am) is looked up by its last component.
+// ------------------------------------------------------------------------------------ allow-list
+// What may still run on Linux (OA-4 migration step 1). Each entry is an exact shape: one pattern word
+// per word of the simple command, assignments included. A pattern word is a literal, or a literal
+// prefix followed by one class: {zone} (an Olson id: letters, digits, '/', '_', '+', '-'; at most 48
+// characters, no "..") or {digits} (1 to 19 digits). Nothing else matches: no extra word, option or
+// wrapper.
+//
+// A shell entry that passes hands the caller's ORIGINAL string to sh, while the words matched here are
+// the lexer's (double-quoted text is kept verbatim, "$(x)" included). So a class must never accept a
+// character sh gives a meaning to: $ ` ( ) ; | & < > * ? [ ] ~ { } \ ' " or a blank. Both classes above
+// accept only letters, digits and / _ + -. (A {url} class was removed for this reason: no entry used
+// it, and "https://h/$(reboot)" would have matched it.)
+//
+// The list is short and temporary. Every entry names its call site and is removed by migration step 4
+// (Http, FileOps and Archive as nanoplat interfaces) or the step that moves its feature behind the
+// platform. tools/nano-tree/tests/test_shell_sites.py fails when an entry is added without both.
+//
+// Not on it (decisions W6S-1, docs/linux/IMPLEMENTATION.md B.5): every curl, because the image has no
+// curl program (BR2_PACKAGE_LIBCURL_CURL is not set), so the streaming, IPTV, radio, clock and
+// time-zone fetches and the ES-DE theme downloader's gammaos-net download could not work through the
+// shell anyway (step 4's Http uses the libcurl Nano already links); the ES-DE downloader's mkdir, rm,
+// unzip and mv, which only serve that download; chown -R system:system (an Android user);
+// pidof <Android package>; restorecon and chcon (no SELinux: every caller ignores or only logs the
+// result, so refusing them breaks nothing and stops a false success); nsenter.
+enum Via : unsigned { kViaShell = 1, kViaExec = 2 };
 
-enum class Kind { Refuse, RouteSetprop, RouteGetprop, RouteReboot, RouteSvc, Noop, GammaosNet, Nsenter };
-
-struct ToolRow {
-    const char* word;
-    Kind kind;
+struct AllowRule {
+    const char* site;          // the call site (file:line function)
+    unsigned via;              // kViaShell for system()/popen(), kViaExec for exec*()
+    const char* words[10];     // the pattern, nullptr-terminated
 };
 
-// Android-only tools (B.5). Anything listed and not routed is refused.
-constexpr ToolRow kAndroidTools[] = {
-    {"am", Kind::Refuse},          {"cmd", Kind::Refuse},        {"settings", Kind::Refuse},
-    {"svc", Kind::RouteSvc},       {"pm", Kind::Refuse},         {"dumpsys", Kind::Refuse},
-    {"appops", Kind::Refuse},      {"input", Kind::Refuse},      {"setprop", Kind::RouteSetprop},
-    {"getprop", Kind::RouteGetprop}, {"screencap", Kind::Refuse}, {"ime", Kind::Refuse},
-    {"locksettings", Kind::Refuse}, {"gammaos-net", Kind::GammaosNet}, {"nsenter", Kind::Nsenter},
-    {"monkey", Kind::Refuse},      {"wm", Kind::Refuse},         {"content", Kind::Refuse},
-    {"service", Kind::Refuse},     {"logcat", Kind::Refuse},     {"bmgr", Kind::Refuse},
-    {"sm", Kind::Refuse},          {"vdc", Kind::Refuse},        {"ndc", Kind::Refuse},
-    {"setenforce", Kind::Refuse},  {"getenforce", Kind::Refuse}, {"start", Kind::Refuse},
-    {"stop", Kind::Refuse},        {"dumpstate", Kind::Refuse},  {"bugreport", Kind::Refuse},
-    {"bugreportz", Kind::Refuse},  {"lshal", Kind::Refuse},      {"uiautomator", Kind::Refuse},
-    {"app_process", Kind::Refuse}, {"app_process64", Kind::Refuse}, {"dalvikvm", Kind::Refuse},
-    {"reboot", Kind::RouteReboot}, {"restorecon", Kind::Noop},   {"chcon", Kind::Noop},
+constexpr AllowRule kAllow[] = {
+    // NanoMenuSetupWizard.cpp:318 (NanoMenu::tzStandardOffset): a zone's UTC offset in January and
+    // July, for placing the zone the wizard found; busybox date and the image's zoneinfo.
+    // TODO(OA-4 step 4): remove (the offset comes from the platform, not a shell).
+    {"NanoMenuSetupWizard.cpp:318 tzStandardOffset", kViaShell,
+     {"TZ={zone}", "date", "-d", "@{digits}", "+%z", nullptr}},
 };
 
-// Tools a Linux image has under the same name: /system/bin/<tool> becomes <tool> (found on PATH).
-constexpr const char* kPosixTools[] = {
-    "awk", "basename", "cat", "chmod", "chown", "cmp", "cp", "curl", "cut", "date", "dd", "df",
-    "dirname", "du", "echo", "env", "expr", "false", "find", "free", "grep", "gunzip", "gzip",
-    "head", "hostname", "id", "ifconfig", "ip", "kill", "killall", "ln", "ls", "md5sum", "mkdir",
-    "mount", "mv", "nice", "pidof", "ping", "printf", "ps", "readlink", "realpath", "rm", "rmdir",
-    "sed", "sh", "sha1sum", "sha256sum", "sleep", "sort", "stat", "sync", "tail", "tar", "tee",
-    "test", "timeout", "top", "touch", "tr", "true", "umount", "uname", "uniq", "unzip", "uptime",
-    "wc", "wget", "which", "xargs",
-};
+bool isZone(const char* s) {
+    size_t n = strlen(s);
+    if (n == 0 || n > 48 || strstr(s, "..")) return false;
+    for (const char* p = s; *p; p++)
+        if (!isalnum((unsigned char)*p) && *p != '/' && *p != '_' && *p != '+' && *p != '-') return false;
+    return true;
+}
 
-// Absolute roots that belong to Android. A program under them passes only if the image has it.
-constexpr const char* kAndroidRoots[] = {
-    "/system/", "/vendor/", "/product/", "/odm/", "/apex/", "/system_ext/",
-};
+bool isDigits(const char* s) {
+    size_t n = strlen(s);
+    if (n == 0 || n > 19) return false;
+    for (const char* p = s; *p; p++)
+        if (*p < '0' || *p > '9') return false;
+    return true;
+}
 
-const ToolRow* findTool(const char* word) {
-    for (const ToolRow& r : kAndroidTools)
-        if (strcmp(r.word, word) == 0) return &r;
+// Async-signal-safe.
+bool matchWord(const char* pat, const char* w) {
+    const char* brace = strchr(pat, '{');
+    if (!brace) return strcmp(pat, w) == 0;
+    size_t pre = (size_t)(brace - pat);
+    if (strncmp(pat, w, pre) != 0) return false;
+    const char* rest = w + pre;
+    const char* cls = brace + 1;
+    if (strcmp(cls, "zone}") == 0) return isZone(rest);
+    if (strcmp(cls, "digits}") == 0) return isDigits(rest);
+    return false;   // an unknown class matches nothing
+}
+
+// The entry WORDS (n of them, read through get(i)) match, or nullptr. Async-signal-safe.
+template <typename Get>
+const AllowRule* findAllowed(unsigned via, size_t n, Get get) {
+    for (const AllowRule& r : kAllow) {
+        if (!(r.via & via)) continue;
+        size_t i = 0;
+        bool ok = true;
+        for (; r.words[i]; i++) {
+            if (i >= n || !matchWord(r.words[i], get(i))) {
+                ok = false;
+                break;
+            }
+        }
+        if (ok && i == n) return &r;
+    }
     return nullptr;
 }
 
-bool isPosixTool(const char* word) {
-    for (const char* t : kPosixTools)
-        if (strcmp(t, word) == 0) return true;
-    return false;
+// --------------------------------------------------------------------------------------- shapes
+
+// A word that reads as a subcommand: "force-stop", "package", "get". Async-signal-safe.
+bool isSubcommand(const char* w) {
+    if (!w || !(*w >= 'a' && *w <= 'z')) return false;
+    for (const char* p = w; *p; p++)
+        if (!((*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9') || *p == '-' || *p == '_')) return false;
+    return true;
 }
 
-bool underAndroidRoot(const char* path) {
-    for (const char* r : kAndroidRoots)
-        if (strncmp(path, r, strlen(r)) == 0) return true;
-    return false;
+// "<w0>[ <w1>]" into out (cap bytes, truncated). Async-signal-safe.
+void shapeInto(char* out, size_t cap, const char* w0, const char* w1) {
+    size_t n = 0;
+    for (const char* p = w0 ? w0 : "?"; *p && n + 1 < cap; p++) out[n++] = *p;
+    if (isSubcommand(w1)) {
+        if (n + 1 < cap) out[n++] = ' ';
+        for (const char* p = w1; *p && n + 1 < cap; p++) out[n++] = *p;
+    }
+    out[n] = '\0';
 }
 
-// /system/bin/<x> or /system/xbin/<x>: the tool directories Nano names.
-bool inSystemBin(const char* path) {
-    return strncmp(path, "/system/bin/", 12) == 0 || strncmp(path, "/system/xbin/", 13) == 0;
+// ---------------------------------------------------------------------------- refusal registry
+// Every refusal is counted and its shape logged once, in Nano's log. Exec refusals happen in a forked
+// child, whose stderr is often not Nano's log (runArgv sends it to /dev/null, esdeRunProc to a side
+// file), so a child never logs: it records the shape as not yet logged, and the process that made the
+// registry (the owner: Nano itself) logs every such shape through ALOG on its next gate call
+// (system(), popen(), pclose()) or refusalCount()/refusedShapes() (flushPending()).
+//
+// The registry lives in a shared anonymous mapping made before main (no fork has happened yet), so a
+// child's count and shapes reach the owner. Updates take a spin lock in that mapping whose word is the
+// holder's pid: a parent thread holding it at fork time still releases it (the memory is shared), a
+// holder that died with it held (runArgv SIGKILLs a child that overruns its timeout) is found with
+// kill(pid, 0) == ESRCH and the lock broken, and a waiter gives up after a bounded wait rather than
+// hang (it then counts without recording).
+
+constexpr size_t kShapeMax = sizeof(ExecPlan::shape);
+constexpr size_t kSlots = 128;
+
+struct Registry {
+    int lock;                      // 0, or the pid of the process holding it
+    int owner;                     // the pid that made the registry: the only process that logs
+    unsigned total;                // every refusal
+    unsigned used;                 // slots filled
+    unsigned unlogged;             // slots filled but not yet logged (refused in another process)
+    unsigned char overflow;        // 1: a new shape found the table full; 2: that was logged
+    unsigned char logged[kSlots];
+    char shapes[kSlots][kShapeMax];
+};
+
+Registry gLocalRegistry;   // if the shared mapping cannot be made
+
+Registry* makeRegistry() {
+    Registry* r = &gLocalRegistry;
+    void* p = mmap(nullptr, sizeof(Registry), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    if (p != MAP_FAILED) r = static_cast<Registry*>(p);
+    memset(r, 0, sizeof(Registry));
+    r->owner = getpid();
+    return r;
 }
 
-const char* baseName(const char* path) {
-    const char* s = strrchr(path, '/');
-    return s ? s + 1 : path;
+Registry* gRegistry = makeRegistry();
+
+Registry* registry() {
+    Registry* r = __atomic_load_n(&gRegistry, __ATOMIC_ACQUIRE);
+    return r ? r : &gLocalRegistry;
 }
 
-char gRoot[PATH_MAX] = "";
+bool isOwner(const Registry* r) { return getpid() == r->owner; }
 
-// Whether root()+path is an executable file. Async-signal-safe.
-bool imageHas(const char* path) {
-    char buf[PATH_MAX];
-    size_t rl = strlen(gRoot), pl = strlen(path);
-    if (rl + pl + 1 > sizeof buf) return false;
-    memcpy(buf, gRoot, rl);
-    memcpy(buf + rl, path, pl + 1);
-    return access(buf, X_OK) == 0;
+// Async-signal-safe; keeps errno.
+bool lockRegistry(Registry* r) {
+    const int self = getpid();
+    const int savedErrno = errno;
+    bool ok = false;
+    for (long i = 0; i < 2000000 && !ok; i++) {
+        int holder = 0;
+        if (__atomic_compare_exchange_n(&r->lock, &holder, self, false, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED)) {
+            ok = true;
+        } else if ((i & 63) == 63) {
+            // A holder that is gone (killed with the lock held) never releases it: break it. A
+            // zombie still answers kill(); once it is reaped, the next wait breaks the lock.
+            if (holder > 0 && holder != self && kill(holder, 0) == -1 && errno == ESRCH)
+                __atomic_compare_exchange_n(&r->lock, &holder, 0, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
+            sched_yield();
+        }
+    }
+    errno = savedErrno;
+    return ok;
 }
 
-// ------------------------------------------------------------------------------ state and logging
+void unlockRegistry(Registry* r) { __atomic_store_n(&r->lock, 0, __ATOMIC_RELEASE); }
+
+// Counts a refusal and records SHAPE once. LOGNOW: the caller is the owner and logs a new shape
+// itself (it returns true then); otherwise a new shape waits for the owner's flushPending(). A new
+// shape that finds the table full is counted but not recorded, and the owner logs once that the table
+// is full. Async-signal-safe.
+bool countRefusal(const char* shape, bool logNow) {
+    Registry* r = registry();
+    __atomic_add_fetch(&r->total, 1, __ATOMIC_SEQ_CST);
+    if (!lockRegistry(r)) return false;
+    bool fresh = true;
+    unsigned used = r->used;
+    for (unsigned i = 0; i < used && i < kSlots; i++) {
+        if (strncmp(r->shapes[i], shape, kShapeMax - 1) == 0) {
+            fresh = false;
+            break;
+        }
+    }
+    bool callerLogs = false;
+    if (fresh && used < kSlots) {
+        size_t n = 0;
+        for (; shape[n] && n + 1 < kShapeMax; n++) r->shapes[used][n] = shape[n];
+        r->shapes[used][n] = '\0';
+        r->logged[used] = logNow ? 1 : 0;
+        if (!logNow) __atomic_add_fetch(&r->unlogged, 1, __ATOMIC_RELEASE);
+        r->used = used + 1;
+        callerLogs = logNow;
+    } else if (fresh && r->overflow == 0) {
+        __atomic_store_n(&r->overflow, 1, __ATOMIC_RELEASE);
+    }
+    unlockRegistry(r);
+    return callerLogs;
+}
+
+// In the owner: logs every recorded shape not logged yet, and a full table once. Cheap when there is
+// nothing to log. Not async-signal-safe (never called from an exec wrapper).
+void flushPending() {
+    Registry* r = registry();
+    if (!isOwner(r)) return;
+    if (__atomic_load_n(&r->unlogged, __ATOMIC_ACQUIRE) == 0 && __atomic_load_n(&r->overflow, __ATOMIC_ACQUIRE) != 1)
+        return;
+    std::vector<std::string> shapes;
+    bool overflow = false;
+    if (!lockRegistry(r)) return;
+    for (unsigned i = 0; i < r->used && i < kSlots; i++) {
+        if (!r->logged[i]) {
+            shapes.push_back(r->shapes[i]);
+            r->logged[i] = 1;
+        }
+    }
+    __atomic_store_n(&r->unlogged, 0, __ATOMIC_RELEASE);
+    if (r->overflow == 1) {
+        r->overflow = 2;
+        overflow = true;
+    }
+    unlockRegistry(r);
+    for (const std::string& s : shapes)
+        ALOGW("refused (OA-4: not on the allow-list; logged once per shape): %s (an exec, or in a forked child)",
+              s.c_str());
+    if (overflow)
+        ALOGW("refused: %zu distinct shapes recorded, the table is full; later new shapes are counted, not logged",
+              kSlots);
+}
+
+// ------------------------------------------------------------------------------ state and routes
 
 std::mutex gMu;
-std::vector<std::string> gRefused;            // once per tool, in order
-std::set<std::string> gRefusedSet;
+std::vector<std::string> gRouted;             // once per shape, in order
+std::set<std::string> gRoutedSet;
 Recorder gRecorder;
 Routes gRoutes;
 std::map<FILE*, int> gSynthetic;              // popen() streams the gate made: their wait status
 
-void noteRefused(const std::string& tool, const std::string& what) {
+void noteRefused(const std::string& shape, const std::string& what) {
+    if (countRefusal(shape.c_str(), isOwner(registry())))
+        ALOGW("refused (OA-4: not on the allow-list; logged once per shape): %s: %s", shape.c_str(), what.c_str());
+}
+
+void noteRouted(const std::string& shape) {
     bool first;
     {
         std::lock_guard<std::mutex> l(gMu);
-        first = gRefusedSet.insert(tool).second;
-        if (first) gRefused.push_back(tool);
+        first = gRoutedSet.insert(shape).second;
+        if (first) gRouted.push_back(shape);
     }
-    if (first)
-        ALOGW("refused (Android-only, logged once per tool): %s: %s", tool.c_str(), what.c_str());
+    if (first) ALOGI("routed (OA-4 step 5): %s", shape.c_str());
 }
 
 bool routeSet(const std::string& key, const std::string& value) {
@@ -177,11 +341,12 @@ std::string routeGet(const std::string& key, const std::string& def) {
 }
 
 // ------------------------------------------------------------------------------- shell parsing
+// Only to name what is refused and to recognise the routes and the allow-listed shapes: anything the
+// parser does not understand is refused.
 
 struct Token {
     enum Type { Word, Sep, Redir } type;
-    std::string text;      // Word: after quote removal; Sep: the operator
-    size_t begin, end;     // span in the source
+    std::string text;      // Word: after quote removal; Sep: the operator; Redir: the operator
 };
 
 bool isOpChar(char c) { return c == ';' || c == '&' || c == '|' || c == '(' || c == ')' || c == '`' || c == '\n'; }
@@ -191,13 +356,13 @@ std::vector<Token> lexShell(std::string_view s) {
     size_t i = 0, n = s.size();
     while (i < n) {
         char c = s[i];
-        if (c == ' ' || c == '\t' || c == '\r') { i++; continue; }
+        if (c == ' ' || c == '\t') { i++; continue; }   // as in sh, '\r' is an ordinary word character
         if (c == '#') {   // a comment to the end of the line
             while (i < n && s[i] != '\n') i++;
             continue;
         }
         if (c == '$' && i + 1 < n && s[i + 1] == '(') {
-            out.push_back({Token::Sep, "$(", i, i + 2});
+            out.push_back({Token::Sep, "$("});
             i += 2;
             continue;
         }
@@ -206,22 +371,23 @@ std::vector<Token> lexShell(std::string_view s) {
             if (c == '&') i++;
             i++;
             while (i < n && (s[i] == '>' || s[i] == '<' || s[i] == '&' || s[i] == '|')) i++;
-            out.push_back({Token::Redir, std::string(s.substr(b, i - b)), b, i});
+            out.push_back({Token::Redir, std::string(s.substr(b, i - b))});
             continue;
         }
         if (isOpChar(c)) {
             size_t b = i;
             if ((c == '&' || c == '|' || c == ';') && i + 1 < n && s[i + 1] == c) i++;
             i++;
-            out.push_back({Token::Sep, std::string(s.substr(b, i - b)), b, i});
+            out.push_back({Token::Sep, std::string(s.substr(b, i - b))});
             continue;
         }
         // A word: up to an unquoted blank or operator.
-        Token t{Token::Word, "", i, i};
+        Token t{Token::Word, ""};
+        size_t begin = i;
         bool digitsOnly = true;
         while (i < n) {
             c = s[i];
-            if (c == ' ' || c == '\t' || c == '\r' || isOpChar(c) || c == '>' || c == '<') break;
+            if (c == ' ' || c == '\t' || isOpChar(c) || c == '>' || c == '<') break;
             if (c == '$' && i + 1 < n && s[i + 1] == '(') break;
             if (c == '\\' && i + 1 < n) {
                 t.text += s[i + 1];
@@ -251,12 +417,10 @@ std::vector<Token> lexShell(std::string_view s) {
                 i++;
             }
         }
-        t.end = i;
         // "2>": a descriptor number glued to a redirection belongs to it.
         if (digitsOnly && i < n && (s[i] == '>' || s[i] == '<')) {
-            size_t b = t.begin;
             while (i < n && (s[i] == '>' || s[i] == '<' || s[i] == '&')) i++;
-            out.push_back({Token::Redir, std::string(s.substr(b, i - b)), b, i});
+            out.push_back({Token::Redir, std::string(s.substr(begin, i - begin))});
             continue;
         }
         out.push_back(std::move(t));
@@ -273,187 +437,242 @@ bool isAssignment(const std::string& w) {
     return false;
 }
 
-struct Edit {
-    size_t begin, end;
-    std::string with;
-};
-
 struct Simple {
-    std::vector<const Token*> words;   // in order, redirections and their targets dropped
-    std::string connector;             // the separator before it ("" for the first)
+    std::vector<std::string> words;                        // redirections and their targets dropped
+    std::vector<std::pair<std::string, std::string>> redirs;  // (operator, target)
 };
 
 std::vector<Simple> splitSimple(const std::vector<Token>& toks) {
     std::vector<Simple> out;
     Simple cur;
-    bool skipNext = false;
+    bool target = false;
     for (const Token& t : toks) {
         if (t.type == Token::Sep) {
-            if (!cur.words.empty()) out.push_back(cur);
+            if (!cur.words.empty() || !cur.redirs.empty()) out.push_back(cur);
             cur = Simple();
-            cur.connector = t.text;
-            skipNext = false;
+            target = false;
             continue;
         }
         if (t.type == Token::Redir) {
             // The lexer leaves every redirection's target ("/dev/null", the "1" of "2>&1") as the
             // next word.
-            skipNext = true;
+            cur.redirs.push_back({t.text, ""});
+            target = true;
             continue;
         }
-        if (skipNext) { skipNext = false; continue; }
-        cur.words.push_back(&t);
+        if (target) {
+            cur.redirs.back().second = t.text;
+            target = false;
+            continue;
+        }
+        cur.words.push_back(t.text);
     }
-    if (!cur.words.empty()) out.push_back(cur);
+    if (!cur.words.empty() || !cur.redirs.empty()) out.push_back(cur);
     return out;
 }
 
-Decision classifyImpl(std::string_view s, int depth);
+// Redirections an allowed command or a route may carry: output thrown away, or stderr to stdout.
+bool redirsHarmless(const Simple& sc) {
+    for (const auto& r : sc.redirs) {
+        const std::string& op = r.first;
+        if (r.second == "/dev/null" && (op == ">" || op == "1>" || op == "2>" || op == "&>" || op == ">>" ||
+                                        op == "2>>"))
+            continue;
+        if ((op == "2>&" || op == ">&") && r.second == "1") continue;
+        return false;
+    }
+    return true;
+}
 
-// Decides one simple command; appends rewrites of the top-level string to *edits.
-Command decideSimple(const Simple& sc, std::vector<Edit>* edits, int depth) {
-    Command c;
-    for (const Token* t : sc.words) c.words.push_back(t->text);
+bool hasOption(const std::string& w) { return w.size() > 1 && w[0] == '-'; }
+
+// The index of the word that names the command, past assignments and the wrappers that run their
+// arguments (only to name a refusal: a wrapper never passes). An option a wrapper does not have
+// leaves the wrapper as the command.
+size_t commandIndex(const std::vector<std::string>& w) {
     size_t k = 0;
-    const auto& w = sc.words;
-    // Leading assignments, then wrappers that run their arguments.
+    size_t lastWrapper = std::string::npos;
     for (;;) {
-        while (k < w.size() && isAssignment(w[k]->text)) k++;
-        if (k >= w.size()) return c;
-        const std::string& x = w[k]->text;
-        if (x == "exec" || x == "nohup" || x == "command" || x == "busybox") { k++; continue; }
-        if (x == "toybox" || x == "toolbox") {   // Android's multi-call binaries: the applet itself
-            if (edits) edits->push_back({w[k]->begin, w[k]->end, ""});
+        while (k < w.size() && isAssignment(w[k])) k++;
+        if (k >= w.size()) return lastWrapper != std::string::npos ? lastWrapper : k;   // a wrapper of nothing
+        lastWrapper = k;
+        const std::string& x = w[k];
+        const size_t wrapper = k;
+        if (x == "exec" || x == "nohup" || x == "command" || x == "busybox" || x == "toybox" || x == "toolbox") {
             k++;
             continue;
         }
         if (x == "env") {
             k++;
-            while (k < w.size() && (w[k]->text.size() > 1 && w[k]->text[0] == '-')) k++;
+            while (k < w.size()) {
+                const std::string& o = w[k];
+                if (o == "-u" || o == "--unset") k += 2;
+                else if (o == "-" || o == "-i" || o == "--ignore-environment" || o.compare(0, 8, "--unset=") == 0 ||
+                         (o.size() > 2 && o.compare(0, 2, "-u") == 0))
+                    k++;
+                else if (isAssignment(o)) k++;
+                else if (hasOption(o)) return wrapper;
+                else break;
+            }
             continue;
         }
         if (x == "nice") {
             k++;
-            if (k < w.size() && w[k]->text == "-n") k += 2;
-            else if (k < w.size() && w[k]->text.size() > 1 && w[k]->text[0] == '-') k++;
+            if (k < w.size()) {
+                const std::string& o = w[k];
+                if (o == "-n" || o == "--adjustment") k += 2;
+                else if (o.compare(0, 2, "-n") == 0 || o.compare(0, 13, "--adjustment=") == 0) k++;
+                else if (o.size() > 1 && o[0] == '-' && isdigit((unsigned char)o[1])) k++;
+                else if (hasOption(o)) return wrapper;
+            }
             continue;
         }
         if (x == "timeout") {
+            // timeout [-s SIG | -sSIG | --signal=SIG | --signal SIG] [-k DUR | -kDUR | --kill-after=DUR |
+            //         --kill-after DUR] [--preserve-status] [--foreground] [-v | --verbose] [--] DUR CMD...
             k++;
-            while (k < w.size() && w[k]->text.size() > 1 && w[k]->text[0] == '-') k++;
-            if (k < w.size()) k++;   // the duration
+            for (;;) {
+                if (k >= w.size()) return wrapper;
+                const std::string& o = w[k];
+                if (o == "--") { k++; break; }
+                if (o == "-s" || o == "-k" || o == "--signal" || o == "--kill-after") { k += 2; continue; }
+                if (o.compare(0, 9, "--signal=") == 0 || o.compare(0, 13, "--kill-after=") == 0 ||
+                    o == "--preserve-status" || o == "--foreground" || o == "-v" || o == "--verbose" ||
+                    o == "-f" || o == "-p") {
+                    k++;
+                    continue;
+                }
+                if (o.size() > 2 && o[0] == '-' && (o[1] == 's' || o[1] == 'k')) { k++; continue; }
+                if (hasOption(o)) return wrapper;   // an option timeout does not have
+                break;
+            }
+            if (k >= w.size()) return wrapper;
+            k++;   // the duration
             continue;
         }
-        break;
+        return k;
     }
-    if (k >= w.size()) return c;
-    const Token* first = w[k];
-    std::string word = first->text;
-    std::vector<std::string> args;
-    for (size_t j = k + 1; j < w.size(); j++) args.push_back(w[j]->text);
+}
 
-    std::string name = word;
-    if (word.find('/') != std::string::npos) {
-        if (!underAndroidRoot(word.c_str())) return c;   // a Linux path
-        name = baseName(word.c_str());
-        if (inSystemBin(word.c_str()) && isPosixTool(name.c_str()) && !findTool(name.c_str())) {
-            if (edits) edits->push_back({first->begin, first->end, name});
-            word = name;   // fall through to the sh -c check below
-        } else if (!findTool(name.c_str())) {
-            if (imageHas(word.c_str())) return c;   // a wrapper in the curated /system/bin
-            c.tool = word;
-            c.verdict = Verdict::Refuse;
+std::string baseName(const std::string& p) {
+    size_t s = p.rfind('/');
+    return s == std::string::npos ? p : p.substr(s + 1);
+}
+
+// setprop, getprop, reboot or svc, by name or as /system/bin/<name>.
+std::string routeTool(const std::string& w) {
+    std::string name = w;
+    if (w.compare(0, 12, "/system/bin/") == 0 || w.compare(0, 13, "/system/xbin/") == 0) name = baseName(w);
+    if (name == "setprop" || name == "getprop" || name == "reboot" || name == "svc") return name;
+    return "";
+}
+
+Decision classifyImpl(std::string_view s, int depth);
+
+const char* const kAssignmentShape = "(assignment only)";
+
+Command decideSimple(const Simple& sc, int depth) {
+    Command c;
+    c.words = sc.words;
+    const std::vector<std::string>& w = sc.words;
+    const size_t k = commandIndex(w);
+    if (w.empty()) {   // only redirections: refused
+        c.shape = "(no command)";
+        return c;
+    }
+    // Only assignments ("D=$(dumpsys ...)" splits into "D=" and the substitution): refused, but
+    // classifyImpl names the string after a command that does something, when it has one.
+    c.shape = k < w.size() ? shapeOf(std::vector<std::string>(w.begin() + k, w.end())) : kAssignmentShape;
+    const bool harmless = redirsHarmless(sc);
+
+    // An allow-listed shape, word for word.
+    if (harmless) {
+        if (const AllowRule* r = findAllowed(kViaShell, w.size(), [&](size_t i) { return w[i].c_str(); })) {
+            c.verdict = Verdict::Pass;
+            c.allow = r->site;
             return c;
         }
     }
-    // sh -c STRING: decide the string too (it is not rewritten).
-    if ((word == "sh" || word == "bash") && depth < 4) {
-        for (size_t j = 0; j + 1 < args.size(); j++) {
-            if (args[j] == "-c") {
-                Decision inner = classifyImpl(args[j + 1], depth + 1);
-                if (inner.verdict != Verdict::Pass) {
-                    c.tool = inner.tool;
-                    c.verdict = Verdict::Refuse;   // routes are not taken inside sh -c
-                }
-                break;
-            }
-        }
-        return c;
-    }
-    const ToolRow* row = findTool(name.c_str());
-    if (!row) return c;
-    c.tool = name;
-    switch (row->kind) {
-        case Kind::RouteSetprop:
-            c.verdict = args.empty() ? Verdict::Refuse : Verdict::Route;
-            c.route = "setprop";
-            break;
-        case Kind::RouteGetprop:
-            c.verdict = args.empty() ? Verdict::Refuse : Verdict::Route;
-            c.route = "getprop";
-            break;
-        case Kind::RouteReboot:
+
+    // A route: the tool first, with no assignment or wrapper before it.
+    const std::string tool = routeTool(w[0]);
+    if (!tool.empty() && harmless) {
+        const size_t nargs = w.size() - 1;
+        if ((tool == "setprop" || tool == "getprop") && nargs >= 1) {
+            c.verdict = Verdict::Route;
+            c.route = tool;
+            c.shape = tool + " " + w[1];
+        } else if (tool == "reboot") {
             c.verdict = Verdict::Route;
             c.route = "powerctl";
-            break;
-        case Kind::RouteSvc:
-            if (args.size() >= 2 && args[0] == "power" && (args[1] == "reboot" || args[1] == "shutdown")) {
-                c.verdict = Verdict::Route;
-                c.route = "powerctl";
-            } else {
-                c.verdict = Verdict::Refuse;
-                c.tool = args.empty() ? "svc" : "svc " + args[0];
-            }
-            break;
-        case Kind::Noop:
+            c.shape = "reboot";
+        } else if (tool == "svc" && nargs >= 2 && w[1] == "power" && (w[2] == "reboot" || w[2] == "shutdown")) {
             c.verdict = Verdict::Route;
-            c.route = "noop";
-            break;
-        default:
-            c.verdict = Verdict::Refuse;
-            break;
+            c.route = "powerctl";
+            c.shape = "svc power " + w[2];
+        }
+        if (c.verdict == Verdict::Route) return c;
     }
-    // Keep only the tool and its arguments in words, for the routes.
-    c.words.assign(c.words.begin() + k, c.words.end());
+
+    // Refused. sh -c STRING (or bash -c) is named after the first refused command inside it.
+    if (k < w.size() && depth < 4) {
+        const std::string name = baseName(w[k]);
+        if (name == "sh" || name == "bash") {
+            for (size_t j = k + 1; j + 1 < w.size(); j++) {
+                if (w[j] == "-c") {
+                    Decision inner = classifyImpl(w[j + 1], depth + 1);
+                    if (inner.verdict == Verdict::Refuse) c.shape = w[k] + " -c: " + inner.shape;
+                    break;
+                }
+            }
+        }
+    }
     return c;
 }
 
 Decision classifyImpl(std::string_view s, int depth) {
     Decision d;
     std::vector<Token> toks = lexShell(s);
+    bool complex = false;   // a pipe, background job, subshell or command substitution
+    for (const Token& t : toks) {
+        if (t.type == Token::Sep && t.text != ";" && t.text != "&&" && t.text != "||" && t.text != "\n")
+            complex = true;
+    }
     std::vector<Simple> simple = splitSimple(toks);
-    std::vector<Edit> edits;
-    bool anyRoute = false, anyPass = false, complex = false;
+    if (simple.empty()) {
+        d.shape = "(empty)";
+        return d;
+    }
+    bool anyRefuse = false, anyRoute = false, anyPass = false, namedRefuse = false;
     for (const Simple& sc : simple) {
-        Command c = decideSimple(sc, depth == 0 ? &edits : nullptr, depth);
-        if (c.verdict == Verdict::Refuse && d.verdict != Verdict::Refuse) {
-            d.verdict = Verdict::Refuse;
-            d.tool = c.tool;
+        Command c = decideSimple(sc, depth);
+        if (c.verdict == Verdict::Refuse && !namedRefuse) {
+            // The first refused command, or a later one that runs something when the first only assigns.
+            const bool named = c.shape != kAssignmentShape;
+            if (!anyRefuse || named) d.shape = c.shape;
+            anyRefuse = true;
+            namedRefuse = named;
         }
-        if (c.verdict == Verdict::Route) {
+        if (c.verdict == Verdict::Route && !anyRoute) {
             anyRoute = true;
-            if (d.tool.empty()) d.tool = c.tool;
+            if (!anyRefuse) d.shape = c.shape;
         }
         if (c.verdict == Verdict::Pass) anyPass = true;
-        if (!sc.connector.empty() && sc.connector != ";" && sc.connector != "&&" && sc.connector != "||" &&
-            sc.connector != "\n")
-            complex = true;
         d.commands.push_back(std::move(c));
     }
-    if (d.verdict != Verdict::Refuse && anyRoute) {
-        if (anyPass || complex) {
-            // A route mixed with Linux commands, a pipe or a subshell: not taken apart.
-            d.verdict = Verdict::Refuse;
-        } else {
-            d.verdict = Verdict::Route;
-        }
-    }
-    if (d.verdict == Verdict::Pass) {
-        d.tool.clear();
-        std::string out(s);
-        std::sort(edits.begin(), edits.end(), [](const Edit& a, const Edit& b) { return a.begin > b.begin; });
-        for (const Edit& e : edits) out.replace(e.begin, e.end - e.begin, e.with);
-        d.command = out;
+    if (anyRefuse) {
+        d.verdict = Verdict::Refuse;
+    } else if (complex || (anyRoute && anyPass)) {
+        // Allowed shapes and routes run only as plain lists: never piped, in the background, in a
+        // subshell or mixed with each other.
+        d.verdict = Verdict::Refuse;
+        d.shape = d.commands.front().shape + (complex ? " (in a pipe or subshell)" : " (mixed with a route)");
+    } else if (anyRoute) {
+        d.verdict = Verdict::Route;
+    } else {
+        d.verdict = Verdict::Pass;
+        d.shape.clear();
+        d.command = std::string(s);
     }
     return d;
 }
@@ -468,6 +687,7 @@ std::pair<int, std::string> runRoutes(const Decision& d) {
     for (size_t i = 0; i < d.commands.size(); i++) {
         const Command& c = d.commands[i];
         const std::vector<std::string>& a = c.words;
+        noteRouted(c.shape);
         int rc = 0;
         if (c.route == "setprop") {
             rc = routeSet(a.size() > 1 ? a[1] : "", a.size() > 2 ? a[2] : "") ? 0 : 1;
@@ -476,7 +696,7 @@ std::pair<int, std::string> runRoutes(const Decision& d) {
             out += "\n";
         } else if (c.route == "powerctl") {
             std::string v;
-            if (c.tool == "svc") {   // the tool's name: also /system/bin/svc
+            if (baseName(a[0]) == "svc") {   // svc power reboot|shutdown [reason]
                 v = a[2] == "shutdown" ? "shutdown" : "reboot";
                 if (a.size() > 3) v += "," + a[3];
             } else {   // reboot [-p | reason]
@@ -520,100 +740,45 @@ std::string joinArgv(char* const argv[]) {
     return s;
 }
 
-// Logs a refused exec from a forked child: one write(2), no allocation.
-void writeRefusedExec(const char* tool) {
-    char buf[512];
-    const char* pre = "thimsy-shellgate: refused exec (Android-only): ";
-    size_t n = 0;
-    for (const char* p = pre; *p && n < sizeof buf - 2; p++) buf[n++] = *p;
-    for (const char* p = tool ? tool : "?"; *p && n < sizeof buf - 2; p++) buf[n++] = *p;
-    buf[n++] = '\n';
-    ssize_t r = write(2, buf, n);
-    (void)r;
-}
-
 }  // namespace
 
 // ------------------------------------------------------------------------------------- public API
 
+std::string shapeOf(const std::vector<std::string>& words) {
+    if (words.empty()) return "(no command)";
+    char buf[kShapeMax];
+    shapeInto(buf, sizeof buf, words[0].c_str(), words.size() > 1 ? words[1].c_str() : nullptr);
+    return buf;
+}
+
 Decision classifyCommand(std::string_view shellCommand) { return classifyImpl(shellCommand, 0); }
 
 void classifyExec(const char* path, char* const argv[], ExecPlan* plan) {
-    plan->action = ExecAction::Pass;
-    plan->file = nullptr;
-    plan->argv = nullptr;
-    plan->tool = nullptr;
-    if (!path || !*path) return;
-    const bool absolute = strchr(path, '/') != nullptr;
-    if (absolute && !underAndroidRoot(path)) return;   // a Linux path
-    const char* name = baseName(path);
-    const ToolRow* row = findTool(name);
-    if (absolute && !row) {
-        if (inSystemBin(path) && isPosixTool(name)) {
-            plan->action = ExecAction::PathSearch;
-            plan->file = name;
-            plan->argv = argv;
-            return;
-        }
-        if (imageHas(path)) return;
-        plan->action = ExecAction::Refuse;
-        plan->tool = path;
+    plan->action = ExecAction::Refuse;
+    plan->allow = nullptr;
+    plan->shape[0] = '\0';
+    if (!path || !*path) {
+        shapeInto(plan->shape, sizeof plan->shape, "(no program)", nullptr);
         return;
     }
-    if (!row) return;   // a bare Linux command
-    switch (row->kind) {
-        case Kind::Noop:
-            plan->action = ExecAction::Succeed;
-            return;
-        case Kind::Nsenter: {
-            // nsenter -t 1 -m -- PROGRAM ARGS: Android's way into init's mount namespace. Linux has
-            // one namespace for Nano's tools, so the program runs as it is (itself gated).
-            size_t i = 1;
-            while (argv && argv[i] && strcmp(argv[i], "--") != 0) i++;
-            if (argv && argv[i] && argv[i + 1]) {
-                char* const* tail = &argv[i + 1];
-                classifyExec(tail[0], tail, plan);
-                if (plan->action == ExecAction::Pass) {
-                    plan->action = ExecAction::PathSearch;
-                    plan->file = tail[0];
-                    plan->argv = tail;
-                }
-                return;
-            }
-            plan->action = ExecAction::Refuse;
-            plan->tool = path;
-            return;
-        }
-        case Kind::GammaosNet:
-            // gammaos-net download URL FILE: curl, which the image has.
-            if (argv && argv[1] && strcmp(argv[1], "download") == 0 && argv[2] && argv[3]) {
-                static const char* const kCurl[] = {"curl", "-fsSL", "--retry", "2", "-o"};
-                size_t n = 0;
-                for (const char* a : kCurl) plan->builtArgv[n++] = const_cast<char*>(a);
-                plan->builtArgv[n++] = argv[3];
-                plan->builtArgv[n++] = argv[2];
-                plan->builtArgv[n] = nullptr;
-                plan->action = ExecAction::Rewrite;
-                plan->file = "curl";
-                plan->argv = plan->builtArgv;
-                return;
-            }
-            plan->action = ExecAction::Refuse;
-            plan->tool = path;
-            return;
-        default:
-            // setprop and the other routes need the property store, which a forked child must not
-            // touch: refused here (Nano's exec sites never name them).
-            plan->action = ExecAction::Refuse;
-            plan->tool = path;
-            return;
+    // The exec's words: the path as the command word, then argv[1...].
+    size_t n = 1;
+    while (argv && argv[0] && argv[n]) n++;
+    const AllowRule* r = findAllowed(kViaExec, n, [&](size_t i) -> const char* { return i == 0 ? path : argv[i]; });
+    if (r) {
+        plan->action = ExecAction::Pass;
+        plan->allow = r->site;
+        return;
     }
+    shapeInto(plan->shape, sizeof plan->shape, path, argv && argv[0] ? argv[1] : nullptr);
 }
 
-void setRoot(const char* root) {
-    snprintf(gRoot, sizeof gRoot, "%s", root ? root : "");
-    size_t n = strlen(gRoot);
-    while (n > 0 && gRoot[n - 1] == '/') gRoot[--n] = '\0';
+int platformExecve(const char* path, char* const argv[], char* const envp[]) { return __real_execve(path, argv, envp); }
+
+std::vector<std::string> allowListSites() {
+    std::vector<std::string> out;
+    for (const AllowRule& r : kAllow) out.push_back(r.site);
+    return out;
 }
 
 void setRecorder(Recorder recorder) {
@@ -626,19 +791,47 @@ void setRoutes(Routes routes) {
     gRoutes = std::move(routes);
 }
 
-std::vector<std::string> refusedTools() {
+unsigned refusalCount() {
+    flushPending();
+    return __atomic_load_n(&registry()->total, __ATOMIC_SEQ_CST);
+}
+
+std::vector<std::string> refusedShapes() {
+    flushPending();
+    std::vector<std::string> out;
+    Registry* r = registry();
+    if (!lockRegistry(r)) return out;
+    for (unsigned i = 0; i < r->used && i < kSlots; i++) out.push_back(r->shapes[i]);
+    unlockRegistry(r);
+    return out;
+}
+
+std::vector<std::string> routedShapes() {
     std::lock_guard<std::mutex> l(gMu);
-    return gRefused;
+    return gRouted;
 }
 
 void resetForTests() {
-    std::lock_guard<std::mutex> l(gMu);
-    gRefused.clear();
-    gRefusedSet.clear();
-    gRecorder = nullptr;
-    gRoutes = Routes();
-    gRoot[0] = '\0';
+    {
+        std::lock_guard<std::mutex> l(gMu);
+        gRouted.clear();
+        gRoutedSet.clear();
+        gRecorder = nullptr;
+        gRoutes = Routes();
+    }
+    Registry* r = registry();
+    if (lockRegistry(r)) {
+        r->used = 0;
+        __atomic_store_n(&r->total, 0, __ATOMIC_SEQ_CST);
+        __atomic_store_n(&r->unlogged, 0, __ATOMIC_SEQ_CST);
+        r->overflow = 0;
+        memset(r->logged, 0, sizeof r->logged);
+        memset(r->shapes, 0, sizeof r->shapes);
+        unlockRegistry(r);
+    }
 }
+
+void setRegistryLockHolderForTests(int pid) { __atomic_store_n(&registry()->lock, pid, __ATOMIC_SEQ_CST); }
 
 // -------------------------------------------------------------------------------------- wrappers
 
@@ -657,6 +850,7 @@ Recorder recorder() {
 using namespace nanolinux::shellgate;
 
 extern "C" int __wrap_system(const char* command) {
+    flushPending();   // what forked children refused since the last gate call
     if (!command) return __real_system(nullptr);   // "is there a shell?"
     Decision d = classifyCommand(command);
     if (Recorder r = recorder()) {
@@ -679,12 +873,13 @@ extern "C" int __wrap_system(const char* command) {
         }
         case Verdict::Refuse:
         default:
-            noteRefused(d.tool, command);
+            noteRefused(d.shape, command);
             return waitStatusFor(127);
     }
 }
 
 extern "C" FILE* __wrap_popen(const char* command, const char* mode) {
+    flushPending();
     if (!command || !mode) return __real_popen(command, mode);
     Decision d = classifyCommand(command);
     if (Recorder r = recorder()) {
@@ -704,12 +899,13 @@ extern "C" FILE* __wrap_popen(const char* command, const char* mode) {
         }
         case Verdict::Refuse:
         default:
-            noteRefused(d.tool, command);
+            noteRefused(d.shape, command);
             return syntheticStream(mode, "", waitStatusFor(127));
     }
 }
 
 extern "C" int __wrap_pclose(FILE* stream) {
+    flushPending();
     int status = -1;
     bool mine = false;
     {
@@ -731,21 +927,12 @@ namespace {
 // What every exec wrapper does with a plan. Returns only when the exec failed or was refused.
 int runExecPlan(const ExecPlan& plan, const char* path, char* const argv[], char* const envp[],
                 int (*realExec)(const char*, char* const[], char* const[])) {
-    switch (plan.action) {
-        case ExecAction::Succeed:
-            _exit(0);
-        case ExecAction::PathSearch:
-        case ExecAction::Rewrite:
-            if (envp) return execvpe(plan.file, plan.argv, envp);
-            return __real_execvp(plan.file, plan.argv);
-        case ExecAction::Refuse:
-            writeRefusedExec(plan.tool);
-            errno = ENOENT;
-            return -1;
-        case ExecAction::Pass:
-        default:
-            return realExec(path, argv, envp);
-    }
+    if (plan.action == ExecAction::Pass) return realExec(path, argv, envp);
+    // Recorded, not logged: this is (nearly always) a forked child whose stderr may be /dev/null; the
+    // owner logs the shape (flushPending).
+    countRefusal(plan.shape, false);
+    errno = ENOENT;
+    return -1;
 }
 
 [[noreturn]] void recordExec(const Recorder& r, char* const argv[]) {
@@ -762,7 +949,7 @@ int realExecve(const char* p, char* const a[], char* const e[]) { return __real_
 }  // namespace
 
 extern "C" int __wrap_execv(const char* path, char* const argv[]) {
-    if (gRecorder) recordExec(gRecorder, argv);   // host only; never on the device
+    if (gRecorder) recordExec(gRecorder, argv);   // tests only; never on the device
     ExecPlan plan;
     classifyExec(path, argv, &plan);
     return runExecPlan(plan, path, argv, nullptr, realExecv);
