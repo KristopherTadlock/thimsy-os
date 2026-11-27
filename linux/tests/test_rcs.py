@@ -12,6 +12,7 @@ rcs_fake_tool.py), unprivileged:
   * D60firstboot makes the games partition on the boot disk only, and
     reaches the same end state after a power cut at any step;
   * S01props, S03modules and D05family (the family hook), D10cards;
+  * D50ssh, ssh-gate and thimsy-ssh-passwd (decision OA-3);
   * the post-build runner and its two parts.
 
 The scripts run with BusyBox sh when it is installed, else /bin/sh (dash on
@@ -42,6 +43,7 @@ sys.path.insert(0, str(LINUX / "tools"))
 
 import check_rcs  # noqa: E402
 import rcs_fake_tool as fake  # noqa: E402
+from sha_crypt import sha512_crypt  # noqa: E402
 
 OVERLAYS = [LINUX / "board" / "common" / "rootfs-overlay",
             LINUX / "board" / "rk3566" / "common" / "rootfs-overlay"]
@@ -138,7 +140,7 @@ class World:
     PY_TOOLS = ["sfdisk", "mkfs.exfat"]
     SH_TOOLS = ["mount", "umount", "e2fsck", "sync", "modprobe", "thimsy-prop",
                 "thimsy-padd", "amixer", "alsactl", "dd", "chown", "dropbear",
-                "dropbearkey", "dbus-daemon", "dbus-uuidgen", "bluetoothd", "flock"]
+                "dropbearkey", "tcpsvd", "dbus-daemon", "dbus-uuidgen", "bluetoothd", "flock"]
     # The trivial fakes: log the call (as rcs_fake_tool.log_call does), fail
     # without an effect after a power cut, and do the little each one does.
     SH_FAKE = r"""#!/bin/sh
@@ -230,6 +232,17 @@ exit 0
                 text = self.SH_FAKE
             write_lf(p, text)
             os.chmod(str(p), 0o755)
+        # cryptpw: logged (its arguments only: the password comes on stdin), then a real
+        # SHA-512 crypt with a fixed salt (sha_crypt.py). THIMSY_FAKE_FAIL=cryptpw: it fails.
+        shutil.copy(str(HERE / "sha_crypt.py"), str(self.bin / "sha_crypt.py"))
+        write_lf(self.bin / "cryptpw", """#!/bin/sh
+{ printf 'cryptpw\\t'; for a in "$@"; do printf '\\t%%s' "$a"; done; printf '\\n'; } >> "$THIMSY_FAKE_LOG"
+case " ${THIMSY_FAKE_FAIL:-} " in
+*" cryptpw "*) exit 1 ;;
+esac
+exec "%s" -I -S "%s" "$@"
+""" % (py, posix(self.bin / "sha_crypt.py")))
+        os.chmod(str(self.bin / "cryptpw"), 0o755)
         self.env_extra: Dict[str, str] = {}
 
     def write(self, rel: str, text: str) -> None:
@@ -892,57 +905,289 @@ class TestPropsAndFamily(WorldCase):
         self.assertEqual(self.w.read("run/thimsy/family"), "rk3566\n")
 
 
-# --- D50ssh -----------------------------------------------------------------------
+# --- D50ssh, ssh-gate, thimsy-ssh-passwd ------------------------------------------
+
+D50SSH = LINUX / "board/common/rootfs-overlay" / INITD / "deferred/D50ssh"
+GATE_REL = "usr/libexec/thimsy/ssh-gate"
+PASSWD_REL = "usr/sbin/thimsy-ssh-passwd"
+HOST_KEY = "/storage/.config/thimsy/ssh/dropbear_ed25519_host_key"
+HASH_REL = "storage/.config/thimsy/ssh/root.hash"
+SHADOW_REL = "run/thimsy/ssh/shadow"
+IMAGE_SHADOW = ("root:*:19000:0:99999:7:::\n"
+                "daemon:*:10933:0:99999:7:::\n"
+                "nobody:*:10933:0:99999:7:::\n")
+
+
+def default_hash() -> str:
+    for line in D50SSH.read_text(encoding="utf-8").splitlines():
+        if line.startswith("DEFAULT_HASH="):
+            return line.split("=", 1)[1].strip("'")
+    raise AssertionError("D50ssh has no DEFAULT_HASH")
+
+
+class TestSshStatic(unittest.TestCase):
+    """OA-3 on the image: the BusyBox applets, no key-only -s, the default password's hash."""
+
+    def test_default_hash_is_thimsy(self) -> None:
+        h = default_hash()
+        self.assertTrue(h.startswith("$6$"), h)
+        self.assertEqual(sha512_crypt("thimsy", h), h)
+        # the password's text is in comments only, never in code
+        for f in (D50SSH, LINUX / "board/common/rootfs-overlay" / PASSWD_REL,
+                  LINUX / "board/common/rootfs-overlay" / GATE_REL):
+            for line in f.read_text(encoding="utf-8").splitlines():
+                code, _ = check_rcs.split_comment(line)
+                self.assertNotRegex(code, r"""(?:^|[\s'"=])thimsy(?:$|[\s'"])""", f)
+
+    def test_sha512_crypt_matches_the_specification(self) -> None:
+        # Drepper's own test vectors.
+        self.assertEqual(
+            sha512_crypt("Hello world!", "$6$saltstring"),
+            "$6$saltstring$svn8UoSVapNtMuq1ukKS4tPQd8iKwSMHWjl/O817G3uBnIFNjnQJuesI68u4OTLi"
+            "BFdcbYEdFCoEOfaS35inz1")
+        self.assertEqual(
+            sha512_crypt("Hello world!", "$6$rounds=10000$saltstringsaltstring"),
+            "$6$rounds=10000$saltstringsaltst$OW1/O6BYHV6BcXZu8QVeXbDWra3Oeqh0sbHbbMCVNSnCM/"
+            "UrjmM0Dp8vOuZeHBy/YTBmSK6H9qs/y3RnOaw5v.")
+
+    def test_dropbear_never_key_only(self) -> None:
+        """OA-3 drops -s: password logins work in every build."""
+        for line in D50SSH.read_text(encoding="utf-8").splitlines():
+            code, _ = check_rcs.split_comment(line)
+            if "$DROPBEAR" in code:
+                self.assertNotRegex(code, r"(?:^|\s)-[a-zA-Z]*s\b", code)
+                self.assertNotIn("opts", code)
+
+    def test_busybox_applets(self) -> None:
+        bb = (LINUX / "board/common/busybox.fragment").read_text(encoding="utf-8")
+        for opt in ("CONFIG_TCPSVD=y", "CONFIG_FEATURE_IPV6=y", "CONFIG_CRYPTPW=y",
+                    "CONFIG_USE_BB_CRYPT=y", "CONFIG_USE_BB_CRYPT_SHA=y", "CONFIG_STTY=y",
+                    "CONFIG_MV=y", "CONFIG_FLOCK=y"):
+            self.assertIn(opt, bb.splitlines())
+
+    def test_helpers_checked_and_made_executable(self) -> None:
+        self.assertEqual(sorted(check_rcs.HELPERS),
+                         sorted("board/common/rootfs-overlay/" + r for r in (GATE_REL, PASSWD_REL)))
+        perms = (LINUX / "board/common/post-build.d/30-permissions.sh").read_text(encoding="utf-8")
+        for r in (GATE_REL, PASSWD_REL):
+            self.assertIn('"$target"/' + r, perms)
+        self.assertIn("tcpsvd", check_rcs.FORBIDDEN_SYNC)
+        self.assertIn("TCPSVD", check_rcs.FORBIDDEN_SYNC_VARS)
+
+    def test_dropbear_in_every_image(self) -> None:
+        user = (LINUX / "configs/fragments/userland.fragment").read_text(encoding="utf-8")
+        self.assertIn("BR2_PACKAGE_DROPBEAR=y", user.splitlines())
+
 
 @needs_sh
 class TestD50Ssh(WorldCase):
-    """gfix2: SSH follows ro.thimsy.build.type alone (the Config.in options are gone): dev
-    images start dropbear by default and accept passwords; release images start it only when
-    persist.thimsy.ssh.enabled=1, and then key-only (-s)."""
+    """OA-3: SSH follows ro.thimsy.build.type and persist.thimsy.ssh.enabled (dev on, release off
+    by default); tcpsvd runs dropbear -i per connection, behind ssh-gate unless
+    persist.thimsy.ssh.any_network=1; while it runs, /etc/shadow is bound from a copy with root's
+    hash (ssh/root.hash, else "thimsy")."""
 
     D50 = INITD + "/deferred/D50ssh"
 
-    def start(self, build_type: Optional[str], ssh: Optional[str]) -> List[List[str]]:
+    def setUp(self) -> None:
+        super().setUp()
+        self.w.write("etc/shadow", IMAGE_SHADOW)
+        (self.w.root / "run/thimsy/log").mkdir(parents=True, exist_ok=True)
+        self.dropbear = posix(self.w.bin / "dropbear")
+
+    def props(self, **keys: Optional[str]) -> None:
+        lines = ["persist.thimsy.ssh.%s=%s\n" % (k, v) for k, v in keys.items() if v is not None]
+        p = self.w.root / "storage/.config/thimsy/persist.props"
+        if lines:
+            self.w.write("storage/.config/thimsy/persist.props", "".join(lines))
+        elif p.exists():
+            p.unlink()
+
+    def build(self, build_type: Optional[str]) -> None:
         p = self.w.root / "usr/share/thimsy/build.props"
         if build_type is None:
             if p.exists():
                 p.unlink()
         else:
             self.w.write("usr/share/thimsy/build.props", "ro.thimsy.build.type=%s\n" % build_type)
-        props = self.w.root / "storage/.config/thimsy/persist.props"
-        if ssh is None:
-            if props.exists():
-                props.unlink()
-        else:
-            self.w.write("storage/.config/thimsy/persist.props",
-                         "persist.thimsy.ssh.enabled=%s\n" % ssh)
+
+    def start(self, build_type: Optional[str], ssh: Optional[str],
+              any_network: Optional[str] = None) -> List[List[str]]:
+        self.build(build_type)
+        self.props(enabled=ssh, any_network=any_network)
         self.w.clear_calls()
         self.w.run(self.D50, "start")
-        return [c["args"] for c in self.w.calls() if c["tool"] == "dropbear"]
+        return [c["args"] for c in self.w.calls() if c["tool"] == "tcpsvd"]
+
+    def lan(self, addr: str = "0.0.0.0") -> List[str]:
+        return ["-c", "10", addr, "22", "/" + GATE_REL, self.dropbear, "-i", "-r", HOST_KEY]
+
+    def shadow(self) -> str:
+        return self.w.read(SHADOW_REL)
 
     def test_policy(self) -> None:
-        key = "/storage/.config/thimsy/ssh/dropbear_ed25519_host_key"
-        pid = "/run/dropbear.pid"
-        for build_type, ssh, want in (
-                ("dev", None, [["-r", key, "-P", pid]]),
-                ("dev", "1", [["-r", key, "-P", pid]]),
-                ("dev", "0", []),
-                ("release", None, []),
-                ("release", "0", []),
-                ("release", "1", [["-r", key, "-P", pid, "-s"]]),
-                (None, None, []),                       # no build.props: as release
-                (None, "1", [["-r", key, "-P", pid, "-s"]])):
+        for build_type, ssh, on in (
+                ("dev", None, True),
+                ("dev", "1", True),
+                ("dev", "0", False),
+                ("release", None, False),
+                ("release", "0", False),
+                ("release", "1", True),
+                (None, None, False),                    # no build.props: as release
+                (None, "1", True)):
             with self.subTest(build_type=build_type, ssh=ssh):
-                self.assertEqual(self.start(build_type, ssh), want)
+                self.assertEqual(self.start(build_type, ssh), [self.lan()] if on else [])
+                if not on:
+                    self.assertEqual([c for c in self.w.calls() if c["tool"] == "mount"], [])
+
+    def test_lan_only_unless_any_network(self) -> None:
+        for any_network, want in ((None, self.lan()), ("0", self.lan()),
+                                  ("1", ["-c", "10", "0.0.0.0", "22", self.dropbear, "-i", "-r",
+                                         HOST_KEY])):
+            with self.subTest(any_network=any_network):
+                self.assertEqual(self.start("release", "1", any_network), [want])
+                self.assertIn("%s network" % ("any" if any_network == "1" else "lan"),
+                              self.w.boot_log())
+
+    def test_listens_on_ipv6_when_the_kernel_has_it(self) -> None:
+        self.w.write("proc/net/if_inet6", "00000000000000000000000000000001 01 80 10 80 lo\n")
+        self.assertEqual(self.start("dev", None), [self.lan("::")])
+
+    def test_never_key_only(self) -> None:
+        for build_type in ("dev", "release"):
+            with self.subTest(build_type=build_type):
+                for args in self.start(build_type, "1"):
+                    self.assertNotIn("-s", args)
+
+    def test_default_password_in_the_bound_shadow(self) -> None:
+        self.start("release", "1")
+        lines = self.shadow().splitlines()
+        self.assertEqual(lines[0], "root:%s:19000:0:99999:7:::" % default_hash())
+        self.assertEqual(lines[1:], IMAGE_SHADOW.splitlines()[1:])
+        binds = [c["args"] for c in self.w.calls() if c["tool"] == "mount" and "--bind" in c["args"]]
+        self.assertIn(["--bind", "/" + SHADOW_REL, "/etc/shadow"], binds)
+        # the image's own file is never written
+        self.assertEqual(self.w.read("etc/shadow"), IMAGE_SHADOW)
+        if os.name != "nt":
+            self.assertEqual((self.w.root / SHADOW_REL).stat().st_mode & 0o777, 0o600)
+            self.assertEqual((self.w.root / "run/thimsy/ssh").stat().st_mode & 0o777, 0o700)
+
+    def test_users_hash_from_the_data_partition(self) -> None:
+        h = sha512_crypt("correct horse", "$6$usersalt")
+        self.w.write(HASH_REL, h + "\n")
+        self.start("release", "1")
+        self.assertEqual(self.shadow().splitlines()[0], "root:%s:19000:0:99999:7:::" % h)
+        self.assertNotIn("correct horse", self.shadow())
+
+    def test_a_bad_hash_locks_the_password(self) -> None:
+        for text in ("not a hash\n", "$6$salt$abc:0:0\n", "", "$6$\n", "plain$6$x$y\n"):
+            with self.subTest(text=text):
+                self.w.write(HASH_REL, text)
+                self.w.write("dev/kmsg", "")
+                self.start("release", "1")
+                self.assertEqual(self.shadow().splitlines()[0], "root:*:19000:0:99999:7:::")
+                self.assertIn("password logins are off", self.w.read("dev/kmsg"))
+
+    @needs_links
+    def test_a_hash_file_that_is_a_link_locks_the_password(self) -> None:
+        target = self.w.root / "storage/emulated/0/hash"
+        target.parent.mkdir(parents=True)
+        target.write_text(sha512_crypt("x", "$6$s") + "\n", encoding="utf-8")
+        (self.w.root / HASH_REL).parent.mkdir(parents=True, exist_ok=True)
+        os.symlink(str(target), str(self.w.root / HASH_REL))
+        self.start("release", "1")
+        self.assertEqual(self.shadow().splitlines()[0], "root:*:19000:0:99999:7:::")
+        self.assertIn("is a link", self.w.read("dev/kmsg"))
+
+    def test_a_shadow_without_root_gets_one(self) -> None:
+        self.w.write("etc/shadow", "nobody:*:10933:0:99999:7:::")  # and no final newline
+        self.start("dev", None)
+        self.assertEqual(self.shadow(), "nobody:*:10933:0:99999:7:::\nroot:%s::0:99999:7:::\n"
+                         % default_hash())
+
+    def test_shadow_already_bound_is_rewritten_not_bound_again(self) -> None:
+        self.w.write("proc/mounts", "/dev/root / erofs ro 0 0\n"
+                     "tmpfs /etc/shadow tmpfs rw 0 0\n")
+        self.start("release", "1")
+        self.assertEqual([c for c in self.w.calls() if c["tool"] == "mount"
+                          and "/etc/shadow" in c["args"]], [])
+        self.assertTrue(self.shadow().startswith("root:" + default_hash() + ":"))
+
+    def test_roots_home_bound_when_turned_on_after_boot(self) -> None:
+        """A release build with SSH off at boot left /root unbound; turning SSH on binds it, so
+        authorized_keys works."""
+        self.start("release", "1")
+        binds = [c["args"][-2:] for c in self.w.calls() if c["tool"] == "mount"
+                 and "--bind" in c["args"]]
+        self.assertIn(["/storage/.config/thimsy/home/root", "/root"], binds)
+        self.w.write("proc/mounts", "/dev/root / erofs ro 0 0\n"
+                     "/dev/mmcblk1p4 /root ext4 rw 0 0\n")
+        self.start("release", "1")
+        binds = [c["args"][-1] for c in self.w.calls() if c["tool"] == "mount"
+                 and "--bind" in c["args"]]
+        self.assertNotIn("/root", binds)
 
     def test_host_key_made_once(self) -> None:
         self.start("dev", None)
         keys = [c for c in self.w.calls() if c["tool"] == "dropbearkey"]
         self.assertEqual(len(keys), 1)
-        self.assertTrue((self.w.root / "storage/.config/thimsy/ssh/dropbear_ed25519_host_key")
-                        .is_file())
+        self.assertTrue((self.w.root / HOST_KEY.lstrip("/")).is_file())
         self.start("dev", None)
         self.assertEqual([c for c in self.w.calls() if c["tool"] == "dropbearkey"], [])
+
+    def test_without_tcpsvd(self) -> None:
+        if shutil.which("tcpsvd"):
+            self.skipTest("this host has a tcpsvd on PATH")
+        (self.w.bin / "tcpsvd").unlink()
+        self.build("dev")
+        self.props()
+        r = self.w.run(self.D50, "start", check=False)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("tcpsvd is not on this image", self.w.read("dev/kmsg"))
+
+    def test_stop_unbinds_the_shadow(self) -> None:
+        self.start("release", "1")
+        self.assertTrue((self.w.root / SHADOW_REL).exists())
+        self.w.write("proc/mounts", "/dev/root / erofs ro 0 0\n"
+                     "tmpfs /etc/shadow tmpfs rw 0 0\n")
+        self.w.clear_calls()
+        self.w.run(self.D50, "stop")
+        self.assertEqual([c["args"] for c in self.w.calls() if c["tool"] == "umount"],
+                         [["/etc/shadow"]])
+        self.assertFalse((self.w.root / SHADOW_REL).exists())
+
+    def test_stop_without_a_start(self) -> None:
+        self.w.run(self.D50, "stop")
+        self.assertEqual([c for c in self.w.calls() if c["tool"] in ("umount", "tcpsvd")], [])
+
+    @unittest.skipUnless(os.name == "posix", "the shell's kill needs the processes' own pids")
+    def test_stop_ends_tcpsvd_and_start_does_not_double_it(self) -> None:
+        log = self.w.root / "term.log"
+        script = 'trap \'echo tcpsvd >> "%s"; exit 0\' TERM; while :; do sleep 0.05; done' % (
+            posix(log))
+        proc = subprocess.Popen(SH + ["-c", script])
+        try:
+            time.sleep(0.3)
+            self.w.write("run/thimsy/ssh/tcpsvd.pid", "%d\n" % proc.pid)
+            self.w.write("proc/%d/comm" % proc.pid, "tcpsvd\n")
+            self.assertEqual(self.start("dev", None), [])
+            self.w.run(self.D50, "stop")
+            proc.wait(timeout=10)
+            self.assertEqual(log.read_text(encoding="utf-8").split(), ["tcpsvd"])
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+
+    def test_password_action(self) -> None:
+        h = sha512_crypt("new one", "$6$s2")
+        # SSH off (no shadow bound): nothing is written.
+        self.w.write(HASH_REL, h + "\n")
+        self.w.run(self.D50, "password")
+        self.assertFalse((self.w.root / SHADOW_REL).exists())
+        # SSH on: the bound copy is rewritten in place.
+        self.w.write("proc/mounts", "/dev/root / erofs ro 0 0\n"
+                     "tmpfs /etc/shadow tmpfs rw 0 0\n")
+        self.w.run(self.D50, "password")
+        self.assertEqual(self.shadow().splitlines()[0], "root:%s:19000:0:99999:7:::" % h)
 
     def test_no_build_option_left(self) -> None:
         cfg = (LINUX / "package/thimsy-session/Config.in").read_text(encoding="utf-8")
@@ -951,6 +1196,132 @@ class TestD50Ssh(WorldCase):
             for frag in (LINUX / "configs").rglob("*"):
                 if frag.is_file():
                     self.assertNotIn(sym, frag.read_text(encoding="utf-8"), frag)
+
+
+@needs_sh
+class TestSshGate(WorldCase):
+    """ssh-gate runs its program only for a peer on the local network (OA-3's ranges)."""
+
+    ALLOWED = [
+        "10.1.2.3:51000", "10.255.255.255:1", "172.16.0.1:2", "172.20.1.1:2", "172.31.255.255:2",
+        "192.168.1.20:40000", "169.254.3.4:1", "127.0.0.1:5",
+        "[::1]:22", "[fd12:3456::1]:22", "[fc00::1]:22", "[fdff:ffff::9]:22",
+        "[fe80::1%wlan0]:22", "[FE80::ABCD%wlan0]:22", "[febf::1]:22",
+        "[::ffff:192.168.0.5]:22", "[::ffff:10.0.0.7]:22",
+    ]
+    REFUSED = [
+        "8.8.8.8:53", "1.10.0.1:1", "100.64.0.1:1", "11.0.0.1:1", "172.15.255.255:1",
+        "172.32.0.1:1", "192.169.0.1:1", "192.16.8.1:1", "169.255.0.1:1", "0.0.0.0:1",
+        "[2001:db8::1]:22", "[2a00:1450::5]:22", "[fec0::1]:22", "[fe7f::1]:22", "[fb00::1]:22",
+        "[fc::1]:22", "[fe8::1]:22", "[::]:22", "[::ffff:8.8.8.8]:22", "[::2]:22",
+        "10.0.0.1", "", "garbage", "[10.0.0.1]",
+    ]
+
+    def gate(self, addr: Optional[str]) -> bool:
+        env = {"TCPREMOTEADDR": addr} if addr is not None else {}
+        e = self.w._env(env)
+        if addr is None:
+            e.pop("TCPREMOTEADDR", None)
+        self.w.clear_calls()
+        r = subprocess.run(SH + [posix(self.w.root / GATE_REL), posix(self.w.bin / "dropbear"),
+                                 "-i", "-r", "KEY"], env=e, stdout=subprocess.PIPE,
+                           stderr=subprocess.PIPE, timeout=60)
+        ran = [c["args"] for c in self.w.calls() if c["tool"] == "dropbear"]
+        if ran:
+            self.assertEqual(r.returncode, 0)
+            self.assertEqual(ran, [["-i", "-r", "KEY"]])
+            return True
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.assertEqual(r.stdout, b"")  # nothing said to the peer
+        return False
+
+    def test_allowed(self) -> None:
+        for addr in self.ALLOWED:
+            with self.subTest(addr=addr):
+                self.assertTrue(self.gate(addr))
+
+    def test_refused(self) -> None:
+        for addr in self.REFUSED + [None]:
+            with self.subTest(addr=addr):
+                self.assertFalse(self.gate(addr))
+
+    def test_no_program(self) -> None:
+        r = subprocess.run(SH + [posix(self.w.root / GATE_REL)],
+                           env=self.w._env({"TCPREMOTEADDR": "10.0.0.1:1"}),
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
+        self.assertEqual(r.returncode, 2)
+
+
+@needs_sh
+class TestSshPasswd(WorldCase):
+    """thimsy-ssh-passwd keeps only a hash, 0600, on the data partition; --default removes it;
+    SSH takes it at once when it runs."""
+
+    def passwd(self, *args: str, stdin: bytes = b"", env: Optional[Dict[str, str]] = None,
+               check: bool = True) -> subprocess.CompletedProcess:
+        self.w.clear_calls()
+        r = subprocess.run(SH + [posix(self.w.root / PASSWD_REL)] + list(args),
+                           env=self.w._env(env), input=stdin, stdout=subprocess.PIPE,
+                           stderr=subprocess.PIPE, timeout=60)
+        if check and r.returncode != 0:
+            raise AssertionError("exit %d: %s" % (r.returncode, r.stderr.decode(errors="replace")))
+        return r
+
+    def stored(self) -> str:
+        return self.w.read(HASH_REL)
+
+    def test_sets_a_hash_never_the_text(self) -> None:
+        self.passwd("--stdin", stdin=b"s3cret pass\n")
+        self.assertEqual(self.stored(), sha512_crypt("s3cret pass", "$6$FakeSalt") + "\n")
+        self.assertEqual([c["args"] for c in self.w.calls() if c["tool"] == "cryptpw"],
+                         [["-m", "sha512"]])
+        self.assertNotIn("s3cret", self.w.log.read_text(encoding="utf-8"))
+        for f in (self.w.root / "storage").rglob("*"):
+            if f.is_file():
+                self.assertNotIn(b"s3cret", f.read_bytes(), f)
+        self.assertFalse((self.w.root / (HASH_REL + ".new")).exists())
+        if os.name != "nt":
+            self.assertEqual((self.w.root / HASH_REL).stat().st_mode & 0o777, 0o600)
+            self.assertEqual((self.w.root / HASH_REL).parent.stat().st_mode & 0o777, 0o700)
+
+    def test_last_line_without_newline(self) -> None:
+        self.passwd("--stdin", stdin=b"no newline")
+        self.assertEqual(self.stored(), sha512_crypt("no newline", "$6$FakeSalt") + "\n")
+
+    def test_default_removes_the_hash(self) -> None:
+        self.passwd("--stdin", stdin=b"abc\n")
+        self.passwd("--default")
+        self.assertFalse((self.w.root / HASH_REL).exists())
+        self.passwd("--default")  # again: nothing to remove
+
+    def test_refusals_change_nothing(self) -> None:
+        self.passwd("--stdin", stdin=b"first\n")
+        old = self.stored()
+        for args, stdin, env in ((["--stdin"], b"\n", None),
+                                 (["--stdin"], b"", None),
+                                 ([], b"typed\n", None),          # not a terminal
+                                 (["--stdin"], b"x\n", {"THIMSY_FAKE_FAIL": "cryptpw"}),
+                                 (["--bogus"], b"", None),
+                                 (["--stdin", "extra"], b"y\n", None)):
+            with self.subTest(args=args, stdin=stdin, env=env):
+                r = self.passwd(*args, stdin=stdin, env=env, check=False)
+                self.assertNotEqual(r.returncode, 0)
+                self.assertEqual(self.stored(), old)
+
+    def test_running_ssh_takes_it_at_once(self) -> None:
+        self.w.write("etc/shadow", IMAGE_SHADOW)
+        self.w.write("proc/mounts", "/dev/root / erofs ro 0 0\n"
+                     "tmpfs /etc/shadow tmpfs rw 0 0\n")
+        self.passwd("--stdin", stdin=b"swordfish\n")
+        self.assertEqual(self.w.read(SHADOW_REL).splitlines()[0],
+                         "root:%s:19000:0:99999:7:::" % sha512_crypt("swordfish", "$6$FakeSalt"))
+        self.passwd("--default")
+        self.assertEqual(self.w.read(SHADOW_REL).splitlines()[0],
+                         "root:%s:19000:0:99999:7:::" % default_hash())
+
+    def test_ssh_off_writes_no_shadow(self) -> None:
+        self.passwd("--stdin", stdin=b"swordfish\n")
+        self.assertFalse((self.w.root / SHADOW_REL).exists())
 
 
 class TestD20Sound(WorldCase):

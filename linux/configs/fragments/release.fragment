@@ -1,10 +1,12 @@
 # Release images, the only ones that may be published (decisions D16 and I37):
-# no adbd, no serial getty, SSH off until the user turns it on and then
-# key-only (D50ssh, by ro.thimsy.build.type=release, which the locked root
-# login and the missing getty make), the root password locked. Most of these
-# restate common.fragment's
-# defaults so that the policy is visible in one place; tools/defconfig.py
-# --check enforces it on every target marked "publish": true.
+# no adbd, no serial getty, SSH off until the user turns it on (D50ssh, by
+# ro.thimsy.build.type=release, which the locked root login and the missing
+# getty make), the root password locked in the root's /etc/shadow. While
+# SSH runs, D50ssh binds a copy over it with root's SSH password, "thimsy"
+# or the user's (decision OA-3); there is still no getty. Most of these
+# restate common.fragment's defaults so that the policy is visible in one
+# place; tools/defconfig.py --check enforces it on every target marked
+# "publish": true.
 BR2_THIMSY_FLAVOUR_RELEASE=y
 # BR2_TARGET_ENABLE_ROOT_LOGIN is not set
 # BR2_PACKAGE_ANDROID_TOOLS is not set

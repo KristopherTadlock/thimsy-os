@@ -113,9 +113,10 @@ first_boot_tree() {
 # /root is an empty 0700 directory of the read-only root. Root's home is
 # bound over it from the data partition (ext4, so its modes hold; never the
 # games exFAT) only where something can log in as root: dev builds, and
-# release builds once the user has turned SSH on (D50ssh: key-only). A
-# release build with SSH off has no root login at all, so it keeps the empty
-# read-only /root and nothing on the card can plant keys or a profile there.
+# release builds once the user has turned SSH on (D50ssh; "S00base home"
+# binds it when SSH is turned on after boot). A release build with SSH off
+# has no root login at all, so it keeps the empty read-only /root and
+# nothing on the card can plant keys or a profile there.
 # The modes and owner are set again at every boot, not only by the first-boot
 # tree, and a home that is a link is not followed: dropbear refuses keys that
 # others can write, and the card can be edited on a PC.
@@ -156,9 +157,14 @@ start)
 	bind_home || thimsy_warn $TAG "/root is not bound to /storage: root's home is read-only"
 	thimsy_mark s00-done
 	;;
+home)
+	# D50ssh, when SSH is turned on after boot.
+	read_mounts
+	bind_home || thimsy_warn $TAG "/root is not bound to /storage: root's home is read-only"
+	;;
 stop) ;;
 *)
-	echo "usage: $0 start" >&2
+	echo "usage: $0 start|home" >&2
 	exit 2
 	;;
 esac

@@ -23,11 +23,13 @@ linux/board/common/rootfs-overlay/
   etc/init.d/deferred/D30net       loopback, host name, Wi-Fi if it was on
   etc/init.d/deferred/D35bluetooth D-Bus and bluetoothd, if the device has Bluetooth and it was on
   etc/init.d/deferred/D40time      BusyBox ntpd
-  etc/init.d/deferred/D50ssh       dropbear (dev images; release: opt-in, keys only)
+  etc/init.d/deferred/D50ssh       SSH: tcpsvd and dropbear (dev images; release: opt-in)
   etc/init.d/deferred/D60firstboot the games partition on the boot disk
   etc/init.d/rcK                   shutdown
   etc/thimsy/init.conf             tunables (shell assignments)
   usr/share/thimsy/init/lib.sh     the library every script sources
+  usr/libexec/thimsy/ssh-gate      D50ssh's local-network check, per connection
+  usr/sbin/thimsy-ssh-passwd       sets root's SSH password (its hash)
 linux/board/rk3566/common/
   rootfs-overlay/usr/share/thimsy/family/rk3566/hook
   README.md                        governors, sleep, ALSA notes
@@ -120,7 +122,7 @@ repeats it. Existing files are never removed.
     system/ local/tmp/ (1777) data/ misc/ gammaos_ota/
     user/0 -> ../data   (as on Android: /data/user/0 is /data/data)
     media/0 -> /storage/emulated/0
-  ssh/ (0700)           dropbear's host key
+  ssh/ (0700)           dropbear's host key; root.hash, the SSH password's hash (below)
   home/root/.ssh/       root's home: bind-mounted on /root by S00base (below)
   localtime -> /usr/share/zoneinfo/Etc/UTC   (/etc/localtime links here; Nano rewrites it)
 /storage/.config/retroarch/
@@ -136,9 +138,10 @@ A later release that needs more bumps the stamp to `.tree-v2`.
 `/root` in the read-only root is an empty 0700 directory. `S00base` binds
 `/storage/.config/thimsy/home/root` over it only where something can log in
 as root: dev builds (`ro.thimsy.build.type=dev`), and release builds once
-the user has turned SSH on (`persist.thimsy.ssh.enabled=1`; dropbear then
-runs key-only). A release build with SSH off has no root login at all and
-keeps the empty `/root`. The home is on the data partition (ext4, so Unix
+the user has turned SSH on (`persist.thimsy.ssh.enabled=1`; when that
+happens after boot, D50ssh runs `S00base home`, which binds it then). A
+release build with SSH off has no root login at all and keeps the empty
+`/root`. The home is on the data partition (ext4, so Unix
 modes hold), never on the games exFAT. At every boot, before binding, S00base
 refuses a `home`, `home/root`, `.ssh` or `authorized_keys` that is a
 symbolic link (it warns and leaves `/root` unbound), and sets owner 0:0 and
@@ -195,8 +198,74 @@ from `device.json`'s `family` and `modules` (the latter space-separated;
 | `D30net` | `lo` up; host name; if Wi-Fi was on: `wpa_supplicant -B` on the first `wlan*` (waited for up to 5 s; control socket `/run/wpa_supplicant`, config `/storage/.config/thimsy/wpa_supplicant.conf`, seeded 0600), `udhcpc -f -T 1 -A 2` in a background job. Stop (rcK, and Nano's Wi-Fi off): TERM `udhcpc`, then `wpa_supplicant`. Nano's Wi-Fi switch sets the key and runs this script (start or stop) on its actions worker, through the same runner as `D35bluetooth` (a session of its own, none of Nano's descriptors); its Wi-Fi screens then talk to `wpa_supplicant`'s control socket | `persist.thimsy.wifi.enabled=1` |
 | `D35bluetooth` | only when device.json says `"bluetooth": true` (`ro.thimsy.device.bluetooth`) and Bluetooth was on: waits up to 5 s (`THIMSY_BT_WAIT_S`) for a controller (`/sys/class/bluetooth/hci*`); `/storage/.config/thimsy/bluetooth` (0700, where `/var/lib/bluetooth` links: pairings survive); `dbus-uuidgen --ensure`, `dbus-daemon --system --nofork` in a background job (waits up to 3 s for `/run/dbus/system_bus_socket`), then `bluetoothd -n` in a background job, pids in `/run/dbus-daemon.pid` and `/run/bluetoothd.pid`. Without `/sys/class/bluetooth` (no Bluetooth in the kernel; S03modules has loaded every module by then) it does not wait. Exit 3 when it was on and the device has no Bluetooth (device.json, the kernel, or no controller): Nano then writes the key back to 0, so later boots neither wait nor warn; exit 1 when a daemon could not start. Stop (rcK, and Nano's Bluetooth off): TERM `bluetoothd`, then the bus, each waited for up to 2 s, then KILL. A pidfile is trusted only while its pid runs and is that daemon (`/proc/PID/comm` is `bluetoothd` or `dbus-daemon`; start waits up to 1 s for `bluetoothd` to exec): one left by a daemon that died is removed, and the process that has its pid now is neither signalled nor taken for the daemon. One start or stop at a time: each holds `/run/thimsy/bluetooth.lock` (BusyBox `flock` on fd 9; the daemons start without fd 9), and start reads the key again once it holds it, so rcD's boot start and Nano's switch cannot interleave. Nano's Bluetooth switch (the legacy screen's `setBluetoothEnabled` on the actions worker, and the PS3 wizard's Turn On/Off through `Network::setBtRadio` on its own thread) sets the key and runs this script (start, then `bluetoothctl power on`, tried up to 5 times 500 ms apart while it fails at once, as bluetoothd may not have registered the controller yet; `power off`, then stop). Nano runs no `bluetoothctl` for its state unless the key is 1, the device has Bluetooth and the bus socket is there. Nano's runner starts it in a session of its own with none of Nano's descriptors above stderr, so the daemons are not in Nano's process group and hold none of its evdev fds | `persist.thimsy.bluetooth.enabled=1` (off by default) |
 | `D40time` | `ntpd -n -p ...` in the background (it retries until the network is up) | `persist.thimsy.time.ntp=0` turns it off |
-| `D50ssh` | `dropbear -r <host key on /storage>`; dev images by default; release images only when turned on, and then `-s` (no passwords) | `persist.thimsy.ssh.enabled` |
+| `D50ssh` | `tcpsvd -c 10 <::, or 0.0.0.0 without IPv6> 22 ssh-gate dropbear -i -r <host key on /storage>` in a background job; dev images by default, release images only when turned on; passwords and keys (below) | `persist.thimsy.ssh.enabled` (dev 1, release 0), `persist.thimsy.ssh.any_network` (0) |
 | `D60firstboot` | the games partition, below | |
+
+## SSH (decision OA-3)
+
+As on other handheld firmware: SSH is a switch, root logs in with the
+password `thimsy` until the user sets another, keys keep working, and only
+the local network can connect unless the user allows any network.
+
+The settings, for D50ssh now and Nano's settings later:
+
+| What | Where | Values |
+|---|---|---|
+| SSH on | `persist.thimsy.ssh.enabled` in `persist.props` | `1` or `0`; unset: `1` on dev images, `0` on release images |
+| Any network | `persist.thimsy.ssh.any_network` in `persist.props` | `1` allows every address; unset or `0`: local network only |
+| Root's password | `/storage/.config/thimsy/ssh/root.hash`, 0600 | one line, a crypt(3) hash (`$6$...`); no file: the default `thimsy` |
+
+`/storage/.config` is on the boot card's ext4 partition named `data`
+(mounted at `/storage` by S00base), which updates do not rewrite, so the
+switch, the hash, the host key and root's `authorized_keys` survive them.
+D50ssh reads the switches when it starts: a change takes effect with
+`D50ssh stop` then `start` (Nano's switch will do that). Sessions already
+open stay open on stop.
+
+**Password.** The text is never stored. `/etc/shadow` on the read-only root
+keeps the image's root entry (locked on release images, empty on dev
+images). While SSH runs, D50ssh writes `/run/thimsy/ssh/shadow` (0600, in a
+0700 directory): the image's shadow with root's hash replaced by
+`root.hash`'s, or by the hash of `thimsy` built into D50ssh, and binds it
+over `/etc/shadow`; `stop` unbinds it. A `root.hash` that is a link, or
+holds anything but a crypt(3) hash (`$id$...` in `[A-Za-z0-9./$=]`), locks
+the password (`*`) with a warning: keys still work. dropbear runs without
+`-s`, so password logins work on every image; release images still run no
+getty, so the password is in practice an SSH login only.
+
+`thimsy-ssh-passwd` sets it until Nano has the setting:
+
+```
+thimsy-ssh-passwd            asks twice on the terminal, without echo
+thimsy-ssh-passwd --stdin    one line from stdin (for programs; never a command-line argument)
+thimsy-ssh-passwd --default  removes root.hash: back to thimsy
+```
+
+It hashes with BusyBox `cryptpw -m sha512` (the password on a pipe), writes
+`root.hash.new` 0600, syncs, renames it over `root.hash` and syncs, then runs
+`D50ssh password`, which rewrites the bound shadow in place if SSH runs. An
+empty password, two different answers, or a `cryptpw` failure change
+nothing.
+
+**Local network only.** dropbear has no address list, so D50ssh runs it in
+inetd mode under BusyBox `tcpsvd`, which starts `ssh-gate dropbear -i ...`
+for each connection with the peer in `TCPREMOTEADDR`. The gate runs dropbear
+only for 10/8, 172.16/12, 192.168/16, 169.254/16, 127/8, fc00::/7, fe80::/10
+(any `%interface` dropped), `::1`, and IPv4 peers in IPv6 form
+(`::ffff:a.b.c.d`); anything else, or no address, gets the connection closed
+with nothing sent. With `any_network=1` tcpsvd runs dropbear directly. This
+needs no netfilter in the kernel or `nft`/`iptables` in the image, and fails
+closed. A peer on the same network that reaches the device's global IPv6
+address comes from a global address too, and is refused unless any network
+is allowed. tcpsvd serves at most 10 connections at once (`-c 10`).
+
+D50ssh starts, stops and changes the password one at a time, under
+`/run/thimsy/ssh.lock` (`flock` on fd 9); tcpsvd's pid is in
+`/run/thimsy/ssh/tcpsvd.pid`, trusted only while `/proc/PID/comm` is
+`tcpsvd`. A start while tcpsvd runs does nothing.
+
+The residual risk OA-3 accepts: while SSH is on with the default password,
+anyone on the same local network can log in as root.
 
 ## The games partition (E.6, decisions I39 and I44)
 
@@ -329,4 +398,8 @@ Nothing here has run on a device or in QEMU. In particular: that `sfdisk
 pinned util-linux; that `PARTUUID=` appears in partition uevents on the
 pinned kernel (only the fallback after the mounted root needs it); the
 RK817 control names; the time `rcS` takes. The QEMU boot test (E.9) is the
-first check.
+first check. For SSH: BusyBox's `TCPREMOTEADDR` format (`[v6]:port`, with
+`%interface` on link-local peers), dropbear's inetd mode and password logins
+in Buildroot's recipe, and `cryptpw -m sha512` reading the password from a
+pipe are written from memory of their sources (guess), not checked against
+the pinned versions or run.

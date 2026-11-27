@@ -20,8 +20,12 @@ BR2_PACKAGE_WPA_SUPPLICANT_NL80211=y
 BR2_PACKAGE_WPA_SUPPLICANT_CTRL_IFACE=y
 BR2_PACKAGE_WPA_SUPPLICANT_WPA3=y
 BR2_PACKAGE_WIRELESS_REGDB=y
-# SSH: present, started by thimsy-session's D50ssh only when the user turns it
-# on (or at boot on dev images), key-only unless dev.fragment allows passwords.
+# SSH: present, started by D50ssh only when the user turns it on (or at boot
+# on dev images): dropbear in inetd mode ("dropbear -i") behind BusyBox
+# tcpsvd and ssh-gate (local network only by default), root's password
+# "thimsy" or the user's, and keys (decision OA-3; busybox.fragment).
+# Dropbear's default options are assumed to keep INETD_MODE and password
+# logins on (guess, from dropbear 2025's default_options.h).
 BR2_PACKAGE_DROPBEAR=y
 BR2_PACKAGE_DROPBEAR_DISABLE_REVERSEDNS=y
 # BR2_PACKAGE_DROPBEAR_CLIENT is not set

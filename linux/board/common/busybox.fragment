@@ -16,8 +16,23 @@ CONFIG_FEATURE_UDHCPC_ARPING=y
 # D40time: "ntpd -n -p SERVER ...".
 CONFIG_NTPD=y
 
-# D35bluetooth: one start or stop at a time ("flock 9" on its lock file).
+# D35bluetooth and D50ssh: one start or stop at a time ("flock 9" on their
+# lock files).
 CONFIG_FLOCK=y
+
+# D50ssh: "tcpsvd -c 10 :: 22 ssh-gate dropbear -i ...". tcpsvd puts the
+# peer's address in TCPREMOTEADDR, which ssh-gate checks (local network
+# only); IPv6 for the "::" listener, which takes IPv4 peers too.
+CONFIG_TCPSVD=y
+CONFIG_FEATURE_IPV6=y
+
+# thimsy-ssh-passwd: "cryptpw -m sha512" with BusyBox's own crypt (no
+# libcrypt), "stty -echo" for the prompt, "mv -f" for the rename.
+CONFIG_CRYPTPW=y
+CONFIG_USE_BB_CRYPT=y
+CONFIG_USE_BB_CRYPT_SHA=y
+CONFIG_STTY=y
+CONFIG_MV=y
 
 # rcK waits in steps of "sleep 0.1".
 CONFIG_SLEEP=y

@@ -1,0 +1,105 @@
+#!/bin/sh
+# thimsy-ssh-passwd [--stdin | --default]: root's SSH password.
+# SPDX-License-Identifier: MIT
+#
+#   thimsy-ssh-passwd            asks twice on the terminal, without echo
+#   thimsy-ssh-passwd --stdin    reads one line from stdin (for programs)
+#   thimsy-ssh-passwd --default  back to the default password, "thimsy"
+#
+# Only the hash is kept: BusyBox "cryptpw -m sha512" (the password goes to
+# it on a pipe, never on a command line), written 0600 to
+# /storage/.config/thimsy/ssh/root.hash on the data partition, through a
+# temporary file and a rename, so updates keep it and a power cut leaves the
+# old hash or the new one. If SSH is running, "D50ssh password" puts it into
+# /etc/shadow at once; otherwise D50ssh reads it when SSH next starts.
+# Decision OA-3; docs/init.md has the details.
+. "${THIMSY_ROOT:-}/usr/share/thimsy/init/lib.sh"
+
+SSH_DIR=$THIMSY_CONFIG/ssh
+HASH_FILE=$SSH_DIR/root.hash
+D50=$R/etc/init.d/deferred/D50ssh
+
+die() {
+	printf 'thimsy-ssh-passwd: %s\n' "$1" >&2
+	exit 1
+}
+
+# ask PROMPT: PW_OUT is a line read from the terminal without echo.
+ask() {
+	printf '%s' "$1" >&2
+	stty -echo 2>/dev/null
+	PW_OUT=
+	IFS= read -r PW_OUT
+	_rc=$?
+	stty echo 2>/dev/null
+	printf '\n' >&2
+	return $_rc
+}
+
+apply() {
+	[ -x "$D50" ] || return 0
+	"$D50" password || die "the password is stored, but SSH did not take it; it will at its next start"
+}
+
+mode=ask
+case ${1:-} in
+'') ;;
+--stdin) mode=stdin ;;
+--default) mode=default ;;
+*)
+	echo "usage: thimsy-ssh-passwd [--stdin | --default]" >&2
+	exit 2
+	;;
+esac
+[ "$#" -le 1 ] || {
+	echo "usage: thimsy-ssh-passwd [--stdin | --default]" >&2
+	exit 2
+}
+
+if [ "$mode" = default ]; then
+	rm -f "$HASH_FILE" || die "could not remove $HASH_FILE"
+	"$SYNC"
+	apply
+	echo "SSH password: back to the default"
+	exit 0
+fi
+
+if [ "$mode" = stdin ]; then
+	pw=
+	IFS= read -r pw || [ -n "$pw" ] || die "no password on stdin"
+else
+	[ -t 0 ] || die "stdin is not a terminal: use --stdin"
+	trap 'stty echo 2>/dev/null; exit 1' INT TERM HUP
+	ask "New SSH password for root: " || die "no password"
+	pw=$PW_OUT
+	ask "Again: " || die "no password"
+	[ "$pw" = "$PW_OUT" ] || die "the two passwords differ; nothing changed"
+	trap - INT TERM HUP
+fi
+[ -n "$pw" ] || die "the password is empty; nothing changed"
+
+h=$(printf '%s\n' "$pw" | "$CRYPTPW" -m sha512) || die "cryptpw failed; nothing changed"
+pw=
+case $h in
+\$6\$?*\$?*) ;;
+*) die "cryptpw gave no SHA-512 hash; nothing changed" ;;
+esac
+case $h in
+*[!A-Za-z0-9./\$=]*) die "cryptpw gave an unexpected hash; nothing changed" ;;
+esac
+
+if [ -L "$SSH_DIR" ] || [ -L "$HASH_FILE" ]; then
+	die "$SSH_DIR or root.hash is a link; nothing changed"
+fi
+mkdir -p "$SSH_DIR" || die "could not make $SSH_DIR"
+chmod 0700 "$SSH_DIR"
+rm -f "$HASH_FILE.new"
+(
+	umask 077
+	printf '%s\n' "$h" > "$HASH_FILE.new"
+) || die "could not write $HASH_FILE.new"
+"$SYNC"
+mv -f "$HASH_FILE.new" "$HASH_FILE" || die "could not replace $HASH_FILE"
+"$SYNC"
+apply
+echo "SSH password changed"

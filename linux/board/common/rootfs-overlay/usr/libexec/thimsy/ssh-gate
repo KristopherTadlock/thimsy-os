@@ -1,0 +1,51 @@
+#!/bin/sh
+# ssh-gate PROGRAM [ARG...]: run PROGRAM (D50ssh: "dropbear -i") only for a
+# peer on the local network.
+# SPDX-License-Identifier: MIT
+#
+# BusyBox tcpsvd runs this for each connection, with the connection on
+# stdin and stdout and the peer in TCPREMOTEADDR ("a.b.c.d:port", or
+# "[v6]:port" with a "%interface" on link-local addresses). Allowed (decision
+# OA-3): 10/8, 172.16/12, 192.168/16, 169.254/16, 127/8, fc00::/7,
+# fe80::/10, ::1, and IPv4 peers written as ::ffff:a.b.c.d. Anything else,
+# or no address at all, closes the connection without a word. D50ssh does
+# not use the gate when persist.thimsy.ssh.any_network=1.
+. "${THIMSY_ROOT:-}/usr/share/thimsy/init/lib.sh"
+
+# lan_peer ADDR: true when ADDR (no port, lower case) is on the local network.
+lan_peer() {
+	_a=$1
+	case $_a in
+	::ffff:*.*) _a=${_a#::ffff:} ;;
+	esac
+	case $_a in
+	'' | *[!0-9.]*) ;;
+	*)
+		case $_a in
+		10.* | 127.* | 192.168.* | 169.254.* | 172.1[6-9].* | 172.2[0-9].* | 172.3[01].*)
+			return 0
+			;;
+		esac
+		return 1
+		;;
+	esac
+	case $_a in
+	::1 | f[cd][0-9a-f][0-9a-f]:* | fe[89ab][0-9a-f]:*) return 0 ;;
+	esac
+	return 1
+}
+
+[ "$#" -gt 0 ] || exit 2
+peer=${TCPREMOTEADDR:-}
+case $peer in
+'['*']:'*)
+	peer=${peer#\[}
+	peer=${peer%%\]*}
+	;;
+*.*:*) peer=${peer%:*} ;;
+*) peer= ;;
+esac
+peer=${peer%%\%*}
+thimsy_lower_hex "$peer"
+lan_peer "$LOWER_OUT" || exit 1
+exec "$@"
