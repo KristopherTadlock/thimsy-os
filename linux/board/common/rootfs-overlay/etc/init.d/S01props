@@ -32,6 +32,7 @@ persist_defaults() {
 			;;
 		esac
 		_key=${_line%%=*}
+		# prefs: keys from mods/nano-theme.props
 		thimsy_persist "$_key" ""
 		[ -z "$PERSIST_OUT" ] || continue
 		"$PROP" set "$_key" "${_line#*=}" ||

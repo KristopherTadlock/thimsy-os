@@ -23,8 +23,8 @@ sys.path.insert(0, TOOL_DIR)
 
 from nanotree.config import Upstream  # noqa: E402
 from nanotree.prefs import (_WORTH, Context, Found, Use, check_table, covering_row, expand_runtime,  # noqa: E402
-                            glob_lines, linux_only, load_table, report, scan, scan_linux_script, scan_script,
-                            scan_text)
+                            glob_lines, linux_only, load_table, report, scan, scan_linux_script, scan_props_file,
+                            scan_script, scan_text)
 from nanotree.ratchets import read_list, write_list  # noqa: E402
 
 NANO = os.path.join(ROOT, "nano")
@@ -352,6 +352,27 @@ class Unit(unittest.TestCase):
                      "S99x:10: persist\\.thimsy\\.quux is in a grep, sed or awk line"):
             self.assertIn(want, text)
         self.assertEqual(len(out.problems), 6, text)
+
+    def test_keys_from_marker(self):
+        # "# prefs: keys from FILE" covers the next variable key; FILE's keys are then scanned.
+        out = Found()
+        scan_linux_script("#!/bin/sh\n"
+                          "# prefs: keys from mods/x.props\n"
+                          'thimsy_persist "$_key" ""\n'
+                          'thimsy_persist "$other" ""\n', "linux/board/x/S01x", out)
+        self.assertEqual(out.key_sources, [("mods/x.props", "linux/board/x/S01x:3")])
+        self.assertEqual(len(out.problems), 1, out.problems)  # the second variable is not covered
+        self.assertIn("S01x:4", out.problems[0])
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, "mods"))
+            with open(os.path.join(tmp, "mods", "x.props"), "w", encoding="utf-8") as f:
+                f.write("# c\npersist.gammaos.nano.a=1\nnot a line\n")
+            found = Found()
+            scan_props_file(tmp, "mods/x.props", "linux/board/x/S01x:3", found)
+            scan_props_file(tmp, "mods/none.props", "linux/board/x/S01x:3", found)
+        self.assertEqual(sorted(found), ["persist.gammaos.nano.a"])
+        self.assertEqual(found["persist.gammaos.nano.a"].defaults, {"1"})
+        self.assertEqual(len(found.problems), 2, found.problems)
 
     def test_owner(self):
         found = Found()

@@ -64,7 +64,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from typing import Dict, Iterator, List, Optional, Set
+from typing import Dict, Iterator, List, Optional, Set, Tuple
 
 from .config import Upstream
 from .ratchets import PROP_KEY, PROP_NAMESPACES, SOURCE_EXT
@@ -410,14 +410,21 @@ _SCRIPT_NS = re.compile(r"(?:%s)\." % "|".join(PROP_NAMESPACES))
 _PATTERN_CMD = re.compile(r"(?:^|[\s;&|(`!])(?:grep|egrep|fgrep|sed|awk)(?=\s|\Z)")
 _PATTERN_KEY = re.compile(r"(?<![A-Za-z0-9_./\\\-])persist\\{0,2}\.[A-Za-z0-9_.\\\-]*")
 STORE_FILE = "persist.props"
+# "# prefs: keys from FILE" (FILE from the repository root): the next variable key, within
+# KEYS_FROM_LINES lines, takes its keys from FILE, a KEY=VALUE file the scan reads instead.
+_KEYS_FROM = re.compile(r"#\s*prefs:\s*keys from\s+(\S+)\s*$")
+KEYS_FROM_LINES = 15
+_PROPS_LINE = re.compile(r"(%s)=(.*)\Z" % _KEYCHARS)
 
 
 def scan_linux_script(text: str, rel: str, out: Dict[str, Use]) -> None:
     """Keys in an init or shell script of linux/board: property:K, and the KEY of the init library's
     readers (with their defaults), setprop and getprop, bare or quoted. With OUT a Found, a KEY the scan
     cannot read is a problem: a variable, a key with a $-expansion in it, or persist.* text in a grep,
-    sed or awk line."""
+    sed or awk line. A variable key is not a problem when a "# prefs: keys from FILE" comment came
+    at most KEYS_FROM_LINES lines before it: FILE goes into OUT.key_sources and scan() reads it."""
     problems = out.problems if isinstance(out, Found) else None
+    keys_from = None  # (FILE, line of the comment)
 
     def note(key: str, op: str, n: int) -> Use:
         u = out.setdefault(key, Use())
@@ -429,6 +436,9 @@ def scan_linux_script(text: str, rel: str, out: Dict[str, Use]) -> None:
 
     for n, ln in enumerate(text.split("\n"), 1):
         if ln.lstrip().startswith("#"):
+            m = _KEYS_FROM.search(ln)
+            if m:
+                keys_from = (m.group(1), n)
             continue
         for m in _SCRIPT_TRIGGER.finditer(ln):
             note(m.group(1).rstrip("."), "get", n)
@@ -436,6 +446,11 @@ def scan_linux_script(text: str, rel: str, out: Dict[str, Use]) -> None:
             cmd, word, arg = m.groups()
             bare = word.replace('"', "").replace("'", "")
             if "$" in bare:
+                if (bare.startswith("$") and keys_from is not None and n - keys_from[1] <= KEYS_FROM_LINES
+                        and isinstance(out, Found)):
+                    out.key_sources.append((keys_from[0], "%s:%d" % (rel, n)))
+                    keys_from = None
+                    continue
                 if problems is not None and (bare.startswith("$") or _SCRIPT_NS.match(bare)):
                     problems.append("%s:%d: %s %s: the key is %s, which prefs.scan_linux_script cannot read: "
                                     "name the key in full" % (rel, n, cmd, word, "a variable" if bare.startswith("$")
@@ -454,6 +469,32 @@ def scan_linux_script(text: str, rel: str, out: Dict[str, Use]) -> None:
                     problems.append("%s:%d: %s is in a grep, sed or awk line, a form prefs.scan_linux_script does "
                                     "not read: read the key with thimsy_persist, or teach the scan the form"
                                     % (rel, n, m.group(0)))
+
+
+def scan_props_file(root: str, src: str, where: str, out: Found) -> None:
+    """The keys of SRC (a KEY=VALUE file, from the repository root) that a script at WHERE sets
+    through a variable ("# prefs: keys from SRC"): each is set, with its value as a default. A
+    missing file, or a line that is not a comment or KEY=VALUE, is a problem."""
+    path = os.path.join(root, *src.split("/"))
+    if not os.path.isfile(path):
+        out.problems.append("%s: prefs: keys from %s: no such file" % (where, src))
+        return
+    with open(path, "rb") as f:
+        text = f.read().decode("utf-8", "replace")
+    for n, ln in enumerate(text.split("\n"), 1):
+        s = ln.strip()
+        if not s or s.startswith("#"):
+            continue
+        m = _PROPS_LINE.match(s)
+        if not m:
+            out.problems.append("%s:%d: not a KEY=VALUE line (read for %s)" % (src, n, where))
+            continue
+        u = out.setdefault(m.group(1), Use())
+        u.files.add(src)
+        u.ops.add("set")
+        u.defaults.add(m.group(2))
+        if len(u.where) < 12:
+            u.where.append("%s:%d" % (src, n))
 
 
 def linux_files(root: str) -> List[str]:
@@ -503,6 +544,8 @@ class Found(dict):
         super().__init__(*a, **kw)
         self.problems: List[str] = []
         self.family_prefixes: Set[str] = set()
+        # (FILE from the repository root, "script:line") for each "# prefs: keys from FILE".
+        self.key_sources: List[Tuple[str, str]] = []
 
 
 def _array_items(toks: List[Tok], name: Optional[str], type_: Optional[str]) -> Iterator[List[List[Tok]]]:
@@ -662,6 +705,8 @@ def scan(nano_dir: str, files: Optional[List[str]] = None, linux_root: Optional[
                 scan_text(text, rel, out, lctx)
             else:
                 scan_linux_script(text, rel, out)
+        for src, where in out.key_sources:
+            scan_props_file(linux_root, src, where, out)
         expand_runtime(out, lctx, ())
     res = Found(sorted(out.items()))
     res.problems, res.family_prefixes = out.problems, out.family_prefixes
