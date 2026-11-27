@@ -12,3 +12,9 @@ __pycache__/
 key.properties
 *.jks
 *.keystore
+
+# tools/bbread's static binaries (tools/bbread/build.sh makes them).
+/tools/bbread/bbread-*
+
+# Personal editor settings.
+/.vscode/

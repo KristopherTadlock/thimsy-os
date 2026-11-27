@@ -1,7 +1,8 @@
 """Nano's USB-C role helper (NanoTypec) and its monitor mode helper (NanoMonitorMode), with their
 AOSP unit tests (test/unit/*_test.cpp), built with g++ and run on the host against a small stand-in
-for GoogleTest (tests/fixtures/nano_gtest). The sources come from the AOSP tree, or without one from
-the files patches/thimsy/0001-thimsy.patch creates. And nothing in the patch or the mods touches the
+for GoogleTest (tests/fixtures/nano_gtest). The sources are the files patches/thimsy/0001-thimsy.patch
+creates, what the release ships (an AOSP tree's copy only where it is exactly the patch's result).
+And nothing in the patch or the mods touches the
 USB controller's mode file in debugfs.
 """
 import os
@@ -26,12 +27,9 @@ DWC3_DEBUGFS = re.compile(r"kernel/debug/[^\s\"']*dwc3")
 
 
 def nano_sources(rels, patch_text):
-    """The texts of Nano's files RELS: all from the AOSP tree when it has them all, else as the patch
-    creates them (None for a file it doesn't)."""
-    paths = [os.path.join(util.AOSP, NANO, rel) for rel in rels]
-    if all(os.path.isfile(p) for p in paths):
-        return [util.slurp(p, text=True) for p in paths]
-    return [arrangement.new_file(patch_text, f"{NANO}/{rel}") for rel in rels]
+    """The texts of Nano's files RELS as the release ships them (arrangement.shipped_text): as the
+    patch creates them, never a stale AOSP tree's copy (None for a file neither gives)."""
+    return [arrangement.shipped_text(patch_text, f"{NANO}/{rel}") for rel in rels]
 
 
 class HostTests(util.TestCase):
@@ -120,7 +118,7 @@ class Dwc3Debugfs(util.TestCase):
 
 class MonitorModeDialogs(util.TestCase):
     def test_dialogs_clear_the_dual_screen_flag(self):
-        """Output Resolution, Refresh Rate and Keep This Resolution? clear the Dual-Screen App prompt's
+        """Output Resolution and Keep This Resolution? clear the Dual-Screen App prompt's
         flag: a prompt closed without an answer leaves it set, and X on the new dialog would then answer
         the prompt (adding its app to the run-on-primary list) instead of choosing a mode."""
         text, = nano_sources(["NanoMenuMonitorMode.cpp"], util.slurp(PATCH, text=True))
@@ -136,11 +134,12 @@ class MonitorModeDialogs(util.TestCase):
         the Quick Menu, Game Settings). X and O drop a flag left set unless the open dialog is the
         prompt, before they would answer it: else X on Performance Mode's Normal would put the
         prompt's app on the run-on-primary list instead of choosing Normal."""
-        path = os.path.join(util.AOSP, NANO, "NanoMenuPS3Menu.cpp")
-        if os.path.isfile(path):
-            text = util.slurp(path, text=True)
-        else:
-            text = section_new_side(util.slurp(PATCH, text=True), f"{NANO}/NanoMenuPS3Menu.cpp")
+        patch = util.slurp(PATCH, text=True)
+        rel = f"{NANO}/NanoMenuPS3Menu.cpp"
+        text = arrangement.shipped_text(patch, rel)
+        whole = text is not None
+        if not whole:
+            text = section_new_side(patch, rel)
         title = '"Dual-Screen App"'
         guard = f"if (mPs3DlgDualScreen && mPs3DlgTitle != {title}) {{"
         lines = [line.strip() for line in text.split("\n")]
@@ -148,7 +147,7 @@ class MonitorModeDialogs(util.TestCase):
                      and lines[i + 1:i + 3] == ["mPs3DlgDualScreen = false; mPs3DlgDualScreenPkg.clear();", "}"]]
         self.assertEqual(consumers, ["if (mPs3DlgDualScreen) {", "if (mPs3DlgActive && mPs3DlgDualScreen) {"])
         # The prompt sets that title (openDualScreenPrompt), where the text shows it.
-        if "void NanoMenu::openDualScreenPrompt(" in text or os.path.isfile(path):
+        if "void NanoMenu::openDualScreenPrompt(" in text or whole:
             self.assertIn(f"mPs3DlgTitle = {title};", text)
 
 

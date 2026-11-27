@@ -5,7 +5,10 @@ module list.
   patch_vendor_boot.py IN OUT
 
 Applies sprd_drm.py's patch to the copy recovery loads from the vendor ramdisk, never with all_modes
-(whatever THIMSY_DP_ALL_MODES says): recovery has no use for more modes. The first stage no
+(whatever THIMSY_DP_ALL_MODES says): recovery has no use for more modes. The result must be the
+plain module sprd_drm.RELEASE_SHA256 pins (sprd_drm.patch_release; HPD, the IRQ guard and fix E),
+or the build stops. That module replaces test 41's recovery copy and has not run on a Cube yet.
+The first stage no
 longer loads the LED driver (cust-leds.ko): its probe takes a second, during which nothing else in
 the boot could run. It loads later, beside the other modules (patch_vendor_dlkm.py); recovery still
 loads it from here (modules.load.recovery).
@@ -25,7 +28,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import avb_footer  # noqa: E402
-from sprd_drm import patch_module  # noqa: E402
+from sprd_drm import patch_release  # noqa: E402
 
 MODULE = "lib/modules/sprd-drm.ko"
 FIRST_STAGE = "lib/modules/modules.load"
@@ -118,7 +121,7 @@ def main():
 
         cpio = run("lz4", "-dc", ramdisk, capture_output=True).stdout
         off, size = find_cpio_entry(cpio, MODULE)
-        cpio = cpio[:off] + patch_module(cpio[off:off + size], all_modes=False) + cpio[off + size:]
+        cpio = cpio[:off] + patch_release(cpio[off:off + size], all_modes=False) + cpio[off + size:]
         off, size = find_cpio_entry(cpio, FIRST_STAGE)
         cpio = replace_cpio_entry(cpio, FIRST_STAGE, drop_deferred(cpio[off:off + size]))
         cpio_path = os.path.join(tmp, "ramdisk.cpio")

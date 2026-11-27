@@ -951,9 +951,26 @@ system partition, and writes `out/RG_Cube_Thimsy_OS_v1.0.pac`
   slots (`DTBO` and `DTBO_B`); `DOCK_FIX=1` is the default, and `DOCK_FIX=0`
   keeps the stock dtbo. The patched image must be, byte for byte, the one
   approved for the RG Cube (`tested_sha256` in `scripts/patch_dtbo.py`), or
-  the build stops. For test 40 that image was approved without being run on
-  a Cube first. The step also needs `fdtoverlay` on `PATH` (the Docker image
-  has it).
+  the build stops. That image is TH2 (`c87ece8c...`), which runs on an RG
+  Cube in test 42: the dock fix of DK1 (`1b727faa...`, with fix A) and the
+  charge temperature steps (Charging, below). Test 40 and 41 shipped an
+  earlier image, `94c0f3d4...`, without fix A, which booted on a Cube but
+  with a powered dock gave neither USB host nor picture. The step also needs
+  `fdtoverlay` on `PATH` (the Docker image has it).
+- The build puts the charging fix (Charging, below) in the charger manager in
+  `vendor_dlkm`; `CHARGE_FIX=1` is the default with `SYSTEM_IMG`, and
+  `CHARGE_FIX=0` keeps the stock module (the default without `SYSTEM_IMG`:
+  CM12 has run only with the 1.4.4 system). The stock module's sha256 is checked, and the patched module
+  must be, byte for byte, the one tested on the RG Cube in test 42
+  (`TESTED_SHA256` in `scripts/sprd_cm.py`), or the build stops.
+- The build puts the composer fix (The vendor composer, under External
+  monitors, below) in `vendor_a`; `COMPOSER_FIX=1` is the default with
+  `SYSTEM_IMG` (SLEEP and CT4K), `COMPOSER_FIX=ct4k` applies CT4K alone, and
+  `COMPOSER_FIX=0` keeps the stock composer (the default without
+  `SYSTEM_IMG`: the composer fix has run only with the 1.4.4 system). The stock composer's sha256 is checked, and the patched
+  one must be, byte for byte, a composer that ran on the RG Cube in test 42
+  (`SLEEP_CT4K_SHA256` or `CT4K_SHA256` in `scripts/patch_vendor.py`), or the
+  build stops.
 - `sudo` asks for its password once, at the start, and the build keeps it
   valid until it ends (it refreshes it every minute in the background). A
   build left unattended past a password prompt it can't answer, for example
@@ -997,15 +1014,49 @@ The tools it uses:
   with the AOSP test key it was signed with. The same two scripts change the
   order the kernel modules load in (Boot time, below). With `SYSTEM_IMG`,
   `build.sh` sets `THIMSY_DP_ALL_MODES=1`, and the `vendor_dlkm` copy also
-  offers every mode the monitor and the link can carry (External monitors,
-  below); recovery's copy never does.
+  offers a fixed table of modes (TV 720p60, 1080p60 and 1080p120, 2560x1440
+  at 59.93 Hz, TV 4K at 30 Hz and TV 4K at 60 Hz as YCbCr 4:2:0, each only
+  when the monitor lists it, with 1080p60 the only preferred mode) and sets
+  the display clock again on a mode change (External monitors, below);
+  recovery's copy never does. Both copies get the rest: the interrupt guard,
+  the hot-plug fix and fix E. Each copy must be, byte for byte, the module
+  `RELEASE_SHA256` in `scripts/sprd_drm.py` pins (MOD-Y1-E, `6eefac58...`,
+  for `vendor_dlkm` with `SYSTEM_IMG`; the plain module, `c7e8c829...`, for
+  recovery and for `vendor_dlkm` without it), or the build stops.
+- `scripts/sprd_cm.py` is the patch to the vendor charger manager
+  (`sprd-charger-manager.ko`, Charging, below). `scripts/patch_vendor_dlkm.py`
+  applies it (CM12: PDHUB and PD10W) to the `vendor_dlkm` copy, which boot
+  and off-mode charging load, and checks that the image's `sprd_tcpm.ko` is
+  the one whose port fields PD10W reads; `--stock-charger` (`CHARGE_FIX=0`)
+  skips both. Recovery's copy in `vendor_boot` stays stock. The vendor
+  modules carry no signature, and the patch changes code words only, so the
+  module's size, `vermagic` and symbol versions stay as they were, and the
+  module lists load it after `sprd_tcpm.ko` and `sprd_battery_info.ko` as
+  before.
+- `scripts/sprd_hwc.py` is the patch to the vendor composer
+  (`/vendor/lib64/hw/hwcomposer.unisoc.so`, The vendor composer, below).
+  `scripts/patch_vendor.py` applies it to `vendor_a`, an ext4 image. The
+  patch changes code words only, so the library keeps its size, and
+  `scripts/ext4_image.py` writes the changed 4 KiB blocks over the file's
+  own blocks in the image: its inode, owner, mode, times and SELinux label
+  (`vendor_file`) and every other byte of `vendor_a` stay as they were. It
+  refuses an image with shared (deduplicated) blocks, a file with holes or
+  unwritten extents where it changes, or an image `e2fsck -fn` doesn't pass,
+  before or after, and it reads the file back and compares the whole image
+  with the original afterwards. The 32-bit copy in `/vendor/lib/hw` isn't
+  used by the 64-bit composer service and stays stock.
 - `scripts/patch_dtbo.py` makes the dock fix in the RG Cube's board overlay,
   entry 2 of the `dtbo` image (`patch`), and checks a patched image (`check`):
   every change is there and nothing asks for more than 5 V or offers more
-  than 5 V 1 A. Given `vendor_boot` too, and with `fdtoverlay` on `PATH`, it
-  applies the overlay to the base device tree as the bootloader does and
-  checks the result; `DOCK_FIX=1` builds do that with the build's own
-  `vendor_boot`, and the Docker image has `fdtoverlay`. The patch itself
+  than 5 V 1 A. `patch --tested` (the build's) also adds the charge
+  temperature steps (`thermal2`, Charging, below) and requires the approved
+  image; `patch` alone leaves the stock steps (DK1, for testing), and
+  `--jeita thermal2` adds them to a test image. `check` says whether the
+  steps are the approved ones. Given `vendor_boot` too, and with
+  `fdtoverlay` on `PATH`, it applies the overlay to the base device tree as
+  the bootloader does and checks the result; `DOCK_FIX=1` builds do that
+  with the build's own `vendor_boot`, and the Docker image has
+  `fdtoverlay`. The patch itself
   works on the image, in Python: no `dtc`. It finds the nodes by what they
   are, checks each value before changing it, and refuses an image it doesn't
   know, or one changed only in part.
@@ -1055,9 +1106,11 @@ docker compose run --rm build bash                 # a shell in the build enviro
   stay in the Docker volume `thimsy-os-nano-work`, and
   `docker volume rm thimsy-os-nano-work` frees that space; the next build
   downloads everything again.
-- Docker builds Thimsy 1.0, on the 1.2 base: the Nano home, the Android Games
-  helper and PanVK as the system's alternate driver come only with
-  `SYSTEM_IMG` (1.4.4), so it signs no apps and needs no keystore. PanVK's
+- `docker compose run --rm build` builds Thimsy 1.0, on the 1.2 base: the
+  Nano home, the Android Games helper and PanVK as the system's alternate
+  driver come only with `SYSTEM_IMG` (1.4.4), so it signs no apps and needs
+  no keystore (`scripts/build_144.sh` does; Building on the 1.4.4 base,
+  below). PanVK's
   driver package is still copied to `/sdcard/GPU Drivers/`. A monitor's
   Output Resolution (External monitors, below) and Nano's build rows (the
   `THIMSY_RELEASE` name and the commit) also come only with 1.4.4; a Docker
@@ -1070,8 +1123,10 @@ docker compose run --rm build bash                 # a shell in the build enviro
   Docker. Files made from VS Code's Dev Container are root's too.
 - `ESDE_APK` must name a file inside the checkout (for example
   `-e ESDE_APK=out/ES-DE.apk`): it is the only host folder the container sees.
-- `SYSTEM_IMG` builds don't work in Docker: they need `nano-bootlogo` and the
-  boot logo's files from an AOSP tree, which the image doesn't have.
+- Docker can't compile the 1.4.4 system, so `docker compose run --rm build`
+  alone keeps the 1.2 release's system. `scripts/build_144.sh` compiles it
+  outside Docker and then runs the Docker build with it (Building on the
+  1.4.4 base, below).
 - A Windows checkout made before the scripts' line endings were fixed (or one
   that switched here from a branch without `.gitattributes`) keeps its CRLF
   scripts, which fail in Linux (`/usr/bin/env: 'bash\r': No such file or
@@ -1080,6 +1135,88 @@ docker compose run --rm build bash                 # a shell in the build enviro
   out again with LF.
 - In VS Code, **Dev Containers: Reopen in Container** opens the checkout in
   the same environment (`.devcontainer/`), sharing the same `work/` volume.
+
+### Building on the 1.4.4 base
+
+The Nano home, Thimsy's boot picture and boot animation, and a system
+without Google's apps come only with a GammaOS Next 1.4.4 system compiled
+from GammaOS's source with `patches/thimsy/0001-thimsy.patch` (1.4.4 base
+and the Nano home, above). A Docker build on its own keeps the 1.2
+release's system instead: GammaOS's home, logos and animation, and Google's
+apps. `scripts/build_144.sh` makes a 1.4.4 build in one command:
+
+```sh
+THIMSY_RELEASE="test 41" scripts/build_144.sh
+```
+
+1. `scripts/aosp/system.sh` fetches GammaOS's source at the 1.4.4 base
+   commit (`0bc531e2d`, BACKPORTS.md) if it isn't there yet, resets it there,
+   applies the patch and builds `lineage_arm64_bgN` the way GammaOS builds a
+   release (`buildbot_unified.sh treble 64GN nosync`, uncompressed APEXes).
+   Every run makes the tree's files exactly the base with the patch, so an
+   edit made in the tree by hand and not yet in the patch is undone rather
+   than built; it rewrites only the files that differ, so a build after a
+   small patch change is incremental. It
+   then exports the system image, the `nano-bootlogo` host tool (with its
+   libraries) and the logo's SVG and font, with a `manifest.txt` of the base
+   commit and the patch's and image's sha256s.
+2. The export is copied to `out/aosp/`.
+3. `scripts/build.sh` runs in Docker with `SYSTEM_IMG` and those files, as
+   any Docker build does, and writes `out/RG_Cube_Thimsy_OS_v1.0a.pac`. It
+   refuses an `out/aosp/` built from another version of the patch.
+   `THIMSY_RELEASE`, `THIMSY_COMMIT`, `DOCK_FIX`, `CHARGE_FIX`,
+   `COMPOSER_FIX`, `SKIP_TESTS`, `NEW_KEYSTORE`, `REFRESH_CORES` and
+   `ALLOW_BUNDLED_CORES` pass through
+   (`ESDE_APK` is for the 1.2 base only).
+
+`--system-only` stops after step 2 and `--pac-only` starts at step 3. The
+first compile downloads about 20 GB, checks out about 120 GB, writes about
+150 GB more and takes hours; later ones rebuild only what the patch changed.
+`THIMSY_AOSP_JOBS` lowers the compile's parallel jobs (one per physical core
+by default): it needs about 2 GB of memory per job, and builds in 16 GB of
+RAM only with plenty of swap. `THIMSY_AOSP_NINJA_ONLY=1` resumes a compile
+that stopped (a crash, or stopped by hand) without Soong's and Kati's
+analysis, which takes about two hours and more memory than any other step on
+a 16 GB host: it runs `ninja` on the last build's plan. It works only when
+that plan's analysis finished on the tree as it is now: the script refuses
+when the patch or the tree changed after it, or when the last build stopped
+before its analysis finished.
+
+Step 3 signs the Android Games helper and PanVK's driver package, so the
+Docker volume needs their keystores, `work/cache/nano/android-games.keystore`
+and `work/cache/panvk/panvk-driver.keystore` (Building, above); without them
+it stops. Copy them in once from a folder in the checkout, for example with
+both files in `keys/` (git ignores it):
+
+```sh
+docker compose run --rm build bash -c 'install -D -m 600 keys/android-games.keystore work/cache/nano/android-games.keystore && install -D -m 600 keys/panvk-driver.keystore work/cache/panvk/panvk-driver.keystore'
+```
+
+`NEW_KEYSTORE=1` makes new keys instead, which devices with the old ones
+won't take as an update.
+
+The tree must be on a case-sensitive Linux filesystem. On Linux, set
+`AOSP_DIR` to its folder; run `sudo scripts/aosp/setup_host.sh` once on an
+Ubuntu 22.04 host for the packages and a user to build as. On Windows,
+`build_144.sh` (from Git Bash) compiles in a WSL distro kept for it,
+`thimsy-aosp`, in `/aosp/gammaos` as user `builder`
+(`THIMSY_AOSP_DISTRO`, `AOSP_DIR` and `THIMSY_AOSP_USER` change them). Set
+it up once from PowerShell in the checkout, with the distro's disk on a drive
+with about 400 GB free (here `D:`):
+
+```powershell
+docker pull ubuntu:22.04
+docker create --name thimsy-rootfs ubuntu:22.04
+docker export thimsy-rootfs -o $env:TEMP\ubuntu-22.04.tar
+docker rm thimsy-rootfs
+wsl --import thimsy-aosp D:\WSL\thimsy-aosp $env:TEMP\ubuntu-22.04.tar --version 2
+wsl -d thimsy-aosp -u root -- bash scripts/aosp/setup_host.sh
+```
+
+WSL's memory is set in `%USERPROFILE%\.wslconfig` (`[wsl2]`, then `memory=`
+and `swap=`), shared with Docker Desktop; `wsl --shutdown` applies a change.
+With 16 GB of RAM, `memory=13GB` and `swap=40GB` are enough; with 32 GB or
+more, give WSL most of it.
 
 ### hakuX from source
 
@@ -1287,6 +1424,72 @@ when what they need is missing.
   system_server's USB service is up, with a cable in. Before that its helper,
   a Java process, could only fail and retry while the system was starting.
 
+### Charging
+
+The vendor charger manager picks its charge current from the USB charger type
+the port detects (BC1.2) alone, whatever USB PD has agreed with the source.
+Behind a USB-C dock the Cube saw the dock's hub as a computer port and charged
+at 0.5 A (about 0.2 A into the battery), and a 5 V 3 A USB PD charger counted
+as an unknown charger, 1.05 A (about 0.95 A into the battery). The charging fix
+(`scripts/sprd_cm.py`, `CHARGE_FIX=1`, Building above) changes two things:
+
+- behind a USB PD hub or video adapter (one that says so over USB PD) a
+  computer-port type charges at the unknown-charger 1.05 A;
+- an unknown charger type with a USB PD contract of exactly 5 V 3 A (the most
+  the Cube asks for) charges at the wall-charger 2.0 A.
+
+Test 42 ships the module exactly as it ran on an RG Cube: with a 5 V 3 A PD
+charger about 1.7 A went into the battery (about 6.6 W; an estimated 8.8 W at
+the port, as the Cube can't measure its input current), and unplugging and
+replugging that charger kept it; through a powered dock about 0.6-0.75 A
+(about 0.6 A in the runs with test 42's display driver; an estimated 4.6 W
+at the port at 0.75 A). Replugging the dock's charger is a known issue
+(External monitors, below). Never more than 5 V. Known limits, accepted for
+test 42:
+
+- a hub or video adapter offering less than 1 A at 5 V is still asked for
+  about 1 A;
+- a 3 A charger that lowers its offer while plugged in (a multi-port charger
+  when a second device is plugged in, a power bank) is still asked for about
+  2 A until the Cube is unplugged;
+- both also apply to charging while off, and nothing in Nano lowers them;
+- recovery keeps the stock charger manager.
+
+Please report a computer's USB port (it should still charge at 0.5 A), a
+multi-port charger shared with another device, and a hub or adapter rated
+below 1 A, with `cat /sys/class/power_supply/battery/current_now` and
+`dmesg | grep -iE 'chg_lmt|target current|chgr type'` while charging.
+
+#### Charge temperature steps
+
+New in test 42, in the dtbo (`DOCK_FIX=1`, Building above): the battery
+charges more slowly as it warms. Stock, it charged at the full rate up to
+52 C, then dropped straight to 0.7 A. Now it steps down earlier, by the
+battery's own temperature sensor:
+
+- below 45 C: the full rate (2.0 A on a wall charger or a 5 V 3 A charger,
+  1.5 A on a computer's charging port);
+- 45 to 49 C: at most 1.5 A;
+- 49 to 52 C: at most 1.0 A;
+- 52 to 60 C: 0.7 A, and it stops at 4.1 V (as stock);
+- 60 C and above: charging stops (as stock), and below 0 C it stops too.
+
+On the way down it steps back up a little lower: to 1.0 A below 49 C, to
+1.5 A below 46 C, and to the full rate below 42 C. A dock (an unknown
+charger type) keeps its own 1.05 A up to 49 C and asks for 1.0 A from
+49 C. The chip sets both as 0.99 A, so a dock charges the same up to
+52 C. The cold side is stock: 0.7 A from 0 C until the battery reaches
+18 C. The sensor is read every 15 s and a step takes two readings in a
+row, so a step comes 15 to 30 s after the temperature. A computer's USB
+2.0 port is not changed. `DOCK_FIX=0` keeps the stock steps. The Cube's
+charger chip sets 1.5 A as 1.49 A, and 1.05 A and 1.0 A as 0.99 A.
+
+Please report a warm charge on a 5 V 3 A charger: from 45 C the kernel log
+should show `target current = 1500000`, from 49 C `1000000`, and from 52 C
+`700000` with `4100000`. Check with
+`dmesg | grep -iE 'jeita|target current'` (it shows `jeita_size:6`) and
+`cat /sys/class/power_supply/battery/temp` (in tenths of a degree).
+
 ### External monitors
 
 Plugging a monitor into the 1.2 vendor kernel crashed the console, and it kept
@@ -1300,14 +1503,24 @@ Cube trains over USB-C. The driver also discarded the monitor's preferred mode
 The patched driver (`scripts/sprd_drm.py`):
 
 - offers only modes up to the bandwidth of 4K at 30 Hz (a 297 MHz pixel
-  clock): 4K at 30 Hz, 1440p at 60 Hz, 1080p at 120 Hz and everything below;
+  clock): on the 1.2 base whatever the monitor lists up to that (1440p at
+  60 Hz, 1080p at 120 Hz and everything below), on the 1.4.4 base only the
+  mode table below, 4K at 30 Hz included; the one mode above it is 4K at
+  60 Hz (594 MHz, 1.4.4 base), which it sends as YCbCr 4:2:0 (below) at half
+  the link load of RGB;
 - offers only modes the DisplayPort link it trained can carry. Two lanes at
   HBR2, what the Cube's hubs and dongles have trained so far, carry all of
   the above; a hub or adapter that trains only HBR carries up to about
   180 MHz (1080p at 60 Hz, not 1440p). Before, such a mode was set anyway
   and gave no picture;
-- offers nothing wider than 3840: TVs list the cinema size 4096x2160, which
-  is squashed on a 16:9 screen;
+- offers 3840x2160 only on the 1.4.4 base, and only as TV 4K at 30 Hz and
+  TV 4K at 60 Hz in 4:2:0, each when the monitor lists it (4K60 also only
+  when the monitor takes 4:2:0 for it); nothing else 3840 or more wide, and
+  nothing that wide on the 1.2 base. At 3840x2160 the display controller
+  runs in its bypass mode, two pixels per clock, as it does for 1440p (before
+  test 42 that mode had a history of crashes, and the 1.4.4 test 41 started a
+  monitor without TV 1080p60 in it); TVs also list the cinema size 4096x2160,
+  which is squashed on a 16:9 screen and never offered;
 - keeps TV 1080p60 the only preferred mode, as the vendor driver does, so the
   composer sets 1080p at 60 Hz as soon as a monitor connects. The vendor
   composer lists only the modes the driver marks preferred or user-defined.
@@ -1317,10 +1530,94 @@ The patched driver (`scripts/sprd_drm.py`):
   dropped (the list is then the monitor's own mode, 1080p60 and 640x480): the
   stock framework would switch between more modes on its own, and every
   switch blanks the monitor;
+- on the 1.4.4 base, offers a fixed table of modes, whatever timings the
+  monitor lists, each only when the monitor lists something like it: TV
+  720p60 (always), TV 1080p60 (when it lists 1080p or more at any rate, or
+  has no EDID), TV 1080p120, 2560x1440 at 59.93 Hz, TV 4K at 30 Hz and TV 4K
+  at 60 Hz as YCbCr 4:2:0. Every one of them runs the pixel clock at the one
+  rate that has given a picture, and a monitor's own timings (its
+  reduced-blanking 1080p at 138.5 MHz, say) are dropped. So a monitor that
+  lists 1080p or more starts at TV 1080p60, the mode Auto holds it at, and
+  nothing changes its mode while it connects. This replaces test 41's start
+  at the monitor's own 1080p at 60 Hz, which on real monitors picked rates
+  the pixel PLL can't make;
+- on the 1.4.4 base, sets the display clock, size and timing again on every
+  mode change. The vendor driver set them only for the mode a monitor
+  connected in, so after a switch (Auto's 1080p, a mode chosen in Output
+  Resolution) the monitor had no signal, went to sleep and dropped the
+  connection, and the composer connected it again, about every 35 s;
+- on the 1.4.4 base, scans 2560x1440 out of the one layer the display
+  controller's bypass mode shows, and sets the DisplayPort controller to two
+  pixels per clock in bypass, so 1440p at 60 Hz shows a correct, stable
+  picture (test 42 MOD-Q; before, it gave a locked signal and a black
+  screen);
+- ignores DisplayPort's interrupt while DisplayPort is off, in the handler
+  and in its thread (which then reports the monitor unplugged without
+  touching the controller), and masks its Type-C interrupt before it turns
+  off. After an unplug the driver reached the switched-off controller and the
+  kernel panicked: in the handler when the USB 3 port's shutdown raised that
+  interrupt, and in the thread when a dock was unplugged with the Cube's
+  screen asleep;
+- masks DisplayPort's interrupt while its picture is off with the monitor
+  still attached (a sleep, with the composer's SLEEP below) and unmasks it at
+  wake, once the picture is back (fix E); an unplug or plug meanwhile is
+  taken then. Before, such a sleep made the interrupt fire endlessly (`irq
+  76: nobody cared`), and hot-plug was dead until a reboot;
 - powers DisplayPort up when a dock's first hot-plug signal also carries an
   interrupt (IRQ_HPD). It took only a plain hot-plug signal before, so a
   dongle or dock that sent the two together never showed a picture;
 - treats a missing buffer as RGB instead of crashing.
+
+The build ships test 42's driver, MOD-Y1-E (`6eefac58...`). On an RG Cube
+the same driver without fix E (MOD-Y1) showed 4K at 60 Hz 4:2:0 with correct
+colours (T3, below), and with fix E a sleep and wake with a monitor attached
+at 1080p60 (eleven times), an unplug and a replug while asleep all came back
+right, with no interrupt storm. 4K at 30 Hz, 4K at 60 Hz, 1080p at 120 Hz
+and 1440p haven't been run again with fix E yet. Recovery gets its own copy
+without the extra modes (`c7e8c829...`: the interrupt guard, the hot-plug fix
+and fix E). It replaces test 41's recovery copy (`4c2b7eb7...`, before the
+guard and fix E) and hasn't run on an RG Cube yet.
+
+**The vendor composer.** The composer fix (`scripts/sprd_hwc.py`,
+`COMPOSER_FIX=1`, Building above) patches the vendor's composer,
+`/vendor/lib64/hw/hwcomposer.unisoc.so`, which the composer service
+(`vendor.hwcomposer-2-4`) loads:
+
+- **SLEEP:** Android's sleep now turns a monitor off and its wake turns it
+  back on. The vendor composer took the external display's power mode and
+  did nothing, so a docked Cube went to sleep with the monitor still lit.
+- **CT4K:** at a mode exactly 3840 wide the vendor composer keeps only
+  layers 3840 wide, and it judged the screen SurfaceFlinger composes (the
+  client target) by a crop it never gets, so it dropped it and every frame
+  failed. That screen is now kept when it is 3840 wide; every other layer
+  is judged as before. The 4K at 60 Hz 4:2:0 output needs it.
+
+Both ran on an RG Cube in test 42, the build ships exactly those bytes:
+SLEEP and CT4K together turned a TV off at sleep and on again at wake, and
+CT4K alone showed 4K at 60 Hz 4:2:0 with correct colours (T3). With SLEEP,
+a sleep with a monitor attached first made the DisplayPort interrupt fire
+endlessly (`irq 76: nobody cared`); the driver's fix E (above) stops that. `COMPOSER_FIX=ct4k` builds the T3 composer, without SLEEP.
+
+`vendor_a` changes in two 4 KiB blocks (one with `ct4k`), nothing else in
+it. Verified boot doesn't stop that: `vbmeta_vendor` lists a dm-verity
+hash tree for vendor, but the Cube's first-stage `fstab` (in `vendor_boot`)
+mounts every partition in `super` without `avb=`, so none of them is
+verified at boot (this build already replaces `system`, `vendor_dlkm` and
+`odm` the same way), and the stock `vendor_a` doesn't match that hash tree
+either (it describes a 681 MB image; the filesystem is 983 MB and fills the
+partition). The bootloader checks only `boot`, `vendor_boot` and `dtbo`
+and the vbmeta signatures, none of which this touches. SELinux is
+unchanged: the file keeps its `vendor_file` label.
+
+To check it on a Cube, from `adb shell` as root:
+`sha256sum /vendor/lib64/hw/hwcomposer.unisoc.so` (`86ea7072...` for the
+default, `dce32571...` for `ct4k`, `f3e18910...` stock), `ls -Z` on it
+(`u:object_r:vendor_file:s0`), and `cat /proc/$(pidof
+android.hardware.graphics.composer@2.4-service)/maps | grep hwcomposer`,
+which should name that path. With SLEEP, a docked sleep should turn the
+monitor off and a wake turn it on, `grep dw_dptx /proc/interrupts` should
+not keep climbing while the Cube sleeps, and `dmesg | grep -i 'nobody
+cared'` should print nothing.
 
 Each screen is independent and draws at its own resolution and refresh rate;
 nothing is mirrored or scaled. In Docked mode, the default (Settings > Display
@@ -1328,7 +1625,9 @@ Settings > External Display), only one screen is on at a time: with a monitor
 plugged in, the monitor is Android's main display and drives everything (apps,
 games, Nano, the keyboard) and the Cube's screen is switched off; unplugged, the
 Cube's screen is the main display again and turns back on. A monitor connected
-at boot is the screen from the start. Nothing is chosen or saved, so a monitor
+at boot is meant to be the screen from the start, but booting with one
+attached can make the system restart over and over (known issues, below):
+unplug it at the monitor end before booting. Nothing is chosen or saved, so a monitor
 unplugged without warning (or a flat battery) can't leave the Cube's screen at
 the monitor's size, as the old External as Primary mode could. A build before
 this one that left the screen resized is put right at the next boot without a
@@ -1337,12 +1636,32 @@ does nothing while it is the screen. Nothing above the display assumes 1080p:
 Nano and the system size everything from the monitor's mode, and Android's
 density is 213 dpi at 1080 lines, scaled by the mode's shorter side.
 
-**Output Resolution** and **Refresh Rate** (External Display, and the Quick
-Menu's Display copy) show while a monitor is connected. Auto, the default,
-runs it at 1920 x 1080 at 60 Hz when it has that, otherwise at its largest
-mode at 50 to 61 Hz, otherwise at the mode it came up in. Output Resolution
-lists Auto and each size the monitor offers, largest first; Refresh Rate
-lists Auto and the rates at the current size. A new choice shows at once and
+**Output Resolution** (External Display, and the Quick Menu's Display copy)
+shows while a monitor is connected. It is one list, each entry a resolution
+at one refresh rate, with no separate refresh rate setting: Auto, then those
+of **4K60 (4:2:0)**, **4K30**, **2560 x 1440**, **1080p 120Hz**,
+**1920 x 1080** and **1280 x 720** that the monitor and the driver offer, in
+that order (2560 x 1440, 1920 x 1080 and 1280 x 720 at 60 Hz; a rate within
+1 Hz counts, so 59.94 Hz is 60). In Dual Screen 4K30 isn't listed (below). Auto, the default, runs the
+monitor at the mode nearest 1080p at 60 Hz, in this order: 1080p at 60 Hz
+(the rate nearest 60 within 5 Hz), else 1080p at 50 Hz, else 1080p at
+120 Hz, else 1080p at another rate of 50 Hz or more (75 Hz, say), else the
+next lower resolution at 60 Hz (720p), else the next higher at 60 or 50 Hz,
+nearest first (1440p at 60, 1440p at 50, then 4K60), else any other mode at
+50 Hz or more (lower resolutions before higher), and only then a mode under
+50 Hz: 1080p, then lower, then higher, so 4K30 comes last. Auto applies at a
+monitor's first connect and whenever its kept mode is no longer offered; a
+kept mode the monitor still offers wins. A mode kept with the Refresh Rate
+setting of earlier builds is kept like any other: 1080p at 120 Hz shows as
+1080p 120Hz, and a kept mode that is none of the entries (1080p at 50 Hz,
+say) still runs, shows as "1920 x 1080 at 50 Hz" and is listed in its place
+(the cursor starts on it, so pressing X there changes nothing) until another
+is chosen. Keep This Resolution? names modes the same way. On the 1.4.4 base the patched driver offers 720p at 60 Hz always,
+1080p at 60 Hz whenever the monitor lists 1080p or more at any rate, and
+1080p at 120 Hz, 1440p and the 4K modes only when the monitor lists them
+(`scripts/sprd_drm.py`), so on an RG Cube Auto is 1080p at 60 Hz for any
+monitor or TV that lists 1080p or more, and 720p for one that doesn't.
+A new choice shows at once and
 **Keep This Resolution?** counts down from about 15 s (what is left of the
 system's 15 s once the monitor has switched, less a second, so it closes just
 before the system reverts), with the cursor on Revert; for its first moment
@@ -1370,24 +1689,75 @@ another one.
 - **In Dual Screen** the monitor paces both screens, so modes below 50 Hz are
   not offered there, and a kept one is not used (Auto instead; it still
   applies in Docked and Mirror).
-- **Not offered:** 3840x2160, since at that size the composer drops every
-  layer that is not 3840 wide (the menus over a game, the keyboard, the Keep
-  dialog itself) until Thimsy composes them into one; nothing wider than 3840
-  or smaller than 640x480.
-- Modes other than 1080p at 60 Hz have not been tried on an RG Cube yet.
-  1440p at 60 Hz (and a monitor's own, reduced-blanking 1080p at 120 Hz) set
-  the display clock to rates it hasn't been seen to run at; a mode that shows
-  nothing reverts as above. Higher modes take more power and heat, and a rate
-  above 60 Hz may make some emulators run fast or judder.
+- **Not offered:** anything 3840 or more wide but TV 4K at 30 Hz and 4K at
+  60 Hz 4:2:0 (the driver drops it: cinema 4096x2160, say); nothing smaller
+  than 640x480.
+- In test 42 every mode the driver offers showed a picture on an RG Cube
+  with the driver before fix E: on a 1440p monitor 720p, 1080p at 60 and
+  120 Hz and 1440p at 60 Hz, with Auto, Dual Screen and Mirror (B7), and on
+  a 4K TV through an HDMI-only adapter 4K at 30 Hz (K1) and 4K at 60 Hz
+  4:2:0 (T3). With fix E (the shipped driver) only 1080p at 60 Hz has run so
+  far. A mode that shows nothing reverts as above. Higher modes take more
+  power and heat, and a rate above 60 Hz may make some emulators run fast or
+  judder.
+- **Known issues (test 42):** booting with a monitor attached has made the
+  system restart over and over (system_server, an AudioService crash) on
+  1.4.4 builds, and it isn't fixed yet: unplug the monitor at the monitor end
+  before booting or rebooting, and plug it in once the home screen is up. At
+  4K 30 Hz, pop-ups, the on-screen keyboard and some game overlays may not
+  show (Nano's own menus and the Keep dialog do); 4K at 60 Hz doesn't have
+  this problem.
 - `cmd display gammaos-monitor-mode list|try W H HZ|keep|revert|auto|forget`
   (as root or from `adb shell`) does the same from a shell; `list` shows the
   mode held and why, and the modes offered.
 
+**4K at 60 Hz** (1.4.4 base) runs as YCbCr 4:2:0: full-colour RGB 4K60
+needs more than the two DisplayPort lanes the Cube trains over USB-C, and
+its display controller has no RGB-to-YUV converter. At a 3840x2160 monitor
+mode of 48 Hz or more, SurfaceFlinger composes every layer (the UI, the
+game, the keyboard, the Keep dialog) into one NV12 frame on the GPU, BT.709
+limited range, and hands the composer that frame as its client target
+(`ThimsyYuv420` in CompositionEngine and `gammaYuv420Mode` in
+`SurfaceFlinger.cpp`, from the patch); the DisplayPort driver sends it as
+4:2:0. Two build.prop defaults turn it on (`mods/52-monitor-4k.sh`):
+`ro.gammaos.display.uhd` lists a monitor's 3840-wide modes in Output
+Resolution, and `ro.gammaos.display.y420` enables the NV12 frame. Nothing
+changes for a monitor or TV without 3840x2160, or while the driver offers no
+such mode: every other mode, the Cube's own screen, and a converter that
+can't start keep the ordinary RGB composition, and a 4K mode that shows
+nothing reverts as above. It needs the driver's 3840x2160 modes
+(`scripts/sprd_drm.py`, UHD and Y420) and a composer that passes a 3840-wide
+client target (`scripts/sprd_hwc.py`, CT4K), so the build sets the two
+properties only when the driver it patches has Y420 and `COMPOSER_FIX` is not
+`0` (`THIMSY_MONITOR_4K` in `scripts/build.sh`). The driver the build ships
+has both (MOD-Y1-E), so a 1.4.4 build with the default `COMPOSER_FIX=1` turns
+4K on. On an RG Cube (test 42, T3, a
+Hisense TV through an HDMI-only adapter) Nano, the Quick Menu and RetroArch
+ran smoothly at 3840x2160 60 Hz with correct colours; a long session and
+switching to and from 4K60 in the menu weren't tried yet.
+`persist.gammaos.y420.present=off` turns the NV12 frame off, for diagnosis
+only (4K60 then shows no correct picture), `persist.gammaos.y420.fastpath=false`
+always composes rather than converting a lone full-screen layer straight to
+NV12, and `dumpsys SurfaceFlinger` shows `thimsyYuv420=ClientTarget` for the
+monitor while it is on.
+
+**Audio Output** (External Display) is for a monitor without speakers:
+Monitor, the default, plays the sound on the monitor or TV as before; Built-in
+Speakers keeps it on the Cube (its speakers, or headphones or Bluetooth when
+connected). It is kept (`persist.gammaos.display.audio`), so it holds through
+reboots and every later connect, and a change while a monitor is connected
+moves the sound within a second. The system never registers the monitor's
+audio device while it is Built-in Speakers (`monitor_audio_option.md`).
+
 On the 1.2 base (a build without `SYSTEM_IMG`) a monitor comes up at 1080p
-at 60 Hz as before, and there is no Output Resolution: Android's own
+at 60 Hz as before, and there is no Output Resolution or Audio Output: Android's own
 framework has only the up to three modes the composer lists. Of all this,
-only the driver's changes above apply there (the link check, the width limit
-and the hot-plug fix).
+only the driver's changes above apply there (the link check, the width limit,
+the interrupt guard, the hot-plug fix and fix E, the plain module
+`c7e8c829...`, which hasn't run on an RG Cube with the 1.2 system). The
+composer fix (SLEEP; CT4K has no effect there) and the charging fix are left
+out by default; `COMPOSER_FIX=1` or `CHARGE_FIX=1` puts them in, a
+combination never run on an RG Cube.
 
 In Dual Screen mode both screens stay on. Games run on the monitor, and
 Nano's menus show on the Cube's screen.
@@ -1445,6 +1815,9 @@ dtbo:
 
 - the port takes either USB role, so the Cube accepts the dock's request to
   be the host while it takes power;
+- the USB3 controller's VBUS extcon is the Type-C port's (`pmic_typec`)
+  instead of the GPIO one (fix A, test 42 DK1), so the USB3 controller
+  follows the dock's data-role swap and starts as host;
 - the PD-hub mode is on in the Type-C, USB2 and USB3 drivers, so the USB
   controller follows the role, and in that mode the USB-C power driver is
   given the Cube's 5 V boost, so it powers what the Cube supplies (the USB
@@ -1458,38 +1831,34 @@ power in, picture and USB at once (USB3 and USB2 hubs and what is behind
 them); HDMI dongles, hubs without a charger and USB adapters keep working
 with the Cube as the source. A charger added after the Cube doesn't make it
 charge: the dock keeps taking power from the Cube, so plug the dock's
-charger in first. Charging is as fast as from the same charger without the
-fix (about 5 W through a hub whose 5 V offer is 1 A), never above 5 V.
+charger in first. With the charging fix (Charging, above) a powered dock
+charged at about 0.6-0.75 A into the battery in test 42, never above 5 V. Known
+issues from test 42: a dock without its charger gives no picture (it needs
+about 3 A, more than the Cube supplies); and pulling the dock's charger and
+plugging it in again leaves the Cube as the source with no picture until the
+dock itself is unplugged and plugged in again.
 
-Test 40 ships the fix (`DOCK_FIX=1`, Building above) **without it having run
-on an RG Cube**. The hardware can do this: with the role settings edited by
-hand and the USB controller switched by hand, a Cube showed 1080p and used
-the hub's USB3 while charging. But the patched dtbo itself has only been
-checked offline, against the Cube's base device tree. Back up your data and
-be ready for a Full install: if the Cube does not boot, or its USB-C port no
+Test 42 ships TH2 (`c87ece8c...`) exactly as it runs on an RG Cube: the
+dock fix of DK1 (`1b727faa...`, with fix A) and the charge temperature steps
+(Charging, above), nothing else changed. With DK1 and the dock's charger
+plugged in first, the dock gave a picture, USB 3.0 at 5 Gbit/s and
+charging. Tests 40 and 41 shipped an earlier image (`94c0f3d4...`,
+without fix A), which booted but gave neither USB host nor picture with
+the dock. Back up your data and be ready for a
+Full install all the same: if the Cube does not boot, or its USB-C port no
 longer charges, a Full install of an earlier Thimsy build or of stock
 GammaOS Next puts the stock dtbo back (download mode always works, as it is
 in ROM), and it erases user data. The ThimsyInstaller's Update writes the
 build's dtbo to both slots, so the other slot is no escape, and an Update
 with a build made with `DOCK_FIX=0` takes the fix off again.
 
-Please report, with test 40:
-
-- whether the Cube boots, and whether it charges from a plain USB-C charger;
-- a dock with its charger plugged in first, then the Cube: does it charge,
-  does HDMI show a picture, do the dock's USB ports (USB3 and USB2) work;
-- an HDMI dongle or a hub without a charger: picture and USB, as before;
-- a self-powered USB-C monitor (one with its own power, no USB PD): does it
-  light up and stay lit (with the fix, its 5 V comes from a different driver,
-  which has never been seen to work). Test 40 is built on the 1.2 base, which
-  has no Nano, so nothing makes the Cube the source when such a monitor is
-  plugged in again (the 1.4.4 base's Nano does that): report the first
-  plug-in after a boot, and a later plug-in separately, as one that stays
-  dark there is the base's old behaviour, not the fix;
-- for anything that fails, the output of these, run over adb right after:
-  `dmesg | grep -iE 'tcpm|typec|pd'`, `ls /sys/class/typec` and
-  `cat /sys/class/typec/*/data_role /sys/class/typec/*/power_role` (on a
-  1.4.4 build, also `getprop sys.gammaos.nano.typec_port`).
+Please report the dock items in the test 42 release notes (a dock with its
+charger plugged in first, then the Cube: picture, USB3 and USB2 ports,
+charging; an HDMI dongle or a hub without a charger, as before), and for
+anything USB-C that fails, the output of these, run over adb right after:
+`dmesg | grep -iE 'tcpm|typec|pd'`, `ls /sys/class/typec` and
+`cat /sys/class/typec/*/data_role /sys/class/typec/*/power_role` (on a
+1.4.4 build, also `getprop sys.gammaos.nano.typec_port`).
 
 The build also grows the system partition by about 431 MB, into the
 unallocated space at the end of the `super` image (`scripts/lptool.py grow`);

@@ -43,6 +43,7 @@ Still to do: build, confirm the image (section 4), commit with the patch.
 | K | The rest of `ps3xmb/` | XMB icons (`icons`, `icons_ui`, `audioplayer`, `videoplayer`, `photoviewer`, `systemstatus`), `wave/*.bin`, `textures`, `gradients`, `normalmaps`, `canyon`, `backgrounds/cinfo-bg-photogallery.jpg`, `globe/earth_*.png` (likely NASA Blue Marble, public domain), the other sounds (`app_launch`, `boot_chime`, `menu_enter`, `nav_blip`, `preview`, `settings_*`, `touch_continue`, `minima_*`) | `frameworks/base/cmds/gammaos-nano/ps3xmb/**`, `Android.bp` `prebuilt_etc` modules `nano_xmb_*` |
 | L | DSi System Menu theme | `menu_ambiance.wav` is used as the DSi home BGM; `ps3xmb/nds/*` holds the "DSVec" fonts (`dsvec.ttf`, `dsvecnum.ttf`) and sprites. Recreation or rip? | `ps3xmb/audio/menu_ambiance.wav`, `ps3xmb/nds`, `NanoMenuPS3Boot.cpp` (`menu_ambiance` around lines 514-575) |
 | M | Anbernic vendor, kernel, bootloader; Unisoc blobs | from Anbernic's firmware, no explicit licence; normal custom-ROM practice | the PAC (`scripts/build.sh`, `work/`) |
+| N | Nano's GPL parts | `NanoAc3.h` wraps the vendored liba52 ("a52dec 0.7.4, GPL-2", in its header and the `Android.bp` comment) to decode AC-3 audio; `NanoOskKanji.h`, the on-screen keyboard's kanji table, is "derived from SKK-JISYO, which is GPL-licensed" (its header). Nano is Apache-2.0 (GammaOS Next's licence, `LICENSE`). What does shipping both in Nano require of the Android build, and may the Kanji table stay? It also matters for `linux_handheld_plan.md`, which keeps Nano Apache-2.0 (§3.3, decision 6) and can drop AC-3 there (risk 11) | `frameworks/base/cmds/gammaos-nano/NanoAc3.h`, the `liba52_nano` library in its `Android.bp`, `NanoOskKanji.h` |
 
 ### 1.4 Allowed, with conditions (document, no removal)
 
@@ -203,7 +204,7 @@ the patch file). After each step: build the touched modules, regenerate the patc
      Daijisho wallpapers/platform steps; keep the MIT platform JSON Nano uses
      (`ps3xmb/daijishou/*.json`), already credited in `NOTICE`.
 
-### Step 6: conditions and records (1.4, M)
+### Step 6: conditions and records (1.4, M, N)
 
 1. `NOTICE`: list GPL apps with their source links (already in `mods/added-apps.txt`, add the
    ones from `apps.list`: RetroArch, PPSSPP, Flycast, M64Plus FZ, Aurora Store), state that
@@ -212,6 +213,9 @@ the patch file). After each step: build the touched modules, regenerate the patc
    build (would need the N64 launch intent and the `NanoSdMove.cpp` M64Plus paths checked
    against the new package name).
 3. Vendor blobs (M): note their origin in `NOTICE`; nothing to change unless Anbernic objects.
+4. Nano's GPL parts (N): answer the question in 1.3 for liba52 and for the SKK-JISYO table,
+   then record the result in `NOTICE` or replace the part. The Linux build's choice follows
+   (`linux_handheld_plan.md` §3.3).
 
 ## 4. Verification for the whole plan
 

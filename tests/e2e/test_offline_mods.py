@@ -377,6 +377,43 @@ class OfflineMods(ModCase):
                     self.assertIsNone(got)   # Nano gives the folder and writes them later
                     self.assertIn("warning: hakuX was not given ROMs/xbox", result.log)
 
+    def test_52_monitor_4k(self):
+        """4K monitor modes and 4K60 as YCbCr 4:2:0, only with a SurfaceFlinger that has the NV12 output."""
+        self.build(True)
+        on = {"THIMSY_MONITOR_4K": "1"}   # build.sh: the driver has Y420 and the composer CT4K
+        sf = f"{self.system}/bin/surfaceflinger"
+        # A system compiled from an older patch: refused, and nothing is written.
+        with open(sf, "wb") as f:
+            f.write(b"\x7fELF\0persist.gammaos.display.audio\0")
+        before = util.manifest(self.system)
+        self.assertFails(self.run_mod("52", env=on), "has no 4:2:0 output (ro.gammaos.display.y420)")
+        self.assertEqual(util.manifest(self.system), before)
+        # The patch's SurfaceFlinger reads ro.gammaos.display.y420 (gammaYuv420Mode).
+        with open(sf, "wb") as f:
+            f.write(b"\x7fELF\0ro.gammaos.display.y420\0persist.gammaos.y420.present\0")
+        with open(f"{self.system}/build.prop", "a") as f:
+            f.write("ro.gammaos.display.uhd=false\n")   # set before: replaced, not doubled
+        # A build whose driver or composer has no 4K60 4:2:0: nothing changes.
+        before = util.manifest(self.system)
+        for env in ({}, {"THIMSY_MONITOR_4K": "0"}):
+            self.assertIn("has no 4K60 4:2:0 (THIMSY_MONITOR_4K", self.assertOk(self.run_mod("52", env=env)).stdout)
+            self.assertEqual(util.manifest(self.system), before)
+        self.assertOk(self.run_mod("52", env=on))
+        prop = util.slurp(f"{self.system}/build.prop", text=True)
+        self.assertTrue(prop.endswith("\nro.gammaos.display.uhd=true\nro.gammaos.display.y420=true\n"), prop)
+        self.assertEqual(re.findall(r"(?m)^ro\.gammaos\.display\.(?:uhd|y420)=.*$", prop),
+                         ["ro.gammaos.display.uhd=true", "ro.gammaos.display.y420=true"])
+        self.assertIn("ro.product.system.model=RG Cube\n", prop)
+        # A second run changes nothing.
+        first = util.manifest(self.system)
+        self.assertOk(self.run_mod("52", env=on))
+        self.assertEqual(util.manifest(self.system), first)
+        # The 1.2 base has neither the framework's 4K modes nor the 4:2:0 output.
+        self.build(False)
+        before = util.manifest(self.system)
+        self.assertIn("only with the 1.4.4 base; skipping", self.assertOk(self.run_mod("52", env=on)).stdout)
+        self.assertEqual(util.manifest(self.system), before)
+
     def test_55_hotkeys(self):
         self.build(True)
         self.assertOk(self.run_mod("55"))

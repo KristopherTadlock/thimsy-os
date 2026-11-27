@@ -25,14 +25,50 @@
 # (scripts/patch_vendor_boot.py). That needs fsck.erofs, mkfs.erofs,
 # unpack_bootimg, lz4 and avbtool on PATH, MKBOOTIMG naming mkbootimg (or
 # mkbootimg.py) and AVB_KEY naming AOSP's testkey_rsa4096.pem.
+# With SYSTEM_IMG (all_modes) the copy in vendor_dlkm is test 42's
+# MOD-Y1-E (sprd_drm.py's defaults: 4K at 30 Hz and 4K at 60 Hz 4:2:0 when the
+# monitor lists them, and fix E); recovery's copy (and vendor_dlkm's without
+# SYSTEM_IMG) is the plain module, which never has the extra modes. Each result
+# must be byte for byte the module sprd_drm.py's RELEASE_SHA256 pins, or the
+# build stops.
 #
 # DOCK_FIX=1, the default, patches the board overlay in dtbo (DTBO and DTBO_B)
 # so a powered USB-C dock can charge the RG Cube and drive its HDMI and USB at
-# the same time (scripts/patch_dtbo.py, usb_c_dock_plan.md). The result must be
-# byte for byte the image approved for the device (patch_dtbo.py's
-# tested_sha256), and the owner approved it for test 40 without a device test.
-# It also needs fdtoverlay on PATH (the merge check). DOCK_FIX=0 keeps the
-# stock dtbo.
+# the same time (scripts/patch_dtbo.py, usb_c_dock_plan.md), and adds the
+# charge temperature steps (thermal2: at most 1.5 A from 45 C and 1.0 A from
+# 49 C; stock from 52 C). The result must be byte for byte the image approved
+# for the device (patch_dtbo.py's tested_sha256): TH2 (c87ece8c), which runs on
+# the RG Cube in test 42. It is DK1 (1b727faa; picture, USB 3.0 and charging
+# with a powered dock) with the thermal2 jeita tables. It also needs
+# fdtoverlay on PATH (the merge check). DOCK_FIX=0 keeps the stock dtbo.
+#
+# CHARGE_FIX=1, the default with SYSTEM_IMG (0 without it: CM12 ran only with
+# the 1.4.4 system), patches the charger manager in vendor_dlkm
+# (scripts/sprd_cm.py's CM12, applied by scripts/patch_vendor_dlkm.py): an SDP
+# behind a USB PD hub or AMA charges at 1.05 A instead of 0.5 A, and a 5 V 3 A
+# USB PD charger at 2.0 A instead of 1.05 A. The stock module's sha256 is
+# checked, and the result must be byte for byte the module tested on the RG
+# Cube in test 42 (sprd_cm.py's TESTED_SHA256), with the vendor_dlkm's
+# sprd_tcpm.ko the one it was written for. The owner shipped it with known
+# limits (owner decisions D11 and D12 in sprd_cm.py). Recovery's copy, in
+# vendor_boot, stays stock. CHARGE_FIX=0 keeps the stock module.
+#
+# COMPOSER_FIX=1, the default with SYSTEM_IMG (0 without it: the composer
+# fixes ran only with the 1.4.4 system), patches the vendor composer in vendor_a
+# (scripts/sprd_hwc.py's SLEEP and CT4K, applied by scripts/patch_vendor.py):
+# a docked sleep turns the monitor off, and at a 3840-wide mode (4K60 4:2:0)
+# the composer keeps SurfaceFlinger's client target instead of dropping it.
+# COMPOSER_FIX=ct4k applies CT4K alone (test 42's T3 composer), and
+# COMPOSER_FIX=0 keeps the stock composer. The stock composer's sha256 is
+# checked, and the result must be byte for byte a composer tested on the RG
+# Cube in test 42. vendor is ext4 and the library keeps its size, so it is
+# rewritten in place: no other byte of vendor_a changes (scripts/ext4_image.py).
+#
+# 4K at 60 Hz as YCbCr 4:2:0 (mods/52-monitor-4k.sh, SYSTEM_IMG only) is turned
+# on (THIMSY_MONITOR_4K=1) only when this build's DisplayPort driver offers it
+# (scripts/sprd_drm.py's Y420 in the patch it applies) and its composer keeps a
+# 3840-wide client target (CT4K: COMPOSER_FIX 1 or ct4k). Otherwise Output
+# Resolution would list 4K modes that show nothing.
 #
 # odm gets a precompiled SELinux policy matching the system image
 # (scripts/odm_sepolicy.py), so init does not compile one at every boot. That
@@ -101,6 +137,27 @@ case "$DOCK_FIX" in
   1) python3 -I "$ROOT/scripts/patch_dtbo.py" tested ;;
   *) echo "DOCK_FIX must be 0 or 1" >&2; exit 1 ;;
 esac
+# The charger and composer fixes ran on the RG Cube only with the 1.4.4 system, so they are
+# the default only with SYSTEM_IMG; a 1.2-base build gets them only when asked for (=1).
+FIX_DEFAULT=0
+[[ -z "${SYSTEM_IMG:-}" ]] || FIX_DEFAULT=1
+CHARGE_FIX="${CHARGE_FIX:-$FIX_DEFAULT}"
+case "$CHARGE_FIX" in
+  0|1) ;;
+  *) echo "CHARGE_FIX must be 0 or 1" >&2; exit 1 ;;
+esac
+COMPOSER_FIX="${COMPOSER_FIX:-$FIX_DEFAULT}"
+case "$COMPOSER_FIX" in
+  0|1|ct4k) ;;
+  *) echo "COMPOSER_FIX must be 0, 1 or ct4k" >&2; exit 1 ;;
+esac
+THIMSY_MONITOR_4K=0
+if [[ -n "${SYSTEM_IMG:-}" && "$COMPOSER_FIX" != 0 ]]; then
+  # The driver patch_vendor_dlkm.py builds (all_modes, sprd_drm.py's defaults) has Y420's mode.
+  THIMSY_MONITOR_4K="$(python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import sprd_drm
+print(int(any(a == sprd_drm.Y420_PATCH[0] for a, _, _ in sprd_drm.patches(True))))' "$ROOT/scripts")"
+fi
+export THIMSY_MONITOR_4K
 SEVENZIP="$(command -v 7zz || command -v 7z || true)"
 [[ -n "$SEVENZIP" ]] || { echo "7-Zip (7zz or 7z) is required" >&2; exit 1; }
 if [[ -n "${ESDE_APK:-}" ]]; then
@@ -271,13 +328,22 @@ python3 -I "$ROOT/scripts/lptool.py" extract "$super" vendor_dlkm_a "$dlkm"
 # Only the Nano patch's init.rc loads the LED driver beside the module list.
 leds=()
 [[ -n "${SYSTEM_IMG:-}" ]] || leds=(--load-leds)
-python3 -I "$ROOT/scripts/patch_vendor_dlkm.py" "${leds[@]}" "$dlkm" "$dlkm.patched"
+charger=()
+[[ "$CHARGE_FIX" == 1 ]] || charger=(--stock-charger)
+python3 -I "$ROOT/scripts/patch_vendor_dlkm.py" "${leds[@]}" "${charger[@]}" "$dlkm" "$dlkm.patched"
 python3 -I "$ROOT/scripts/lptool.py" replace "$super" vendor_dlkm_a "$dlkm.patched"
 rm -f "$dlkm" "$dlkm.patched"
 odm="$WORK/images/odm_a.img"
 vendor="$WORK/images/vendor_a.img"
 python3 -I "$ROOT/scripts/lptool.py" extract "$super" odm_a "$odm"
 python3 -I "$ROOT/scripts/lptool.py" extract "$super" vendor_a "$vendor"
+if [[ "$COMPOSER_FIX" != 0 ]]; then
+  composer=()
+  [[ "$COMPOSER_FIX" == 1 ]] || composer=(--ct4k-only)
+  python3 -I "$ROOT/scripts/patch_vendor.py" "${composer[@]}" "$vendor" "$vendor.patched"
+  python3 -I "$ROOT/scripts/lptool.py" replace "$super" vendor_a "$vendor.patched"
+  mv "$vendor.patched" "$vendor"
+fi
 python3 -I "$ROOT/scripts/odm_sepolicy.py" "$odm" "$system" "$vendor" "$odm.patched"
 python3 -I "$ROOT/scripts/lptool.py" replace "$super" odm_a "$odm.patched"
 rm -f "$odm" "$odm.patched" "$vendor"
@@ -291,6 +357,7 @@ for slot in VENDORBOOT VENDORBOOT_B; do
 done
 rm -f "$vendor_boot"
 if [[ "$DOCK_FIX" == 1 ]]; then
+  # --tested: the approved image, TH2 (the dock fix and the thermal2 charge temperature steps).
   # Both slots get the same image; it stays the partition's size (8 MiB), as replace requires.
   # The check also merges it into the base DT of the vendor_boot this build ships (fdtoverlay).
   dtbo="$WORK/images/dtbo.img"

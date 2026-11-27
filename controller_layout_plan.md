@@ -343,6 +343,8 @@ Each entry is `{"id","match":{…},"labels":{"south":"B",…},"evdev":{"south":3
 
 Only the Cube ships today. The table matters when Thimsy runs elsewhere; until each row is confirmed, an unconfirmed device takes the `default`.
 
+The Linux build depends on phase 1 for `face_layout` (`linux_handheld_plan.md` §4.5). Its first device, the RG ARC, has a Saturn-style print: six face buttons (A, B, C, X, Y, Z) and no sticks (§5.3 there). That plan gives it a new value, `saturn` (§8.3 there); Q12. `face_layout` stays the label convention: the number of face buttons (4 or 6) and whether sticks exist are separate descriptor fields, not `face_layout` values.
+
 ---
 
 ## 5. Normalisation fixes per controller family
@@ -589,7 +591,7 @@ The rule for every row: the emulator receives Android positions (`BUTTON_A` = S,
 | 6. gammapad | `/product` and `_Version_` lookup, per-source swap, `last_src`, optionally `merge=0` as two virtual pads | parser yes (new host test) | 2-3 days (+3-4 for two pads) |
 | 7. Unknown pads, optional | "Identify Controller" in Gamepad Settings: press bottom, right, top, left; saves `{vid,pid,version,name} → evdev per Phys` to `/data/system/nano_xmb/buttonmap/pads.user.json`, read by phase 1's matcher. The Switch Pro `/product` layout if Q1 says yes | logic yes | 2-3 days |
 
-Phases 1-3 give the user's menu behaviour with any common pad. Phase 4 makes prompts correct while games run and over the overlay. Phase 5 is the emulator side.
+Phases 1-3 give the user's menu behaviour with any common pad. Phase 4 makes prompts correct while games run and over the overlay. Phase 5 is the emulator side. `linux_handheld_plan.md` needs phase 1's `face_layout` (see §4.2).
 
 ---
 
@@ -650,6 +652,7 @@ Phases 1-3 give the user's menu behaviour with any common pad. Phase 4 makes pro
 9. **Existing installs:** should provisioning correct SeedlessDS's and DraStic's A/B (and Dolphin/Azahar's missing binds) on existing setups, or only fresh ones?
 10. **Emulator menus:** should ABXY Swap also drive RetroArch's `menu_swap_ok_cancel_buttons` and PPSSPP's confirm button? Not covered by decision 2; the plan leaves them unchanged.
 11. **Other handhelds' layouts:** confirm the §4.2 table (only the Cube is verified).
+12. **The RG ARC's six-button print** (§4.2): `linux_handheld_plan.md` §8.3 uses a new `face_layout` value, `saturn` (§5.3 there asks for a value for this print). Recommended: adopt that name here in phase 1, and settle which printed letter sits at each position, including C and Z (ROCKNIX maps those two to the stick clicks). Button count and sticks stay separate fields. This plan settles it; the Linux plan follows.
 
 **Findings outside this feature** (each a separate fix)
 1. gammapad scrambles DualShock 3/4 (legacy `.kl`, §1.3).

@@ -6,7 +6,7 @@ from tests import util
 
 TOOLS = ("unshare", "zstd", "xz", "unzip", "gzip", "tar", "awk")
 CLEAN_ENV = ("ESDE_APK", "SYSTEM_IMG", "REFRESH_CORES", "ALLOW_BUNDLED_CORES", "NEW_KEYSTORE",
-             "THIMSY_RELEASE", "THIMSY_COMMIT")
+             "THIMSY_RELEASE", "THIMSY_COMMIT", "THIMSY_MONITOR_4K")
 
 
 class ModCase(util.TestCase):

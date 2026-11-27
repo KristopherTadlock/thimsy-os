@@ -11,6 +11,11 @@ PATCHED_SINK = (0x2601912C,)
 PATCHED_SOURCE = (0x0401905A,)
 VBUS_PHANDLE = 0x2A   # not the RG Cube's 0x07: the patch must take it from __symbols__
 MISSING = 0xFFFFFFFF
+# The battery node's jeita tables as on the RG Cube (entry 2), in its order: rows of <temperature
+# recovery current-uA cv-uV>, temperatures in 0.1 C above -100.0 C (1000 is 0 C).
+JEITA_KINDS = ("dcp", "sdp", "cdp", "unknown", "fchg", "flash")
+JEITA_STOCK_UA = {"dcp": (2000000, 700000), "sdp": (500000, 500000), "cdp": (1500000, 700000),
+                  "unknown": (1050000, 700000), "fchg": (3250000, 700000), "flash": (5000000, 1000000)}
 
 
 def u32(*words):
@@ -55,15 +60,49 @@ def fdt(tree, rsvmap=()):
     return header + rsv + bytes(body) + bytes(strings)
 
 
+def jeita(*rows):
+    return u32(*[w for row in rows for w in row])
+
+
+def stock_jeita(kind):
+    full, low = JEITA_STOCK_UA[kind]
+    return jeita((1000, 1030, 0, 4340000), (1150, 1180, low, 4340000), (1520, 1490, full, 4340000),
+                 (1600, 1570, low, 4100000))
+
+
+# The thermal2 tables' 15-45 C, 45-49 C and 49-52 C currents, as the owner gave them (each step no more
+# than the table's full rate). The RG Cube's approved dtbo has them (test 42 TH2, `patch --tested`).
+THERMAL2_UA = {"dcp": (2000000, 1500000, 1000000), "unknown": (1050000, 1050000, 1000000),
+               "cdp": (1500000, 1500000, 1000000)}
+
+
+def thermal2_jeita(kind):
+    """The thermal2 table of KIND (dcp, unknown or cdp), written out from the owner's design."""
+    full, warm, hot = THERMAL2_UA[kind]
+    return jeita((1000, 1030, 0, 4340000), (1150, 1180, 700000, 4340000), (1450, 1420, full, 4340000),
+                 (1490, 1460, warm, 4340000), (1520, 1490, hot, 4340000), (1600, 1570, 700000, 4100000))
+
+
+def jeita_props(**tables):
+    """The battery node's jeita table properties: stock, but for TABLES (kind=value, None: absent)."""
+    props = []
+    for kind in JEITA_KINDS:
+        value = tables.get(kind, stock_jeita(kind))
+        if value is not None:
+            props.append(("%s-jeita-temp-table" % kind, value))
+    return props
+
+
 def frag(n, label_props, kids=()):
     """fragment@N with target <MISSING> and an __overlay__ of LABEL_PROPS and KIDS."""
     return ("fragment@%d" % n, [("target", u32(MISSING))], [("__overlay__", list(label_props), list(kids))])
 
 
 def overlay(sink=STOCK_SINK, source=STOCK_SOURCE, data_role=None, usb_c2c=False, usb3_c2c=False,
-            typec=False, pd_vbus=None, pd_local=False, numbers=(1, 2, 3, 4, 5), extra_pd=()):
-    """A board overlay like the RG Cube's dtbo entry 2, cut down: the OTG boost (vddvbus), USB2 (usb),
-    USB3 (usb3), the fast charger (pmic_fchg) and the PD controller (pmic_pd) with the connector.
+            typec=False, pd_vbus=None, pd_local=False, numbers=(1, 2, 3, 4, 5), extra_pd=(), jeita=None):
+    """A board overlay like the RG Cube's dtbo entry 2, cut down: the battery with its jeita tables
+    (JEITA: jeita_props()'s list, stock by default), the OTG boost (vddvbus), USB2 (usb), USB3 (usb3),
+    the fast charger (pmic_fchg) and the PD controller (pmic_pd) with the connector.
     NUMBERS are their fragment numbers; the stock values unless an argument says otherwise."""
     chg, usb, usb3, fchg, pd = numbers
     connector = [("compatible", strs("usb-c-connector")), ("label", strs("USB-C")),
@@ -88,7 +127,9 @@ def overlay(sink=STOCK_SINK, source=STOCK_SOURCE, data_role=None, usb_c2c=False,
         pd: frag(pd, pd_props, [("connector", connector, [])]),
     }
     kids = [("fragment", [("target-path", strs("/"))], [
-        ("__overlay__", [], [("battery", [("compatible", strs("simple-battery")), ("phandle", u32(0x03))], [])])])]
+        ("__overlay__", [], [("battery", [("compatible", strs("simple-battery"))]
+                              + (jeita_props() if jeita is None else list(jeita)) + [("phandle", u32(0x03))],
+                              [])])])]
     # A fragment after the PD controller's with a local fixup of its own (the battery's phandle).
     ion = max(numbers) + 1
     frags[ion] = frag(ion, [("memory-region", u32(0x03))])
