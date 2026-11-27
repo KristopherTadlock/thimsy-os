@@ -339,7 +339,7 @@ Built 2026-11-21 from the plan docs in this folder, each checked against the REA
   - A1: remove `nsenter` and drop `SYS_ADMIN`, `SYS_PTRACE` and `SYS_CHROOT` at the next Android-surface batch.
   - Fold the seam moves (Wi-Fi and Bluetooth to NanoNetBridge, `Power`, `AppControl`, `AppFiles`) into the OA-4 migration.
   - Then a `thimsy-nanod` helper and a switch to uid `system` with `SYS_NICE` and `BLOCK_SUSPEND`.
-- **(decide)** The plan's §9: the user and uid, games as `nano` or a separate uid, ext4 drives from a PC, Linux timing, OA-5's scripts moving into the session, the Android end state and SELinux enforcing, and an Android interim with `DAC_OVERRIDE`.
+- **Decided (2026-11-26, DECISIONS.md OA-27 to OA-31):** user `nano` (1000) before the Linux alpha; games run as `nano`; idmapped mounts for PC-made ext4 drives, else ask; the session runs the Wi-Fi and Bluetooth scripts; Android moves to uid `system` with `thimsy-nanod` and towards SELinux enforcing (Nano's domains first, device-wide later); one interim release may keep `DAC_OVERRIDE`.
 
 ### Portable settings on the card, Linux and Android (portable_settings_plan.md): not started (OA-20, 2026-11-26)
 - **Goal:** every relevant Thimsy setting lives in a user-editable file on the card, so it travels between Thimsy devices and between the Android and Linux builds. ES-DE's own files keep only ES-DE formats.

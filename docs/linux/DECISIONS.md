@@ -1143,3 +1143,13 @@ The owner went through AUDIT.md and the Deferred table one item at a time. Each 
 - **Portable settings plan (OA-20):** `portable_settings_plan.md` and its TODO.md entry are committed. Its 13 owner questions (section 8) are pending.
 - **OA-29, PC-formatted ext4 drives under non-root Nano (nonroot_nano_plan.md Q3):** thimsy-session mounts them with an idmapped mount (kernel 5.12 and later, ext4 supported) so their files appear owned by `nano` without changing the drive. Where the kernel or the filesystem cannot do it, Nano asks before taking ownership of the drive's top folder, and mounts it read-only for Nano if the user declines. Work: `CONFIG` checks for idmapped mounts in kernel-critical.conf, the session's mount path (`mount_setattr` with `MOUNT_ATTR_IDMAP` and a user namespace mapping the drive's owner to 1000), the prompt, and tests with disk images owned by other uids.
 - **OA-30, who runs D30net and D35bluetooth under non-root Nano (nonroot_nano_plan.md Q5; refines OA-5):** Nano's Linux platform code sends "Wi-Fi on/off" and "Bluetooth on/off" requests to thimsy-session, which stays root and runs the fixed scripts. Nano never needs root or extra capabilities for them, and linux-ux-15's raw-execve start inside Nano goes away when this lands.
+- **OA-31, Android's end state (nonroot_nano_plan.md Q6):**
+  - Nano moves to Android's `system` uid with a small root helper (`thimsy-nanod`) for file and sysfs work, as the plan's A1 to A5 describe, done alongside the OA-4 moves.
+  - The owner wants to move towards SELinux enforcing. The plan's A6 is therefore planned work, not optional. In stages:
+    1. Nano's own domains (`thimsy_nano`, `thimsy_nanod`) replace the reused `bootanim` domain, marked permissive per domain (A2).
+    2. Denials are collected on a device and folded into the policy.
+    3. Nano's domains are switched to enforcing while the rest of the device stays permissive (A6).
+    4. Device-wide enforcing is a later goal with its own audit, because it touches GammaOS's other services (gammapad, sharefs, the `su` helpers, vendor parts).
+  - Features that only work through cross-app writes (other apps' private data, settings, relabels) go through the helper or an init service with a narrow policy, or are reported unsupported when no narrow rule exists.
+  - Linux's Thimsy Base does not use SELinux; its confinement is the non-root `nano` user (OA-27), NanoJail and, later, the plan's L4 hardening.
+- **Decided autonomously within OA-31, for owner audit (nonroot_nano_plan.md Q7):** if the helper (A4) slips, one Android release may keep `DAC_OVERRIDE` for the `system`-uid Nano, so the uid switch is not blocked; the helper must land before Nano's domain goes enforcing.
