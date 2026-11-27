@@ -1,0 +1,19 @@
+# OA-38 (W8-EMU): a Recently Played game whose emulator cannot run here (bsnes: the host runs only
+# snes9x) starts with the image's default for its system (snes9x, seeded into the device's store on
+# the first run), for that launch only: Recently Played moves the game to the front and still names
+# its own core, so the next launch tries it again.
+# TODO(G10): the key sequence below is a first guess at the XMB's layout (the Game column with
+# Recently Played first, its second entry); fix it from the first run's captures and events.
+{"boot": {"props": {"persist.gammaos.nano.theme": "xmb", "persist.gammaos.nano.grab_input": "1"}, "files": {"/storage/1234-ABCD/ROMs/snes/First Game.sfc": "not a real ROM\n", "/storage/1234-ABCD/ROMs/snes/Second Game.sfc": "not a real ROM\n", "/data/system/nano_xmb_recent.list": "#nano-recent v2\n/storage/1234-ABCD/ROMs/snes/First Game.sfc\tsnes9x_libretro_android.so\t\t\tFirst Game\tSNES\tsnes\n/storage/1234-ABCD/ROMs/snes/Second Game.sfc\tbsnes_libretro_android.so\t\t\tSecond Game\tSNES\tsnes\n"}, "shell": {"rules": [{"match": "am start", "status": 0}]}, "emulators": {"cores": ["snes9x_libretro_android.so"], "defaults": [{"system": "snes", "core": "snes9x_libretro_android.so", "package": "", "intent": ""}]}}}
+{"expect": {"present_count_at_least": 5}, "within_ms": 30000}
+{"expect_file": {"path": "/data/system/nano_emu_defaults.json", "contains": "snes9x_libretro_android.so"}}
+{"press": "DPAD_RIGHT"}
+{"wait_ms": 300}
+{"press": "A", "hold_ms": 80}
+{"wait_ms": 500}
+{"press": "DPAD_DOWN"}
+{"wait_ms": 300}
+{"press": "A", "hold_ms": 80}
+{"expect_launch": {"kind": "Core", "core": "snes9x", "rom_endswith": "/ROMs/snes/Second Game.sfc"}, "within_ms": 10000}
+{"expect_file": {"path": "/data/system/nano_xmb_recent.list", "contains": "#nano-recent v2\n/storage/1234-ABCD/ROMs/snes/Second Game.sfc\tbsnes_libretro_android.so\t"}}
+{"expect_no_shell": ["settings put", "pm uninstall"]}

@@ -139,6 +139,8 @@ class ScenarioFormat(util.TestCase):
             '{"boot": {"devices": [{"node": "event0", "keys": ["WARP"]}]}}',
             '{"boot": {"volumes": {"id": "9602-C755"}}}',
             '{"boot": {"volumes": [{"kind": "sd"}]}}',
+            '{"boot": {"emulators": {"cores": "snes9x_libretro_android.so"}}}',
+            '{"boot": {"emulators": {"games": []}}}',
         ]
         for text in bad:
             with self.assertRaises(ScenarioError, msg=text):
@@ -173,6 +175,12 @@ class ScenarioFormat(util.TestCase):
         vols = [{"id": "9602-C755", "kind": "sd", "boot_disk": True}, {"id": "1234-ABCD", "state": "ejected"}]
         boot = nano_scenario.parse(json.dumps({"boot": {"volumes": vols}}))[0]["boot"]
         self.assertEqual(nano_scenario.host_config(boot)["volumes"], vols)
+        # The emulators that run (FakeEmulators.h, W8-EMU) pass through; none listed, none run.
+        self.assertNotIn("emulators", nano_scenario.host_config({}))
+        emus = {"cores": ["snes9x_libretro_android.so"], "defaults": [
+            {"system": "snes", "core": "snes9x_libretro_android.so", "package": "", "intent": ""}]}
+        boot = nano_scenario.parse(json.dumps({"boot": {"emulators": emus}}))[0]["boot"]
+        self.assertEqual(nano_scenario.host_config(boot)["emulators"], emus)
 
     def test_match_value(self):
         self.assertTrue(nano_scenario.match_value("abc", {"equals": "abc"}))

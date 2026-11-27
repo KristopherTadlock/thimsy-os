@@ -73,6 +73,9 @@ Nano process whose fields equal the given ones, e.g. `{"ev": "grab", "on": true}
 - `barrier`: start with the frame barrier on.
 - `files`: {absolute jail path: text}, written before Nano starts (ROMs, ES-DE files, state files).
 - `record_props`: key prefixes logged as `prop` events (default every key).
+- `emulators`: `{"cores": [...], "apps": [...], "defaults": [{"system", "core", "package",
+  "intent"}]}`, the emulators that run here and the image's defaults (`FakeEmulators.h`, W8-EMU).
+  Left out, no core and no app runs, so a scenario that launches lists its core.
 
 Key names: `DPAD_UP`, `DPAD_DOWN`, `DPAD_LEFT`, `DPAD_RIGHT` (the arrow keys, which Nano navigates
 by), `A` (`BTN_SOUTH`), `B` (`BTN_EAST`), `X` (`BTN_WEST`), `Y` (`BTN_NORTH`), `L`, `R`, `L2`, `R2`,
@@ -110,7 +113,8 @@ The runner talks to `nano-headless` through `/run/thimsy/headless/` (`nano/platf
 | `boot_home.jsonl` | boot to the home: the DRM path, presents, the pad opened and grabbed, a captured frame, no launch |
 | `navigate.jsonl` | presses reach Nano; it keeps presenting; nothing launches |
 | `launch_game.jsonl` | a system opened and a game launched with a core; the handshake and the ROM file; the game ends and Nano comes back with it played |
+| `launch_recent_fallback.jsonl` | OA-38: a Recently Played game whose core cannot run here starts with the image's default, and Recently Played still names its own core afterwards |
 | `setting_persisted.jsonl` | Font Size changed: `settings put system font_scale` through the gate and `persist.gammaos.nano.fontscale` in `persist.props`, still there after exit |
 
-The key sequences of `launch_game` and `setting_persisted` are first guesses at the XMB's layout,
+The key sequences of `launch_game`, `launch_recent_fallback` and `setting_persisted` are first guesses at the XMB's layout,
 marked `TODO(G10)`: they are fixed from the first run's captures and events.
