@@ -24,7 +24,8 @@
 // (FakeLauncher.h: records each launch with a {"ev":"launch"} event), the Volumes (the
 // config's scripted list of drives, FakeVolumes.h), the power and the system actions
 // (FakePower.h, G7-power), and the Wi-Fi and Bluetooth (the config's scripted networks and
-// devices, FakeNetwork.h, G7-net).
+// devices, FakeNetwork.h, G7-net), the boot answers (the config's, FakeBoot.h, W6-boot), and the
+// capabilities and the settings stores (the config's, FakeCapabilities.h and FakeSettings.h, W6-caps).
 
 #define LOG_TAG "NanoHost"
 
@@ -48,6 +49,9 @@
 #include "HostConfig.h"
 #include "NanoPlatform.h"
 #include "FakeAudio.h"  // G7-audio
+#include "FakeBoot.h"  // W6-boot
+#include "FakeCapabilities.h"  // W6-caps
+#include "FakeSettings.h"  // W6-caps
 
 namespace nanohost {
 
@@ -146,6 +150,9 @@ std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs&
           cfg.display.width, cfg.display.height, cfg.display.refreshHz, cfg.devices.size(), cfg.shellRules.size());
     std::unique_ptr<nanoplat::Volumes> volumes = makeFakeVolumes(cfg.volumes);   // G7-volumes
     std::unique_ptr<nanoplat::Network> net = createFakeNetwork(cfg.network);   // G7-net
+    const bool nanoOwnsBootScreen = cfg.nanoOwnsBootScreen;   // W6-boot
+    std::unique_ptr<nanoplat::Capabilities> caps = createFakeCapabilities(cfg.caps);   // W6-caps
+    std::unique_ptr<nanoplat::Settings> settings = createFakeSettings(cfg.settings);   // W6-caps
     std::unique_ptr<nanoplat::Platform> platform(new HostPlatform(std::move(cfg)));
     // The services, one line each (G7 steps).
     platform->display = createFakeDisplay(createHostDrm());  // G7-display
@@ -156,5 +163,9 @@ std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs&
     platform->actions = createFakeActions();  // G7-power
     platform->input = createFakeInput();  // G7-input
     platform->net = std::move(net);   // G7-net: the config's scripted networks and devices
+    platform->boot = createFakeBoot(nanoOwnsBootScreen);   // W6-boot: the config's answer; nothing waits
+    platform->caps = std::move(caps);   // W6-caps: true unless the config's "caps" says otherwise
+    platform->settings = std::move(settings);   // W6-caps: the config's "settings"; tables in memory, Linux's
+                                                // native system settings also as properties
     return platform;
 }

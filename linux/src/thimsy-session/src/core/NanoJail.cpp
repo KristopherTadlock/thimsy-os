@@ -24,6 +24,16 @@ bool digitsFrom(const std::string& s, size_t from) {
     return true;
 }
 
+int realUnshare(int flags) { return unshare(flags); }
+int realMount(const char* source, const char* target, const char* type, unsigned long flags, const void* data) {
+    return mount(source, target, type, flags, data);
+}
+int realDropCap(int cap) { return prctl(PR_CAPBSET_DROP, cap, 0, 0, 0); }
+
+// An empty directory nothing can be created in: read-only, at most a few inodes and one page.
+constexpr const char* kDirMaskOptions = "size=4k,nr_inodes=4,mode=0555";
+constexpr unsigned long kDirMaskFlags = MS_RDONLY | MS_NOSUID | MS_NODEV | MS_NOEXEC;
+
 }  // namespace
 
 bool isNodeOfDisk(const std::string& name, const std::string& disk) {
@@ -51,24 +61,46 @@ std::vector<std::string> planJail(const std::string& devDir, const std::vector<s
     return out;
 }
 
-bool applyJail(const std::vector<std::string>& mask, std::string* err) {
-    if (mask.empty()) return true;
+const std::vector<std::string>& jailDirMasks() {
+    static const std::vector<std::string> dirs = {"/sys/class/typec"};
+    return dirs;
+}
+
+std::vector<std::string> jailDirsFor(bool rootShared, bool emmcMasked) {
+    if (!rootShared && !emmcMasked) return {};
+    return jailDirMasks();
+}
+
+const JailOps& realJailOps() {
+    static const JailOps ops = {realUnshare, realMount, realDropCap};
+    return ops;
+}
+
+bool applyJail(const std::vector<std::string>& mask, const std::vector<std::string>& dirMasks, std::string* err,
+               const JailOps& ops) {
+    if (mask.empty() && dirMasks.empty()) return true;
     auto fail = [err](const std::string& what) {
         if (err) *err = what + ": " + strerror(errno);
         return false;
     };
-    if (unshare(CLONE_NEWNS) != 0) return fail("unshare(CLONE_NEWNS)");
-    if (mount(nullptr, "/", nullptr, MS_REC | MS_SLAVE, nullptr) != 0) return fail("making / a slave");
+    if (ops.unshareNs(CLONE_NEWNS) != 0) return fail("unshare(CLONE_NEWNS)");
+    if (ops.mountFs(nullptr, "/", nullptr, MS_REC | MS_SLAVE, nullptr) != 0) return fail("making / a slave");
     for (const std::string& p : mask) {
-        if (mount("/dev/null", p.c_str(), nullptr, MS_BIND, nullptr) != 0) {
+        if (ops.mountFs("/dev/null", p.c_str(), nullptr, MS_BIND, nullptr) != 0) {
             if (errno == ENOENT) continue;  // gone since the plan was made
             return fail("binding /dev/null over " + p);
         }
-        if (mount(nullptr, p.c_str(), nullptr, MS_BIND | MS_REMOUNT | MS_RDONLY, nullptr) != 0) {
+        if (ops.mountFs(nullptr, p.c_str(), nullptr, MS_BIND | MS_REMOUNT | MS_RDONLY, nullptr) != 0) {
             return fail("making " + p + " read-only");
         }
     }
-    if (prctl(PR_CAPBSET_DROP, CAP_MKNOD, 0, 0, 0) != 0) return fail("dropping CAP_MKNOD");
+    for (const std::string& d : dirMasks) {
+        if (ops.mountFs("tmpfs", d.c_str(), "tmpfs", kDirMaskFlags, kDirMaskOptions) != 0) {
+            if (errno == ENOENT) continue;  // no such class on this kernel or board
+            return fail("mounting an empty tmpfs over " + d);
+        }
+    }
+    if (ops.dropCap(CAP_MKNOD) != 0) return fail("dropping CAP_MKNOD");
     return true;
 }
 

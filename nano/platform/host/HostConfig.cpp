@@ -186,12 +186,14 @@ bool parseHostConfig(std::string_view text, HostConfig* out, std::string* err) {
     Reader r(err);
     const std::string top = "host config";
     if (!r.object(root, top, {"events", "control", "persist_file", "run_dir", "log_file", "display", "barrier",
-                              "devices", "shell", "record_props", "volumes", "network"}))
+                              "devices", "shell", "record_props", "volumes", "network", "nano_owns_boot_screen",
+                              "caps", "settings"}))
         return false;
     HostConfig c = *out;
     if (!r.str(root, "events", top, &c.events) || !r.str(root, "control", top, &c.control) ||
         !r.str(root, "persist_file", top, &c.persistFile) || !r.str(root, "run_dir", top, &c.runDir) ||
-        !r.str(root, "log_file", top, &c.logFile) || !r.boolean(root, "barrier", top, &c.barrier))
+        !r.str(root, "log_file", top, &c.logFile) || !r.boolean(root, "barrier", top, &c.barrier) ||
+        !r.boolean(root, "nano_owns_boot_screen", top, &c.nanoOwnsBootScreen))
         return false;
     if (const Value* d = root.find("display")) {
         const std::string w = top + ".display";
@@ -261,6 +263,45 @@ bool parseHostConfig(std::string_view text, HostConfig* out, std::string* err) {
     }
     if (const Value* n = root.find("network")) {
         if (!parseNetwork(r, *n, top + ".network", &c.network)) return false;
+    }
+    if (const Value* caps = root.find("caps")) {   // W6-caps
+        const std::string w = top + ".caps";
+        if (!caps->isObject()) return r.fail(w, "not an object");
+        c.caps.clear();
+        for (const auto& m : caps->members()) {
+            nanoplat::Cap cap = nanoplat::Cap::Count;
+            if (!capFromName(m.key, &cap)) return r.fail(w, "unknown capability \"" + m.key + "\"");
+            if (!m.value.isBool()) return r.fail(w + "." + m.key, "not a boolean");
+            c.caps.emplace_back(cap, m.value.asBool());
+        }
+    }
+    if (const Value* st = root.find("settings")) {   // W6-caps
+        const std::string w = top + ".settings";
+        if (!r.object(*st, w, {"unsupported", "values"})) return false;
+        if (const Value* un = st->find("unsupported")) {
+            if (!un->isArray()) return r.fail(w + ".unsupported", "not an array");
+            c.settings.unsupported.clear();
+            for (size_t i = 0; i < un->size(); ++i) {
+                const std::string ew = w + ".unsupported[" + std::to_string(i) + "]";
+                if (!(*un)[i].isString()) return r.fail(ew, "not a string");
+                if (!validSettingSpec((*un)[i].asString())) return r.fail(ew, "not <store> or <store>:<key>");
+                c.settings.unsupported.push_back((*un)[i].asString());
+            }
+        }
+        if (const Value* vals = st->find("values")) {
+            if (!vals->isObject()) return r.fail(w + ".values", "not an object");
+            c.settings.values.clear();
+            for (const auto& m : vals->members()) {
+                const std::string ew = w + ".values." + m.key;
+                if (!m.value.isString()) return r.fail(ew, "not a string");
+                const size_t colon = m.key.find(':');
+                const std::string store = m.key.substr(0, colon);
+                if (colon == std::string::npos || colon + 1 >= m.key.size() ||
+                    (store != "global" && store != "secure" && store != "system"))
+                    return r.fail(ew, "not global:<key>, secure:<key> or system:<key>");
+                c.settings.values[m.key] = m.value.asString();
+            }
+        }
     }
     *out = std::move(c);
     return true;

@@ -39,6 +39,7 @@
 
 #include "NanoLaunchCommit.h"
 #include "NanoMenuUtils.h"   // setLaunchRomPath, setLaunchGame
+#include "ShellGate.h"       // platformExecve
 
 extern char** environ;
 
@@ -125,7 +126,8 @@ int closeLimit() {
     for (int fd = 3; fd < maxFd; fd++) {
         if (fd != errFd) close(fd);
     }
-    execve(argv[0], argv, environ);
+    // The platform's own start (OA-5), not through the shell gate, which refuses by default.
+    nanolinux::shellgate::platformExecve(argv[0], argv, environ);
     int e = errno;
     ssize_t w = write(errFd, &e, sizeof e);
     (void)w;

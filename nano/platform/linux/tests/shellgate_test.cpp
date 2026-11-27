@@ -28,11 +28,17 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
+#include <nanocompat/nanocompat.h>
+
 #include "compat_test_util.h"
+
+extern char** environ;
 
 using namespace nanolinux::shellgate;
 
@@ -82,117 +88,305 @@ int inChild(F fn) {
     return WIFEXITED(st) ? WEXITSTATUS(st) : -1;
 }
 
+const char* const kTzDate = "TZ=Europe/Berlin date -d @1767225600 +%z 2>/dev/null";
+
+// The gate's log lines (tag ThimsyShellGate) while it lives.
+struct LogCapture {
+    std::vector<std::string> lines;
+    LogCapture() {
+        nanocompat::setLogSink([this](int, const char* tag, const char* msg) {
+            if (tag && std::string(tag) == "ThimsyShellGate") lines.push_back(msg);
+        });
+    }
+    ~LogCapture() { nanocompat::setLogSink(nullptr); }
+    size_t count(const std::string& needle) const {
+        size_t n = 0;
+        for (const std::string& l : lines)
+            if (l.find(needle) != std::string::npos) n++;
+        return n;
+    }
+};
+
+// In a child: stderr to /dev/null (as runArgv does), then a refused exec of ARGV.
+int refuseExecQuietly(std::vector<const char*> argv) {
+    return inChild([&] {
+        int fd = open("/dev/null", O_WRONLY);
+        if (fd < 0 || dup2(fd, 2) < 0) _exit(2);
+        argv.push_back(nullptr);
+        execv(argv[0], const_cast<char* const*>(argv.data()));
+        _exit(errno == ENOENT ? 42 : 1);
+    });
+}
+
 }  // namespace
 
-// ------------------------------------------------------------------------------- classification
+// ------------------------------------------------------------------------------- the allow-list
 
-TEST_F(ShellGateTest, PlainLinuxCommandsPass) {
-    for (const char* c : {"sync", "echo 1 > /sys/class/backlight/x/brightness", "mkdir -p /data/x && chmod 755 /data/x",
-                          "curl -sI https://example.org", "/usr/bin/true", "cat /proc/cpuinfo | grep Hardware"}) {
-        Decision d = classifyCommand(c);
-        EXPECT_EQ(d.verdict, Verdict::Pass) << c;
-        EXPECT_EQ(d.command, std::string(c)) << c;
+TEST_F(ShellGateTest, TheAllowListIsShort) {
+    std::vector<std::string> want = {"NanoMenuSetupWizard.cpp:318 tzStandardOffset"};
+    EXPECT_EQ(allowListSites(), want);
+}
+
+TEST_F(ShellGateTest, AnAllowListedShapePasses) {
+    Decision d = classifyCommand(kTzDate);
+    EXPECT_EQ(d.verdict, Verdict::Pass);
+    EXPECT_EQ(d.command, std::string(kTzDate));
+    ASSERT_EQ(d.commands.size(), 1u);
+    EXPECT_STREQ(d.commands[0].allow, "NanoMenuSetupWizard.cpp:318 tzStandardOffset");
+    EXPECT_EQ(classifyCommand("TZ=America/Los_Angeles date -d @1782864000 +%z").verdict, Verdict::Pass);
+    EXPECT_EQ(classifyCommand("TZ=Etc/GMT+5 date -d @0 +%z 2>&1").verdict, Verdict::Pass);
+}
+
+TEST_F(ShellGateTest, OnlyTheExactShapePasses) {
+    for (const char* c : {
+             "TZ=Europe/Berlin date -d @1767225600 +%z -u",           // an extra word
+             "TZ=Europe/Berlin date -d @1767225600",                  // a missing word
+             "date -d @1767225600 +%z",                               // no TZ
+             "TZ=../../etc/passwd date -d @1 +%z",                    // not a zone
+             "TZ=Europe/Berlin date -d @12x +%z",                     // not an epoch
+             "TZ=Europe/Berlin date -d @1 +%z > /tmp/out",            // a redirection that writes
+             "TZ=Europe/Berlin date -d @1 +%z | cat",                 // a pipe
+             "TZ=Europe/Berlin date -d @1 +%z &",                     // a background job
+             "(TZ=Europe/Berlin date -d @1 +%z)",                     // a subshell
+             "nice TZ=Europe/Berlin date -d @1 +%z",                  // a wrapper
+             "timeout 3 TZ=Europe/Berlin date -d @1 +%z",
+             "TZ=Europe/Berlin /bin/date -d @1 +%z",                  // another spelling of the program
+             "TZ=Europe/Berlin date -d @1 +%z; sync",                 // with a command that is not allowed
+             "TZ=Europe/Berlin date -d @1 +%z; setprop a 1",          // mixed with a route
+         }) {
+        EXPECT_EQ(classifyCommand(c).verdict, Verdict::Refuse) << c;
+    }
+}
+
+// A pass hands the original string to sh, so no class may accept what sh expands: the lexer keeps
+// double-quoted "$(x)" in the word.
+TEST_F(ShellGateTest, NoClassAcceptsShellExpansion) {
+    for (const char* c : {
+             "TZ=\"$(reboot)\" date -d @1 +%z",
+             "TZ=\"Europe/$(reboot)\" date -d @1 +%z",
+             "TZ=Europe/Berlin date -d \"@1$(reboot)\" +%z",
+             "TZ=Europe/Berlin date -d @1`reboot` +%z",
+             "TZ=$Z date -d @1 +%z",
+             "TZ=Europe/* date -d @1 +%z",
+             "TZ=Europe/Berlin date -d @{1,2} +%z",
+             "curl \"https://h/$(x)\"",
+             "curl 'https://h/x'",
+         }) {
+        EXPECT_EQ(classifyCommand(c).verdict, Verdict::Refuse) << c;
+    }
+}
+
+// As in sh, a carriage return is part of a word, not a blank.
+TEST_F(ShellGateTest, ACarriageReturnIsAWordCharacter) {
+    EXPECT_EQ(classifyCommand("TZ=UTC date -d @1 +%z\r").verdict, Verdict::Refuse);
+    EXPECT_EQ(classifyCommand("TZ=UTC\rdate -d @1 +%z").verdict, Verdict::Refuse);
+    EXPECT_EQ(classifyCommand("TZ=UTC date\r-d @1 +%z").verdict, Verdict::Refuse);
+    Decision d = classifyCommand("am\rstart x");
+    EXPECT_EQ(d.verdict, Verdict::Refuse);
+    ASSERT_EQ(d.commands.size(), 1u);
+    EXPECT_EQ(d.commands[0].words.size(), 2u);
+    EXPECT_EQ(d.commands[0].words[0], std::string("am\rstart"));
+    EXPECT_EQ(classifyCommand("setprop\ra 1").verdict, Verdict::Refuse);
+}
+
+// --------------------------------------------------------------------------- refused by default
+
+TEST_F(ShellGateTest, LinuxCommandsAreRefusedByDefault) {
+    struct {
+        const char* cmd;
+        const char* shape;
+    } cases[] = {
+        {"sync", "sync"},
+        {"echo 1 > /sys/class/backlight/x/brightness", "echo"},
+        {"mkdir -p /data/x && chmod 755 /data/x", "mkdir"},
+        {"curl -sI https://example.org", "curl"},
+        {"/usr/bin/true", "/usr/bin/true"},
+        {"cat /proc/cpuinfo | grep Hardware", "cat"},
+        {"", "(empty)"},
+        {"   ", "(empty)"},
+        {"X=1", "(assignment only)"},
+        {"> /tmp/x", "(no command)"},
+    };
+    for (const auto& c : cases) {
+        Decision d = classifyCommand(c.cmd);
+        EXPECT_EQ(d.verdict, Verdict::Refuse) << c.cmd;
+        EXPECT_EQ(d.shape, std::string(c.shape)) << c.cmd;
     }
 }
 
 TEST_F(ShellGateTest, AndroidToolsAreRefused) {
     struct {
         const char* cmd;
-        const char* tool;
+        const char* shape;
     } cases[] = {
-        {"am start -n com.x/.Main", "am"},
-        {"settings put system screen_brightness 40 2>/dev/null", "settings"},
-        {"cmd wifi forget-network 3 2>&1", "cmd"},
-        {"dumpsys activity services x 2>/dev/null", "dumpsys"},
-        {"/system/bin/dumpsys audio", "dumpsys"},
+        {"am start -n com.x/.Main", "am start"},
+        {"settings put system screen_brightness 40 2>/dev/null", "settings put"},
+        {"cmd wifi forget-network 3 2>&1", "cmd wifi"},
+        {"dumpsys activity services x 2>/dev/null", "dumpsys activity"},
+        {"/system/bin/dumpsys audio", "/system/bin/dumpsys audio"},
         {"monkey -p com.x -c android.intent.category.LAUNCHER 1", "monkey"},
-        {"mkdir -p /data/x && am broadcast -a y", "am"},
-        {"FOO=1 nice -n 5 am start x", "am"},
-        {"timeout 5 pm list packages", "pm"},
-        {"exec input keyevent 26", "input"},
-        {"sh -c 'cmd wifi status'", "cmd"},
-        {"/system/bin/sh -c \"settings get global x\"", "settings"},
-        {"echo $(getprop ro.x) > /tmp/y", "getprop"},
-        {"gammaos-net bt scan", "gammaos-net"},
+        {"mkdir -p /data/x && am broadcast -a y", "mkdir"},
+        {"FOO=1 nice -n 5 am start x", "am start"},
+        {"timeout 5 pm list packages", "pm list"},
+        {"exec input keyevent 26", "input keyevent"},
+        {"sh -c 'cmd wifi status'", "sh -c: cmd wifi"},
+        {"/system/bin/sh -c \"settings get global x\"", "/system/bin/sh -c: settings get"},
+        {"echo $(getprop ro.x) > /tmp/y", "echo"},
+        {"D=$(dumpsys activity activities); echo \"$D\" | grep x", "dumpsys activity"},
+        {"gammaos-net bt scan", "gammaos-net bt"},
         {"svc wifi enable", "svc wifi"},
         {"getprop", "getprop"},
+        {"/vendor/bin/setclock_max.sh &", "/vendor/bin/setclock_max.sh"},
+        {"toybox chmod 755 /data/x", "chmod"},
     };
     for (const auto& c : cases) {
         Decision d = classifyCommand(c.cmd);
         EXPECT_EQ(d.verdict, Verdict::Refuse) << c.cmd;
-        EXPECT_EQ(d.tool, std::string(c.tool)) << c.cmd;
+        EXPECT_EQ(d.shape, std::string(c.shape)) << c.cmd;
     }
+}
+
+// The Linux programs Nano's shared code used to reach with Android arguments (audit defect 3), and the
+// SELinux tools whose "success" was a lie.
+TEST_F(ShellGateTest, AndroidShapedLinuxToolsAreRefused) {
+    struct {
+        const char* cmd;
+        const char* shape;
+    } cases[] = {
+        {"/system/bin/chown -R system:system /data/system/nano_esde_themes/x", "/system/bin/chown"},
+        {"chown -R system:system /data/x", "chown"},
+        {"/system/bin/pidof org.vita3k.emulator", "/system/bin/pidof"},
+        {"pidof com.retroarch.aarch64", "pidof"},
+        {"/system/bin/curl -s -L --max-time 15 -A 'gammaos-nano-iptv' 'https://h/x.m3u8' 2>/dev/null",
+         "/system/bin/curl"},
+        {"/system/bin/rm -rf '/data/x y' && /system/xbin/sync", "/system/bin/rm"},
+        {"restorecon -R /data/x", "restorecon"},
+        {"restorecon '/data/x' >/dev/null 2>&1", "restorecon"},
+        {"chcon u:object_r:system_data_file:s0 /data/x", "chcon"},
+        {"gammaos-net download https://h/t.zip /data/local/tmp/t.zip", "gammaos-net download"},
+        {"nsenter -t 1 -m -- /system/bin/gammaos-net download u f", "nsenter"},
+    };
+    for (const auto& c : cases) {
+        Decision d = classifyCommand(c.cmd);
+        EXPECT_EQ(d.verdict, Verdict::Refuse) << c.cmd;
+        EXPECT_EQ(d.shape, std::string(c.shape)) << c.cmd;
+    }
+}
+
+// Audit defect 2: "timeout -s KILL 10 cmd ..." was read as duration KILL, command "10", and passed.
+TEST_F(ShellGateTest, TimeoutOptionsAreSkippedAndTheCommandRefused) {
+    struct {
+        const char* cmd;
+        const char* shape;
+    } cases[] = {
+        // NanoMenuMonitorMode.cpp:84 and NanoMenuPS3Menu.cpp:2469 (from :2483).
+        {"timeout -s KILL 10 cmd display gammaos-monitor-mode list 2>&1", "cmd display"},
+        {"timeout -s KILL 3 cmd package resolve-activity --brief -a android.settings.SETTINGS 2>/dev/null",
+         "cmd package"},
+        {"timeout -sKILL 5 dumpsys window", "dumpsys window"},
+        {"timeout -k 2 5 am start x", "am start"},
+        {"timeout -k2 -s TERM 5 am start x", "am start"},
+        {"timeout --signal=KILL 5 pm list packages", "pm list"},
+        {"timeout --signal KILL 5 pm list packages", "pm list"},
+        {"timeout --kill-after=1 --preserve-status --foreground 5 settings get global x", "settings get"},
+        {"timeout --kill-after 1 -v 5 settings get global x", "settings get"},
+        {"timeout -- 5 am force-stop x", "am force-stop"},
+        {"timeout 30 gammaos-net wifi configure x", "gammaos-net wifi"},
+        {"timeout 5 nice -n 3 am start x", "am start"},
+        // An option timeout does not have, or no command: the wrapper itself is what is refused.
+        {"timeout -z 5 am start", "timeout"},
+        {"timeout 5", "timeout"},
+        {"timeout -s KILL", "timeout"},
+    };
+    for (const auto& c : cases) {
+        Decision d = classifyCommand(c.cmd);
+        EXPECT_EQ(d.verdict, Verdict::Refuse) << c.cmd;
+        EXPECT_EQ(d.shape, std::string(c.shape)) << c.cmd;
+    }
+}
+
+TEST_F(ShellGateTest, KeywordsAndUnknownWrappersAreRefused) {
+    for (const char* c : {
+             "if true; then am start x; fi", "! am start x", "{ am start x; }", "do am start x", "then sync",
+             "else sync", "su -c 'am start x'", "su 0 am start x", "time am start x", "stdbuf -oL am start x",
+             "chrt -f 10 am start x", "taskset 1 am start x", "ionice -c3 am start x", "xargs am start",
+             "while true; do sync; done", "time TZ=UTC date -d @1 +%z", "env TZ=UTC date -d @1 +%z",
+             "$CMD start", "\"$CMD\" start"}) {
+        EXPECT_EQ(classifyCommand(c).verdict, Verdict::Refuse) << c;
+    }
+    EXPECT_EQ(classifyCommand("su -c 'am start x'").shape, std::string("su"));
+    EXPECT_EQ(classifyCommand("! am start x").shape, std::string("! am"));
+    EXPECT_EQ(classifyCommand("if true; then am start x; fi").shape, std::string("if true"));
+    EXPECT_EQ(classifyCommand("nohup").shape, std::string("nohup"));
 }
 
 TEST_F(ShellGateTest, QuotedWordsAreNotCommands) {
     Decision d = classifyCommand("echo 'am start' \"cmd wifi\" > /dev/null; printf '%s\\n' settings");
-    EXPECT_EQ(d.verdict, Verdict::Pass);
+    EXPECT_EQ(d.verdict, Verdict::Refuse);
+    EXPECT_EQ(d.shape, std::string("echo"));
     ASSERT_EQ(d.commands.size(), 2u);
     EXPECT_EQ(d.commands[0].words[1], std::string("am start"));
 }
 
-TEST_F(ShellGateTest, SystemBinPosixToolsAreRewritten) {
-    Decision d = classifyCommand("/system/bin/rm -rf '/data/x y' && /system/xbin/sync");
-    EXPECT_EQ(d.verdict, Verdict::Pass);
-    EXPECT_EQ(d.command, std::string("rm -rf '/data/x y' && sync"));
-    d = classifyCommand("toybox chmod 755 /data/x");
-    EXPECT_EQ(d.verdict, Verdict::Pass);
-    EXPECT_EQ(d.command, std::string(" chmod 755 /data/x"));
+TEST_F(ShellGateTest, ShapesNameTheSubcommandOnly) {
+    EXPECT_EQ(shapeOf({"am", "force-stop", "com.x"}), std::string("am force-stop"));
+    EXPECT_EQ(shapeOf({"pidof", "org.vita3k.emulator"}), std::string("pidof"));
+    EXPECT_EQ(shapeOf({"chown", "-R", "system:system"}), std::string("chown"));
+    EXPECT_EQ(shapeOf({"cmd", "bluetooth_manager", "enable"}), std::string("cmd bluetooth_manager"));
+    EXPECT_EQ(shapeOf({}), std::string("(no command)"));
 }
 
-TEST_F(ShellGateTest, AndroidPathsPassOnlyWhenTheImageHasThem) {
-    Decision d = classifyCommand("/vendor/bin/setclock_max.sh &");
-    EXPECT_EQ(d.verdict, Verdict::Refuse);
-    EXPECT_EQ(d.tool, std::string("/vendor/bin/setclock_max.sh"));
-
-    compat_test::ScratchDir root;
-    ASSERT_FALSE(root.path().empty());
-    ASSERT_EQ(mkdir((root / "vendor").c_str(), 0755), 0);
-    ASSERT_EQ(mkdir((root / "vendor/bin").c_str(), 0755), 0);
-    std::string script = root / "vendor/bin/setclock_max.sh";
-    int fd = open(script.c_str(), O_WRONLY | O_CREAT, 0755);
-    ASSERT_GE(fd, 0);
-    close(fd);
-    setRoot(root.path().c_str());
-    d = classifyCommand("/vendor/bin/setclock_max.sh &");
-    EXPECT_EQ(d.verdict, Verdict::Pass);
-    setRoot("");
-}
+// ------------------------------------------------------------------------------------- routes
 
 TEST_F(ShellGateTest, RoutesAreRecognised) {
     Decision d = classifyCommand("setprop persist.sys.timezone Europe/Berlin");
     EXPECT_EQ(d.verdict, Verdict::Route);
-    EXPECT_EQ(d.tool, std::string("setprop"));
+    EXPECT_EQ(d.shape, std::string("setprop persist.sys.timezone"));
     d = classifyCommand("setprop a 1; setprop b 2");
     EXPECT_EQ(d.verdict, Verdict::Route);
     EXPECT_EQ(d.commands.size(), 2u);
+    EXPECT_EQ(classifyCommand("setprop a 1 2>/dev/null").verdict, Verdict::Route);
     EXPECT_EQ(classifyCommand("svc power reboot").verdict, Verdict::Route);
-    EXPECT_EQ(classifyCommand("restorecon -R /data/x").verdict, Verdict::Route);
-    // Mixed with Linux commands, piped or in a subshell: not taken apart.
+    EXPECT_EQ(classifyCommand("/system/bin/svc power shutdown").verdict, Verdict::Route);
+    EXPECT_EQ(classifyCommand("reboot -p").verdict, Verdict::Route);
+    EXPECT_EQ(classifyCommand("getprop ro.x").verdict, Verdict::Route);
+    // Mixed with other commands, piped, in a subshell, wrapped or redirected to a file: refused.
     EXPECT_EQ(classifyCommand("setprop a 1; sync").verdict, Verdict::Refuse);
     EXPECT_EQ(classifyCommand("setprop a 1 | cat").verdict, Verdict::Refuse);
     EXPECT_EQ(classifyCommand("(setprop a 1)").verdict, Verdict::Refuse);
+    EXPECT_EQ(classifyCommand("setprop a 1 &").verdict, Verdict::Refuse);
+    EXPECT_EQ(classifyCommand("nice setprop a 1").verdict, Verdict::Refuse);
+    EXPECT_EQ(classifyCommand("X=1 setprop a 1").verdict, Verdict::Refuse);
+    EXPECT_EQ(classifyCommand("setprop a 1 > /tmp/x").verdict, Verdict::Refuse);
+    EXPECT_EQ(classifyCommand("svc power").verdict, Verdict::Refuse);
 }
 
 // ------------------------------------------------------------------------------ system and popen
 
-TEST_F(ShellGateTest, SystemRunsLinuxCommands) {
-    int st = system("exit 3");
+TEST_F(ShellGateTest, SystemRunsTheAllowListedShape) {
+    // Any zone and epoch: the host's date and zoneinfo answer.
+    int st = system("TZ=UTC date -d @0 +%z >/dev/null");
     ASSERT_TRUE(WIFEXITED(st));
-    EXPECT_EQ(WEXITSTATUS(st), 3);
+    EXPECT_EQ(WEXITSTATUS(st), 0);
+    FILE* f = popen("TZ=UTC date -d @0 +%z", "r");
+    ASSERT_TRUE(f != nullptr);
+    EXPECT_EQ(readAll(f), std::string("+0000\n"));
+    EXPECT_EQ(pclose(f), 0);
     EXPECT_NE(system(nullptr), 0);
+    EXPECT_EQ(refusalCount(), 0u);
 }
 
-TEST_F(ShellGateTest, SystemRefusesOncePerTool) {
+TEST_F(ShellGateTest, SystemRefusesAndCountsEachLogsOncePerShape) {
     int st = system("am force-stop com.x 2>/dev/null");
     ASSERT_TRUE(WIFEXITED(st));
     EXPECT_EQ(WEXITSTATUS(st), 127);
-    st = system("am start -n com.x/.Main");
-    EXPECT_EQ(WEXITSTATUS(st), 127);
-    st = system("cmd alarm set-time 1 2>/dev/null");
-    EXPECT_EQ(WEXITSTATUS(st), 127);
-    std::vector<std::string> want = {"am", "cmd"};
-    EXPECT_EQ(refusedTools(), want);
+    EXPECT_EQ(WEXITSTATUS(system("am force-stop com.y")), 127);
+    EXPECT_EQ(WEXITSTATUS(system("am start -n com.x/.Main")), 127);
+    EXPECT_EQ(WEXITSTATUS(system("cmd alarm set-time 1 2>/dev/null")), 127);
+    EXPECT_EQ(WEXITSTATUS(system("exit 3")), 127);   // a plain shell command too
+    std::vector<std::string> want = {"am force-stop", "am start", "cmd alarm", "exit"};
+    EXPECT_EQ(refusedShapes(), want);
+    EXPECT_EQ(refusalCount(), 5u);
 }
 
 TEST_F(ShellGateTest, SystemRoutesSetprop) {
@@ -203,6 +397,10 @@ TEST_F(ShellGateTest, SystemRoutesSetprop) {
     EXPECT_EQ(props["sys.x"], std::string("a b"));
     st = system("setprop fail.key 1");
     EXPECT_EQ(WEXITSTATUS(st), 1);
+    system("setprop sys.x c");
+    std::vector<std::string> want = {"setprop persist.sys.locale", "setprop sys.x", "setprop fail.key"};
+    EXPECT_EQ(routedShapes(), want);
+    EXPECT_EQ(refusalCount(), 0u);
 }
 
 TEST_F(ShellGateTest, PowerCommandsGoThroughPowerctl) {
@@ -222,17 +420,13 @@ TEST_F(ShellGateTest, PowerCommandsGoThroughPowerctl) {
     EXPECT_EQ(props["sys.powerctl"], std::string("reboot"));
     system("/system/bin/reboot -p");
     EXPECT_EQ(props["sys.powerctl"], std::string("shutdown"));
-    EXPECT_EQ(WEXITSTATUS(system("restorecon -R /data/x")), 0);
+    // restorecon is no longer a successful no-op.
+    EXPECT_EQ(WEXITSTATUS(system("restorecon -R /data/x")), 127);
 }
 
-TEST_F(ShellGateTest, PopenPassesAndRoutes) {
-    FILE* f = popen("echo hello", "r");
-    ASSERT_TRUE(f != nullptr);
-    EXPECT_EQ(readAll(f), std::string("hello\n"));
-    EXPECT_EQ(pclose(f), 0);
-
+TEST_F(ShellGateTest, PopenRoutesGetprop) {
     props["ro.product.model"] = "RG ARC-D";
-    f = popen("getprop ro.product.model", "r");
+    FILE* f = popen("getprop ro.product.model", "r");
     ASSERT_TRUE(f != nullptr);
     EXPECT_EQ(readAll(f), std::string("RG ARC-D\n"));
     EXPECT_EQ(pclose(f), 0);
@@ -251,10 +445,16 @@ TEST_F(ShellGateTest, PopenRefusedGivesNoOutputAnd127) {
     ASSERT_TRUE(WIFEXITED(st));
     EXPECT_EQ(WEXITSTATUS(st), 127);
 
+    f = popen("echo hello", "r");
+    ASSERT_TRUE(f != nullptr);
+    EXPECT_EQ(readAll(f), std::string());
+    EXPECT_EQ(WEXITSTATUS(pclose(f)), 127);
+
     f = popen("am broadcast -a x", "w");
     ASSERT_TRUE(f != nullptr);
     EXPECT_GT(fputs("ignored\n", f), -1);
     EXPECT_EQ(WEXITSTATUS(pclose(f)), 127);
+    EXPECT_EQ(refusalCount(), 3u);
 }
 
 TEST_F(ShellGateTest, RecorderRunsNothing) {
@@ -273,54 +473,52 @@ TEST_F(ShellGateTest, RecorderRunsNothing) {
     EXPECT_EQ(WEXITSTATUS(pclose(f)), 5);
     ASSERT_EQ(seen.size(), 2u);
     EXPECT_EQ(seen[0], std::string("touch /nonexistent/should-not-run"));
-    EXPECT_TRUE(refusedTools().empty());
+    EXPECT_TRUE(refusedShapes().empty());
 }
 
 // ------------------------------------------------------------------------------------------ exec
 
-TEST_F(ShellGateTest, ExecPlans) {
+TEST_F(ShellGateTest, ExecIsRefusedByDefault) {
     ExecPlan p;
     char* curlArgv[] = {(char*)"curl", (char*)"-s", nullptr};
     classifyExec("curl", curlArgv, &p);
-    EXPECT_EQ(p.action, ExecAction::Pass);
-    classifyExec("/usr/bin/unzip", curlArgv, &p);
-    EXPECT_EQ(p.action, ExecAction::Pass);
-
-    char* rmArgv[] = {(char*)"/system/bin/rm", (char*)"-rf", (char*)"/x", nullptr};
-    classifyExec(rmArgv[0], rmArgv, &p);
-    EXPECT_EQ(p.action, ExecAction::PathSearch);
-    EXPECT_STREQ(p.file, "rm");
-    EXPECT_TRUE(p.argv == rmArgv);
-
-    char* amArgv[] = {(char*)"/system/bin/am", (char*)"force-stop", (char*)"x", nullptr};
-    classifyExec(amArgv[0], amArgv, &p);
     EXPECT_EQ(p.action, ExecAction::Refuse);
-    EXPECT_STREQ(p.tool, "/system/bin/am");
+    EXPECT_STREQ(p.shape, "curl");
+    classifyExec("/usr/bin/unzip", curlArgv, &p);
+    EXPECT_EQ(p.action, ExecAction::Refuse);
+    EXPECT_STREQ(p.shape, "/usr/bin/unzip");
 
-    char* rcArgv[] = {(char*)"/system/bin/restorecon", (char*)"-R", (char*)"/x", nullptr};
-    classifyExec(rcArgv[0], rcArgv, &p);
-    EXPECT_EQ(p.action, ExecAction::Succeed);
-
-    char* dlArgv[] = {(char*)"/system/bin/gammaos-net", (char*)"download", (char*)"https://h/t.zip",
-                      (char*)"/data/local/tmp/t.zip", nullptr};
-    classifyExec(dlArgv[0], dlArgv, &p);
-    ASSERT_EQ(p.action, ExecAction::Rewrite);
-    EXPECT_STREQ(p.file, "curl");
-    std::vector<std::string> got;
-    for (size_t i = 0; p.argv[i]; i++) got.push_back(p.argv[i]);
-    std::vector<std::string> want = {"curl", "-fsSL", "--retry", "2", "-o", "/data/local/tmp/t.zip", "https://h/t.zip"};
-    EXPECT_EQ(got, want);
-
-    char* nsArgv[] = {(char*)"/system/bin/nsenter", (char*)"-t", (char*)"1", (char*)"-m", (char*)"--",
-                      (char*)"/system/bin/gammaos-net", (char*)"download", (char*)"u", (char*)"f", nullptr};
-    classifyExec(nsArgv[0], nsArgv, &p);
-    EXPECT_EQ(p.action, ExecAction::Rewrite);
-    char* nsNoTail[] = {(char*)"/system/bin/nsenter", (char*)"-t", (char*)"1", nullptr};
-    classifyExec(nsNoTail[0], nsNoTail, &p);
+    struct {
+        std::vector<const char*> argv;
+        const char* shape;
+    } cases[] = {
+        {{"/system/bin/rm", "-rf", "/x"}, "/system/bin/rm"},
+        {{"/system/bin/mkdir", "-p", "/data/system/nano_esde_themes"}, "/system/bin/mkdir"},
+        {{"/system/bin/am", "force-stop", "x"}, "/system/bin/am force-stop"},
+        {{"/system/bin/restorecon", "-R", "/x"}, "/system/bin/restorecon"},
+        {{"/system/bin/gammaos-net", "download", "https://h/t.zip", "/data/local/tmp/t.zip"},
+         "/system/bin/gammaos-net download"},
+        {{"/system/bin/nsenter", "-t", "1", "-m", "--", "/system/bin/gammaos-net", "download", "u", "f"},
+         "/system/bin/nsenter"},
+        {{"/system/bin/chown", "-R", "system:system", "/data/system/nano_esde_themes/x"}, "/system/bin/chown"},
+        {{"/system/bin/pidof", "org.vita3k.emulator"}, "/system/bin/pidof"},
+        {{"sh", "-c", "exit 4"}, "sh"},
+    };
+    for (auto& c : cases) {
+        c.argv.push_back(nullptr);
+        classifyExec(c.argv[0], const_cast<char* const*>(c.argv.data()), &p);
+        EXPECT_EQ(p.action, ExecAction::Refuse) << c.argv[0];
+        EXPECT_STREQ(p.shape, c.shape);
+    }
+    classifyExec(nullptr, curlArgv, &p);
+    EXPECT_EQ(p.action, ExecAction::Refuse);
+    // The allow-listed shell shape is not an exec entry.
+    char* dateArgv[] = {(char*)"TZ=UTC", (char*)"date", (char*)"-d", (char*)"@1", (char*)"+%z", nullptr};
+    classifyExec(dateArgv[0], dateArgv, &p);
     EXPECT_EQ(p.action, ExecAction::Refuse);
 }
 
-TEST_F(ShellGateTest, ExecRunsTranslatedAndRefusesAndroid) {
+TEST_F(ShellGateTest, ExecRefusalsInChildrenAreCountedInTheParent) {
     // Refused: exec fails with ENOENT and the child carries on (Nano's sites then _exit(127)).
     int rc = inChild([] {
         char* argv[] = {(char*)"/system/bin/am", (char*)"start", nullptr};
@@ -328,34 +526,266 @@ TEST_F(ShellGateTest, ExecRunsTranslatedAndRefusesAndroid) {
         _exit(errno == ENOENT ? 42 : 1);
     });
     EXPECT_EQ(rc, 42);
-    // /system/bin/<posix tool> runs the Linux tool.
     rc = inChild([] {
-        char* argv[] = {(char*)"/system/bin/sh", (char*)"-c", (char*)"exit 7", nullptr};
+        char* argv[] = {(char*)"/system/bin/am", (char*)"start", (char*)"-W", nullptr};
         execv(argv[0], argv);
-        _exit(1);
+        _exit(errno == ENOENT ? 42 : 1);
     });
-    EXPECT_EQ(rc, 7);
-    // nsenter's prefix is dropped.
-    rc = inChild([] {
-        char* argv[] = {(char*)"/system/bin/nsenter", (char*)"-t", (char*)"1", (char*)"-m", (char*)"--",
-                        (char*)"/system/bin/sh", (char*)"-c", (char*)"exit 9", nullptr};
-        execvp(argv[0], argv);
-        _exit(1);
-    });
-    EXPECT_EQ(rc, 9);
-    // restorecon succeeds without running anything.
+    EXPECT_EQ(rc, 42);
+    // restorecon no longer "succeeds".
     rc = inChild([] {
         char* argv[] = {(char*)"/system/bin/restorecon", (char*)"-R", (char*)"/x", nullptr};
         char* envp[] = {nullptr};
         execve(argv[0], argv, envp);
-        _exit(1);
+        _exit(errno == ENOENT ? 43 : 1);
     });
-    EXPECT_EQ(rc, 0);
-    // A Linux program runs as asked.
+    EXPECT_EQ(rc, 43);
+    // A Linux program is refused too.
     rc = inChild([] {
         char* argv[] = {(char*)"sh", (char*)"-c", (char*)"exit 4", nullptr};
         execvp(argv[0], argv);
+        _exit(errno == ENOENT ? 44 : 1);
+    });
+    EXPECT_EQ(rc, 44);
+    EXPECT_EQ(refusalCount(), 4u);
+    std::vector<std::string> want = {"/system/bin/am start", "/system/bin/restorecon", "sh"};
+    EXPECT_EQ(refusedShapes(), want);
+}
+
+// A child's stderr is often not Nano's log (runArgv: /dev/null; esdeRunProc: a side file), so the
+// parent logs what its children refused, once per shape, on its next gate call.
+TEST_F(ShellGateTest, ExecRefusalsInChildrenAreLoggedByTheParentOncePerShape) {
+    LogCapture log;
+    const std::vector<const char*> forceStop = {"/system/bin/am", "force-stop", "org.es_de.frontend"};
+    EXPECT_EQ(refuseExecQuietly(forceStop), 42);
+    EXPECT_EQ(refuseExecQuietly(forceStop), 42);
+    EXPECT_EQ(refuseExecQuietly({"/system/bin/pidof", "org.vita3k.emulator"}), 42);
+    // A shell command refused in a child, with its stderr gone too.
+    EXPECT_EQ(inChild([] {
+                  int fd = open("/dev/null", O_WRONLY);
+                  if (fd < 0 || dup2(fd, 2) < 0) _exit(2);
+                  _exit(WEXITSTATUS(system("logcat -d 2>/dev/null")));
+              }),
+              127);
+    // The parent's next gate call logs them; its own refusal logs with the command.
+    EXPECT_EQ(WEXITSTATUS(system("sync")), 127);
+    EXPECT_EQ(log.count("/system/bin/am force-stop (an exec"), 1u);
+    EXPECT_EQ(log.count("/system/bin/pidof (an exec"), 1u);
+    EXPECT_EQ(log.count("logcat (an exec"), 1u);
+    EXPECT_EQ(log.count("sync: sync"), 1u);
+    // Again: counted, not logged again.
+    EXPECT_EQ(refuseExecQuietly(forceStop), 42);
+    EXPECT_EQ(WEXITSTATUS(system("sync")), 127);
+    std::vector<std::string> want = {"/system/bin/am force-stop", "/system/bin/pidof", "logcat", "sync"};
+    EXPECT_EQ(refusedShapes(), want);
+    EXPECT_EQ(refusalCount(), 7u);
+    EXPECT_EQ(log.lines.size(), 4u);
+}
+
+TEST_F(ShellGateTest, AFullShapeTableIsLoggedOnceNotOnEveryRefusal) {
+    LogCapture log;
+    for (int round = 0; round < 2; round++)
+        for (int i = 0; i < 140; i++) system(("tool" + std::to_string(i)).c_str());
+    EXPECT_EQ(refusedShapes().size(), 128u);
+    EXPECT_EQ(refusalCount(), 280u);
+    EXPECT_EQ(log.count("table is full"), 1u);
+    EXPECT_EQ(log.count("tool0: tool0"), 1u);
+    EXPECT_EQ(log.count("tool127: tool127"), 1u);
+    EXPECT_EQ(log.count("tool128"), 0u);
+    EXPECT_EQ(log.lines.size(), 129u);
+}
+
+// runArgv SIGKILLs a child that overruns its timeout: if it held the registry's lock, the lock is
+// broken once the child is gone, and refusals are recorded and logged again.
+TEST_F(ShellGateTest, ALockLeftByADeadProcessIsBroken) {
+    fflush(nullptr);
+    pid_t dead = fork();
+    if (dead == 0) _exit(0);
+    ASSERT_EQ(waitpid(dead, nullptr, 0), dead);
+    setRegistryLockHolderForTests(dead);
+    LogCapture log;
+    EXPECT_EQ(WEXITSTATUS(system("am start x")), 127);
+    std::vector<std::string> want = {"am start"};
+    EXPECT_EQ(refusedShapes(), want);
+    EXPECT_EQ(log.count("am start: am start x"), 1u);
+}
+
+TEST_F(ShellGateTest, ThePlatformsOwnExecRuns) {
+    int rc = inChild([] {
+        char* argv[] = {(char*)"/bin/sh", (char*)"-c", (char*)"exit 4", nullptr};
+        platformExecve(argv[0], argv, environ);
         _exit(1);
     });
     EXPECT_EQ(rc, 4);
+    EXPECT_EQ(refusalCount(), 0u);
+}
+
+// ------------------------------------------------------------------- the audited command shapes
+// Every command Nano's Linux-compiled shared code sends to a shell or exec today
+// (docs/linux/audit-2026-11-26/inv_shell.md, with facts.md's corrections: NanoOtaCheck and NanoArchive
+// are compiled out on Linux), one representative string per shape. A change to what the gate passes,
+// routes or refuses fails here: review it against OA-4, then update the lists.
+
+namespace {
+
+const char* const kSharedShellCommands[] = {
+    // Apps and activities.
+    "am force-stop com.old; monkey -p com.new -c android.intent.category.LAUNCHER 1",     // ControlCenter:1121
+    "am force-stop com.x; ACT=$(cmd package resolve-activity --brief com.x | tail -n 1); am start --display 1 -n $ACT",
+    "D=$(dumpsys activity activities); echo \"$D\" | grep -q com.x",                     // ControlCenter:1246
+    "dumpsys activity processes com.x",                                                    // Overlay:219
+    "dumpsys activity activities | grep ResumedActivity",                                 // Overlay:316
+    "am start -n com.x/.NanoPauseActivity",                                                // Overlay:412
+    "dumpsys activity services com.x",                                                     // Overlay:1163
+    "pm list packages -3",                                                                 // Overlay:1200
+    "pm path com.retroarch.aarch64",                                                       // Overlay:1977
+    "timeout -s KILL 3 cmd package resolve-activity --brief -a android.settings.SETTINGS 2>/dev/null",  // PS3Menu:2483
+    "am start -a android.settings.SETTINGS",                                               // PS3Menu:2554
+    "am start-foreground-service -n com.x/.ScreenMapper",                                  // PS3Menu:12839
+    "am stopservice com.x/.ScreenMapper",
+    "am force-stop com.retroarch.aarch64 >/dev/null 2>&1",                                // PS3Folder:881
+    "appops set com.retroarch.aarch64 MANAGE_EXTERNAL_STORAGE allow",                     // PS3Folder:1199
+    "am broadcast -a com.x.androidgames.SYNC",                                             // Xmb:3714
+    "pm enable com.android.documentsui >/dev/null 2>&1 &",                                // State:393
+    // Android settings and system UI.
+    "settings get global x",                                                               // SettingsTree:845
+    "settings put global x 1",                                                             // SettingsTree:877
+    "ime reset",                                                                           // SetupWizard:209
+    "locksettings clear --old 1234",                                                       // SetupWizard:212
+    "settings put global device_provisioned 1 &",                                          // NanoMenu:4729
+    "ime enable com.x/.Ime; ime set com.x/.Ime",                                           // Overlay:1513
+    "settings get system font_scale",                                                      // Render:6259
+    "cmd uimode night yes",                                                                // PS3Menu:12772
+    "cmd notification set_dnd on",                                                         // PS3Menu:12876
+    "cmd location set-location-enabled true",
+    "cmd connectivity airplane-mode enable",                                               // PS3Menu:12849
+    "dumpsys notification --noredact",                                                     // PS3Menu:4979
+    // Display.
+    "timeout -s KILL 10 cmd display gammaos-monitor-mode list 2>&1",                      // MonitorMode:84
+    "cmd display enable-display 2",                                                        // PS3Menu:12392
+    "cmd color_display set-saturation 100",                                                // SettingsTree:903
+    "screencap -p /data/local/tmp/nano_bg.png",                                            // Render:439
+    "mkdir -p /sdcard/Pictures/Screenshots; screencap -p /sdcard/Pictures/Screenshots/x.png",  // ControlCenter:1693
+    // Audio.
+    "cmd media_session volume --get",                                                      // ControlCenter:282
+    // Power, performance and brightness.
+    "/vendor/bin/setclock_performance.sh &",                                               // NanoMenu:1242
+    "settings put system screen_brightness 50",                                            // ControlCenter:1617
+    // Wi-Fi and Bluetooth.
+    "timeout 30 gammaos-net wifi configure Home psk x --ip 10.0.0.2",                     // Settings:621
+    "cmd wifi set-wifi-enabled disabled",                                                  // SettingsTree:1107
+    "cmd bluetooth_manager disable",                                                       // SettingsTree:1108
+    "svc wifi enable",                                                                     // ControlCenter:1697
+    "gammaos-net bt discoverable 120",                                                     // PS3Menu:16252
+    // Time, date and locale.
+    "cmd alarm set-timezone Europe/Berlin",                                                // PS3Menu:12223
+    "curl -sI --max-time 8 http://example.com 2>/dev/null | grep -i '^date:'",            // PS3Menu:18404
+    "cmd alarm set-time 1767225600000 2>/dev/null",                                        // PS3Menu:18419
+    "curl -s --max-time 6 https://ipapi.co/timezone/ 2>/dev/null",                        // SetupWizard:404
+    "curl -s --max-time 6 'http://ip-api.com/line/?fields=timezone' 2>/dev/null",         // SetupWizard:405
+    // Streaming.
+    "/system/bin/curl -s -L --max-time 15 -A 'gammaos-nano-iptv' 'https://h/x.m3u8' 2>/dev/null",  // Hls:147
+    "/system/bin/curl -s -L --max-time 8 --http0.9 -H 'Icy-MetaData: 0' -r 0-8191 -A 'gammaos-nano-radio' "
+    "'http://h/s' 2>/dev/null",                                                            // IcyDemux:44
+    "/system/bin/curl -s -L --max-time 20 -A 'gammaos-nano-iptv' -o '/data/system/nano_iptv_ftv.m3u8.tmp' "
+    "'https://h/i.m3u' 2>/dev/null",                                                       // Iptv:107
+    // Storage.
+    "restorecon '/storage/x' >/dev/null 2>&1",                                            // PS3Folder:888
+    "gammaos-net usb mtp",                                                                 // Mtp:184
+};
+
+const char* const kSharedRoutes[] = {
+    "setprop sys.gammaos.multidisplay.split_brightness.d1.override 50; "
+    "setprop persist.gammaos.multidisplay.split_brightness.d1.last 50",                  // ControlCenter:1601
+    "setprop persist.sys.timezone Europe/Berlin",                                          // PS3Menu:18454
+    "setprop persist.sys.locale de-DE",                                                    // Strings:663
+};
+
+const std::vector<std::vector<const char*>> kSharedExecs = {
+    // esdeRunProc (NanoMenuEsdeMenu.cpp:902-991).
+    {"/system/bin/mkdir", "-p", "/data/system/nano_esde_themes"},
+    {"/system/bin/gammaos-net", "download", "https://h/themes.json", "/data/system/nano_esde_themes/.themes.json"},
+    {"/system/bin/rm", "-rf", "/data/system/nano_esde_themes/.dl_stage"},
+    {"/system/bin/unzip", "-o", "-q", "/data/system/nano_esde_themes/.dl_stage/theme.zip", "-d", "/s"},
+    {"/system/bin/mv", "/data/system/nano_esde_themes/.dl_stage/t", "/data/system/nano_esde_themes/t"},
+    {"/system/bin/chown", "-R", "system:system", "/data/system/nano_esde_themes/t"},
+    {"/system/bin/restorecon", "-R", "/data/system/nano_esde_themes/t"},
+    // runArgv (NanoSdMove.cpp) and the BIOS RunFn callbacks.
+    {"/system/bin/am", "force-stop", "org.es_de.frontend"},
+    {"/system/bin/restorecon", "/storage/x"},
+    {"/system/bin/logcat", "-d", "-T", "1.000"},
+    {"/system/bin/am", "start", "-W", "-n", "org.vita3k.emulator/.MainActivity"},
+    {"/system/bin/am", "start-foreground-service", "-n", "org.vita3k.emulator/.InstallForegroundService"},
+    {"/system/bin/pidof", "org.vita3k.emulator"},
+};
+
+}  // namespace
+
+TEST_F(ShellGateTest, TheAuditedSharedCommandsAreDecidedAsReviewed) {
+    std::set<std::string> refused;
+    for (const char* c : kSharedShellCommands) {
+        Decision d = classifyCommand(c);
+        EXPECT_EQ(d.verdict, Verdict::Refuse) << c;
+        refused.insert(d.shape);
+    }
+    std::set<std::string> wantShell = {
+        "/system/bin/curl",  "/vendor/bin/setclock_performance.sh",
+        "am broadcast",      "am force-stop",
+        "am start",          "am start-foreground-service",
+        "am stopservice",    "appops set",
+        "cmd alarm",         "cmd bluetooth_manager",
+        "cmd color_display", "cmd connectivity",
+        "cmd display",       "cmd location",
+        "cmd media_session", "cmd notification",
+        "cmd package",       "cmd uimode",
+        "cmd wifi",          "curl",
+        "dumpsys activity",  "dumpsys notification",
+        "gammaos-net bt",    "gammaos-net usb",
+        "gammaos-net wifi",  "ime enable",
+        "ime reset",         "locksettings clear",
+        "mkdir",             "pm enable",
+        "pm list",           "pm path",
+        "restorecon",        "screencap",
+        "settings get",      "settings put",
+        "svc wifi",
+    };
+    EXPECT_EQ(refused, wantShell);
+
+    std::set<std::string> routed;
+    for (const char* c : kSharedRoutes) {
+        Decision d = classifyCommand(c);
+        EXPECT_EQ(d.verdict, Verdict::Route) << c;
+        for (const Command& cmd : d.commands) routed.insert(cmd.shape);
+    }
+    std::set<std::string> wantRoutes = {
+        "setprop persist.gammaos.multidisplay.split_brightness.d1.last", "setprop persist.sys.locale",
+        "setprop persist.sys.timezone", "setprop sys.gammaos.multidisplay.split_brightness.d1.override"};
+    EXPECT_EQ(routed, wantRoutes);
+
+    // The one pass: the allow-list.
+    EXPECT_EQ(classifyCommand(kTzDate).verdict, Verdict::Pass);
+
+    std::set<std::string> refusedExec;
+    for (auto argv : kSharedExecs) {
+        argv.push_back(nullptr);
+        ExecPlan p;
+        classifyExec(argv[0], const_cast<char* const*>(argv.data()), &p);
+        EXPECT_EQ(p.action, ExecAction::Refuse) << argv[0];
+        refusedExec.insert(p.shape);
+    }
+    std::set<std::string> wantExec = {
+        "/system/bin/am force-stop",
+        "/system/bin/am start",
+        "/system/bin/am start-foreground-service",
+        "/system/bin/chown",
+        "/system/bin/gammaos-net download",
+        "/system/bin/logcat",
+        "/system/bin/mkdir",
+        "/system/bin/mv",
+        "/system/bin/pidof",
+        "/system/bin/restorecon",
+        "/system/bin/rm",
+        "/system/bin/unzip",
+    };
+    EXPECT_EQ(refusedExec, wantExec);
 }

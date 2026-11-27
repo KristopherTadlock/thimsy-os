@@ -116,6 +116,23 @@ TEST(LinuxPlatform, HasEveryService) {
     EXPECT_TRUE(p->input != nullptr);  // G7-input
     ASSERT_TRUE(p->net != nullptr);  // G7-net
     p->net->autoEnableWifi();         // D30net remembers the radio: nothing to do
+    ASSERT_TRUE(p->boot != nullptr);  // W6-boot: Nano always owns the boot screen
+    EXPECT_TRUE(p->boot->nanoOwnsBootScreen());
+    // W6-caps: only what Linux implements; the settings table fails closed.
+    ASSERT_TRUE(p->caps != nullptr);
+    EXPECT_FALSE(p->has(nanoplat::Cap::FactoryReset));
+    EXPECT_FALSE(p->has(nanoplat::Cap::RebootAndroid));
+    ASSERT_TRUE(p->settings != nullptr);
+    EXPECT_TRUE(p->settings->supports(nanoplat::SettingSource::kProp, "persist.gammaos.nano.kiosk"));
+    EXPECT_FALSE(p->settings->supports(nanoplat::SettingSource::kGlobal, "airplane_mode_on"));
+    // The Wi-Fi switch through the platform's own actions (the Quick Menu's Wi-Fi row).
+    EXPECT_TRUE(p->settings->supports(nanoplat::SettingSource::kGlobal, "wifi_on"));
+    EXPECT_FALSE(p->settings->supports(nanoplat::SettingSource::kProp, "persist.gammaos.nano.unknown_row"));
+}
+
+TEST(LinuxPlatform, HasIsFalseWithoutCapabilities) {
+    nanoplat::Platform bare;   // no caps set
+    EXPECT_FALSE(bare.has(nanoplat::Cap::Mtp));
 }
 
 }  // namespace

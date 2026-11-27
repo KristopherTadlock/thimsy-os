@@ -28,6 +28,9 @@
 #include "SystemActions.h"  // G7-power
 #include "InputPolicy.h"  // G7-input
 #include "Network.h"  // G7-net
+#include "Boot.h"  // W6-boot
+#include "Capabilities.h"  // W6-caps
+#include "Settings.h"  // W6-caps
 
 namespace nanofirmware {
 std::unique_ptr<nanoplat::Audio> makeAudio();  // platform/firmware/Audio.cpp (G7-audio)
@@ -44,5 +47,8 @@ std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs&
     platform->actions = nanofirmware::createSystemActions();  // G7-power
     platform->input = nanofirmware::createInputPolicy();  // G7-input
     platform->net = nanofirmware::createNetwork();  // G7-net
+    platform->boot = nanofirmware::createBoot();  // W6-boot
+    platform->caps = nanofirmware::createCapabilities();  // W6-caps
+    platform->settings = nanofirmware::createSettings();  // W6-caps
     return platform;
 }

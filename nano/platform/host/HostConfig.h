@@ -26,6 +26,7 @@
 //    "display": {"width": 1280, "height": 720, "refresh_hz": 60, "count": 1, "rotation": 0,
 //                "pace": true},
 //    "barrier": false,                                   start with the frame barrier on
+//    "nano_owns_boot_screen": true,                      false: Nano hands the boot over (FakeBoot.h)
 //    "devices": [{"path": "/dev/input/event0", "name": "Thimsy Gamepad", "phys": "", "uniq": "",
 //                 "bus": 6, "vendor": 21576, "product": 1, "version": 1,
 //                 "keys": [304, 305], "abs": [{"code": 16, "min": -1, "max": 1}], "rel": [],
@@ -40,16 +41,23 @@
 //                "networks": [{"ssid": "Home", "bssid": "", "rssi": -60, "security": 2, "saved_id": 0,
 //                              "in_range": true, "password": ""}],
 //                "bt_on": true, "bt_devices": [{"address": "AA:BB:CC:DD:EE:FF", "name": "Pad",
-//                              "bonded": false, "connected": false, "cod": 0, "in_range": true}]}}
+//                              "bonded": false, "connected": false, "cod": 0, "in_range": true}]},
 //                                                        the Wi-Fi and Bluetooth (FakeNetwork.h)
+//    "caps": {"FactoryReset": false},                    capabilities answered (FakeCapabilities.h);
+//                                                        every one not named is true
+//    "settings": {"unsupported": ["global", "secure:location_mode"],
+//                 "values": {"system:screen_off_timeout": "300000"}}}
+//                                                        the settings stores (FakeSettings.h)
 #pragma once
 
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "FakeCapabilities.h"
 #include "FakeEvdev.h"
 #include "FakeNetwork.h"
+#include "FakeSettings.h"
 #include "FakeVolumes.h"
 #include "HostControl.h"
 #include "ShellGateHost.h"
@@ -64,12 +72,15 @@ struct HostConfig {
     std::string logFile = "/run/thimsy/log/nano.log";
     DisplayConfig display;
     bool barrier = false;
+    bool nanoOwnsBootScreen = true;  // W6-boot (FakeBoot.h)
     std::vector<evdev::Device> devices;
     std::vector<shell::Rule> shellRules;
     int shellDefaultStatus = 127;
     std::vector<std::string> recordProps = {""};
     std::vector<FakeVolume> volumes;
     FakeNetConfig network;
+    CapAnswers caps;              // W6-caps (FakeCapabilities.h)
+    FakeSettingsConfig settings;  // W6-caps (FakeSettings.h)
 };
 
 // Parses `text` over the defaults in *out. false, with *err naming the member, on a syntax error,

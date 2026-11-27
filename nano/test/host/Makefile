@@ -338,6 +338,13 @@ HL_PLATFORM_SRCS += platform/host/FakeVolumes.cpp
 # The fake Wi-Fi and Bluetooth (G7-net).
 HL_TESTS += fake_network_test
 HL_PLATFORM_SRCS += platform/host/FakeNetwork.cpp
+# The fake boot (W6-boot); fake_boot_test also runs the firmware's (hl_extra_fake_boot_test below).
+HL_TESTS += fake_boot_test
+HL_PLATFORM_SRCS += platform/host/FakeBoot.cpp
+# The fake capabilities and settings (W6-caps); fake_settings_test also runs the firmware's
+# (hl_extra_fake_settings_test below).
+HL_TESTS += fake_settings_test
+HL_PLATFORM_SRCS += platform/host/FakeCapabilities.cpp platform/host/FakeSettings.cpp
 HL_PLATFORM_OBJS := $(patsubst %.cpp,$(HL_O)/obj/%.o,$(HL_PLATFORM_SRCS))
 HL_CPPFLAGS := $(NANOCOMPAT_CPPFLAGS) -I$(LIBTHIMSY)/include -I$(NANO) -I$(LIBTHIMSY)/testing -I$(HL_TEST_DIR)
 HL_WARN := -Wall -Wextra -Werror
@@ -360,6 +367,19 @@ hl_extra_glstub_test := $(HL_O)/obj/test/host/glstub/glue.o $(HL_O)/glstub/glstu
 # commitLaunch's sequences (G7-launch-a) through the firmware's launcher, the moved writes
 # (G7-launch-b): a [firmware] file, built here against the property shims.
 hl_extra_launch_commit_test := $(HL_O)/obj/platform/firmware/Launcher.o
+# The firmware's boot answers (W6-boot), the moved code: a [firmware] file, built here against the
+# property shims, the binder stubs (and their log line) and the kernel's DRM uapi header.
+hl_extra_fake_boot_test := $(HL_O)/obj/platform/firmware/Boot.o $(HL_O)/obj/compat/stubs/src/stub_log.o
+# The firmware's capabilities and settings dispatcher (W6-caps), the moved code: [firmware] files,
+# built here against the property shims, with NanoLaunch.cpp's shellQuote (compiled with the unit
+# tests' warnings, as check-unit-0 compiles it); the test defines the two Screen Calibration calls.
+HL_FIRMWARE_SETTINGS_OBJS := $(HL_O)/obj/platform/firmware/Settings.o $(HL_O)/obj/platform/firmware/Capabilities.o
+hl_extra_fake_settings_test := $(HL_FIRMWARE_SETTINGS_OBJS) $(HL_O)/obj/NanoLaunch.o
+$(HL_FIRMWARE_SETTINGS_OBJS): HL_WARN := -Wall -Wextra -Werror $(GCC_SUPPRESS)
+$(HL_O)/obj/NanoLaunch.o: HL_WARN := $(UNIT_WARN)
+HL_DRM_UAPI ?= /usr/include/drm
+HL_FIRMWARE_BOOT_OBJS := $(HL_O)/obj/platform/firmware/Boot.o $(HL_O)/obj/compat/stubs/src/stub_log.o
+$(HL_FIRMWARE_BOOT_OBJS): HL_CPPFLAGS += -I$(NANO)/compat/stubs/include -idirafter $(HL_DRM_UAPI)
 define HL_RULE
 $(call hl_bin,$(1)): $(HL_O)/obj/test/host/headless/tests/$(1).o $(HL_PLATFORM_OBJS) $(hl_extra_$(1)) \
 		$(COMPAT_ASAN_LIB) $(COMPAT_LIBTHIMSY_ASAN) | host-guard compat-guard

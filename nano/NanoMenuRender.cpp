@@ -78,6 +78,7 @@ extern "C" uint32_t __system_property_serial(const prop_info* __pi);
 #include "DrasticRunner.h"
 #include "NanoMenu.h"
 #include "NanoI18n.h"      // trDyn() runtime translation of hardcoded UI strings
+#include "NanoPlatform.h"  // nanoplat::get().boot: startupPreloadStart's settings check
 #include "NanoMenuStrings.h"  // NanoLocale / LocaleInfo / nanoGetLocaleInfo (DSi language picker)
 #include "NanoMenuDrm.h"
 #include "NanoDisplayTargetSf.h"
@@ -582,9 +583,7 @@ struct NanoMenu::StartupPreload {
 void NanoMenu::startupPreloadStart() {
     auto pre = std::make_shared<StartupPreload>();
     pre->startMs = (int64_t)uptimeMillis();
-    char ready[PROPERTY_VALUE_MAX] = {};
-    property_get("ro.persistent_properties.ready", ready, "");
-    const bool fonts = strcmp(ready, "true") == 0;
+    const bool fonts = nanoplat::get().boot->savedSettingsLoaded();
     const bool icons = !sDrasticQrFastPath;
     StartupPreload* p = pre.get();
     pre->worker = std::thread([p, fonts, icons] {

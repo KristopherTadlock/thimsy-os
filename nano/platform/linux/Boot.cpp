@@ -1,0 +1,58 @@
+/*
+ * Copyright (C) 2026 The Thimsy OS Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+// The Linux nanoplat::Boot (Boot.h).
+
+#define LOG_TAG "ThimsyBoot"
+
+#include "Boot.h"
+
+#include <memory>
+
+#include <log/log.h>
+
+namespace nanolinux {
+namespace boot {
+
+namespace {
+
+class LinuxBoot : public nanoplat::Boot {
+ public:
+    bool nanoOwnsBootScreen() override { return true; }
+
+    void handOverBootScreen(int earlyDrmFd, bool overlayMode) override {
+        ALOGE("handOverBootScreen(fd %d, overlay %d): Linux has no boot screen but Nano's; Nano keeps "
+              "the display",
+              earlyDrmFd, overlayMode ? 1 : 0);
+    }
+
+    // main_linux.cpp opens the settings store synchronously before any thread starts, so by the
+    // time anything asks, nothing more will load: waiting cannot help, and true means "every
+    // saved setting there will be is in" (only defaults when nanocompat::init failed, which
+    // main_linux.cpp has already logged).
+    void awaitSavedSettings(SettingsReader) override {}
+    bool savedSettingsLoaded() override { return true; }
+    bool soundSystemReady() override { return true; }
+};
+
+}  // namespace
+
+std::unique_ptr<nanoplat::Boot> create() {
+    return std::unique_ptr<nanoplat::Boot>(new LinuxBoot);
+}
+
+}  // namespace boot
+}  // namespace nanolinux

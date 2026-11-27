@@ -19,8 +19,8 @@
 //
 // Declared when used, not ahead: this header holds only the platform object and how it is made,
 // installed and reached. Each interface (Display, Launcher, Audio, Volumes, Power, SystemActions,
-// InputPolicy, Network, and the Cap set) is declared by the step that moves the code behind it, in
-// the same commit as the move, sized to that code.
+// InputPolicy, Network, Boot, Capabilities with the Cap set, and Settings) is declared by the step
+// that moves the code behind it, in the same commit as the move, sized to that code.
 //
 // Who may use it. drastic-nano, gammaos-nano-scrape, the host tests and the other binaries built
 // from Nano's files never call install(). No file they compile may include this header or name
@@ -426,10 +426,126 @@ class InputPolicy {
 };
 // --- end InputPolicy -----------------------------------------------------------------------------
 
+// --- Boot (W6-boot) ------------------------------------------------------------------------------
+// What Nano's start-up asks the platform before and while it comes up: whether this boot is Nano's
+// at all, and whether what it reads at start-up (its saved settings, the sound system) is there yet.
+// The firmware's is that Android code, moved (platform/firmware/Boot.cpp): readyToRun's "boot to
+// Android" choice and its hand-over to Android's boot animation, the waits of readyToRun and
+// threadLoop for init's persistent properties, startupPreloadStart's look at them, and the boot
+// sound's look for the audio service. Linux's: Nano is the only owner of the screen, and its store
+// is loaded before Nano starts, so nothing is read and nothing waits (platform/linux/Boot.cpp). The
+// host's answers from its config and records each call (platform/host/FakeBoot.cpp).
+class Boot {
+ public:
+    virtual ~Boot() = default;
+
+    // readyToRun(), right after it took main()'s early DRM fd: true when Nano runs this boot; false
+    // when the platform's own boot screen is to have the display instead (the firmware's: the user
+    // chose to boot to Android). Render thread; may block (the firmware's waits up to 10 s for its
+    // saved settings when the choice it caches is missing).
+    virtual bool nanoOwnsBootScreen() = 0;
+    // Only after nanoOwnsBootScreen() gave false: lets go of `earlyDrmFd` (main()'s early DRM
+    // master fd, or -1), gives the display to the platform's boot screen unless `overlayMode` (the
+    // --overlay instance never owns it), and ends the process with status 0. A platform without a
+    // boot screen of its own (Linux) never gives false; if called it logs, touches nothing and
+    // returns, and Nano runs on.
+    virtual void handOverBootScreen(int earlyDrmFd, bool overlayMode) = 0;
+
+    // Render thread. Waits a bounded time for Nano's saved settings to become readable, and logs
+    // when they still are not; Nano then goes on with what it reads. `reader` names the call site,
+    // whose bound and log lines the firmware keeps: QuickResumeCheck is readyToRun's, before the
+    // DraStic Quick Resume pre-check (2 s); MenuSetup is threadLoop's first pass, before it re-reads
+    // the settings and checks Quick Resume (3 s).
+    enum class SettingsReader { QuickResumeCheck, MenuSetup };
+    virtual void awaitSavedSettings(SettingsReader reader) = 0;
+    // Non-blocking: the saved settings are readable now (startupPreloadStart preloads the fonts
+    // only then).
+    virtual bool savedSettingsLoaded() = 0;
+
+    // Non-blocking, any thread: the system service Nano's sound output goes through is up
+    // (bootSoundStart's thread waits for it before it opens the boot sound; the firmware's is
+    // Android's AudioService, which unmutes the streams). A platform whose output needs no such
+    // service (Linux: ALSA, opened directly) answers true.
+    virtual bool soundSystemReady() = 0;
+};
+// --- end Boot ------------------------------------------------------------------------------------
+
+// --- Capabilities (W6-caps) ----------------------------------------------------------------------
+// What the platform can do, by intent, for features that are not settings (docs/linux/
+// ARCHITECTURE-AUDIT.md R3 and R4): the menus ask Platform::has() and hide what the platform has
+// not implemented, so it is never attempted. The firmware's answers true for every capability
+// (Android does all of these today; platform/firmware/Capabilities.cpp). Linux's answers true only
+// for what it really implements (platform/linux/Capabilities.cpp); the host's answers from its
+// config, true unless the config turns a capability off (platform/host/FakeCapabilities.cpp). Any
+// thread; never blocks. Adding a capability: append it before Count, and give each platform's
+// answer (Linux's switch has no default, so the compiler asks for it).
+enum class Cap {
+    OverlayApps,         // the overlay home: Nano drawn over a running app, with its app controls
+    DualStack,           // two panels driven as one stacked display
+    SystemSettingsApp,   // the platform's own full settings app, opened from Nano's menus
+    FactoryReset,        // erase the user's data and start again
+    ResetRadios,         // turn the Wi-Fi and Bluetooth radios off and on again (Reset Options)
+    RebootRecovery,      // restart into the recovery system
+    RebootSafeMode,      // restart with third-party apps disabled
+    RebootAndroid,       // restart into Android's own home instead of Nano
+    OtaUpdate,           // check for, download and install a system update (OA-16)
+    Mtp,                 // USB file transfer to a computer
+    TypecRole,           // switch the USB-C port between host and device
+    MediaPlayback,       // video snaps, theme videos and the music player (OA-24)
+    CpuProfiles,         // performance profiles for the CPU and GPU
+    Dnd,                 // Do Not Disturb
+    LocationToggle,      // the location service on or off
+    DarkTheme,           // the system-wide dark theme
+    ImeSelect,           // choosing the system's input method (keyboard app)
+    Notifications,       // the system's notifications, shown in Nano
+    ArchiveBrowsing,     // games inside .zip and .7z in the file explorer (OA-16)
+    ManualViewer,        // PDF and comic-archive manuals (OA-16)
+    Count                // not a capability: how many there are
+};
+
+class Capabilities {
+ public:
+    virtual ~Capabilities() = default;
+    virtual bool has(Cap cap) const = 0;
+};
+// --- end Capabilities ----------------------------------------------------------------------------
+
+// --- Settings (W6-caps) --------------------------------------------------------------------------
+// The settings dispatcher behind NanoMenuSettingsTree.h's readSettingValue, writeSettingValue and
+// settingSupported (the settings tree's rows, the XMB's settings bindings, and their direct
+// callers). A setting is a store and a key: kProp is a property (a Nano preference, or a key another
+// part of the system reads), kGlobal, kSecure and kSystem are the platform's system settings tables
+// (Android's Settings.Global, Secure and System); the values are android::SettingSource's
+// (NanoMenuSettingsTree.h). The firmware's is Android's code, moved: property_get and property_set,
+// `settings get` and `settings put`, and the post-write hooks that make some writes take effect
+// (platform/firmware/Settings.cpp); it supports every key. Linux's answers from a keyed table:
+// Nano's own preferences through the property store, the few system settings Linux implements
+// itself, and nothing else, so an unknown key is unsupported (platform/linux/Settings.cpp). The
+// host's supports what its config does not turn off (platform/host/FakeSettings.cpp). Any thread;
+// read and write may block (the firmware's run a command for the system tables).
+enum class SettingSource { kNone, kProp, kGlobal, kSecure, kSystem };
+
+class Settings {
+ public:
+    virtual ~Settings() = default;
+    // Whether the platform keeps `key` of `source` and gives a write to it its effect, or (read-only
+    // state, such as the device's name) provides it; the menus hide a row bound to an unsupported
+    // setting. Does not block.
+    virtual bool supports(SettingSource source, const std::string& key) const = 0;
+    // The stored value; `def` when there is none, it can't be read, or the setting is unsupported.
+    virtual std::string read(SettingSource source, const std::string& key, const std::string& def) = 0;
+    // Stores `value` and applies it. A write to an unsupported setting does nothing (logged once
+    // per setting) and returns false; false too when the store refused the value.
+    virtual bool write(SettingSource source, const std::string& key, const std::string& value) = 0;
+};
+// --- end Settings --------------------------------------------------------------------------------
+
 // The platform's services, one member per G7 area. Each platform library derives from it to keep
 // its own state, and its createPlatform() sets every member, so call sites use them untested.
 struct Platform {
     virtual ~Platform();
+    // Whether the platform implements `cap` (caps->has); false when caps is not set.
+    bool has(Cap cap) const;
     std::unique_ptr<Display> display;  // G7-display: never null once createPlatform() returns
     std::unique_ptr<Launcher> launcher;  // G7-launch-b: never null once createPlatform() returns
     std::unique_ptr<Audio> audio;  // G7-audio: set by every createPlatform(), never null after install()
@@ -438,6 +554,9 @@ struct Platform {
     std::unique_ptr<SystemActions> actions;  // G7-power: never null once createPlatform() returns
     std::unique_ptr<InputPolicy> input;  // G7-input: never null once createPlatform() returns
     std::unique_ptr<Network> net;  // G7-net: never null once createPlatform() returns
+    std::unique_ptr<Boot> boot;  // W6-boot: never null once createPlatform() returns
+    std::unique_ptr<Capabilities> caps;  // W6-caps: never null once createPlatform() returns
+    std::unique_ptr<Settings> settings;  // W6-caps: never null once createPlatform() returns
 };
 
 struct PlatformArgs {

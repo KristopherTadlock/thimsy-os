@@ -3,7 +3,6 @@
 # when the set changes. After a deliberate change, or a merge that brought new keys from nano-144:
 #   python3 tools/nano-tree/tests/test_nano_ratchets.py --update-props
 ctl.restart
-ctl.start
 ctl.stop
 debug.tracing.screen_brightness
 init.svc.gammaos-nano-overlay
@@ -654,7 +653,6 @@ sys.gammaos.bt.pair_reply
 sys.gammaos.bt.pair_request
 sys.gammaos.bt.passkey
 sys.gammaos.bt.pk_variant
-sys.gammaos.bt_autopair
 sys.gammaos.display.monitor_mode
 sys.gammaos.drastic_nano.afbc_both_top
 sys.gammaos.drastic_nano.afbc_in_fence

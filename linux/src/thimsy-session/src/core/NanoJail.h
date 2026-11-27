@@ -10,6 +10,15 @@
 // node for the same device either. The namespace is a slave of the session's (the session makes
 // "/" shared first), so drives the session mounts later still appear in it.
 //
+// The same namespace hides whole directories from Nano (jailDirMasks): an empty read-only tmpfs is
+// mounted over each, since a /dev/null bind only goes over a file (over a directory it fails with
+// ENOTDIR, which would stop Nano starting). /sys/class/typec is one (OA-4 migration step 1,
+// docs/linux/ARCHITECTURE-AUDIT.md defect 4): Android's USB-C role flipper in Nano's shared code
+// (NanoMenuMtp.cpp typecTick, NanoTypec.cpp) writes a port's port_type when a PD port with
+// DisplayPort alt mode and a non-PD partner is found, under a crash guard (ctl.restart
+// nano-typec-guard) that Linux refuses. With the directory empty it finds no port and writes nothing.
+// It finds ports only through /sys/class/typec (typec::kClass), so the class directory is enough.
+//
 // planJail() is pure; applyJail() runs in the child between fork and exec. The plan is made when
 // Nano starts; thimsy-session starts Nano again when eMMC nodes appear later (Session.cpp,
 // checkNanoJail), so a late eMMC is masked too.
@@ -30,10 +39,32 @@ bool isNodeOfDisk(const std::string& name, const std::string& disk);
 std::vector<std::string> planJail(const std::string& devDir, const std::vector<std::string>& devEntries,
                                   const std::vector<std::string>& emmcDisks);
 
+// The directories hidden from Nano on every start: /sys/class/typec.
+const std::vector<std::string>& jailDirMasks();
+
+// The directories to hide in a Nano started now. Nano's namespace is a slave of the session's, so
+// drives mounted later (SD cards, USB drives) reach it only when the session made "/" shared
+// (rootShared). When that failed and there is no eMMC to mask (emmcMasked false), Nano is better off
+// in the session's own namespace than blind to hot-plugged volumes: none (the session says so in
+// kmsg). Otherwise jailDirMasks(): with an eMMC to mask the namespace is made anyway.
+std::vector<std::string> jailDirsFor(bool rootShared, bool emmcMasked);
+
+// The system calls applyJail makes, replaceable by tests (they return -1 and set errno on failure).
+struct JailOps {
+    int (*unshareNs)(int flags);
+    int (*mountFs)(const char* source, const char* target, const char* type, unsigned long flags,
+                   const void* data);
+    int (*dropCap)(int cap);   // drops cap from the bounding set
+};
+const JailOps& realJailOps();
+
 // In the child: a new mount namespace, "/" made a recursive slave, /dev/null bound read-only over
-// each path, CAP_MKNOD dropped from the bounding set. With nothing to mask it does nothing. On
-// failure returns false with *err; the caller does not exec Nano then (fail closed).
-bool applyJail(const std::vector<std::string>& mask, std::string* err);
+// each path of `mask`, an empty read-only tmpfs over each directory of `dirMasks`, CAP_MKNOD dropped
+// from the bounding set. A path or directory that does not exist (ENOENT) is skipped. With nothing
+// to mask it does nothing. On any other failure returns false with *err; the caller does not exec
+// Nano then (fail closed).
+bool applyJail(const std::vector<std::string>& mask, const std::vector<std::string>& dirMasks, std::string* err,
+               const JailOps& ops = realJailOps());
 
 }  // namespace session
 }  // namespace thimsy

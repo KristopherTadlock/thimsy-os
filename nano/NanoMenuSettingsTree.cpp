@@ -34,8 +34,7 @@
 #include "NanoMenuSettingsTree.h"
 #include "NanoMenuStrings.h"
 #include "NanoI18n.h"
-#include "NanoLaunch.h"   // shellQuote
-#include "NanoScreenCal.h"
+#include "NanoPlatform.h"   // the settings dispatcher's stores and the capabilities (W6-caps)
 
 namespace android {
 
@@ -763,11 +762,42 @@ void NanoMenu::buildSettingsTree() {
 // Navigation
 // ---------------------------------------------------------------------------
 
+// What the platform offers (W6-caps; docs/linux/ARCHITECTURE-AUDIT.md R4). An action row whose
+// capability the platform lacks, a hint row about a feature it lacks, a row bound to a setting it
+// does not support, and a category with nothing left to show are hidden; the tree itself is built
+// the same on every platform.
+static bool settingsActionAvailable(const std::string& id) {
+    const nanoplat::Platform& platform = nanoplat::get();
+    if (id == "reset_wifi_bt") return platform.has(nanoplat::Cap::ResetRadios);
+    if (id == "factory_reset") return platform.has(nanoplat::Cap::FactoryReset);
+    if (id == "usb_mtp" || id == "usb_charge") return platform.has(nanoplat::Cap::Mtp);
+    return true;
+}
+
+// A row bound to no setting (kNone: a hint or a screen) that names a feature of its own.
+static bool settingsHintAvailable(const std::string& id) {
+    // Apps > "Manage apps from full Android Settings": only where that settings app exists.
+    if (id == "apps_info") return nanoplat::get().has(nanoplat::Cap::SystemSettingsApp);
+    return true;
+}
+
+static bool settingsNodeShown(const std::vector<SettingNode>& nodes, int idx) {
+    const SettingNode& n = nodes[idx];
+    if (n.type == SettingNodeType::kCategory) {
+        for (int i = idx + 1; i < (int)nodes.size(); i++)   // the builder adds children after their parent
+            if (nodes[i].parentIdx == idx && settingsNodeShown(nodes, i)) return true;
+        return false;
+    }
+    if (n.type == SettingNodeType::kAction) return settingsActionAvailable(n.id);
+    if (n.source == SettingSource::kNone) return settingsHintAvailable(n.id);
+    return settingSupported(n.source, n.key);
+}
+
 void NanoMenu::settingsTreeGetChildren(int parentIdx,
                                        std::vector<int>& out) const {
     out.clear();
     for (int i = 0; i < (int)mSettingsNodes.size(); i++) {
-        if (mSettingsNodes[i].parentIdx == parentIdx) {
+        if (mSettingsNodes[i].parentIdx == parentIdx && settingsNodeShown(mSettingsNodes, i)) {
             out.push_back(i);
         }
     }
@@ -825,108 +855,31 @@ std::string NanoMenu::settingsTreeBreadcrumb() const {
 // Property read / write
 // ---------------------------------------------------------------------------
 
+// The stores behind the dispatcher are the platform's (nanoplat::Settings, W6-caps): the firmware's
+// keeps Android's property and Settings-provider code and its post-write hooks
+// (platform/firmware/Settings.cpp); Linux's answers from its own table and supports only what it
+// implements. android::SettingSource and nanoplat::SettingSource name the same stores.
+static_assert(static_cast<int>(SettingSource::kNone) == static_cast<int>(nanoplat::SettingSource::kNone) &&
+              static_cast<int>(SettingSource::kProp) == static_cast<int>(nanoplat::SettingSource::kProp) &&
+              static_cast<int>(SettingSource::kGlobal) == static_cast<int>(nanoplat::SettingSource::kGlobal) &&
+              static_cast<int>(SettingSource::kSecure) == static_cast<int>(nanoplat::SettingSource::kSecure) &&
+              static_cast<int>(SettingSource::kSystem) == static_cast<int>(nanoplat::SettingSource::kSystem),
+              "android::SettingSource and nanoplat::SettingSource must name the same stores");
+
+static nanoplat::SettingSource platformSource(SettingSource src) {
+    return static_cast<nanoplat::SettingSource>(static_cast<int>(src));
+}
+
 // Shared with the PS3 binding path (declared in NanoMenuSettingsTree.h).
 std::string readSettingValue(SettingSource src, const std::string& key,
                              const std::string& def) {
-    if (key.empty()) return def;
-    switch (src) {
-    case SettingSource::kProp: {
-        char buf[PROPERTY_VALUE_MAX] = {};
-        property_get(key.c_str(), buf, def.c_str());
-        return buf;
-    }
-    case SettingSource::kGlobal:
-    case SettingSource::kSecure:
-    case SettingSource::kSystem: {
-        const char* ns = (src == SettingSource::kGlobal) ? "global"
-                       : (src == SettingSource::kSecure) ? "secure" : "system";
-        const std::string cmd = std::string("settings get ") + ns + " " + nanolaunch::shellQuote(key) +
-                                " 2>/dev/null";
-        FILE* f = popen(cmd.c_str(), "r");
-        if (!f) return def;
-        char buf[256] = {};
-        if (fgets(buf, sizeof(buf), f)) {
-            size_t len = strlen(buf);
-            while (len > 0 && (buf[len-1] == '\n' || buf[len-1] == '\r'))
-                buf[--len] = '\0';
-        }
-        pclose(f);
-        std::string val(buf);
-        if (val.empty() || val == "null") return def;
-        return val;
-    }
-    default:
-        return def;
-    }
+    return nanoplat::get().settings->read(platformSource(src), key, def);
 }
 
 void writeSettingValue(SettingSource src, const std::string& key,
                        const std::string& val) {
-    if (key.empty()) return;
-    switch (src) {
-    case SettingSource::kProp:
-        property_set(key.c_str(), val.c_str());
-        break;
-    case SettingSource::kGlobal:
-    case SettingSource::kSecure:
-    case SettingSource::kSystem: {
-        const char* ns = (src == SettingSource::kGlobal) ? "global"
-                       : (src == SettingSource::kSecure) ? "secure" : "system";
-        const std::string cmd = std::string("settings put ") + ns + " " + nanolaunch::shellQuote(key) +
-                                " " + nanolaunch::shellQuote(val) + " 2>/dev/null";
-        (void)system(cmd.c_str());
-        break;
-    }
-    default:
-        break;
-    }
-    // Font Size: the System font_scale setting was a no-op in nano (nano never read it back). Mirror
-    // it to a fast prop the render loop reads every frame (property_get) and applies as a global text
-    // scale across all themes. The Font Size row exists in both the legacy tree and the PS3-XMB
-    // binding; both write font_scale, so this single hook covers both front-ends.
-    if (src == SettingSource::kSystem && key == "font_scale") {
-        property_set("persist.gammaos.nano.fontscale", val.c_str());
-    }
-    // RG DS / RG DS Plus Screen Calibration: the display controller applies it, so every change
-    // is pushed to the panels at once (and mirrored into baseparameter by the module).
-    if (src == SettingSource::kProp && screencal::isCalibrationKey(key)) {
-        screencal::applyFromProps();
-    }
-    // Display saturation rides the display colour matrix, which has no persisted setting of its
-    // own, so applying it is an explicit call. nano re-applies the prop on boot.
-    if (src == SettingSource::kProp && key == "persist.gammaos.nano.display.saturation") {
-        int lvl = atoi(val.c_str());
-        if (lvl < 0) lvl = 0;
-        if (lvl > 100) lvl = 100;
-        char cmd[128];
-        snprintf(cmd, sizeof(cmd), "cmd color_display set-saturation %d 2>/dev/null", lvl);
-        (void)system(cmd);
-    }
-    // GammaOS Nano orientation: the Screen Orientation setting is the SINGLE control
-    // for accelerometer_rotation (there is no separate Auto-Rotate toggle). "auto"
-    // enables the sensor; any fixed orientation disables it so the nano force
-    // (WMS mapOrientationRequest) engages. Recursion is safe - the inner write's key
-    // is accelerometer_rotation, which does not match this guard.
-    if (src == SettingSource::kProp && key == "persist.gammaos.nano.orientation") {
-        writeSettingValue(SettingSource::kSystem, "accelerometer_rotation",
-                          (val == "auto") ? "1" : "0");
-    }
-    // The gammapad daemon watches persist.gammaos.gamepad.config_version (it polls
-    // it every ~1s) and does a lightweight transform reload when it changes. Every
-    // SystemUI gamepad tile bumps it after writing a transform/calibration prop, so
-    // mirror that here for ANY gamepad prop write or the change never applies live.
-    // Do NOT touch full_reload (that forces a heavy device release/re-grab); the
-    // lightweight bump is what the tiles do for the toggle/cycle path.
-    if (src == SettingSource::kProp &&
-        key.rfind("persist.gammaos.gamepad.", 0) == 0 &&
-        key != "persist.gammaos.gamepad.config_version" &&
-        key != "persist.gammaos.gamepad.full_reload") {
-        char vb[PROPERTY_VALUE_MAX] = "0";
-        property_get("persist.gammaos.gamepad.config_version", vb, "0");
-        long v = strtol(vb, nullptr, 10);
-        char nb[16]; snprintf(nb, sizeof(nb), "%ld", v + 1);
-        property_set("persist.gammaos.gamepad.config_version", nb);
-    }
+    // A write the platform did not take (an unsupported setting) changes nothing more.
+    if (!nanoplat::get().settings->write(platformSource(src), key, val)) return;
     // The friendly slide-clock Parallax rows (on/off, strength, direction) recompose into the single
     // pspclock.tilt.cal "gain,rot,sx,sy" string that pspClockPollTilt re-reads ~1s. The rot field is a
     // per-device accel-mount correction the user never sets, so preserve whatever is already in
@@ -963,6 +916,14 @@ void writeSettingValue(SettingSource src, const std::string& key,
     }
 }
 
+bool settingSupported(SettingSource src, const std::string& key) {
+    return nanoplat::get().settings->supports(platformSource(src), key);
+}
+
+bool ps3BindingSupported(const Ps3SettingBinding* b) {
+    return b == nullptr || settingSupported(b->source, b->key);
+}
+
 void NanoMenu::startSettingsValueRefresh() {
     std::vector<int> visible = mSettingsTreeVisible;
     std::vector<SettingNode> nodes = mSettingsNodes;
@@ -973,6 +934,7 @@ void NanoMenu::startSettingsValueRefresh() {
             const auto& n = nodes[idx];
             if (n.source == SettingSource::kNone) continue;
             if (n.type == SettingNodeType::kCategory) continue;
+            if (!settingSupported(n.source, n.key)) continue;   // hidden: shows its default (W6-caps)
             cache[idx] = readSettingValue(n.source, n.key, n.defaultVal);
         }
         {
@@ -1103,6 +1065,7 @@ void NanoMenu::handleSettingsTreeSelect() {
         else if (node.screenId == 1) openBtScreen();
         break;
     case SettingNodeType::kAction:
+        if (!settingsActionAvailable(node.id)) break;   // hidden; never attempted (W6-caps)
         if (node.id == "reset_wifi_bt") {
             (void)system("cmd wifi set-wifi-enabled disabled 2>/dev/null");
             (void)system("cmd bluetooth_manager disable 2>/dev/null");

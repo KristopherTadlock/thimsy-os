@@ -100,7 +100,8 @@ The runner talks to `nano-headless` through `/run/thimsy/headless/` (`nano/platf
   `capture` (n, path, ok, w, h), `prop` (key, value: every property write Nano makes), `shell`
   (fn, cmd, rule, status), `grab` (path, on), `drm_stop`, `drm_release`, `pong`, `quit_requested`,
   `control_error`, `exit` (code), `display` (op, ...: the fake display), `launch` (kind, package,
-  core, rom, system, intent, trigger: the fake launcher), `launch_quit`.
+  core, rom, system, intent, trigger: the fake launcher), `launch_quit`, `setting` (op `put` or
+  `refused`, source, key, value: the fake settings dispatcher, `nano/platform/host/FakeSettings.h`).
 - `ctl`, a FIFO: `barrier on|off`, `grant N`, `capture PATH`, `ping [TOKEN]`, `quit`.
 
 ## Scenarios here
@@ -110,7 +111,26 @@ The runner talks to `nano-headless` through `/run/thimsy/headless/` (`nano/platf
 | `boot_home.jsonl` | boot to the home: the DRM path, presents, the pad opened and grabbed, a captured frame, no launch |
 | `navigate.jsonl` | presses reach Nano; it keeps presenting; nothing launches |
 | `launch_game.jsonl` | a system opened and a game launched with a core; the handshake and the ROM file; the game ends and Nano comes back with it played |
-| `setting_persisted.jsonl` | Font Size changed: `settings put system font_scale` through the gate and `persist.gammaos.nano.fontscale` in `persist.props`, still there after exit |
+| `setting_persisted.jsonl` | Font Size changed: a `setting` event for system `font_scale` from the fake settings dispatcher, `persist.gammaos.nano.fontscale` in `persist.props` (where Linux keeps it), still there after exit, and no `settings` command |
 
 The key sequences of `launch_game` and `setting_persisted` are first guesses at the XMB's layout,
 marked `TODO(G10)`: they are fixed from the first run's captures and events.
+
+### Android command strings (to rewrite in OA-4 migration steps 3 and 6)
+
+OA-4 (docs/linux/DECISIONS.md) says shared code expresses intent through `nanoplat` and no Android
+command reaches Linux; the Linux shell gate refuses them all by default (migration step 1). These
+scenarios still script or expect Android command strings. Their semantics are left as they are while
+nano-headless is unbuilt (they skip, G10); as the settings dispatcher (step 3, W6-caps:
+`nanoplat::Settings`'s `read`, `write` and `supports`) and the area interfaces (step 6: Apps,
+SystemSettings) land, each assertion becomes one on a platform event (the fake platform's `launch` or
+`setting` event) instead. Step 3 has landed: `setting_persisted.jsonl`'s rows are done.
+
+| File | Line | Android string | Becomes |
+|---|---|---|---|
+| `launch_game.jsonl` | 7 | shell rule `am start` | nothing: the launch already goes through the fake launcher's `launch` event |
+| `launch_game.jsonl` | 20 | `expect_no_shell`: `settings put`, `pm uninstall` | no `shell` event at all |
+| `setting_persisted.jsonl` | 7 | (was: shell rules `settings put system font_scale `, `settings get `) | done (W6-caps): no shell rules; the fake `Settings` keeps the font scale |
+| `setting_persisted.jsonl` | 18 | (was: `shell` event with rule 0, `settings put system font_scale`) | done (W6-caps): the fake `Settings` event `{"ev": "setting", "op": "put", "source": "system", "key": "font_scale"}`, and `expect_no_shell` `settings ` |
+| `boot_home.jsonl` | 16 | `expect_no_shell`: `am start`, `am force-stop`, `pm uninstall`, `reboot` | no `shell` event at all |
+| `navigate.jsonl` | 21 | `expect_no_shell`: `am start` | no `shell` event at all |
