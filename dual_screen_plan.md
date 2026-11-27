@@ -2,6 +2,12 @@
 
 Status: approved design (2026-11-17); questions answered below. Builds on test 31's one-screen-at-a-time work (`external_display_modes_plan.md` §R).
 
+**Build 43 (2026-11-27, proposed): see `dual_screen_43_plan.md`.** It supersedes these decisions below:
+- "The monitor is the primary screen (Android display 0)": the main screen becomes a choice (the monitor by default, or the Cube's screen), and is always display 0.
+- "The controller follows the open UI" and "an app on the Cube's screen gets the controller while it is focused": the controller always stays on the main screen; the second screen is for touch. Controller Screen and Nano's focus pin (`sys.gammaos.nano.focus.display`) are dropped in Dual; the Switch Screen chord becomes Swap Screens.
+- Framework 2, "a fixed id for the panel (say 2)": a fixed id for the second-screen role, whichever device holds it (the panel was display 3 in the logs). The panel's `FLAG_OWN_CONTENT_ONLY` below was never set in the patch.
+- Moving apps between screens (Implementation, "Apps on the panel") becomes a task move that keeps the app running, offered for any app; moving a game swaps the screens (refused until the swap ships).
+
 ## Requirement (user, 2026-11-17)
 
 An **External Display** choice with two options, one selected at a time:

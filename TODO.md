@@ -135,6 +135,85 @@ Built 2026-11-21 from the plan docs in this folder, each checked against the REA
   - default Dolphin (`GCPadNew.ini`) and Azahar pad binds;
   - hotkey rows labelled with Android keycodes.
 
+### Rebindable hotkey combo (hotkey_combo_plan.md): not started (user request, 2026-11-27)
+- **Goal:** the Start + Select hotkey root becomes a setting, **Hotkey Combo** (Gamepad Settings → Hotkeys): Start + Select (default), L3 + R3 (only where `device_keys.json` says the built-in pad has stick clicks), or Off. It replaces *Start + Select Hotkeys* (`persist.gammaos.hotkeys.combo`, migrated from `persist.gammaos.hotkeys.startselect`). With the default, the only change is that the button map hides the combo row while Controller Bindings is Off.
+- The chosen combo does all Start + Select does over a game: combo + hotkey button, 3 s hold to quit, Controller Bindings Off turns it off. Its buttons still reach the game. L3 + R3 must be pressed within 200 ms of each other. In Nano's menus Start + Select always opens the Quick Menu, and the combo does too.
+- Every text naming the combo uses the chosen one: `comboText` (`%1$s` function button, `%2$s` combo, both required; translations may reorder them) and `comboName` (one `%s`, the combo), each with an Off variant. The Controller Bindings rewording job's description and toast become those keys; its cross-reference is retired with the *Start + Select Hotkeys* row.
+- [ ] Phase 0 (0.5 day): owner decisions D1-D10 (§0), Q1 (which pairs) first; upstream drastic-nano `btnL3`/`btnR3`, NanoMenu.h `mStartHeld`, gammapad MouseMode combo; RetroArch payload binds and Hold Start delay; emulators' own L3/R3 binds; `stick_clicks` per device from `getevent -lp`.
+- [ ] Phase 1 (2.5 days): Java, C++ and gammapad resolvers with shared cases, `stick_clicks`, the Hotkey Combo row, `comboText`/`comboName` and the i18n checks (source pattern, both placeholders, positional reordering), Controller Bindings, toast and Quit Game Button texts, migration.
+- [ ] Phase 2 (2 days): PhoneWindowManager: decision pulled into tested pure functions, then the detector, other-button-held list, gating and the 200 ms window on the resolver (read per event).
+- [ ] Phase 3 (2 days): drastic-nano detector (pad buttons and hat as "other held", not all of `heldKeys`); Nano's menus with per-button hold and two pairs; combo + Button Map Button uses the pair's own codes.
+- [ ] Phase 4 (1.5 days): button map combo row in `chordRows` from pad labels (hidden when Off or Controller Bindings Off), `kComboSouth`, browser.json `HOTKEY_COMBO`, gammapad chord only on the chosen pair and L3/R3 tab shortcuts on release, scene goldens.
+- [ ] Phase 5 (1 day): RetroArch `input_menu_toggle_gamepad_combo` 2 → 7 (Hold Start) while the combo is L3 + R3 and Universal Hotkeys is On (shipped value only, with a marker, restored after; run in provisioning before its enable check, on the setting change and before starting RetroArch); "Hold Start" button map row; M64Plus FZ note.
+- [ ] Phase 6 (1.5 days plus device time): 21 translations, retired keys removed, HOTKEYS.md, README, button_map_overlay_plan.md; the §9 device checks.
+- Phases 2-4 ship together; phase 5 with or before the L3 + R3 option. Effort: about 11 days plus device time. Linux port's Nano copy follows.
+- **(decide)** D1-D10 (§0): D1 pairs (recommended Start + Select, L3 + R3, Off), D2 default Start + Select, D3 combo buttons delivered, D4 hold follows the combo, D5 Start + Select always opens the Quick Menu in Nano's menus, D6 RetroArch's menu to Hold Start, D7 L3/R3 hotkeys allowed, D8 any controller (not now), D9 map row hidden with Controller Bindings Off, D10 200 ms window for L3 + R3; and the plan's §11 questions.
+
+### Controller Bindings explanation (build 43)
+- **Why:** the owner approved a new explanation for Quick Menu > Controller > Controller Bindings, and asked that it display on small screens such as 640x480. The approved text (285 characters) does not fit. The description under the focused row (`drawDesc`) is capped at 4 lines and cut with "...". The approved text needs 6 lines at 640x480 and 7 on the Cube (720x720), so the sentences about the %s button and the restart never show. The strings below keep its meaning and fit. The row keeps its name.
+- **Final strings** (`%s` = the function button's name from `mods/device-keys.json`: Function, Anbernic, Home, Menu, Back, RG, F1 or ≡; fit checked with the widest, Function and Anbernic):
+  - Description (124 characters, 130 with the button name): "Off until restart: games get Start + Select. Shortcuts, hold to quit, browser controls, mouse mode stop. %s opens this menu."
+  - Values: keep plain "On" / "Off". Labels such as "On (Thimsy shortcuts)" / "Off (game gets all buttons)" do not fit. Next to the label "Controller Bindings" there is room for a value of 150 px at 640x480, 124 px at 720x720 and 52 px at 480x640. "Off (game gets all buttons)" is 197-297 px, so it scrolls or is clipped, and the side-panel chooser shrinks it or runs it off the screen. Plain On/Off already uses about all the room on the Cube once translated.
+  - Toast when turned Off (24 characters): "Games get Start + Select".
+  - Button Map hint: keep "Controller Bindings is off (Quick Menu)" unchanged. At 39 characters it is one line at every size, also with 35% longer translations, and its 21 translations stay valid.
+  - Cross-reference, appended to Gamepad Settings > Hotkeys > Start + Select Hotkeys (74 characters): "If a game needs Start + Select, turn off Controller Bindings (Quick Menu)."
+- **Where each goes** (lines in `patches/thimsy/0001-thimsy.patch`):
+  - Description: `buildQuickControllerSubmenu`, `quickLeafItem(... "bindings", fnText(...))` ~42815-42817.
+  - Values: the settings row ~45159 `{"Controller Bindings", kProp, "sys.gammaos.bindings.enabled", "1", "1:On,0:Off"}`. No change.
+  - Toast: new. Turning a setting off shows the generic "Setting changed" toast today (~46113-46140 in the patch; `NanoMenuPS3Menu.cpp` 12587 / 12881 in the composed tree). When `bindings` goes to 0, show the new string instead. The toast is one line and its marquee scrolls only about 11 characters before it fades, so the string must fit without scrolling.
+  - Button Map hint: `browserHint` ~11088 and the catalogue ~12066. No change.
+  - Cross-reference: the Start + Select Hotkeys desc ~43537.
+  - Translations: the old description key appears in all 21 `ps3xmb/i18n/*.json` files (e.g. ar ~91943, da ~94552). There are 21 files, not 23.
+- **Fit**, from the model `out/dp-evidence/test43/ctrlbind/ctrlbind_fit.py`. The model reproduces `drawDesc` (greedy wrap on spaces, 4 lines, "..."), with the real Rodin and Roboto advances, menu zoom 1.12 and Font Size 1.0. Lines used out of the 4 available:
+
+  | String | 640x480 | 720x720 | 1280x720 | 480x640 |
+  |---|---|---|---|---|
+  | Description, English | 3 | 3 | 2 | 5 (cut) |
+  | Description, 35% longer | 4 | 4 | 2 | 7 (cut) |
+  | Description, 39% longer (nl, the worst ratio) | 4 | 4 | 2 | 7 (cut) |
+  | Widest text that still fits in 4 lines | 1.54x | 1.41x | 2.79x | 1.00x |
+  | Cross-reference alone, English [35% longer] | 2 [2] | 2 [3] | 1 [2] | 3 [4] |
+  | Start + Select Hotkeys desc + cross-reference (330 characters) | 7 (cut) | 8 (cut) | 4 | 12 (cut) |
+
+  - Description elsewhere: at Font Size 1.3 it takes 4 lines at 640x480 and 720x720 (English only). On the DSi top screen it takes 3 of 5 lines, 5 of 5 at 35% longer. Options > Information wraps without a cap.
+  - Toast: 162 px of the 244 px visible at 640x480 (219 px at 35% longer; 214 px in English at Font Size 1.3). It fits at 720x720, 1280x720 and 480x640 too, at 35% longer. Where there is no XMB clock bar to cover (DSi and Minima themes, the video player) the toast is a card sized to the text; that also fits, except a 35% longer text at 480x640 (198 px in a 179 px column), which scrolls.
+  - Button Map hint: 272 px at 640x480 and 480x640 and 388 px at 720x720 and 1280x720, against line widths of 596, 436, 656 and 936 px, so it stays one line at 35% longer.
+  - Checked again independently (own TTF parser and own geometry from `layoutCompute`, `drawDesc`, `drawPs3Clock` and `drawPhotoBanner`): every number above matches. The tightest case is the description on the Cube: it fits up to 1.41x the English width against 1.39x for nl, so translations there have almost no slack.
+- **Not solved by wording:**
+  - 480x640 portrait would need the description cut to 83 characters. Fix it in code instead: let `drawDesc` use more than 4 lines when the screen has room. The 4th line ends at y≈294 of 480 at 640x480.
+  - The cross-reference shows only at 1280x720 and up, because the Start + Select Hotkeys description it follows (249 characters, 255 with the button name) is already cut on small screens. A shorter description that fits (125 characters, 131 with the button name; 4 lines at 640x480 and 720x720 at 35% longer) would drop details from an approved string: "On: Start + Select works like %s for hotkeys; hold it to quit. If a game needs it, turn off Controller Bindings (Quick Menu)."
+- **Hotkey Combo:** if the Rebindable hotkey combo item lands first, write these strings with `comboText` (`%1$s` = the function button, `%2$s` = the combo) and add an Off variant ("Off until restart: browser controls and mouse mode stop. %s opens this menu."). "Start + Select" is the widest combo, so the fit numbers hold.
+- **Translators' budget:**
+  - Description: the translation, with the widest button name, must wrap into 4 lines at 720x720. That is at most about 1.4 times the English width, roughly 170 characters for Latin, Cyrillic and Greek.
+  - Description in Japanese, Chinese and Thai: at most 80 characters, with a space at least every 20 characters. `drawDesc` breaks only at spaces (23 full-width characters per line at 720x720, 24 at 640x480).
+  - Toast: at most 32 Latin characters, or 16 full-width characters.
+  - Cross-reference: at most 100 Latin characters.
+  - Values: keep the existing On/Off translations.
+- [ ] Owner OK on the shortened wording, plain On/Off, the toast, keeping the Button Map hint, and (optionally) the shortened Start + Select Hotkeys description.
+- [ ] Update the strings in the patch: the description, the new toast path for `bindings` = 0, and the cross-reference.
+- [ ] README.md:750 and HOTKEYS.md:209: match the new wording (games get Start + Select; shortcuts, hold to quit, browser controls and mouse mode stop until restart; the function button still opens the Quick Menu).
+- [ ] All 21 i18n files: the new description, toast and cross-reference keys translated within the budget above. Remove the old description key.
+- [ ] Host test: run the wrap at 640x480, 720x720 and 1280x720 for these strings in every language, with the widest button name. Use the model, or better the real `drawDesc` and `wrapTextToWidth` with the device fonts. Fail when the description needs more than 4 lines or a line is wider than the box. The toast must fit its visible width without scrolling.
+- [ ] Existing bugs found while measuring:
+  - `drawDesc` breaks only at spaces, so Japanese, Chinese and Thai run off the screen. `wrapTextToWidth` already has the right break rules.
+  - The `drawDesc` line pitch ignores Font Size.
+  - The toast marquee moves by bytes, which splits UTF-8 characters, and the XMB toast runs past the right edge of the screen.
+  - The DSi/Minima toast text renders at about 10 px at 640x480.
+
+### Arcade and MAME layouts (arcade_controls_plan.md): not started (user request, 2026-11-27)
+- **Goal:** the button map shows each arcade game's own controls (names, Neo Geo row, twin stick, spinner, gun...) instead of the generic "Btn 1 / Fire 1" row, from per-game data generated at build time for the shipped fbneo, mamearcade and mame2003_plus cores; unknown games keep today's row.
+- Today's generic row is wrong for many FBNeo games (Street Fighter layout, Neo Geo macros, Mortal Kombat); it is right in order for MAME only because MAME's button profiles are off.
+- [ ] Phase 0: fix the FBNeo Neo Geo shoulder macros in `retropad.json`, the hidden "Per-game layout" badge, the device ids in button_map_overlay_plan.md §3.1, and the CPS HP/HK swap in controller_layout_plan.md §10; read the payload for arcade `.opt`/`.rmp` files.
+- [ ] Phase 1: TSV data format and lookup (`NanoButtonMapArcade`), MAME classes from `-listxml`, MAME profile table (whole chain, first match wins), MAME 2003-Plus layouts; `mame_buttons_profiles` on in `MAME.opt` (D1) with a one-time overwrite of the `disabled` RetroArch already wrote on existing installs, shipped together with the reader change. D2 must be decided first.
+- [ ] Phase 2: FBNeo host harness (no ROMs; tens of minutes to compile, never during an AOSP build; source published per FBNeo's licence) for per-game maps and names per device type; lock-hash drift guard in `10-update-emulators.sh`; FBNeo licence text in NOTICE (also owed for the core itself).
+- [ ] Phase 3: MAME button names and positions (`PORT_NAME` parser; also places buttons for dial, pedal, gun and trackball games), MAME 2003-Plus names from the same MAME names by set name (D5), translated arcade vocabulary.
+- [ ] Phase 4: panel drawings per class (arcade1-4, twin stick, dial, trackball, light gun, driving, flight), header notes, Coin/Start hint, P2 note, FBNeo service row; size tests on the panel and a monitor.
+- [ ] Phase 5: Thimsy-owned per-game remaps at launch that even out the cores (FBNeo Neo Geo device or MAME Neo Geo button remaps per D2, MAME's 11 odd Neo Geo titles, MAME 2003-Plus 6-button and MK) with the ownership sidecar and a "Thimsy's layout" badge; Game Options "Arcade layout"; reading MAME's own `cfg/<set>.cfg`.
+- [ ] Optional phase 6: touch light guns (Cube screen only), turbo in the owned `.rmp`, mahjong touch panel, MAME4droid and Flycast NAOMI, an upstream libretro/mame descriptors change.
+- [ ] Device checks: the plan's §10.1 rows, by the phase that enables each (incl. D1 migration, owned-remap lifecycle, external pad / ABXY Swap, monitor and Dual Screen).
+- Effort: about 20-24 days for phases 0-5, plus 6-10 for phase 6.
+- **(decide)** The plan's §13 D1-D10 and open questions 1-11. First, before phase 1: D2 (Neo Geo layout: NEOGEO mini or FBNeo Classic), D1 (MAME profiles on, overwriting `disabled` once), D4 (ship FBNeo-derived data), D5 (MAME 2003-Plus names from MAME 0.289, not copied from its `controls.c`).
+
 ## Displays
 
 - **Monitor resolutions other than 1080p60:** implemented on the 1.4.4 base and run on an RG Cube in test 42 (B5, B7, B9, MOD-Q, K1, T3; dp_dock_findings.md §12); see "USB-C docks and display modes" below. external_display_modes_plan.md §R ("Resolution") still describes the old 1080p60-only rule.
@@ -155,6 +234,17 @@ Built 2026-11-21 from the plan docs in this folder, each checked against the REA
 - **(decide)** Unplugging the monitor closes the app on the Cube's screen. Keep that, or keep it open?
 - external_display_modes_plan.md §8 host tests: check which still exist or are obsolete.
 - external_display_routing_plan.md is superseded: archive it.
+
+### Dual screen for build 43 (dual_screen_43_plan.md): not started (user request, 2026-11-27)
+- **Goal:** in Dual Screen, swap which screen is the main screen (the monitor by default, or the Cube's screen); move an app to the other screen; the controller always on the main screen, the second screen for touch. Fixes the installed build's bug: controller input lost or late in a game while a browser on the other screen is used by touch (ranked causes and read-only checks in plan §3).
+- Supersedes dual_screen_plan.md's "the controller follows the open UI", Controller Screen, the focus pin and the Switch Screen chord (note at the top of dual_screen_plan.md).
+- [ ] Phase 0: owner's read-only checks on the installed build (plan §3.3): Controller Screen, the focus pin, gammapad's `fg_pkg` and BrowserMode, the key-wait and queue-prune log lines, key display ids in `dumpsys input`, game frame times and thermal state. Respect the hazards listed there (boot without the monitor, unplug at the monitor end).
+- [ ] Phase 1 (medium-large): controller always on main: `sys.gammaos.display.second` as the gate, display 0 always the top focused display in Dual (RootWindowContainer); InputDispatcher clears the display of controller keys at `notifyKey`, lets injected Back keep its display, makes keys wait only for their own display, prunes only for the display being waited on, and skips the task-focus path for taps on the second screen's focused window; an idc for the built-in pad; VirtualTouchscreen on display 0; gammapad's foreground app and PhoneWindowManager's lookups from display 0 only; Nano drops Controller Screen and the pin, Quick Menu "Second Screen App" (Back, Close, Move to Main Screen by today's restart path), the old chord shows a notice; IME re-test; `inputflinger_tests` cases. Can ship alone.
+- [ ] Phase 2: Move App: a system_server task move (`moveRootTaskToDisplay` with pre-checks, exceptions caught, home tasks refused, result property), Quick Menu "Move to Other Screen", Anbernic + left button hotkey; a game is refused until Phases 3 and 4 make it Swap Screens.
+- [ ] Phase 3: main-screen swap, framework: `persist.gammaos.display.main`, arrangement with main = panel, a role id for the second screen, flags by role and no `TYPE_INTERNAL` tests, old-mode cleanup only without a monitor, rotation lock for any monitor, ExternalDisplayPolicy, power controllers on SWAPPED, SurfaceFlinger pacesetter = the main screen (one rule with refresh_matching_plan.md), trial guard, one swap at a time, no swap while a Presentation is shown, `cmd display gammaos-main`; `GammaosScreenArrangementCheck` and a secondary-id host check.
+- [ ] Phase 4: main-screen swap, Nano: `choose()` with the monitor as second (`NanoDisplayTarget_test`), the second surface at its own size, the trial prompt on the monitor, Main Screen setting, Swap Screens in the Quick Menu, Quick Settings and Anbernic + top button, home themes (ES-DE, DSi) and drastic-nano when main = panel, swap back before leaving Dual, rows hidden outside Dual.
+- [ ] Phase 5: docs (README Dual Screen, HOTKEYS.md), SystemUI's `config_gammaos_secondary_display_id=2`, optional gesture and SystemUI tile.
+- **(decide)** The plan's §9 decisions D1-D21. First: what a swap moves (D1), where Nano's menus draw (D2), moving a game (D3), moving onto an occupied screen (D4), what counts as a game (D19).
 
 ### USB-C docks and display modes (usb_c_dock_plan.md, display_modes_plan.md): test 42 ships them; most ran on a device (dp_dock_findings.md)
 - **Goal:** a powered USB-C dock gives power in, picture and USB at once; a monitor can run at modes other than 1080p60 (1440p60, 1080p120, later 4K30), chosen in Nano with confirm-and-revert.
@@ -268,6 +358,16 @@ Built 2026-11-21 from the plan docs in this folder, each checked against the REA
 - Phase 4: declarative button map readers. Phase 5: data-driven storage groups and a definition BIOS slot. Phase 6: pad provisioning and players (with controller_layout_plan.md phase 5). Phase 7: a signed community definition index.
 - **(decide)** D1-D10 in the plan's "Decisions for the user": profile vs separate definitions directory, community index, the All files access prop, fallback on uninstall, generic card storage, DuckStation's load and quit keys, 1.4.4 only or a 1.2 port, signer lineage, grants for imported definitions.
 
+### DS layouts for the Cube screen and monitors (ds_layouts_plan.md): not started (user request, 2026-11-27)
+- **Goal:** WatermelonDS and SeedlessDS layouts that suit the Cube's 720x720 screen and each monitor resolution, in Handheld, Docked, Dual Screen and Mirror. The plan's §1 has the owner's steps for today.
+- **Today:** WatermelonDS custom layouts are pixel variants used only at exactly their own size (no scaling, even at the same aspect ratio); its Default is poor on the square screen, which Thimsy reports as landscape. SeedlessDS layouts scale with the window, but one setting covers every screen (Second layout + a swap hotkey), and its Vertical layout asks for portrait, so it must not be current on a monitor (Docked or Dual). Docked has no touch. Thimsy writes no layout or display setting for either app, and NanoEmuSync does not sync WatermelonDS `files/layouts.json`.
+- [ ] Owner checks (plan §6): T1 variant keys from WatermelonDS "Backup layout" at 720x720 and 1080p; T2 editor with the controller on the monitor (hat D-pad, L2/R2 keys); T3 editor size equals game size; T4 Dual presets; T5 the pad hides touch buttons; T6 SeedlessDS Vertical on the Cube (letterbox?); T7 SeedlessDS second screen in Docked, Dual and Mirror; T8 dock and undock mid-game; T9 display names, dpi and presentation flags; T10 4K60 4:2:0 pacing; T11 SeedlessDS Vertical on a monitor.
+- [ ] Option 1 (small, low-medium risk): add WatermelonDS `files/layouts.json` and `files/backgrounds.json` to NanoEmuSync (P:17381), with a safeguard for a stale card copy (keep the app's copy as .bak and merge by layout id) and emusync host tests, "card older than the app" included.
+- [ ] Option 2 (small): provision with `ifUnset`: WatermelonDS `dual_screen_preset=internal_top_external_bottom`; SeedlessDS `_DsKeepRatio=true`, `_DsSameSize=false`, `_ExtDisplayDelay=0` and a layout pair (`_DefaultLayout`/`_ScreenLayout2` = 2/1 or 1/2, D2); Cycle layout / Swap layouts hotkeys (WatermelonDS `CYCLE_LAYOUT`, SeedlessDS `s_5`/`s_8`) and HOTKEYS.md.
+- [ ] Option 3 (medium, after T1): generated Thimsy reference layouts for WatermelonDS (a variant per Thimsy size), merge-only writer through `appFileWrite`, versionCode gate, owner-edit detection, validator and host tests.
+- [ ] Optional: option 4 (SeedlessDS layout per mode at launch, opt-in); option 5 (upstream requests: proportional variant fallback, "Built-in Screen" prefix match).
+- **(decide)** The plan's §8 D1-D9. First: D1 (sync layouts.json), D2 (provisioned defaults), D4 (ship reference layouts).
+
 ## Android launcher
 
 ### Thimsy Home: Nano as an installable Android home app (android_launcher_plan.md): not started (user request, 2026-11-24)
@@ -331,6 +431,47 @@ Built 2026-11-21 from the plan docs in this folder, each checked against the REA
 - Phase 3: a bundled `games.tsv`; TheGamesDB by title; the original-platform fallback (DOS, Amiga, Windows); Beneath a Steel Sky's pack-in media.
 - Phase 4 (optional): detection fingerprints.
 - **(decide)** §4 Q1-7 and R.8 Q8-10; some may be moot now that the listing comes from the ini.
+
+### ScummVM games listed from the ROM folders (scummvm_autoadd_plan.md): not started (user report, 2026-11-27)
+- **Goal:** every top folder in `ROMs/scummvm` (any case, so the owner's card `Roms/scummvm` too) on internal storage and microSD shows in the ScummVM list on its own, and keeps showing (Phase 1); Nano identifies each new folder and adds it to ScummVM's `scummvm.ini` itself, with Mass Add's detection, so it starts from Nano (Phases 2-3). Unrecognised folders stay listed with a "?" and a "ScummVM: Not Recognised" list. The owner's own ScummVM entries are kept.
+- **Why today's list "doesn't persist":** with the ScummVM app as player, Nano lists only `scummvm.ini` (the owner's holds only `[sky]`) and scans no folder; with emulator files kept on the card, a card-wins sync replaces the whole ini and drops app-only games (B6); the Cube's card id is a mount index, which matters only with a second volume (plan §2.2). ScummVM can't be asked to add games from outside (one intent argument only, plan §2.3). Stop-gap today: Mass Add in ScummVM on the card's `Roms/scummvm` (plan §1).
+- Affects the "ScummVM scraping" section above: its "listing done" and "listing comes from the ini" change once Phase 1 lands.
+- [ ] Phase 0: owner's checks with the card (plan §16: backups, `mount` and the `emu_sd` settings, emusync log lines without a tag filter, Add Game and Mass Add on the card in ScummVM); B2 `emusync::isVolumeId` and `repoint()` accept the 36-character Cube id; B6 a card win on `scummvm.ini` merges game sections instead of dropping the app's; B1 folder grants with a 36-character volume id ("too long to send": logged 21 times for Azahar's Move Emulator Files to microSD in the dock-tv-run log; SeedlessDS and the hakuX, ScummVM and WatermelonDS card grants fail by the same arithmetic, not logged).
+- [ ] Phase 1: folders listed without any ini write: sources and game rules, path matching, mirror line 3, sticky folder names and name collisions, card out and in, Add Folder for ScummVM, "?" mark and a launch dialog showing the folder path with Open ScummVM (launcher only). Stops the list disappearing; folders without a ScummVM entry show but don't start until Phase 3. Assumes the recommended D3, D6, D7.
+- [ ] Phase 2: detector: a separate GPLv3 driver over ScummVM 2026.3.0's detection with Mass Add's arguments (not `--add`), built with the release's engines (recommended; size and NDK build path unknown) or a built-in table from its detection data; isolated uid; cache, time budget and back-off, Not Recognised list.
+- [ ] Phase 3: registration: append-only `scummvm.ini` writes when no ScummVM game could be lost (force-stop a cached ScummVM with no activity, ask before closing a running game), under the emusync locks, with a backup and `thimsy_added=1`; minimal file on first boot at launch only; pre-launch registration at the three launch sites; dismissed list; repoint after a card index change or a renamed or moved folder; `browser_lastpath` seeding; rewrite ARCHITECTURE.md's "ScummVM is the exception" (it already misses the BIOS worker's `extrapath` write) and scummvm_scraping_plan.md Q3/Q9.
+- [ ] Phase 4: B3 stable card identity for emusync; Clean Up Missing ScummVM Games; title suggestions; RetroArch's ScummVM core listing folders too (D9), if chosen.
+- **(decide)** The plan's §18 D1-D9. First: may Nano add game entries to `scummvm.ini` (D1), and helper or table (D2).
+
+## Refresh matching for games
+
+### Per-game monitor refresh rate (refresh_matching_plan.md): not started (user request, 2026-11-27)
+- **Goal:** a game started with a monitor attached switches the monitor to a rate that suits it, and back on return to Nano: PAL at 50 or 100 Hz first (phases 1-4); later, on monitors with a continuous range only (phase 5), MS-DOS VGA at 70, WonderSwan and Lynx at 75, Mortal Kombat / R-Type at 55, Toaplan / Cave at 57, Neo Geo / Taito F3 at 59. 1080p only: no matching at 1440p or 4K until optional phase 10. DOS, Amiga, C64, Spectrum, ST and the other computers need cores first (decision 8). The rate is found automatically (per-game override, learned rate, arcade table, region from file name or header, system table), and only rates the monitor's EDID allows and the user has confirmed once are used.
+- **Not true FreeSync:** DPU1's fixed timing, the HIDL composer and the DP-to-HDMI converters rule it out (out/dp-evidence/test43/freesync/FREESYNC.md).
+- [ ] Phase 0: owner checks on the current build, read-only: SurfaceFlinger's fps heuristic for a PAL game at 1080p120, RetroArch's "[Core] Geometry ... FPS" log line, black time and monitor audio after a `try`; content-detection props; RetroArch at a 120 Hz base (swap interval); reading the cached EDID from sysfs.
+- [ ] Phase 1: the vsync watchdog fix (plan §5.5): a 10 s grace, re-arm and vsync toggle after every monitor mode change and connect, first-vsync timing in the log. The same item as "Display plan Step 3's SurfaceFlinger part" in Displays; one fix closes both.
+- [ ] Phase 2: kernel 1080p50 (VIC 31) and 1080p100 (VIC 64) records, a highest-rate field in the EDID gate (LISTED), code space; `test_vendor_patches.py`. vendor_dlkm write needs the owner's approval.
+- [ ] Phase 3: framework `match`, `hold`, `release`, `confirm` verbs with a system_server 15 s `--confirm` timer, owner watchdog with a launch grace, confirm results keyed without `monitorKey` (null for the H27S17), holding marker, all new modes hidden from Auto and Output Resolution; `GammaosScreenArrangementCheck`.
+- [ ] Phase 4: Nano resolver v1 and tables, Game Options > Monitor Refresh, Settings > Match Game Refresh Rate and Test Game Refresh Rates, switch before launch, release on every return path, `video_refresh_rate` and `video_swap_interval` written per matched launch and the user's values restored, first-use confirm, Quick Menu > Display > Normal Refresh Rate (exempt from the game lock); dosbox_pure and puae cores with dos/amiga systems. Exit criterion: a ~200-switch soak with no crash4 `dpu_clk_disable` abort.
+- [ ] Phase 5: game rates 55, 57, 59, 70, 75: RANGE gate, a test module (long blank and long line for 70/75), then the shipping records; EDID labels and monitor key from the cached sysfs EDID (Java parser in system_server).
+- [ ] Phase 6: learning the real rate (RetroArch log; later a SurfaceFlinger content vote).
+- [ ] Optional: phase 7 composer exact-rate patch (0x66004), phase 8 games started outside Nano, phase 9 built-in screen 50 Hz (dtbo), phase 10 matching at 1440p and 4K (1440p50, 4K50 4:2:0).
+- **(decide)** The plan's §10 decisions 1-16. First: the rate set (1), 50 or 100 for PAL (2), on by default (3, waits on the soak and crash4), adding the DOS and Amiga cores (8).
+
+## Nano mode and Android Settings
+
+### Debugging prompts and Settings stability without SystemUI (nano_systemui_plan.md): not started (user report, 2026-11-27)
+- **Goal:** the "Allow wireless debugging on this network?" and "Allow USB debugging?" prompts work in Nano mode, and Android Settings stops freezing and flickering there; Android mode stays as it is.
+- **Cause:** Nano mode never starts SystemUI but leaves it installed. Both prompts are SystemUI activities, so Android starts SystemUI, which crashes in its Dagger init (no `statusbar` service in minimal boot), the prompt never shows and the switch flips back off. The dead prompt stays as the top activity and SystemUI is restarted and crashes each time it comes to the front again (after a second toggle, a Settings page change, Settings closing, a game ending); once it hid the Settings page and the input dispatcher waited for a focused window (test 42 A0/A2/t3 logcats: 12 of 12 SystemUI starts were this record; 25 SystemUI crashes in test 43). This is very likely the main part of the Settings instability; two test 43 bursts have no log, so their trigger is unconfirmed (Phase 0). The USB prompt is very probably broken the same way if `ro.adb.secure=1` (likely on this LineageOS userdebug build). Also: System > Backup can crash Settings (backup service off in Nano), Seedvault crashes on every USB attach (40 in test 43), gammapad logs up to 600 lines/s, `[joypad_spi_read]` uses half a core. RescueParty is off.
+- **Workaround today:** trust each Wi-Fi network once from Android mode ("Always allow on this network"); trust is per access point and band. Reboot if Settings stops responding after a toggle in Nano mode (`adb shell am force-stop com.android.systemui` probably clears it too, untried). With USB adb already authorised, `adb tcpip 5555` plus `adb connect` until reboot.
+- [ ] Phase 0: owner's read-only checks (plan §10): `ro.adb.secure`, config overlays, `am_proc_start` causes, Settings exit-info, ANRs and `data_app_crash`, load, `[joypad_spi_read]` priority and state.
+- [ ] Phase 1a (small, about 1 day): `NanoProcessGuard` refusing SystemUI activities in ActivityStarter in Nano mode (removes the dead window), with its host test.
+- [ ] Phase 1b (medium, 2-3 days): Settings-hosted `ThimsyWifiDebuggingActivity` and `ThimsyUsbDebuggingActivity` (non-exported, `MANAGE_DEBUGGING`, d-pad, `onNewIntent` denies the replaced request, overlay-hiding flag kept, `TYPE_SYSTEM_DIALOG` decided, SystemUI's translations), redirected from `AdbDebuggingManager` in Nano mode only; no prompt while Nano's own screen is in front; game-in-front behaviour per D3; ProcessList refusing SystemUI process starts; host test `test_adb_confirm.py`; README (including that notifications and text toasts don't show in Nano mode).
+- [ ] Phase 2 (small, about 1 day): `BackupSettingsHelper` null-safe; Seedvault per D4; gammapad "Device maps set" logged only on change.
+- [ ] Phase 3 (medium, 3-4 days): Nano's own debugging prompt when Nano's screen is in front (`sys.gammaos.adb.confirm_seq`, NanoNetBridge `adb_allow`/`adb_deny`); optional Wireless Debugging row in Nano.
+- [ ] Optional phase 4: Settings-hosted USB permission dialogs in Nano mode for emulators; a text-toast fallback.
+- [ ] Device steps: plan §6.3 (Nano mode 1-8, Android mode 9, then 10-14 by phase).
+- **(decide)** The plan's §8 D1-D9. First: D1 (Nano mode only), D2 (refuse SystemUI in Nano mode), D3 (requests while Nano's screen or a game is in front), D4 (Seedvault).
 
 ## Small items from this session
 
