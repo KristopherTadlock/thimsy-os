@@ -6,6 +6,8 @@ Fork-only: it never gates an Android build. Run with
 
 `python3 tools/nano-tree/tests/test_prefs.py --list` prints every scanned key with its class, its
 settings.ini key, the defaults the code passes and where it is first used.
+`python3 tools/nano-tree/tests/test_prefs.py --update-globs` rewrites prefs-globs.txt after a key
+under a persist.* glob row was added or dropped and its class was checked.
 """
 from __future__ import annotations
 
@@ -19,14 +21,21 @@ ROOT = os.path.dirname(os.path.dirname(TOOL_DIR))
 sys.path.insert(0, TOOL_DIR)
 
 from nanotree.config import Upstream  # noqa: E402
-from nanotree.prefs import (Use, check_table, covering_row, linux_only, load_table, report,  # noqa: E402
-                            scan, scan_text)
+from nanotree.prefs import (Context, Found, Use, check_table, covering_row, expand_runtime,  # noqa: E402
+                            glob_lines, linux_only, load_table, report, scan, scan_script, scan_text)
+from nanotree.ratchets import read_list, write_list  # noqa: E402
 
 NANO = os.path.join(ROOT, "nano")
 TABLE = os.path.join(TOOL_DIR, "prefs.json")
+GLOBS = os.path.join(TOOL_DIR, "prefs-globs.txt")
+GLOBS_HEADER = """The keys each persist.* glob row in prefs.json covers ("<glob> <key>"; tools/nano-tree/nanotree/prefs.py).
+A glob takes in any new key under it, so test_prefs.py fails when this set changes: check the new key's
+class (give it its own row if the glob's class is wrong for it), then
+  python3 tools/nano-tree/tests/test_prefs.py --update-globs"""
 # Keys with class "?" (the owner has not decided). The list in prefs.json may only shrink: classify a
-# key, drop it from "unclassified" and lower this number.
-UNCLASSIFIED_BUDGET = 9
+# key, drop it from "unclassified" and lower this number. 9 at first; 14 since the scan lists the
+# global button-action rules (persist.gammaos.gamepad.act*), which share the per-app rules' question.
+UNCLASSIFIED_BUDGET = 14
 
 
 @unittest.skipUnless(os.path.isdir(NANO) and os.path.isfile(TABLE), "no nano/ or prefs.json here")
@@ -69,6 +78,33 @@ class Prefs(unittest.TestCase):
         self.assertIn("persist.thimsy.wifi.enabled", f)                           # Linux-only code
         self.assertIn("en-US", f["persist.sys.locale"].defaults)
         self.assertNotIn("sys.x", f)                                              # tests are left out
+        self.assertIn("gammaos-nano.rc", f["persist.gammaos.nano.overlay"].files)  # an init script
+        self.assertIn("persist.thimsy.dexopt_done", f)                            # a shell script
+
+    def test_runtime_families(self):
+        f = self.found
+        self.assertEqual(f.problems, [])
+        built = {k for k, u in f.items() if "built" in u.ops}
+        for k in ("persist.gammaos.shader.blurfill.blur_scale", "persist.gammaos.shader.blurfill.luma_threshold",
+                  "persist.gammaos.shader.crt-simple.curv",                       # GsParamDef tables
+                  "persist.gammaos.hotkeys.save",                                 # kHot
+                  "persist.gammaos.scraper.media.manual",                         # kExtraMedia
+                  "persist.vendor.hue.aux",                                       # kField x main/aux
+                  "persist.gammaos.gamepad.act_count", "persist.gammaos.gamepad.act%d_code",
+                  "persist.gammaos.gamepad.pa%d_act%d_l",                         # "%sact..." x prefixes
+                  "persist.gammaos.nano.pinned_pkgs_%d", "persist.gammaos.qs.blacklist_%d"):  # "%s_%d" x bases
+            self.assertIn(k, built)
+        self.assertEqual(f["persist.gammaos.hotkeys.save"].defaults, {"BUTTON_R1"})
+        self.assertEqual(self.row("persist.gammaos.shader.blurfill.blur_scale")["class"], "A")
+        self.assertEqual(self.cls_of("persist.gammaos.gamepad.act_count"), "?")
+
+    def test_glob_keys_match_baseline(self):
+        have = glob_lines(self.found, self.rows)
+        want = read_list(GLOBS)
+        msg = ["new: " + x for x in sorted(set(have) - set(want))] + ["gone: " + x for x in sorted(set(want) - set(have))]
+        self.assertFalse(msg, "keys under persist.* glob rows differ from tools/nano-tree/prefs-globs.txt; check each "
+                         "new key's class, then run tools/nano-tree/tests/test_prefs.py --update-globs:\n  "
+                         + "\n  ".join(msg[:40]))
 
     def test_oa32_rules(self):
         # Theme travels and mirrors to ES-DE; aspect ratio per model (Q4).
@@ -197,6 +233,71 @@ class Unit(unittest.TestCase):
         self.assertIn("system:g: a settings-provider key on the card for Linux too, but no \"linux\"", text)
         self.assertNotIn("persist.a.y", text)        # covered by the glob
 
+    def test_scripts(self):
+        out = {}
+        scan_script("# property:persist.gammaos.nano.c=1\n"
+                    "on property:sys.a=1 && property:persist.gammaos.nano.a=\n"
+                    "    setprop persist.gammaos.nano.a 1\n"
+                    '[ "$(getprop persist.thimsy.b)" = 1 ] && exit 0\n'
+                    "    setprop bluetooth.profile.x false\n", "x.rc", out)
+        self.assertEqual(sorted(out), ["persist.gammaos.nano.a", "persist.thimsy.b", "sys.a"])
+        self.assertEqual(out["persist.gammaos.nano.a"].ops, {"get", "set"})
+
+    def test_runtime_families(self):
+        ctx = Context()
+        out = Found()
+        scan_text('''
+            struct Def { const char* suffix; float def; };
+            const Def kA[] = { {"one.x", 1.0f}, {"one.y", 2.0f}, };
+            static const char* kList = "persist.q.list";
+            void f() { std::string k = std::string("persist.q.") + d.suffix; snprintf(k, 9, "%sact%d_code", p);
+                       readList(kList); readList("persist.q.other"); readList(base); readList(kNope);
+                       snprintf(k, 9, "%s_%d", base, i); snprintf(k, 9, "%sstray", p); }
+            std::string pre() { return "persist.q.pa"; }
+        ''', "a.cpp", out, ctx)
+        fams = (
+            {"name": "table", "file": "a.cpp", "prefix": "persist.q.", "array_type": "Def", "field": 0},
+            {"name": "templ", "file": "a.cpp", "templates": "%sact", "prefixes": ("persist.q.", "persist.q.pa%d_")},
+            {"name": "chunks", "file": "a.cpp", "templates": "%s_%d", "bases_from": ("readList",), "params": ("base",)},
+            {"name": "gone", "file": "b.cpp", "templates": "%sz", "prefixes": ("persist.z.",)},
+        )
+        expand_runtime(out, ctx, fams)
+        for k in ("persist.q.one.x", "persist.q.one.y", "persist.q.act%d_code", "persist.q.pa%d_act%d_code",
+                  "persist.q.list_%d", "persist.q.other_%d"):
+            self.assertIn("built", out[k].ops, k)
+        text = "\n".join(out.problems)
+        self.assertIn("cannot resolve kNope", text)
+        self.assertIn("'%sstray' with a prefix chosen at run time", text)
+        self.assertIn("'gone': b.cpp is not scanned", text)
+        self.assertNotIn("persist.q.base_%d", out)
+        # A key prefix with an exact row needs a family (or a glob).
+        rows = [{"match": "persist.q.", "class": "D", "note": "n"}, {"match": "persist.r.", "class": "D", "note": "n"},
+                {"match": "persist.s.*", "class": "D", "note": "n"}]
+        found = Found()
+        for k in ("persist.q.", "persist.r.", "persist.s."):
+            found[k] = Use()
+        found.family_prefixes.add("persist.q.")
+        text = "\n".join(check_table({"rows": rows, "unclassified": []}, found))
+        self.assertIn("persist.r. is a key prefix", text)
+        self.assertNotIn("persist.q. is a key prefix", text)
+        self.assertNotIn("persist.s. is a key prefix", text)
+
+    def test_part_of(self):
+        found = {}
+        for k in ("persist.l", "persist.l_%d", "persist.m_%d", "persist.n_%d"):
+            found[k] = Use()
+        rows = [
+            {"match": "persist.l", "class": "A", "ini": "android.l", "type": "list", "default": "", "note": "n"},
+            {"match": "persist.l_%d", "class": "A", "part_of": "persist.l", "note": "n"},
+            {"match": "persist.m_%d", "class": "D", "part_of": "persist.l", "note": "n"},
+            {"match": "persist.n_%d", "class": "A", "part_of": "persist.gone", "ini": "android.n", "note": "n"},
+        ]
+        text = "\n".join(check_table({"rows": rows, "unclassified": []}, found))
+        self.assertNotIn("persist.l_%d", text)
+        self.assertIn("persist.m_%d: class D, but it is part of persist.l, class A", text)
+        self.assertIn("persist.n_%d: part_of persist.gone, which has no row", text)
+        self.assertIn("persist.n_%d: part of persist.gone, whose ini key covers it", text)
+
     def test_covering_row(self):
         rows = [{"match": "a.*"}, {"match": "a.b.*"}, {"match": "a.b.c"}]
         self.assertIs(covering_row("a.b.c", rows), rows[2])
@@ -211,7 +312,16 @@ def _list() -> int:
     return 0
 
 
+def _update_globs() -> int:
+    lines = glob_lines(scan(NANO), load_table(TABLE)["rows"])
+    write_list(GLOBS, GLOBS_HEADER, lines)
+    print("prefs-globs.txt: %d keys" % len(lines))
+    return 0
+
+
 if __name__ == "__main__":
     if sys.argv[1:] == ["--list"]:
         sys.exit(_list())
+    if sys.argv[1:] == ["--update-globs"]:
+        sys.exit(_update_globs())
     unittest.main()

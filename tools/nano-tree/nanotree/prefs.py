@@ -12,9 +12,27 @@ the host build's fake platform left out:
   (`SettingSource::kGlobal`, `"airplane_mode_on"`) and `settings get|put <namespace> K` shell strings.
   `SettingSource::kProp` rows are property keys.
 
-For each key the scan keeps the files, how it is used (get, set, a settings row, other) and the
-default values the code passes (the default argument of property_get and its kin, and a settings
-row's default and options).
+Keys built at run time are found through RUNTIME_FAMILIES, which says how each family is built:
+- a key prefix joined to a field of a table (`"persist.gammaos.shader." + defs[i].suffix` over the
+  GsParamDef arrays): the scan reads the table's rows and lists each key;
+- a template whose prefix comes at run time (`"%sact%d_code"` with actScopePrefix()'s prefixes,
+  `"%s_%d"` with the base keys passed to the chunked-list helpers): the scan lists each prefix with
+  each template.
+Two checks keep the families honest: a `"%s..."` key template the families do not claim is a problem,
+and so is a key prefix (a key literal ending in ".") with an exact row and no family. A new family is
+declared in RUNTIME_FAMILIES, or covered by a glob row.
+
+Init and shell scripts under nano/ (`gammaos-nano.rc`, `thimsy-dexopt.sh` and the like) are scanned
+for `property:K`, `setprop K` and `getprop K` in Nano's namespaces (PROP_NAMESPACES), comments left
+out. Keys in other namespaces there (`bluetooth.profile.*`, `apexd.status`) are Android's and left out.
+
+For each key the scan keeps the files, how it is used (get, set, a settings row, built from a family,
+other) and the default values the code passes (the default argument of property_get and its kin, a
+settings row's default and options, and a family table's default column).
+
+Glob rows take in any new key under them. For the persist.* globs (the namespaces that can hold a
+pref) the covered keys are listed in tools/nano-tree/prefs-globs.txt, so a new key there is reviewed
+(glob_lines).
 
 On Linux, libthimsy's ConfigStore serves the same property names (nano/compat/src/properties.cpp, no
 renaming), so a property key's Linux equivalent is the key itself. Linux-only keys
@@ -39,6 +57,37 @@ ENCODINGS = ("1/0", "true/false")  # how a bool is stored in the device store
 SETTINGS_NS = {"kGlobal": "global", "kSecure": "secure", "kSystem": "system"}
 SKIP_DIRS = {"test", "tests", "testdata"}
 SKIP_PATHS = ("platform/host/",)  # the host build's fake platform: test code, never on a device
+SCRIPT_EXT = (".rc", ".sh")
+# Namespaces that never hold a pref (not persistent, read-only or init's): their globs need no baseline.
+NON_PREF_NAMESPACES = tuple(ns + "." for ns in PROP_NAMESPACES if ns != "persist")
+
+# Keys built at run time (see the module docstring). Each family names the file that builds the keys
+# and one way to list them:
+#   prefix + array/array_type + field [+ suffixes]: prefix + the string in column FIELD of each row of
+#     the array named ARRAY (or of every array of type ARRAY_TYPE) in FILE, then each of SUFFIXES;
+#     default_field: the column holding the key's default;
+#   templates + prefixes: each "%s..." literal in FILE starting with TEMPLATES, its %s replaced by
+#     each of PREFIXES (the part of a prefix before any "%" must be a key literal in FILE);
+#   templates + bases_from: the same, with the prefixes taken from the first argument of every call
+#     to the functions in BASES_FROM (a key literal, or a name given a key literal in the same file;
+#     PARAMS are the helpers' own parameter names, skipped).
+RUNTIME_FAMILIES = (
+    {"name": "shader parameters", "file": "NanoMenuPS3Menu.cpp", "prefix": "persist.gammaos.shader.",
+     "array_type": "GsParamDef", "field": 0},
+    {"name": "hotkey buttons", "file": "NanoMenuButtonMap.cpp", "prefix": "persist.gammaos.hotkeys.",
+     "array": "kHot", "field": 0, "default_field": 1},
+    {"name": "scraper extra media", "file": "NanoScraper.cpp", "prefix": "persist.gammaos.scraper.media.",
+     "array": "kExtraMedia", "field": 0},
+    {"name": "composer BCSH per display", "file": "NanoScreenCal.cpp", "prefix": "persist.vendor.",
+     "array": "kField", "field": 0, "suffixes": (".main", ".aux")},
+    {"name": "button-action rules", "file": "NanoMenuPS3Menu.cpp", "templates": "%sact",
+     "prefixes": ("persist.gammaos.gamepad.", "persist.gammaos.gamepad.pa%d_")},
+    {"name": "chunked list continuations", "file": "NanoMenuPS3Menu.cpp", "templates": "%s_%d",
+     "bases_from": ("nanoPkgListRead", "nanoPkgListHas", "nanoPkgListSet", "qsSpecList"),
+     "params": ("baseProp", "base")},
+)
+# A printf template whose prefix comes at run time: "%s" then key characters and %d fields.
+RUNTIME_TEMPLATE = re.compile(r"%s[_A-Za-z](?:[A-Za-z0-9_.\-]|%0?\d*[du])*\Z")
 
 # A printf template of a key: a property key with %s, %d, %u or %02d style fields in it.
 PROP_TEMPLATE = re.compile(r"(?:%s)\.(?:[A-Za-z0-9_\-]|%%0?\d*[sdu])+(?:\.(?:[A-Za-z0-9_\-]|%%0?\d*[sdu])+)*\.?\Z"
@@ -116,11 +165,12 @@ def tokens(text: str) -> List[Tok]:
     return out
 
 
-def call_args(toks: List[Tok], open_idx: int) -> Optional[List[List[Tok]]]:
-    """The arguments of the call whose "(" is at OPEN_IDX, each a token list; None if unbalanced."""
+def call_args(toks: List[Tok], open_idx: int, limit: int = 400) -> Optional[List[List[Tok]]]:
+    """The arguments of the call whose "(" is at OPEN_IDX (or the items of the "{" list there), each a
+    token list; None if unbalanced within LIMIT tokens."""
     depth = 0
     args: List[List[Tok]] = [[]]
-    for j in range(open_idx, min(len(toks), open_idx + 400)):
+    for j in range(open_idx, min(len(toks), open_idx + limit)):
         t = toks[j]
         if t.kind == "p" and t.text in "([{":
             depth += 1
@@ -175,10 +225,30 @@ class Use:
                 "options": self.options, "calls": sorted(self.calls), "where": self.where[:6]}
 
 
-def scan_text(text: str, rel: str, out: Dict[str, Use]) -> None:
-    if not _WORTH.search(text):
+class Context:
+    """What the runtime families need from the scan: "%s..." templates, helper calls, named key
+    literals and each file's tokens."""
+
+    def __init__(self) -> None:
+        self.templates: Dict[str, Dict[str, int]] = {}      # file -> {template: first line}
+        self.consts: Dict[str, Dict[str, str]] = {}         # file -> {name: key literal}
+        self.toks: Dict[str, List[Tok]] = {}
+
+
+def _family_files() -> Set[str]:
+    return {f["file"] for f in RUNTIME_FAMILIES}
+
+
+def _base_calls() -> Set[str]:
+    return {fn for f in RUNTIME_FAMILIES for fn in f.get("bases_from", ())}
+
+
+def scan_text(text: str, rel: str, out: Dict[str, Use], ctx: Optional[Context] = None) -> None:
+    if not _WORTH.search(text) and not (ctx is not None and rel in _family_files()):
         return
     toks = tokens(text)
+    if ctx is not None:
+        ctx.toks[rel] = toks
 
     def use(key: str, op: str, line: int) -> Use:
         u = out.setdefault(key, Use())
@@ -217,6 +287,12 @@ def scan_text(text: str, rel: str, out: Dict[str, Use]) -> None:
         if t.kind != "s":
             continue
         s = t.text
+        if ctx is not None and RUNTIME_TEMPLATE.match(s):
+            ctx.templates.setdefault(rel, {}).setdefault(s, t.line)
+            continue
+        if ctx is not None and PROP_KEY.match(s) and i >= 2 and toks[i - 1].kind == "o" and toks[i - 1].text == "=" \
+                and toks[i - 2].kind == "i":
+            ctx.consts.setdefault(rel, {})[toks[i - 2].text] = s
         if is_key(s):
             op = "other"
             fn = ""
@@ -243,25 +319,182 @@ def scan_text(text: str, rel: str, out: Dict[str, Use]) -> None:
             use("%s:%s" % (m.group(2), m.group(3)), "set" if m.group(1) == "put" else "get", t.line)
 
 
+_SCRIPT_KEY = re.compile(r"(property:|setprop\s+|getprop\s+)(%s)" % _KEYCHARS)
+
+
+def scan_script(text: str, rel: str, out: Dict[str, Use]) -> None:
+    """Keys in an init (.rc) or shell (.sh) script: property:K triggers, setprop K and getprop K."""
+    for n, ln in enumerate(text.split("\n"), 1):
+        if ln.lstrip().startswith("#"):
+            continue
+        for m in _SCRIPT_KEY.finditer(ln):
+            key = m.group(2).rstrip(".")
+            u = out.setdefault(key, Use())
+            u.files.add(rel)
+            u.ops.add("set" if m.group(1).startswith("setprop") else "get")
+            if len(u.where) < 12:
+                u.where.append("%s:%d" % (rel, n))
+
+
 def scanned_files(nano_dir: str) -> List[str]:
-    """Paths (relative to nano/) of every C and C++ source under nano/, tests left out."""
+    """Paths (relative to nano/) of every C and C++ source and every init or shell script under nano/,
+    tests left out."""
     out = []
     for dirpath, dirnames, names in os.walk(nano_dir):
         dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
         for nm in sorted(names):
             rel = os.path.relpath(os.path.join(dirpath, nm), nano_dir).replace(os.sep, "/")
-            if nm.endswith(SOURCE_EXT) and not rel.startswith(SKIP_PATHS):
+            if nm.endswith(SOURCE_EXT + SCRIPT_EXT) and not rel.startswith(SKIP_PATHS):
                 out.append(rel)
     return out
 
 
-def scan(nano_dir: str, files: Optional[List[str]] = None) -> Dict[str, Use]:
-    """{key: Use} over FILES (default: scanned_files)."""
-    out: Dict[str, Use] = {}
+class Found(dict):
+    """{key: Use}, plus the runtime families' problems and the key prefixes they account for."""
+
+    def __init__(self, *a, **kw) -> None:
+        super().__init__(*a, **kw)
+        self.problems: List[str] = []
+        self.family_prefixes: Set[str] = set()
+
+
+def _array_items(toks: List[Tok], name: Optional[str], type_: Optional[str]) -> Iterator[List[List[Tok]]]:
+    """The rows of the array NAME, or of every array of type TYPE_, as lists of fields."""
+    n = len(toks)
+    for i, t in enumerate(toks):
+        if t.kind != "i":
+            continue
+        if name is not None:
+            if _short(t.text) != name and t.text.rsplit("::", 1)[-1] != name:
+                continue
+            j = i + 1
+        else:
+            if t.text != type_ or i + 1 >= n or toks[i + 1].kind != "i":
+                continue
+            j = i + 2
+        if j >= n or toks[j].text != "[":
+            continue
+        while j < n and toks[j].text != "]":
+            j += 1
+        if j + 2 >= n or toks[j + 1].text != "=" or toks[j + 2].text != "{":
+            continue
+        items = call_args(toks, j + 2, limit=20000) or []
+        for it in items:
+            if not it:
+                continue
+            if it[0].kind == "p" and it[0].text == "{":
+                yield call_args(it, 0, limit=len(it) + 1) or []
+            else:
+                yield [it]
+
+
+def _string(field: List[Tok]) -> Optional[str]:
+    return field[0].text if len(field) == 1 and field[0].kind == "s" else None
+
+
+def expand_runtime(found: Found, ctx: Context, families=RUNTIME_FAMILIES) -> None:
+    """Adds the keys of each runtime family to FOUND (op "built"), and the problems: a family that
+    lists nothing, a prefix no longer in its file, an unresolved base, a template no family claims."""
+
+    def add(key: str, fam: dict, where: str, default: Optional[str] = None) -> None:
+        u = found.setdefault(key, Use())
+        u.files.add(fam["file"])
+        u.ops.add("built")
+        u.calls.add(fam["name"])
+        if len(u.where) < 12:
+            u.where.append(where)
+        if default is not None:
+            u.defaults.add(default)
+
+    claimed: Set[tuple] = set()
+    for fam in families:
+        rel, name = fam["file"], fam["name"]
+        toks = ctx.toks.get(rel)
+        if toks is None:
+            found.problems.append("runtime family %r: %s is not scanned" % (name, rel))
+            continue
+        made = 0
+        if "prefix" in fam:
+            found.family_prefixes.add(fam["prefix"])
+            if fam["prefix"] not in found:
+                found.problems.append("runtime family %r: no key literal %s in nano/" % (name, fam["prefix"]))
+            for row in _array_items(toks, fam.get("array"), fam.get("array_type")):
+                k = fam["field"]
+                v = _string(row[k]) if len(row) > k else None
+                if v is None:
+                    continue
+                df = fam.get("default_field")
+                d = _string(row[df]) if df is not None and len(row) > df else None
+                for suf in fam.get("suffixes", ("",)):
+                    add(fam["prefix"] + v + suf, fam, "%s (%s)" % (rel, fam.get("array") or fam.get("array_type")), d)
+                    made += 1
+        else:
+            temps = {t: ln for t, ln in ctx.templates.get(rel, {}).items() if t.startswith(fam["templates"])}
+            for t in temps:
+                claimed.add((rel, t))
+            if "prefixes" in fam:
+                prefixes = list(fam["prefixes"])
+                for p in prefixes:
+                    found.family_prefixes.add(p)
+                    head = p.split("%", 1)[0]
+                    if rel not in getattr(found.get(head), "files", ()):
+                        found.problems.append("runtime family %r: prefix %s is no longer a key literal in %s"
+                                              % (name, head, rel))
+            else:
+                prefixes = []
+                skip = set(fam.get("params", ()))
+                for frel, ftoks in sorted(ctx.toks.items()):
+                    for i, tk in enumerate(ftoks):
+                        if tk.kind != "i" or _short(tk.text) not in fam["bases_from"]:
+                            continue
+                        if i + 1 >= len(ftoks) or ftoks[i + 1].text != "(":
+                            continue
+                        args = call_args(ftoks, i + 1)
+                        if not args or len(args[0]) != 1:
+                            continue
+                        a = args[0][0]
+                        if a.kind == "s":
+                            base = a.text
+                        elif a.kind == "i" and a.text in skip:
+                            continue
+                        elif a.kind == "i":
+                            base = ctx.consts.get(frel, {}).get(a.text)
+                            if base is None:
+                                found.problems.append("runtime family %r: cannot resolve %s at %s:%d to a key "
+                                                      "literal" % (name, a.text, frel, tk.line))
+                                continue
+                        else:
+                            continue
+                        if base not in prefixes:
+                            prefixes.append(base)
+            for t, ln in sorted(temps.items()):
+                for p in prefixes:
+                    add(p + t[2:], fam, "%s:%d" % (rel, ln))
+                    made += 1
+        if not made:
+            found.problems.append("runtime family %r lists no keys (did %s change?)" % (name, rel))
+    for rel, temps in sorted(ctx.templates.items()):
+        for t, ln in sorted(temps.items()):
+            if (rel, t) not in claimed:
+                found.problems.append("%s:%d builds keys from %r with a prefix chosen at run time: declare the "
+                                      "family in prefs.RUNTIME_FAMILIES" % (rel, ln, t))
+
+
+def scan(nano_dir: str, files: Optional[List[str]] = None) -> Found:
+    """{key: Use} over FILES (default: scanned_files), with the runtime families expanded."""
+    out = Found()
+    ctx = Context()
     for rel in files if files is not None else scanned_files(nano_dir):
         with open(os.path.join(nano_dir, *rel.split("/")), "rb") as f:
-            scan_text(f.read().decode("utf-8", "replace"), rel, out)
-    return dict(sorted(out.items()))
+            text = f.read().decode("utf-8", "replace")
+        if rel.endswith(SCRIPT_EXT):
+            scan_script(text, rel, out)
+        else:
+            scan_text(text, rel, out, ctx)
+    expand_runtime(out, ctx)
+    res = Found(sorted(out.items()))
+    res.problems, res.family_prefixes = out.problems, out.family_prefixes
+    return res
 
 
 def linux_only(use: Use, cfg: Upstream) -> bool:
@@ -309,11 +542,12 @@ def option_values(options: str) -> List[str]:
 def check_table(table: dict, found: Dict[str, Use]) -> List[str]:
     """Problems: malformed rows, scanned keys with no row, rows that cover nothing, a broken
     unclassified list, and portable rows whose default or values disagree with the code."""
-    problems: List[str] = []
+    problems: List[str] = list(getattr(found, "problems", []))
     rows = table.get("rows", [])
     unclassified = table.get("unclassified", [])
     seen: Set[str] = set()
     ini_seen: Dict[str, str] = {}
+    exact = {r.get("match"): r for r in rows}
     for r in rows:
         m = r.get("match", "")
         if not m:
@@ -330,7 +564,16 @@ def check_table(table: dict, found: Dict[str, Use]) -> List[str]:
         if r.get("type") is not None and r["type"] not in TYPES:
             problems.append("%s: type %r is not one of %s" % (m, r["type"], ", ".join(TYPES)))
         ini = r.get("ini")
-        if c in PORTABLE:
+        part_of = r.get("part_of")
+        if part_of:
+            base = exact.get(part_of)
+            if base is None:
+                problems.append("%s: part_of %s, which has no row" % (m, part_of))
+            elif base.get("class") != c:
+                problems.append("%s: class %s, but it is part of %s, class %s" % (m, c, part_of, base.get("class")))
+            if ini:
+                problems.append("%s: part of %s, whose ini key covers it, but has its own \"ini\"" % (m, part_of))
+        elif c in PORTABLE:
             if is_glob(m):
                 problems.append("%s: a class %s row must name one key, not a glob" % (m, c))
             if not ini:
@@ -389,9 +632,15 @@ def check_table(table: dict, found: Dict[str, Use]) -> List[str]:
     for k in unclassified:
         if k not in seen:
             problems.append("unclassified %s has no row" % k)
+    prefixes = getattr(found, "family_prefixes", None)
     for key, u in found.items():
-        if covering_row(key, rows) is None:
+        r = covering_row(key, rows)
+        if r is None:
             problems.append("no row for %s (in %s)" % (key, ", ".join(u.where[:3])))
+        elif prefixes is not None and key.endswith(".") and not is_glob(r["match"]) and key not in prefixes:
+            problems.append("%s is a key prefix (in %s): the keys built on it at run time have no rows. Declare "
+                            "the family in prefs.RUNTIME_FAMILIES, or cover it with a glob row"
+                            % (key, ", ".join(u.where[:3])))
     for r in rows:
         m = r.get("match", "")
         if not m or r.get("source") == "manual":
@@ -403,6 +652,19 @@ def check_table(table: dict, found: Dict[str, Use]) -> List[str]:
             problems.append("stale row %s: nothing in nano/ names it (drop it, or mark it \"source\": \"manual\" "
                             "with a reason)" % m)
     return problems
+
+
+def glob_lines(found: Dict[str, Use], rows: List[dict]) -> List[str]:
+    """"<glob> <key>" for each scanned key a glob row covers, in the namespaces that can hold a pref
+    (the baseline in prefs-globs.txt)."""
+    out = []
+    for key in found:
+        if key.startswith(NON_PREF_NAMESPACES) or ":" in key:
+            continue
+        r = covering_row(key, rows)
+        if r is not None and is_glob(r["match"]):
+            out.append("%s %s" % (r["match"], key))
+    return sorted(out)
 
 
 def report(found: Dict[str, Use], rows: List[dict]) -> Iterator[str]:
