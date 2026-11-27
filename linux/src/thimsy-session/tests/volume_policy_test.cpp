@@ -105,6 +105,20 @@ TEST(Classify, ASecondCardWithADataPartition) {
     EXPECT_FALSE(isDrive(part("mmcblk2", 5, "games", kTypeLinuxReserved)));
 }
 
+TEST(Classify, ASecondNeverBootedCardsInfoPartitionIsNotADriveWhenItsTableIsUnread) {
+    // A second Thimsy card that never booted still has its 1 MiB info stub (FAT12, basic data, OA-33).
+    // With the table unread, only the name is known: info is one of the card's own partitions.
+    BlockDev info = withFs(part("mmcblk2", 5, "info", ""), "vfat", "1234-ABCD");
+    info.table = "";
+    info.sizeBytes = 1024 * 1024;
+    EXPECT_FALSE(isDrive(info));
+    EXPECT_NE(classify(info, bootCard(), PolicyConfig()).reason.find("system partition"), std::string::npos);
+    // Another name on a disk with an unread table is still a drive.
+    BlockDev other = info;
+    other.partName = "infos";
+    EXPECT_TRUE(isDrive(other));
+}
+
 TEST(Classify, TheEmmcIsNeverADrive) {
     BlockDev d = part("mmcblk0", 17, "userdata", kTypeBasicData);
     d.emmc = true;  // device/type is MMC

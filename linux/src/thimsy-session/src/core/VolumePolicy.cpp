@@ -92,7 +92,8 @@ Classification classify(const BlockDev& dev, const BootDisk& boot, const PolicyC
         return ignore("on the boot disk (only its basic-data '" + cfg.gamesName + "' partition is a drive)");
     }
     if (dev.table.empty() && dev.partition) {
-        static const char* const kSystem[] = {"uboot", "boot", "root", "data"};
+        // info: a never-booted Thimsy card's 1 MiB README stub (OA-33), basic data until its first boot.
+        static const char* const kSystem[] = {"uboot", "boot", "root", "data", "info"};
         for (const char* n : kSystem) {
             if (dev.partName == n) return ignore("named like a system partition, with an unread table");
         }
