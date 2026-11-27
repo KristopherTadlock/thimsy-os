@@ -40,3 +40,18 @@ TEST(EsdeThemeFallback, TheLookIsRateLimited) {
     EXPECT_TRUE(recheckDue("slate-es-de", 70000, 60000));
     EXPECT_FALSE(recheckDue("slate-es-de", 60500, 60000));
 }
+
+TEST(EsdeThemeFallback, TheChosenSetGoneFromUnderTheHomeIsLoadedAgain) {
+    // The card with the set on it was pulled while the set was up: reload, and the default stands in.
+    EXPECT_TRUE(loadedSetGone(true, "slate-es-de", "slate-es-de", kDef, false));
+    EXPECT_EQ(setToLoad("slate-es-de", false, kDef, true), kDef);
+    EXPECT_EQ(missingSet("slate-es-de", false, kDef), "slate-es-de");
+}
+
+TEST(EsdeThemeFallback, NothingIsGoneWhileTheChosenSetIsThereOrNotTheOneShown) {
+    EXPECT_FALSE(loadedSetGone(true, "slate-es-de", "slate-es-de", kDef, true));    // still there
+    EXPECT_FALSE(loadedSetGone(false, "slate-es-de", "slate-es-de", kDef, false));  // nothing loaded
+    EXPECT_FALSE(loadedSetGone(true, kDef, "slate-es-de", kDef, false));            // already a stand-in
+    EXPECT_FALSE(loadedSetGone(true, kDef, kDef, kDef, false));                     // the default itself
+    EXPECT_FALSE(loadedSetGone(true, "", "", kDef, false));
+}

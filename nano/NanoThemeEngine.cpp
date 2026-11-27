@@ -730,13 +730,24 @@ void NanoMenu::ensureEsdeTheme() {
     mEsdeLoadedSysIdx = -1;   // force a per-focused-system re-resolve on the next render
 }
 
-// OA-37: while the default stands in for a chosen set that was not installed at its load, look for
-// that set again (why: what prompted the look, for the log). Once it is back, the next
-// ensureEsdeTheme loads it. A few access() calls: the callers run it on a storage or theme-folder
-// change, a raise of the home, the theme menu opening, and otherwise at most every
+// OA-37: look for the chosen theme set again (why: what prompted the look, for the log). While the
+// default stands in for it, the set is loaded once it is back; while the set itself is up, the
+// default is brought in once its folder has gone (its card was pulled, or swapped for one without
+// it). Either way the next ensureEsdeTheme does the load. A few access() calls: the callers run it
+// on a storage or theme-folder change, a focused-system reparse that finds the set's folder gone, a
+// raise of the home, the theme menu opening, and, while a set is missing, at most every
 // esdethemefb::kRecheckMs from esdeSdcardThemesTick, never per frame.
 void NanoMenu::esdeMissingSetRecheck(const char* why) {
-    if (mEsdeMissingSet.empty()) return;
+    if (mEsdeMissingSet.empty()) {
+        if (!esdethemefb::loadedSetGone(mEsdeLoaded, mEsdeDocKey.set, mEsdeSetName, kEsdeDefaultSet, false) ||
+            !esdeSetDir(mEsdeSetName).empty())
+            return;
+        ALOGW("esde: theme set '%s' is gone (%s); the default theme stands in until it is back",
+              mEsdeSetName.c_str(), why);
+        mEsdeLoaded = false;
+        mDisplayDirty = true;
+        return;
+    }
     mEsdeMissingCheckMs = (int64_t)uptimeMillis();
     if (esdeSetDir(mEsdeMissingSet).empty()) return;
     ALOGI("esde: theme set '%s' is back (%s); loading it", mEsdeMissingSet.c_str(), why);
@@ -788,7 +799,7 @@ void NanoMenu::esdeSdcardThemesTick() {
     mEsdeSdcardSig = dirSig;
     mEsdeSdcardActiveSig = activeSig;
     if (dirChanged) esdeMenuEnumerateInstalled();  // a set appeared / disappeared: refresh the picker
-    if (dirChanged) esdeMissingSetRecheck("theme folder changed");
+    esdeMissingSetRecheck(dirChanged ? "theme folder changed" : "theme set's files changed");
     if (activeChanged && activeOnSdcard) mEsdeLoaded = false;   // active set edited in place: reparse it
     mDisplayDirty = true;
     ALOGI("esde: user theme folder changed (dir=%d active=%d)", (int)dirChanged, (int)activeChanged);
@@ -805,7 +816,10 @@ void NanoMenu::esdeReloadForSystem(int sysIdx) {
     // (ensureEsdeTheme): the stand-in's key is used below.
     const bool standIn = mEsdeDocKey.set == kEsdeDefaultSet && mEsdeSetName != kEsdeDefaultSet;
     std::string dir = esdeSetDir(mEsdeSetName);
-    if (dir.empty() && !standIn) return;
+    if (dir.empty() && !standIn) {   // the chosen set went while it was up (OA-37): the default comes in
+        if (mEsdeMissingSet.empty()) esdeMissingSetRecheck("focused system reparse");
+        return;
+    }
     const auto& s = mXmbSystems[sysIdx];
     std::string sysTheme = esdeThemeSystemName(s.romDir, s.shortname);
     std::string sysName = s.name;
@@ -2631,7 +2645,7 @@ void NanoMenu::renderEsde() {
         if (mediaSig != mEsdeMediaSig) {
             if (mEsdeMediaSig >= 0) mEsdeLoadedSysIdx = -1;
             mEsdeMediaSig = mediaSig;
-            esdeMissingSetRecheck("storage changed");   // OA-37: a set on the card that came back
+            esdeMissingSetRecheck("storage changed");   // OA-37: a set on the card that came back or went
         }
     }
     esdeRebuildSysList();

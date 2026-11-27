@@ -147,6 +147,9 @@ int NanoMenu::esdeMenuOptionCtx(int row, std::string& label, std::string& prop,
     label = kEsdeMenuRows[row].label;
     prop = kEsdeMenuRows[row].prop;
     const nanoesde::Capabilities& caps = mEsdeDoc.capabilities();
+    // OA-37: while the default stands in for a missing chosen set, the option rows are that set's:
+    // they are greyed out (no options), so the stand-in's options never overwrite the set's own.
+    if (row > 0 && !mEsdeMissingSet.empty()) return 0;
 
     if (row == 0) {                                   // THEME: installed sets
         // ES-DE labels a set by its <themeName> ("Slate"), not the directory ("slate-es-de").

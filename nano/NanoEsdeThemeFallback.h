@@ -18,7 +18,8 @@
 // that was only in a removed card's ES-DE/themes. The ES-DE home shows the default set in its place
 // without changing the stored choice (persist.gammaos.nano.esde.themeset), remembers the set it
 // wants, and loads it once it is there again (NanoThemeEngine.cpp, esdeMissingSetRecheck). These are
-// the decisions; the theme engine does the file look-ups and the loads.
+// the decisions; the theme engine does the file look-ups and the loads. The same holds when the
+// chosen set goes while it is up (loadedSetGone).
 #pragma once
 
 #include <cstdint>
@@ -48,6 +49,15 @@ inline std::string missingSet(const std::string& want, bool wantFound, const std
 // lastMs.
 inline bool recheckDue(const std::string& missing, int64_t nowMs, int64_t lastMs) {
     return !missing.empty() && nowMs - lastMs >= kRecheckMs;
+}
+
+// Whether the set on screen has gone from under the home: a theme is loaded, the set shown is the
+// chosen one (not a stand-in for it), it is not the default (nothing else could stand in for it),
+// and its folder is no longer found (its card was pulled, or swapped for one without it). The
+// theme is then loaded again, which brings in the default in its place (setToLoad, missingSet).
+inline bool loadedSetGone(bool loaded, const std::string& shown, const std::string& chosen,
+                          const std::string& def, bool chosenFound) {
+    return loaded && !chosen.empty() && shown == chosen && chosen != def && !chosenFound;
 }
 
 }  // namespace esdethemefb
