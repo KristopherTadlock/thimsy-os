@@ -147,7 +147,7 @@ TEST_F(LinuxSettingsTest, KeysAnotherAndroidProcessActsOnAreUnsupported) {
         "persist.gammaos.rotate.enabled",            // WindowManager
         "persist.gammaos.hotkeys.enabled",           // PhoneWindowManager and drastic-nano
         "persist.gammaos.rgb.effect",                // the RGB light service
-        "ro.product.model",                          // read-only system state
+        "ro.build.version.release",                  // read-only, and Android's version
     };
     for (const char* key : others) {
         EXPECT_FALSE(settings->supports(SettingSource::kProp, key)) << key;
@@ -156,6 +156,26 @@ TEST_F(LinuxSettingsTest, KeysAnotherAndroidProcessActsOnAreUnsupported) {
     }
     // No gamepad config_version bump either: the firmware's hook is the firmware's.
     EXPECT_EQ(prop("persist.gammaos.gamepad.config_version"), "<unset>");
+}
+
+TEST_F(LinuxSettingsTest, DeviceNameIsReadNotWritten) {
+    ASSERT_EQ(property_set("ro.product.model", "RG ARC-D"), 0);   // as thimsy-prop boot writes it
+    EXPECT_TRUE(nanolinux::settings::isReadOnlySetting(SettingSource::kProp, "ro.product.model"));
+    EXPECT_TRUE(settings->supports(SettingSource::kProp, "ro.product.model"));   // About's row shows
+    EXPECT_EQ(settings->read(SettingSource::kProp, "ro.product.model", ""), "RG ARC-D");
+    EXPECT_FALSE(settings->write(SettingSource::kProp, "ro.product.model", "other"));
+    EXPECT_EQ(prop("ro.product.model"), "RG ARC-D");
+    // Only as a property: no system table holds it.
+    EXPECT_FALSE(nanolinux::settings::isReadOnlySetting(SettingSource::kSystem, "ro.product.model"));
+    EXPECT_FALSE(settings->supports(SettingSource::kSystem, "ro.product.model"));
+    // The About rows Linux does not provide stay hidden.
+    const char* hidden[] = {"ro.build.version.release", "ro.build.display.id", "ro.lineage.version",
+                            "ro.gammaos.kernel.version", "gsm.version.baseband"};
+    for (const char* key : hidden) {
+        EXPECT_FALSE(nanolinux::settings::isReadOnlySetting(SettingSource::kProp, key)) << key;
+        EXPECT_FALSE(settings->supports(SettingSource::kProp, key)) << key;
+        EXPECT_EQ(settings->read(SettingSource::kProp, key, "def"), "def") << key;
+    }
 }
 
 TEST(LinuxSettingsTable, IsSortedUniqueAndNanosOwn) {

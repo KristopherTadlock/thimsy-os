@@ -528,8 +528,9 @@ enum class SettingSource { kNone, kProp, kGlobal, kSecure, kSystem };
 class Settings {
  public:
     virtual ~Settings() = default;
-    // Whether the platform keeps `key` of `source` and gives a write to it its effect; the menus
-    // hide a row bound to an unsupported setting. Does not block.
+    // Whether the platform keeps `key` of `source` and gives a write to it its effect, or (read-only
+    // state, such as the device's name) provides it; the menus hide a row bound to an unsupported
+    // setting. Does not block.
     virtual bool supports(SettingSource source, const std::string& key) const = 0;
     // The stored value; `def` when there is none, it can't be read, or the setting is unsupported.
     virtual std::string read(SettingSource source, const std::string& key, const std::string& def) = 0;

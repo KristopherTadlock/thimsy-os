@@ -113,6 +113,16 @@ constexpr const char* kNanoPreferences[] = {
     "persist.sys.locale",
 };
 
+// Read-only system state a settings row shows and Linux provides: About Device > Device Name's
+// ro.product.model, which thimsy-prop boot writes from the device's description (libthimsy). Read
+// through the store; a write is refused. The other About rows name what Linux does not have
+// (ro.build.version.release, ro.build.display.id, ro.lineage.version, ro.gammaos.kernel.version,
+// gsm.version.baseband: Android's and LineageOS's versions, the firmware's build and kernel strings,
+// the modem's), so they stay hidden.
+constexpr const char* kReadOnly[] = {
+    "ro.product.model",
+};
+
 // The system settings Linux implements itself, each kept as a property Nano reads.
 struct NativeSetting {
     SettingSource source;
@@ -151,7 +161,8 @@ const char* sourceName(SettingSource source) {
 // The property (source, key) is kept in, or "" when Linux does not support it.
 std::string storeKeyFor(SettingSource source, const std::string& key) {
     if (key.empty()) return "";
-    if (source == SettingSource::kProp) return isNanoPreference(key) ? key : std::string();
+    if (source == SettingSource::kProp)
+        return (isNanoPreference(key) || isReadOnlySetting(source, key)) ? key : std::string();
     return nativeStoreKey(source, key);
 }
 
@@ -170,9 +181,13 @@ class LinuxSettings : public nanoplat::Settings {
     }
 
     bool write(SettingSource source, const std::string& key, const std::string& value) override {
+        if (isReadOnlySetting(source, key)) {
+            refusedOnce(source, key, "is read-only");
+            return false;
+        }
         const std::string store = storeKeyFor(source, key);
         if (store.empty()) {
-            refusedOnce(source, key);
+            refusedOnce(source, key, "is not supported on Linux");
             return false;
         }
         if (property_set(store.c_str(), value.c_str()) != 0) {
@@ -184,11 +199,10 @@ class LinuxSettings : public nanoplat::Settings {
     }
 
  private:
-    void refusedOnce(SettingSource source, const std::string& key) {
+    void refusedOnce(SettingSource source, const std::string& key, const char* why) {
         std::lock_guard<std::mutex> lock(mu_);
         if (!refused_.insert(std::string(sourceName(source)) + " " + key).second) return;
-        ALOGW("settings: %s %s is not supported on Linux; the write does nothing", sourceName(source),
-              key.c_str());
+        ALOGW("settings: %s %s %s; the write does nothing", sourceName(source), key.c_str(), why);
     }
 
     std::mutex mu_;
@@ -203,6 +217,14 @@ bool isNanoPreference(const std::string& key) {
 
 std::vector<std::string> nanoPreferences() {
     return std::vector<std::string>(std::begin(kNanoPreferences), std::end(kNanoPreferences));
+}
+
+bool isReadOnlySetting(nanoplat::SettingSource source, const std::string& key) {
+    if (source != nanoplat::SettingSource::kProp) return false;
+    for (const char* k : kReadOnly) {
+        if (key == k) return true;
+    }
+    return false;
 }
 
 std::string nativeStoreKey(nanoplat::SettingSource source, const std::string& key) {

@@ -65787,10 +65787,10 @@ index 00000000000..1dca69e253c
 +}  // namespace nanoplat
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoPlatform.h b/frameworks/base/cmds/gammaos-nano/NanoPlatform.h
 new file mode 100644
-index 00000000000..c02aa503a1f
+index 00000000000..5fa98df7428
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/NanoPlatform.h
-@@ -0,0 +1,578 @@
+@@ -0,0 +1,579 @@
 +/*
 + * Copyright (C) 2026 The Thimsy OS Project
 + *
@@ -66321,8 +66321,9 @@ index 00000000000..c02aa503a1f
 +class Settings {
 + public:
 +    virtual ~Settings() = default;
-+    // Whether the platform keeps `key` of `source` and gives a write to it its effect; the menus
-+    // hide a row bound to an unsupported setting. Does not block.
++    // Whether the platform keeps `key` of `source` and gives a write to it its effect, or (read-only
++    // state, such as the device's name) provides it; the menus hide a row bound to an unsupported
++    // setting. Does not block.
 +    virtual bool supports(SettingSource source, const std::string& key) const = 0;
 +    // The stored value; `def` when there is none, it can't be read, or the setting is unsupported.
 +    virtual std::string read(SettingSource source, const std::string& key, const std::string& def) = 0;

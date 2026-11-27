@@ -359,16 +359,35 @@ ANDROID_CONSUMED_KEYS = ("persist.gammaos.nano.orientation", "persist.gammaos.na
                          "persist.gammaos.nano.pspclock.liveapp")
 
 
-def linux_nano_preferences(path):
-    """The keys of kNanoPreferences in PATH, in file order."""
+def linux_string_table(path, name):
+    """The string literals of the `NAME[] = {...};` table in PATH, in file order ([] when absent)."""
     from nanotree.ratchets import lex
     with open(path, "rb") as fh:
         text = fh.read().decode("utf-8", "replace")
-    m = re.search(r"kNanoPreferences\[\] = \{\n(.*?)\n\};", text, re.S)
+    m = re.search(r"\b" + re.escape(name) + r"\[\] = \{\n(.*?)\n\};", text, re.S)
     if not m:
         return []
     _, strings = lex(m.group(1))
     return [s for _l, s in strings]
+
+
+def linux_nano_preferences(path):
+    """The keys of kNanoPreferences in PATH, in file order."""
+    return linux_string_table(path, "kNanoPreferences")
+
+
+# The system settings Linux keeps as properties (Linux's kNative) and the host fake's model of them
+# (FakeSettings.cpp's kLinuxNative): {SettingSource::kX, "key", "property"} rows.
+HOST_FAKE_SETTINGS = os.path.join(NANO, "platform", "host", "FakeSettings.cpp")
+NATIVE_ROW = re.compile(r'\{SettingSource::(k\w+), "([^"]+)", "([^"]+)"\}')
+
+
+def native_settings(path, name):
+    """The (source, key, property) rows of the `NAME[] = {...};` table in PATH, in file order."""
+    with open(path, "rb") as fh:
+        text = fh.read().decode("utf-8", "replace")
+    m = re.search(r"\b" + re.escape(name) + r"\[\] = \{\n(.*?)\n\};", text, re.S)
+    return NATIVE_ROW.findall(m.group(1)) if m else []
 
 
 @unittest.skipUnless(os.path.isfile(LINUX_SETTINGS), "no nano/platform/linux/Settings.cpp")
@@ -386,6 +405,42 @@ class LinuxSettingsTable(unittest.TestCase):
         self.assertEqual(unused, [], "keys no settings row or dispatcher call names (stale; remove them)")
         android = [k for k in keys if k.startswith(ANDROID_CONSUMED_PREFIXES) or k in ANDROID_CONSUMED_KEYS]
         self.assertEqual(android, [], "keys another Android process acts on are unsupported on Linux (OA-4)")
+
+    def test_read_only_state_is_read_only_and_shown_by_a_row(self):
+        from nanotree.ratchets import lex
+        keys = linux_string_table(LINUX_SETTINGS, "kReadOnly")
+        self.assertIn("ro.product.model", keys)   # About Device > Device Name (thimsy-prop boot)
+        self.assertEqual(keys, sorted(set(keys)))
+        self.assertEqual([k for k in keys if not k.startswith("ro.")], [], "only ro.* keys are read-only")
+        with open(os.path.join(NANO, "NanoMenuSettingsTree.cpp"), "rb") as fh:
+            literals = {s for _l, s in lex(fh.read().decode("utf-8", "replace"))[1]}
+        self.assertEqual([k for k in keys if k not in literals], [], "read-only keys no settings row shows")
+
+    @unittest.skipUnless(os.path.isfile(HOST_FAKE_SETTINGS), "no nano/platform/host/FakeSettings.cpp")
+    def test_the_host_fake_keeps_linuxs_native_settings_where_linux_does(self):
+        linux = native_settings(LINUX_SETTINGS, "kNative")
+        self.assertIn(("kSystem", "font_scale", "persist.gammaos.nano.fontscale"), linux)
+        self.assertEqual(native_settings(HOST_FAKE_SETTINGS, "kLinuxNative"), linux,
+                         "FakeSettings.cpp's kLinuxNative must match platform/linux/Settings.cpp's kNative")
+
+
+class NativeSettingsParser(unittest.TestCase):
+    def test_reads_rows_and_tables(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "S.cpp")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write('constexpr Row kNative[] = {\n'
+                         '    // a comment\n'
+                         '    {SettingSource::kSystem, "font_scale", "persist.x.fontscale"},\n'
+                         '};\n'
+                         'constexpr const char* kReadOnly[] = {\n'
+                         '    "ro.product.model",\n'
+                         '};\n')
+            self.assertEqual(native_settings(path, "kNative"), [("kSystem", "font_scale", "persist.x.fontscale")])
+            self.assertEqual(native_settings(path, "kLinuxNative"), [])
+            self.assertEqual(linux_string_table(path, "kReadOnly"), ["ro.product.model"])
+            self.assertEqual(linux_string_table(path, "ReadOnly"), [])
 
 
 if __name__ == "__main__":

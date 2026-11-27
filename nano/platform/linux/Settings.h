@@ -22,7 +22,9 @@
 //   property store (persist.props), read and written as is. Every other property is unsupported:
 //   the ones another Android process acts on (class 1b: SurfaceFlinger, WindowManager, the gammapad
 //   daemon, LiveDisplay, the Rockchip composer), the read-only system ones (ro.*), and any key not
-//   in the table, a new upstream row included.
+//   in the table, a new upstream row included. The exception: the read-only system state a row shows
+//   and Linux provides (Settings.cpp's kReadOnly: ro.product.model, About Device's Device Name) is
+//   supported for reading; a write to it is refused like an unsupported one.
 // - kGlobal, kSecure, kSystem: Android's settings tables. Unsupported, except the system settings
 //   Linux implements itself, each kept as a property Nano reads (Settings.cpp's kNative): Font Size
 //   (system font_scale, kept as the persist.gammaos.nano.fontscale Nano's render loop applies) and
@@ -50,6 +52,8 @@ std::unique_ptr<nanoplat::Settings> create();
 bool isNanoPreference(const std::string& key);
 // Nano's own preferences, in the table's (strcmp) order.
 std::vector<std::string> nanoPreferences();
+// Whether (source, key) is read-only system state Linux provides (read, never written).
+bool isReadOnlySetting(nanoplat::SettingSource source, const std::string& key);
 // The property a system setting Linux implements is kept in, or "" when Linux does not implement it
 // (always "" for kProp and kNone).
 std::string nativeStoreKey(nanoplat::SettingSource source, const std::string& key);
