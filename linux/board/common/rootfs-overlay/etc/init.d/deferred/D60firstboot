@@ -1,35 +1,54 @@
 #!/bin/sh
-# D60firstboot: the games partition (GPT entry 5) on the boot disk.
+# D60firstboot: the boot disk's first-boot work: random GPT GUIDs, the games
+# partition (GPT entry 6) and the info entry's retirement.
 # SPDX-License-Identifier: MIT
 #
-# The written image has entries 1 to 4 only (IMPLEMENTATION E.6, decision
-# I39). On the first boot this script, on the boot disk only and never on an
-# eMMC (decision I40):
+# The written image has entries 1 to 5 (IMPLEMENTATION E.6, decisions I39,
+# OA-2): uboot, boot, root, data and info, a 1 MiB FAT that Android's vold
+# mounts so a fresh card is not offered for formatting. On every boot this
+# script, on the boot disk only and never on an eMMC (decision I40):
+#   R. replaces the image's pinned GPT GUIDs with random ones (OA-9). The
+#      image's are name-based (version 5) and the same on every card written
+#      from it, so two such cards in one device share root=PARTUUID=. The
+#      disk GUID (sfdisk --disk-id) and the unique GUID of each image entry
+#      that is still version 5 (sfdisk --part-uuid) get a version 4 GUID from
+#      the kernel, one write each, before anything else is written; a card
+#      the installer wrote already has random ones and is left as it is;
 #   0. moves the backup GPT to the end of the card if the image left it at
 #      the image's end (sfdisk --relocate gpt-bak-std);
-#   1. creates entry 5 over the free space from GAP_MIB after the last
+#   1. creates entry 6 over the free space from GAP_MIB after the last
 #      entry, typed Linux reserved and named "games";
 #   2. makes exFAT on it (label THIMSY);
-#   3. retypes it Microsoft basic data.
+#   3. retypes it Microsoft basic data;
+#   4. retypes entry 5, info, Linux reserved: games is now the card's one
+#      entry vold mounts, as the plan wants (8.2), and info's FAT stays as
+#      it is under it.
 # At no moment is there a basic-data entry without a filesystem: Android's
 # vold would offer to format the card, and Windows would offer to format the
 # partition. Each step is safe to repeat after a power cut: the state is
-# read from the GPT on every run, and an entry 5 that is still Linux reserved
+# read from the GPT on every run, and an entry 6 that is still Linux reserved
 # and named games is ours and still empty, so it is formatted (again).
+#
+# The new GUIDs reach the kernel's partition list (PARTUUID= in uevents) at
+# the next boot. Nothing needs them before: U-Boot reads entry 3's GUID for
+# root=PARTUUID= on every boot (boot.cmd), QEMU boots root=/dev/vda3, there
+# is no fstab, and S00base has already recorded the boot disk in
+# /run/thimsy/bootdisk.
 #
 # A re-written card (device-safety-2): when the image is written again over a
 # card that already has a Thimsy library, the image ends 1 MiB before games
 # (genimage.cfg's size), so the library's exFAT is still there, boot region
 # and all. Before step 1, if the region at the start holds a complete exFAT
-# (whatever its label: the user may have renamed the library), entry 5 is
+# (whatever its label: the user may have renamed the library), entry 6 is
 # created over its extent, typed basic data at once, and nothing is
-# formatted. That is one sfdisk write, so a power cut leaves either no entry 5
+# formatted. That is one sfdisk write, so a power cut leaves either no entry 6
 # (adopted at the next boot) or the adopted one. When the region can't be
 # read, nothing is done until the next boot: a read error never formats.
 # Anything else there (no exFAT, or one whose format was cut) is formatted as
 # on a first boot.
 #
-# An entry 5 of any other type or name is the user's and is left alone.
+# An entry 6 of any other type or name is the user's and is left alone, and
+# info then stays as it is.
 . "${THIMSY_ROOT:-}/usr/share/thimsy/init/lib.sh"
 
 TAG=D60firstboot
@@ -38,17 +57,31 @@ BASICDATA=ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
 LOG=$R/run/thimsy/log/firstboot.log
 LOCK=$R/run/thimsy/firstboot.lock
 PROBE=$R/run/thimsy/firstboot.probe
+# The kernel's random GUIDs: a new one on every read.
+UUID_SRC=$R/proc/sys/kernel/random/uuid
+# The entries (E.6; gpt_check.py's INFO_INDEX and GAMES_INDEX).
+INFO_N=5
+GAMES_N=6
 # games starts GAP_MIB after the 1 MiB boundary that ends the last entry; the
 # image ends 1 MiB after that boundary (E.6; gpt_check.py's GAMES_GAP_MIB).
 GAP_MIB=2
 
+# is_pinned GUID: true for a name-based (version 5) GUID, as the image's
+# are (OA-9); the kernel's, sfdisk's and the installer's are version 4.
+is_pinned() {
+	case $1 in
+	????????-????-5???-[89abAB]???-????????????) return 0 ;;
+	esac
+	return 1
+}
+
 # parse_entry LINE: one partition line of "sfdisk --dump".
-#   /dev/mmcblk1p4 : start=  1114112, size=  524288, type=933AC7E1-..., name="data"
+#   /dev/mmcblk1p4 : start=  1114112, size=  524288, type=933AC7E1-..., uuid=..., name="data"
 parse_entry() {
 	_node=${1%% : *}
 	_rest=${1#* : }
 	_n=${_node##*[!0-9]}
-	_start= _size= _type= _name=
+	_start= _size= _type= _uuid= _name=
 	_oldifs=$IFS
 	IFS=,
 	set -f
@@ -63,6 +96,7 @@ parse_entry() {
 		start=*) _start=${_f#start=} ;;
 		size=*) _size=${_f#size=} ;;
 		type=*) _type=${_f#type=} ;;
+		uuid=*) _uuid=${_f#uuid=} ;;
 		name=*)
 			_name=${_f#name=}
 			_name=${_name#\"}
@@ -81,21 +115,42 @@ parse_entry() {
 	if [ "$_end" -gt "$MAX_END" ]; then
 		MAX_END=$_end
 	fi
-	if [ "$_n" = 5 ]; then
+	if [ -n "$_uuid" ]; then
+		thimsy_lower_hex "$_uuid"
+		USED="$USED $LOWER_OUT"
+		if is_pinned "$_uuid"; then
+			case $_name in
+			uboot | boot | root | data | "$THIMSY_INFO_NAME") PINNED="$PINNED $_n" ;;
+			esac
+		fi
+	fi
+	if [ "$_n" = "$GAMES_N" ]; then
 		thimsy_lower_hex "$_type"
-		P5=1
-		P5_TYPE=$LOWER_OUT
-		P5_NAME=$_name
+		GE=1
+		GE_TYPE=$LOWER_OUT
+		GE_NAME=$_name
+	elif [ "$_n" = "$INFO_N" ]; then
+		thimsy_lower_hex "$_type"
+		IE_TYPE=$LOWER_OUT
+		IE_NAME=$_name
 	fi
 }
 
-# read_table: LABEL, LAST_LBA, SSZ, MAX_END and entry 5 from the disk.
+# read_table: LABEL, DISK_ID, LAST_LBA, SSZ, MAX_END, the GUIDs in use
+# (USED), the image entries whose GUIDs are still pinned (PINNED), entry 6
+# (GE_*) and entry 5 (IE_*) from the disk.
 read_table() {
-	LABEL= LAST_LBA= SSZ=512 MAX_END=0 P5= P5_TYPE= P5_NAME=
+	LABEL= DISK_ID= LAST_LBA= SSZ=512 MAX_END=0 USED= PINNED=
+	GE= GE_TYPE= GE_NAME= IE_TYPE= IE_NAME=
 	_dump=$("$SFDISK" --dump "$DISK_DEV" 2>> "$LOG") || return 1
 	while IFS= read -r _l; do
 		case $_l in
 		'label: '*) LABEL=${_l#label: } ;;
+		'label-id: '*)
+			DISK_ID=${_l#label-id: }
+			thimsy_lower_hex "$DISK_ID"
+			USED="$USED $LOWER_OUT"
+			;;
 		'last-lba: '*) LAST_LBA=${_l#last-lba: } ;;
 		'sector-size: '*) SSZ=${_l#sector-size: } ;;
 		*' : '*) parse_entry "$_l" ;;
@@ -104,6 +159,59 @@ read_table() {
 $_dump
 EOF
 	[ "$LABEL" = gpt ] && [ -n "$LAST_LBA" ]
+}
+
+# new_guid: NEW_GUID, a random GUID from the kernel (lower case), refused
+# unless it is version 4 and not already on the disk (USED).
+new_guid() {
+	NEW_GUID=
+	{ read -r NEW_GUID < "$UUID_SRC"; } 2>/dev/null || :
+	thimsy_lower_hex "$NEW_GUID"
+	NEW_GUID=$LOWER_OUT
+	case $NEW_GUID in
+	????????-????-4???-[89ab]???-????????????) ;;
+	*)
+		thimsy_warn $TAG "no random GUID from $UUID_SRC (\"$NEW_GUID\")"
+		return 1
+		;;
+	esac
+	case "$USED " in
+	*" $NEW_GUID "*)
+		thimsy_warn $TAG "the kernel's random GUID $NEW_GUID is already on $BOOT_DISK"
+		return 1
+		;;
+	esac
+	USED="$USED $NEW_GUID"
+}
+
+# Step R. Returns 0 when none of the image's GUIDs is left, 1 when some are
+# (warned; the next boot tries again, and the other steps still run), 2 when
+# the table can no longer be read.
+randomise_guids() {
+	if [ -z "$PINNED" ] && ! is_pinned "$DISK_ID"; then
+		return 0
+	fi
+	thimsy_log $TAG "replacing the image's GPT GUIDs on $BOOT_DISK with random ones"
+	if is_pinned "$DISK_ID"; then
+		if new_guid; then
+			"$SFDISK" --disk-id "$DISK_DEV" "$NEW_GUID" >> "$LOG" 2>&1 ||
+				thimsy_warn $TAG "sfdisk --disk-id failed"
+		fi
+	fi
+	for _n in $PINNED; do
+		if new_guid; then
+			"$SFDISK" --part-uuid "$DISK_DEV" "$_n" "$NEW_GUID" >> "$LOG" 2>&1 ||
+				thimsy_warn $TAG "sfdisk --part-uuid $_n failed"
+		fi
+	done
+	"$SYNC"
+	read_table || return 2
+	if [ -n "$PINNED" ] || is_pinned "$DISK_ID"; then
+		thimsy_warn $TAG "some of the image's GPT GUIDs are still on $BOOT_DISK; trying again at the next boot"
+		return 1
+	fi
+	thimsy_warn $TAG "the GPT GUIDs of $BOOT_DISK are random now (the kernel lists them from the next boot)"
+	return 0
 }
 
 # read_disk OFFSET COUNT: COUNT 512-byte blocks of the boot disk from byte
@@ -207,13 +315,13 @@ probe_library() {
 	ADOPT_SECTORS=$(((_vol_len << _bpss) / SSZ))
 	_room=$((LAST_LBA + 1 - start))
 	if [ "$ADOPT_SECTORS" -gt "$_room" ]; then
-		thimsy_warn $TAG "the old library's exFAT runs past the card ($ADOPT_SECTORS > $_room sectors): entry 5 ends at the card's end"
+		thimsy_warn $TAG "the old library's exFAT runs past the card ($ADOPT_SECTORS > $_room sectors): entry $GAMES_N ends at the card's end"
 		ADOPT_SECTORS=$_room
 	fi
 	return 0
 }
 
-# Steps 0 and 1. Returns 0 when entry 5 exists afterwards, 1 on an error,
+# Steps 0 and 1. Returns 0 when entry 6 exists afterwards, 1 on an error,
 # 2 when there is no room for it, 3 when the games start could not be read
 # (nothing created). ADOPTED=1 when an old library was taken.
 create_entry() {
@@ -241,7 +349,7 @@ create_entry() {
 	probe=$?
 	if [ "$probe" -eq 2 ]; then
 		rm -f "$PROBE"
-		thimsy_warn $TAG "could not read $BOOT_DISK at sector $start: entry 5 not created, trying again at the next boot"
+		thimsy_warn $TAG "could not read $BOOT_DISK at sector $start: entry $GAMES_N not created, trying again at the next boot"
 		return 3
 	fi
 	if [ "$probe" -eq 0 ]; then
@@ -252,23 +360,23 @@ create_entry() {
 		else
 			_what="an exFAT labelled \"$ADOPT_LABEL\""
 		fi
-		thimsy_warn $TAG "$_what found at sector $start: re-adopting it as entry 5 ($ADOPT_SECTORS sectors, basic data), not formatting"
+		thimsy_warn $TAG "$_what found at sector $start: re-adopting it as entry $GAMES_N ($ADOPT_SECTORS sectors, basic data), not formatting"
 		if [ $((ADOPT_SECTORS / align)) -lt "$THIMSY_GAMES_MIN_MIB" ]; then
 			thimsy_warn $TAG "the adopted exFAT is under $THIMSY_GAMES_MIN_MIB MiB; it is kept as it is"
 		fi
 		printf 'start=%s, size=%s, type=%s, name="%s"\n' "$start" "$ADOPT_SECTORS" \
 			"$BASICDATA" "$THIMSY_GAMES_NAME" |
-			"$SFDISK" --force -N 5 "$DISK_DEV" >> "$LOG" 2>&1 || return 1
+			"$SFDISK" --force -N "$GAMES_N" "$DISK_DEV" >> "$LOG" 2>&1 || return 1
 		ADOPTED=1
 	else
 		rm -f "$PROBE"
-		thimsy_log $TAG "creating entry 5 at sector $start ($free_mib MiB), Linux reserved"
+		thimsy_log $TAG "creating entry $GAMES_N at sector $start ($free_mib MiB), Linux reserved"
 		printf 'start=%s, type=%s, name="%s"\n' "$start" "$RESERVED" "$THIMSY_GAMES_NAME" |
-			"$SFDISK" --force -N 5 "$DISK_DEV" >> "$LOG" 2>&1 || return 1
+			"$SFDISK" --force -N "$GAMES_N" "$DISK_DEV" >> "$LOG" 2>&1 || return 1
 	fi
 	"$SYNC"
 	read_table || return 1
-	[ -n "$P5" ]
+	[ -n "$GE" ]
 }
 
 # announce PART: the kernel sent "add" when the entry appeared, before it had
@@ -280,7 +388,7 @@ announce() {
 
 # Steps 2 and 3.
 format_and_retype() {
-	thimsy_partname "$BOOT_DISK" 5
+	thimsy_partname "$BOOT_DISK" "$GAMES_N"
 	part=$PARTNAME_OUT
 	i=0
 	while [ ! -e "$R/dev/$part" ]; do
@@ -297,14 +405,28 @@ format_and_retype() {
 		return 1
 	}
 	"$SYNC" || return 1
-	thimsy_log $TAG "retyping entry 5 basic data"
-	"$SFDISK" --part-type "$DISK_DEV" 5 "$BASICDATA" >> "$LOG" 2>&1 || {
-		thimsy_warn $TAG "retyping entry 5 failed"
+	thimsy_log $TAG "retyping entry $GAMES_N basic data"
+	"$SFDISK" --part-type "$DISK_DEV" "$GAMES_N" "$BASICDATA" >> "$LOG" 2>&1 || {
+		thimsy_warn $TAG "retyping entry $GAMES_N failed"
 		return 1
 	}
 	"$SYNC" || return 1
 	announce "$part"
 	thimsy_warn $TAG "games partition $part ready"
+}
+
+# Step 4: once games (entry 6) is Thimsy's and basic data, info (entry 5,
+# basic data and named info) is retyped Linux reserved. Anything else at
+# entry 5 is left alone.
+retire_info() {
+	[ "$GE_TYPE" = "$BASICDATA" ] && [ "$GE_NAME" = "$THIMSY_GAMES_NAME" ] || return 0
+	[ "$IE_TYPE" = "$BASICDATA" ] && [ "$IE_NAME" = "$THIMSY_INFO_NAME" ] || return 0
+	thimsy_log $TAG "retyping entry $INFO_N ($THIMSY_INFO_NAME) Linux reserved: games is ready"
+	"$SFDISK" --part-type "$DISK_DEV" "$INFO_N" "$RESERVED" >> "$LOG" 2>&1 || {
+		thimsy_warn $TAG "retyping entry $INFO_N failed"
+		return 1
+	}
+	"$SYNC"
 }
 
 firstboot() {
@@ -321,31 +443,37 @@ firstboot() {
 		thimsy_warn $TAG "no GPT readable on $BOOT_DISK"
 		return 1
 	fi
-	if [ -z "$P5" ]; then
+	randomise_guids
+	[ "$?" -eq 2 ] && return 1
+	if [ -z "$GE" ]; then
 		create_entry
 		rc=$?
 		[ "$rc" -eq 2 ] && return 0
 		[ "$rc" -eq 3 ] && return 1
 		[ "$rc" -eq 0 ] || {
-			thimsy_warn $TAG "creating entry 5 failed"
+			thimsy_warn $TAG "creating entry $GAMES_N failed"
 			return 1
 		}
 		if [ -n "$ADOPTED" ]; then
-			thimsy_partname "$BOOT_DISK" 5
+			thimsy_partname "$BOOT_DISK" "$GAMES_N"
 			announce "$PARTNAME_OUT"
 			thimsy_warn $TAG "games partition $PARTNAME_OUT re-adopted: the library is kept"
-			return 0
+			retire_info
+			return
 		fi
 	fi
-	if [ "$P5_TYPE" = "$BASICDATA" ]; then
-		thimsy_log $TAG "entry 5 is basic data: nothing to do"
+	if [ "$GE_TYPE" = "$BASICDATA" ]; then
+		thimsy_log $TAG "entry $GAMES_N is basic data: games is done"
+		retire_info
+		return
+	fi
+	if [ "$GE_TYPE" != "$RESERVED" ] || [ "$GE_NAME" != "$THIMSY_GAMES_NAME" ]; then
+		thimsy_log $TAG "entry $GAMES_N is not Thimsy's ($GE_TYPE, \"$GE_NAME\"): left alone"
 		return 0
 	fi
-	if [ "$P5_TYPE" != "$RESERVED" ] || [ "$P5_NAME" != "$THIMSY_GAMES_NAME" ]; then
-		thimsy_log $TAG "entry 5 is not Thimsy's ($P5_TYPE, \"$P5_NAME\"): left alone"
-		return 0
-	fi
-	format_and_retype
+	format_and_retype || return 1
+	read_table || return 1
+	retire_info
 }
 
 case ${1:-start} in

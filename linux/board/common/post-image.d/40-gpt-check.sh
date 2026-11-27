@@ -6,18 +6,22 @@
 #
 # Hardware pack trees only. For each device, thimsy-<id>.img is read with
 #   gpt_check.py IMAGE --mode image --family FAMILY --layout thimsy
-#                [--idbloader-size BYTES]
+#                --release RELEASE --device ID [--idbloader-size BYTES]
 # The family is passed explicitly (an image's path does not name it), and
 # the idbloader's size is the size of the idbloader.img genimage took, so
 # the check does not have to guess its end from the last non-zero sector.
-# Any problem fails the build: no card with a vold-mounted entry, a broken
-# GPT or a misplaced partition leaves this step.
+# The release (card_release) and the device make it check the GPT GUIDs
+# 30-genimage.sh pinned (OA-9).
+# Any problem fails the build: no card with a vold-mounted entry other than
+# info (OA-2), a broken GPT, other GUIDs or a misplaced partition leaves
+# this step.
 set -eu
 CARD_PART=40-gpt-check
 . "$(dirname "$0")/lib/card.sh"
 card_init "$@"
 card_need_hw
 card_device_list
+release=$(card_release)
 
 uses_idbloader=0
 for f in $(card_cfg_images "$CARD_CFG"); do
@@ -36,7 +40,8 @@ for id in $DEVICES; do
 		set --
 	fi
 	card_say "$id: gpt_check"
-	if ! $PY "$TOOLS/gpt_check.py" "$card" --mode image --family "$FAMILY" --layout thimsy "$@"; then
+	if ! $PY "$TOOLS/gpt_check.py" "$card" --mode image --family "$FAMILY" --layout thimsy \
+		--release "$release" --device "$id" "$@"; then
 		failed="$failed $id"
 	fi
 done

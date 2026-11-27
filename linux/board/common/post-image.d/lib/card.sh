@@ -15,7 +15,8 @@
 #     and at thimsy/device.json on the data partition (beside install.json).
 # Parts, in order: 10-erofs.sh (each device's root), 20-data.sh (each data
 # partition), the family's own steps (rk3566: 22-uboot.sh, 25-boot-img.sh),
-# 30-genimage.sh (each card), 40-gpt-check.sh (each card checked).
+# 28-info.sh (each info entry's FAT, OA-2), 30-genimage.sh (each card, with
+# its pinned GPT GUIDs, OA-9), 40-gpt-check.sh (each card checked).
 #
 # Arguments (post-image.sh passes BINARIES_DIR, then BR2_ROOTFS_POST_SCRIPT_ARGS):
 #   BINARIES_DIR [tier NAME | hw FAMILY] [--family=FAMILY] [--tier-dir=DIR]
@@ -30,18 +31,22 @@
 #   TARGET_DIR                this tree's target (the hardware pack's files)
 #   BASE_DIR                  this tree's output directory, output-<target>
 #   SOURCE_DATE_EPOCH         timestamps and the filesystem UUIDs (else 0)
+#   THIMSY_VERSION            the release the cards' GPT GUIDs are pinned for
+#                             (else build.props's, else 0.0.0-dev; card_release)
 #   THIMSY_TIER_DIR           the tier tree's output directory (default: the
 #                             sibling output-<sdk_from> of BASE_DIR)
 #   THIMSY_BUILD_TARGET       this tree's targets.json name (default: from BASE_DIR)
 #   THIMSY_DEVICES            device ids to build (default: every devices/*.json)
 #   THIMSY_PYTHON             the Python that runs tools/*.py (default python3)
-#   THIMSY_TOOLS_DIR          where fit.py and gpt_check.py are (default linux/tools)
+#   THIMSY_TOOLS_DIR          where fit.py, card_image.py and gpt_check.py are
+#                             (default linux/tools)
 # Tools come from PATH, which Buildroot starts with HOST_DIR/bin: fsck.erofs,
 # mkfs.erofs, mkfs.ext4, genimage, and bmaptool when the host has it.
 #
 # Outputs, under BINARIES_DIR:
-#   cards/<id>/rootfs.erofs, data.ext4, boot.img (FIT families) and the
-#   genimage inputs; thimsy-<id>.img (the card) and thimsy-<id>.img.bmap.
+#   cards/<id>/rootfs.erofs, data.ext4, info.vfat, boot.img (FIT families),
+#   genimage.cfg (the board's with the device's GUIDs) and the other genimage
+#   inputs; thimsy-<id>.img (the card) and thimsy-<id>.img.bmap.
 
 card_die() {
 	printf '%s: %s\n' "${CARD_PART:-card}" "$*" >&2
@@ -202,6 +207,20 @@ card_size() {
 # card_epoch: SOURCE_DATE_EPOCH, else 0 (reproducible either way).
 card_epoch() {
 	printf '%s\n' "${SOURCE_DATE_EPOCH:-0}"
+}
+
+# card_release: the release the cards are built for, which the GPT GUIDs are
+# pinned to (OA-9): THIMSY_VERSION (build.sh exports it), else
+# ro.thimsy.build.version from this tree's build.props (20-build-props.sh),
+# else 0.0.0-dev, that script's own last resort.
+card_release() {
+	_rel=${THIMSY_VERSION:-}
+	if [ -z "$_rel" ] && [ -n "${TARGET_DIR:-}" ] &&
+		[ -r "$TARGET_DIR/usr/share/thimsy/build.props" ]; then
+		_rel=$(sed -n 's/^ro\.thimsy\.build\.version=//p' \
+			"$TARGET_DIR/usr/share/thimsy/build.props" | tail -n 1)
+	fi
+	printf '%s\n' "${_rel:-0.0.0-dev}"
 }
 
 # card_uuid TEXT: a name-based UUID (uuid5), so a rebuild gives the same one.
