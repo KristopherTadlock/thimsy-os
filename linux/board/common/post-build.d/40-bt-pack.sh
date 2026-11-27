@@ -8,8 +8,12 @@
 # tree tools/bt_pack.py takes those files out of TARGET_DIR (Buildroot's
 # packages-file-list.txt says which are BlueZ's and D-Bus's) and writes
 # BINARIES_DIR/bluetooth.erofs; post-image.d/10-erofs.sh unpacks it into the
-# roots of the devices with Bluetooth only. A tier built without BlueZ
-# (bluetooth.fragment not listed) keeps neither D35bluetooth nor the
+# roots of the devices with Bluetooth only. Two kinds of listed file are not
+# packed: the D-Bus activation helper stays in the root (makedevs, which runs
+# on the root after this part, fails if a file of the permissions table is
+# gone), and the recipes' BusyBox boot scripts (etc/init.d/S??*) are deleted,
+# since D35bluetooth, not rcS, starts D-Bus and bluetoothd. A tier built
+# without BlueZ (bluetooth.fragment not listed) keeps neither D35bluetooth nor the
 # /var/lib/bluetooth link. Last of the post-build parts, so the overlay's
 # D35bluetooth and 15-state-links.sh's link are there to take. Hardware
 # packs build no userland: nothing to do there.

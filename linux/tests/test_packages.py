@@ -14,6 +14,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import struct
 import subprocess
 import sys
@@ -801,17 +802,29 @@ SH = SHELLS[0] if SHELLS else None
 BT_TREE = {
     "dbus": {"usr/bin/dbus-daemon": None, "usr/bin/dbus-uuidgen": None, "usr/bin/dbus-send": None,
              "usr/lib/libdbus-1.so.3": None, "etc/dbus-1/system.conf": "conf",
-             "usr/share/dbus-1/system.conf": "conf"},
+             "usr/share/dbus-1/system.conf": "conf", "usr/libexec/dbus-daemon-launch-helper": None,
+             "etc/init.d/S30dbus": "sh"},
     "bluez5_utils": {"usr/libexec/bluetooth/bluetoothd": None, "usr/bin/bluetoothctl": None,
                      "usr/lib/libbluetooth.so.3": None, "etc/dbus-1/system.d/bluetooth.conf": "conf",
-                     "etc/bluetooth/main.conf": "conf"},
+                     "etc/bluetooth/main.conf": "conf", "etc/init.d/S40bluetoothd": "sh"},
     "libglib2": {"usr/lib/libglib-2.0.so.0": None},
     "thimsy-nano": {"usr/bin/thimsy-nano": None},
 }
 NEEDS = {"usr/bin/dbus-daemon": ["libdbus-1.so.3", "libc.so.6"],
          "usr/libexec/bluetooth/bluetoothd": ["libdbus-1.so.3", "libglib-2.0.so.0"],
          "usr/bin/bluetoothctl": ["libglib-2.0.so.0", "libreadline.so.8"],
-         "usr/bin/thimsy-nano": ["libdrm.so.2", "libc.so.6"]}
+         "usr/bin/thimsy-nano": ["libdrm.so.2", "libc.so.6"],
+         "usr/libexec/dbus-daemon-launch-helper": ["libdbus-1.so.3", "libexpat.so.1"]}
+# Listed but not packed: the helper Buildroot's permissions table names stays in the root (makedevs
+# fails without it); the recipes' BusyBox boot scripts leave the root and the pack.
+BT_KEPT = ("usr/libexec/dbus-daemon-launch-helper",)
+BT_BOOT = ("etc/init.d/S30dbus", "etc/init.d/S40bluetoothd")
+
+
+def bt_packed(pkg):
+    return [r for r in BT_TREE[pkg] if r not in BT_KEPT and r not in BT_BOOT]
+
+
 OTHER = ("etc/init.d/deferred/D35bluetooth", "etc/init.d/deferred/D30net", "var/lib/bluetooth")
 
 
@@ -856,7 +869,7 @@ class BtPack(unittest.TestCase):
         tree = self.work / "bluetooth"
         m = json.loads((tree / "usr/share/thimsy/bluetooth.json").read_text(encoding="utf-8"))
         self.assertEqual(m["packages"], ["dbus", "bluez5_utils"])
-        moved = sorted(list(BT_TREE["dbus"]) + list(BT_TREE["bluez5_utils"])
+        moved = sorted(bt_packed("dbus") + bt_packed("bluez5_utils")
                        + ["etc/init.d/deferred/D35bluetooth", "var/lib/bluetooth"])
         self.assertEqual(m["files"], moved)
         for rel in moved:
@@ -869,6 +882,45 @@ class BtPack(unittest.TestCase):
             self.assertTrue((self.target / d).is_dir(), d)
         for rel in ("usr/lib/libglib-2.0.so.0", "usr/bin/thimsy-nano", "etc/init.d/deferred/D30net"):
             self.assertTrue((self.target / rel).is_file(), rel)
+        self.assertEqual(m["left_in_root"], list(BT_KEPT))
+        self.assertEqual(m["boot_scripts_dropped"], list(BT_BOOT))
+
+    def test_launch_helper_stays_for_makedevs(self):
+        """dbus.mk's permissions line ("f" type) names the helper; makedevs fails if it is gone.
+        It needs libdbus, which leaves: only dbus-daemon runs it, so that is no error."""
+        code, out, err = self.run_pack()
+        self.assertEqual(code, 0, err)
+        rel = "usr/libexec/dbus-daemon-launch-helper"
+        self.assertTrue((self.target / rel).is_file())
+        self.assertFalse((self.work / "bluetooth" / rel).exists())
+        self.assertIn("/%s stays in the root" % rel, out)
+
+    def test_boot_scripts_leave_root_and_pack(self):
+        """rcS runs every S??*: the recipes' scripts would start D-Bus and bluetoothd at every
+        boot; D35bluetooth starts them only when Bluetooth is on."""
+        code, out, err = self.run_pack()
+        self.assertEqual(code, 0, err)
+        for rel in BT_BOOT:
+            self.assertFalse((self.target / rel).exists(), rel)
+            self.assertFalse((self.work / "bluetooth" / rel).exists(), rel)
+            self.assertIn("/%s removed" % rel, out)
+        self.assertTrue((self.target / "etc/init.d").is_dir())
+        # Only S??* directly in etc/init.d: the deferred scripts are not boot scripts.
+        self.assertTrue(bt_pack.BOOT_SCRIPT.match("etc/init.d/S30dbus"))
+        self.assertFalse(bt_pack.BOOT_SCRIPT.match("etc/init.d/deferred/D35bluetooth"))
+        self.assertFalse(bt_pack.BOOT_SCRIPT.match("etc/init.d/rcS"))
+
+    @unittest.skipIf(os.name == "nt", "directory modes are POSIX")
+    def test_pack_directories_are_0755(self):
+        old = os.umask(0o077)
+        try:
+            code, _, err = self.run_pack()
+        finally:
+            os.umask(old)
+        self.assertEqual(code, 0, err)
+        tree = self.work / "bluetooth"
+        for d in [tree] + [p for p in tree.rglob("*") if p.is_dir() and not p.is_symlink()]:
+            self.assertEqual(stat.S_IMODE(d.stat().st_mode), 0o755, str(d))
 
     def test_rebuild_takes_moved_files_from_the_earlier_pack(self):
         self.assertEqual(self.run_pack()[0], 0)
@@ -878,9 +930,12 @@ class BtPack(unittest.TestCase):
         self.put("etc/init.d/deferred/D35bluetooth", "sh\n")
         code, _, err = self.run_pack()
         self.assertEqual(code, 0, err)
-        for rel in list(BT_TREE["dbus"]) + list(BT_TREE["bluez5_utils"]):
+        for rel in bt_packed("dbus") + bt_packed("bluez5_utils"):
             self.assertTrue((self.work / "bluetooth" / rel).is_file(), rel)
             self.assertFalse((self.target / rel).exists(), rel)
+        for rel in BT_BOOT:
+            self.assertFalse((self.target / rel).exists(), rel)
+        self.assertTrue((self.target / BT_KEPT[0]).is_file())
 
     def test_a_missing_program_fails(self):
         (self.target / "usr/bin/bluetoothctl").unlink()

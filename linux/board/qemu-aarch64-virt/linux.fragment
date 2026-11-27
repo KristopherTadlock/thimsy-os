@@ -43,7 +43,11 @@ CONFIG_NAMESPACES=y
 CONFIG_USER_NS=y
 
 # Sleep and wake (thimsy-session's SleepPlan), as kernel-critical.conf
-# asks of every family.
+# asks of every family. PM_SLEEP cannot be set by itself: Kconfig derives it
+# from SUSPEND (or HIBERNATE_CALLBACKS), so SUSPEND is what turns it on and
+# the PM_SLEEP line only records the result. The boot check reads
+# /proc/config.gz for the real value.
+CONFIG_SUSPEND=y
 CONFIG_PM_SLEEP=y
 
 # Input: evdev for padd, uinput for the virtual pad it creates.

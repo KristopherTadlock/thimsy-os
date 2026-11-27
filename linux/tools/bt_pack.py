@@ -20,16 +20,27 @@ bluetooth.erofs into the roots of the devices with Bluetooth only.
    the /var/lib/bluetooth link from post-build.d/15-state-links.sh). A listed
    file that is no longer in --target (a rebuild without per-package
    directories, where an earlier run moved it) is taken from the earlier pack
-   in --work.
+   in --work. Two kinds of listed file are not packed:
+   - KEEP stays in the root: Buildroot's permissions table names the D-Bus
+     activation helper ("f" type), and makedevs, which runs on the root
+     after the post-build parts, fails the build when such a file is gone.
+     The helper is harmless without dbus-daemon: only the bus runs it.
+   - boot scripts (etc/init.d/S??*, as the dbus and bluez5_utils recipes
+     install for BusyBox init) leave the root and stay out of the pack:
+     rcS would start D-Bus and bluetoothd at every boot, and D35bluetooth
+     starts them only when Bluetooth is turned on (plan 5.2).
 2. The pack must hold the programs D35bluetooth and Nano run (REQUIRED).
 3. No ELF file left in the root may need a library the pack takes (its
    DT_NEEDED entries): such a program would fail to start on a device
    without Bluetooth. Libraries opened with dlopen are not seen.
 4. --work/bluetooth/ gets the files plus usr/share/thimsy/bluetooth.json (the
    packages and the file list); with --mkfs and --out it becomes
-   --out/bluetooth.erofs, reproducibly (--epoch, every file owned by root).
-5. Unless --keep, the files leave --target, with the directories that only
-   held them (never a top-level directory or one directly under usr/ or var/).
+   --out/bluetooth.erofs, reproducibly (--epoch, every file owned by root,
+   every directory 0755, so unpacking it over a root changes no directory's
+   mode).
+5. Unless --keep, the files and the boot scripts leave --target, with the
+   directories that only held them (never a top-level directory or one
+   directly under usr/ or var/).
 
 --none (a tier built without BlueZ: no device on its cards has Bluetooth)
 removes EXTRA from --target and any old --out/bluetooth.erofs, and makes no
@@ -41,6 +52,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -54,8 +66,13 @@ EXTRA = ("etc/init.d/deferred/D35bluetooth", "var/lib/bluetooth")
 # Programs the pack must hold, by file name (D35bluetooth runs the first
 # three, Nano's system actions bluetoothctl).
 REQUIRED = ("dbus-daemon", "dbus-uuidgen", "bluetoothd", "bluetoothctl")
+# Listed files that stay in the tier root: dbus.mk's DBUS_PERMISSIONS line
+# ("/usr/libexec/dbus-daemon-launch-helper f 4750 0 dbus"; guess, from
+# Buildroot 2025.02) makes makedevs fail if the file is missing.
+KEEP = ("usr/libexec/dbus-daemon-launch-helper",)
 PACK = "bluetooth"
 MANIFEST = "usr/share/thimsy/bluetooth.json"
+BOOT_SCRIPT = re.compile(r"^etc/init\.d/S[0-9][0-9][^/]*$")
 
 
 def read_file_list(path: str, packages=PACKAGES) -> List[str]:
@@ -194,18 +211,27 @@ def users_of(target: str, libs: Set[str], skip: Set[str]) -> Dict[str, List[str]
 
 # -- the pack --------------------------------------------------------------------------------
 
-def build_tree(sources: Dict[str, str], tree: str, packages) -> None:
+def build_tree(sources: Dict[str, str], tree: str, packages, kept=(), dropped=()) -> None:
     new = tree + ".new"
     if os.path.lexists(new):
         shutil.rmtree(new)
     for rel, src in sorted(sources.items()):
         copy_one(src, native(new, rel))
-    manifest = {"packages": list(packages), "files": sorted(sources)}
+    manifest = {"packages": list(packages), "files": sorted(sources),
+                "left_in_root": sorted(kept), "boot_scripts_dropped": sorted(dropped)}
     path = native(new, MANIFEST)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         json.dump(manifest, f, indent=1, sort_keys=True)
         f.write("\n")
+    # Directories 0755 whatever the build host's umask: fsck.erofs --overwrite
+    # gives a root's shared directories (/, /etc, /usr) the pack's modes.
+    os.chmod(new, 0o755)
+    for dirpath, dirs, _ in os.walk(new):
+        for d in dirs:
+            p = os.path.join(dirpath, d)
+            if not os.path.islink(p):
+                os.chmod(p, 0o755)
     if os.path.lexists(tree):
         shutil.rmtree(tree)
     os.rename(new, tree)
@@ -279,8 +305,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 1
 
     tree = os.path.join(args.work, PACK)
+    kept = [r for r in listed if r in KEEP]
+    boot = [r for r in listed if BOOT_SCRIPT.match(r)]
     sources: Dict[str, str] = {}
-    for rel in sorted(set(listed) | set(EXTRA)):
+    for rel in sorted((set(listed) | set(EXTRA)) - set(kept) - set(boot)):
         for base in (args.target, tree):
             p = native(base, rel)
             if os.path.lexists(p) and (os.path.islink(p) or os.path.isfile(p)):
@@ -293,15 +321,20 @@ def main(argv: Optional[List[str]] = None) -> int:
               % (", ".join(missing), ", ".join(PACKAGES), args.file_list), file=sys.stderr)
         return 1
     libs = {r.rsplit("/", 1)[-1] for r in sources if is_library(r)}
-    broken = users_of(args.target, libs, set(sources))
+    # The kept helper is only ever run by dbus-daemon, so what it needs may go.
+    broken = users_of(args.target, libs, set(sources) | set(kept) | set(boot))
     if broken:
         for rel, lost in sorted(broken.items()):
             print("bt_pack: /%s needs %s, which only the Bluetooth pack has" % (rel, ", ".join(lost)),
                   file=sys.stderr)
         return 1
 
-    build_tree(sources, tree, PACKAGES)
+    build_tree(sources, tree, PACKAGES, kept, boot)
     print("bt_pack: %d files into %s" % (len(sources), PACK))
+    for rel in kept:
+        print("bt_pack: /%s stays in the root (the permissions table names it)" % rel)
+    for rel in boot:
+        print("bt_pack: /%s removed: D35bluetooth starts Bluetooth, not rcS" % rel)
     if args.mkfs:
         os.makedirs(args.out, exist_ok=True)
         image = os.path.join(args.out, PACK + ".erofs")
@@ -312,7 +345,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 1
         print("bt_pack: wrote %s" % image)
     if not args.keep:
-        remove_from_target(args.target, sorted(sources))
+        remove_from_target(args.target, sorted(set(sources) | set(boot)))
     return 0
 
 
