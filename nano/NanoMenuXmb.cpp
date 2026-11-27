@@ -3831,6 +3831,9 @@ void NanoMenu::launchXmbGame() {
             return;
         }
 
+        // What Recently Played keeps when the entry moves to the front: the fallback below is this
+        // launch's only.
+        const XmbRecentEntry recorded = re;
         // OA-38: an emulator this platform cannot run starts with its default for this launch only.
         { XmbSystem g;
           const int si = recentSystemIndex(re);
@@ -3838,10 +3841,12 @@ void NanoMenu::launchXmbGame() {
           g.romDir = si >= 0 ? mXmbSystems[si].romDir : re.romDir;
           g.coreSo = re.coreSo; g.launchIntent = re.launchIntent;
           if (re.standalone) g.launchPkg = re.launchPkg;
-          if (!emuCanRun(g) && emuApplyDefault(g)) {
+          const EmuFallback fb = emuLaunchFallback(g, gameEmu && si >= 0 ? &mXmbSystems[si] : nullptr);
+          if (fb != EmuFallback::None) {
               re.coreSo = g.coreSo; re.launchPkg = g.launchPkg; re.launchIntent = g.launchIntent;
               re.standalone = g.isStandalone();
-              gameEmu = true;   // the system's extra arguments are its own emulator's
+              // The system's extra arguments are its own emulator's: kept for it, dropped for a default.
+              gameEmu = fb == EmuFallback::ImageDefault;
           } }
 
         // The emulator that opens this game may not be on the device (a core was never installed, or
@@ -3889,7 +3894,7 @@ void NanoMenu::launchXmbGame() {
         if (mXmbGameIndex > 0) {
             std::vector<XmbRecentEntry> saved = mXmbRecent;
             saved.erase(saved.begin() + mXmbGameIndex);
-            saved.insert(saved.begin(), re);
+            saved.insert(saved.begin(), recorded);
             std::swap(mXmbRecent, saved);
             saveXmbRecent();
             std::swap(mXmbRecent, saved); // restore in-memory order
@@ -4030,9 +4035,12 @@ void NanoMenu::launchXmbGame() {
     // OA-38: an emulator this platform cannot run starts with its default for this launch only.
     if (!emuCanRun(*sysp)) {
         XmbSystem fallback = *sysp;
-        if (emuApplyDefault(fallback)) {
+        const EmuFallback fb = emuLaunchFallback(fallback, sysp == &gameSys ? &mXmbSystems[sysIdx] : nullptr);
+        if (fb == EmuFallback::ImageDefault) {
             gameSys = std::move(fallback);
             sysp = &gameSys;
+        } else if (fb == EmuFallback::SystemOwn) {
+            sysp = &mXmbSystems[sysIdx];   // the game starts as its system does
         }
     }
     const auto& sys = *sysp;

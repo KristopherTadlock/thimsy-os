@@ -3685,6 +3685,10 @@ private:
     void loadEmuDefaults();
     bool emuCanRun(const XmbSystem& s);       // the launch guard's test: its core, or its app
     bool emuApplyDefault(XmbSystem& s);       // s's launch fields become its default, when that can run
+    // The launch sites' fallback: s's emulator cannot run here, so this launch takes its default, else
+    // (own: the system of a game whose own pick s carries) the system's emulator, when that can run.
+    enum class EmuFallback { None, ImageDefault, SystemOwn };
+    EmuFallback emuLaunchFallback(XmbSystem& s, const XmbSystem* own);
     bool emuDefaultsStored();                 // the store exists (seeded), readable or not
     bool emuDefaultsSave(const std::map<std::string, EmuDefault>& defaults);
     int recentSystemIndex(const XmbRecentEntry& re) const;   // the system a recent entry belongs to, -1 if none

@@ -839,6 +839,25 @@ bool NanoMenu::emuApplyDefault(XmbSystem& s) {
     return true;
 }
 
+// What a launch whose emulator cannot run here starts instead, for that launch only (nothing is
+// saved): the image's default for its system, else, for a game whose own pick s carries (own is
+// that game's system), the system's own emulator, as such a game started before its pick was kept.
+NanoMenu::EmuFallback NanoMenu::emuLaunchFallback(XmbSystem& s, const XmbSystem* own) {
+    if (emuCanRun(s)) return EmuFallback::None;
+    if (emuApplyDefault(s)) return EmuFallback::ImageDefault;
+    if (!own || !emuCanRun(*own)) return EmuFallback::None;
+    ALOGI("emucatalog: the game's emulator (%s) cannot run here and %s has no default that can; this launch "
+          "uses the system's own %s", s.isStandalone() ? s.launchPkg.c_str() : s.coreSo.c_str(), own->id.c_str(),
+          own->isStandalone() ? own->launchPkg.c_str() : own->coreSo.c_str());
+    s.launchType = own->launchType;
+    s.coreSo = own->coreSo;
+    s.packageName = own->packageName;
+    s.launchPkg = own->launchPkg;
+    s.launchIntent = own->launchIntent;
+    s.launchArgs = own->launchArgs;   // its own emulator's extra arguments
+    return EmuFallback::SystemOwn;
+}
+
 // ---- Emulators as ES-DE names them (the ES-DE folder as Nano's store) ----
 
 // The label of ES-DE's command for esdeSys that starts launch's emulator; "" when ES-DE has none.

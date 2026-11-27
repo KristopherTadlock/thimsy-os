@@ -26704,7 +26704,7 @@ index dcd7bbaf475..4cc1c35f703 100644
 +
  } // namespace android
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoMenu.h b/frameworks/base/cmds/gammaos-nano/NanoMenu.h
-index 88e7cae6699..a1edc57e5e5 100644
+index 88e7cae6699..2b66659bdd1 100644
 --- a/frameworks/base/cmds/gammaos-nano/NanoMenu.h
 +++ b/frameworks/base/cmds/gammaos-nano/NanoMenu.h
 @@ -38,6 +38,8 @@
@@ -28134,7 +28134,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      float mGsTintOrigR = 1.0f, mGsTintOrigG = 1.0f, mGsTintOrigB = 1.0f;  // exact tint at chooser open (cancel restore)
      int  ps3TopScreenKind() const { return mPs3Stack.empty() ? 0 : mPs3Stack.back().screenKind; }
  
-@@ -3038,10 +3654,55 @@ private:
+@@ -3038,10 +3654,59 @@ private:
      void loadEmuCatalog();                     // parse the bundled Daijishou JSONs once
      void buildEmulatorPicker(Ps3Level& out);   // build the filtered emulator list screen
      void gsOpenEmulatorPicker();               // open the emulator chooser for mGsEditIdx
@@ -28169,6 +28169,10 @@ index 88e7cae6699..a1edc57e5e5 100644
 +    void loadEmuDefaults();
 +    bool emuCanRun(const XmbSystem& s);       // the launch guard's test: its core, or its app
 +    bool emuApplyDefault(XmbSystem& s);       // s's launch fields become its default, when that can run
++    // The launch sites' fallback: s's emulator cannot run here, so this launch takes its default, else
++    // (own: the system of a game whose own pick s carries) the system's emulator, when that can run.
++    enum class EmuFallback { None, ImageDefault, SystemOwn };
++    EmuFallback emuLaunchFallback(XmbSystem& s, const XmbSystem* own);
 +    bool emuDefaultsStored();                 // the store exists (seeded), readable or not
 +    bool emuDefaultsSave(const std::map<std::string, EmuDefault>& defaults);
 +    int recentSystemIndex(const XmbRecentEntry& re) const;   // the system a recent entry belongs to, -1 if none
@@ -28190,7 +28194,7 @@ index 88e7cae6699..a1edc57e5e5 100644
  
      // ---- Add / remove custom systems ----
      void gsAddSystem();                        // "Add New System" -> emulator picker in add mode
-@@ -3051,13 +3712,17 @@ private:
+@@ -3051,13 +3716,17 @@ private:
      // holds a ROM as a system + scan source in one pass. Shows an "Added N systems" summary.
      // The blocking folder probe runs on a detached worker (a slow NAS/FTP root must never freeze the
      // render thread and trip the watchdog); the render thread applies the results in gsAutoAddTick().
@@ -28209,7 +28213,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      void gsRemoveSystem(int sysIdx);           // remove a custom system + its caches
      void gsOpenRemoveConfirm(int sysIdx);      // Cancel / Remove confirm chooser
  
-@@ -3073,6 +3738,90 @@ private:
+@@ -3073,6 +3742,90 @@ private:
      std::vector<std::string> mountedShareNames() const;
      void gsFolderSelect(const std::string& path); // add a folder as a rawpath scan source
      void drasticDataFolderSelect(const std::string& path); // #90: set persist.gammaos.drastic.data_dir (folder-picker target 5)
@@ -28300,7 +28304,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      void drasticCheatsFolderSelect(const std::string& path); // persist.gammaos.drastic.cheats_dir (folder-picker target 8)
      void drasticPerfRestoreCheck();            // put back the global performance mode a per-game one parked
      void mouseModeHomeGuard();                 // gammapad mouse mode off whenever the home is the foreground
-@@ -3081,8 +3830,17 @@ private:
+@@ -3081,8 +3834,17 @@ private:
      void gsRemoveScanSource(int srcIdx);       // drop a scan source from the edited system
      void gsDisableDefaultFolder(const std::string& alias);  // remove a default scan folder (alias) from the edited system
      void gsEnableDefaultFolder(const std::string& alias);   // restore a previously-removed default scan folder
@@ -28318,7 +28322,7 @@ index 88e7cae6699..a1edc57e5e5 100644
  
      // ======================= File Explorer (Settings > File Explorer) =======================
      // A controller-first file manager that reuses the folder-picker navigation (opendir/readdir,
-@@ -3106,8 +3864,32 @@ private:
+@@ -3106,8 +3868,32 @@ private:
      // Async copy/move/delete: the worker holds its OWN shared_ptr to this result block and touches
      // ONLY the block + value-captured paths (never `this`), so a teardown mid-op cannot use-after-free.
      // feTick polls done and reaps. One op at a time (mFeOp non-null = busy).
@@ -28352,7 +28356,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      void feOpen();                              // open the explorer at storage roots (from the Settings leaf)
      void buildFileBrowser(const std::string& path, Ps3Level& out);  // list dirs + files at path
      void feRefresh();                           // rebuild the current top level in place after an op
-@@ -3251,7 +4033,7 @@ private:
+@@ -3251,7 +4037,7 @@ private:
          std::string m3uPath;              // non-empty: derived from this .m3u (regenerated on scan);
                                            // empty: user-created (preserved across scans)
      };
@@ -28361,7 +28365,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      std::vector<std::string> mMusicFolders;
      std::vector<MusicTrack>  mMusicTracks;
      std::vector<MusicPlaylist> mMusicPlaylists;
-@@ -3303,6 +4085,15 @@ private:
+@@ -3303,6 +4089,15 @@ private:
          // altemulator string enables the altemulator badge when non-empty.
          bool favorite = false, completed = false, kidgame = false, broken = false;
          std::string controller, altemulator;
@@ -28377,7 +28381,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      };
      std::unordered_map<std::string, ScrapeEntry> mScrapeIndex;
      bool mScrapeIndexLoaded = false;
-@@ -3310,6 +4101,7 @@ private:
+@@ -3310,6 +4105,7 @@ private:
      void scraperEnsureLoaded();            // lazy-load index.json
      void scraperPollReload();              // per-frame: live-reload index/names on an external token bump
      void loadScrapeIndex();
@@ -28385,7 +28389,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      void saveScrapeIndex();
      const ScrapeEntry* scrapeEntryFor(const std::string& romPath);
      const ScrapeEntry* scrapeIndexLookup(const std::string& romPath);   // the manifest entry alone (no cart art)
-@@ -3332,9 +4124,190 @@ private:
+@@ -3332,9 +4128,190 @@ private:
      // scrape store which can differ (e.g. a timezone-shifted release date). Loaded lazily per system
      // and merged with the scrape store's cover paths; absent gamelist.xml -> falls back to the store.
      std::unordered_map<std::string, ScrapeEntry> mEsdeGamelistMeta;  // full romPath -> gamelist metadata
@@ -28578,7 +28582,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      // Per-game title override (Rename / Edit Title). A user-typed name that overrides
      // the basename-minus-extension display name everywhere (columns / recents / search /
      // Info) AND becomes the scraper search query so a corrected title can match. Stored
-@@ -3392,38 +4365,49 @@ private:
+@@ -3392,38 +4369,49 @@ private:
      void openHelpPage();                    // Settings > User Guide: scrollable, themed help page
      void scrapeOneSystem(int sysIdx);      // Game Systems editor action
      // One ROM of work, fully snapshotted so the worker never touches mXmbSystems.
@@ -28655,7 +28659,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      // scrape worker state
      std::mutex mScrapeMutex;
      bool mScrapeRunning = false;           // worker alive
-@@ -3432,9 +4416,26 @@ private:
+@@ -3432,9 +4420,26 @@ private:
      bool mScrapeDoneFlag = false;          // worker finished -> show summary
      int  mScrapeDone = 0, mScrapeTotal = 0, mScrapeHits = 0, mScrapeFail = 0;
      std::string mScrapeStatus;             // "System / Game" current line (under mutex)
@@ -28683,7 +28687,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      // Where scraped covers/fanart + index.json live. Default is internal storage; the Boxart
      // Folder setting (persist.gammaos.scraper.dir) moves it to any browsable folder, typically the
      // SD card. names.json (title overrides) always stays in the default internal dir.
-@@ -3444,11 +4445,16 @@ private:
+@@ -3444,11 +4449,16 @@ private:
      bool mScrapeDirAvail = true;           // the configured folder is reachable (external storage mounted)
      int64_t mScrapeDirPollMs = 0;          // availability probe throttle (once a second, uptime)
      std::string mScrapeMoveSrc, mScrapeMoveDst;   // relocation in flight: old/new folder ("" = none)
@@ -28700,7 +28704,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      void scrapeMoveThreadFunc(std::vector<std::pair<std::string, ScrapeEntry>> entries,
                                std::string src, std::string dst);
      void gsOpenClearArtConfirm();          // Game Systems editor: Clear Boxart confirm (theme key 49)
-@@ -3457,8 +4463,11 @@ private:
+@@ -3457,8 +4467,11 @@ private:
      // cartridge icon, freed when leaving the Game category and on sleep/occlusion.
      // ar = width/height. pixel = a PICO-8 cart label: 128x128 pixel art uploaded NEAREST, drawn at an
      // integer multiple of its size (cartPixelSize) so every cart pixel stays square.
@@ -28713,7 +28717,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      bool mScrapeBoxartOn = false;        // per-frame cache of scraperBoxartEnabled()
      bool mNdsTileIcon = false;           // per-frame cache of persist.gammaos.nano.nds.tileicon (DS Icons On Tiles)
      // Data-loss guards: a loader sets its flag true when the on-disk file EXISTS but could not be
-@@ -3543,36 +4552,19 @@ private:
+@@ -3543,36 +4556,19 @@ private:
      // entry; open()/play() on first track play.
      NanoAudioPlayer mMusicPlayer;
  
@@ -28756,7 +28760,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      NanoAudioPlayer mAmbiancePlayer;
      std::atomic<bool> mAmbiancePlaying{false};
      void ndsAmbianceTick(bool wantOnHome);   // per-frame: start/loop/stop the carousel ambiance
-@@ -3669,6 +4661,7 @@ private:
+@@ -3669,6 +4665,7 @@ private:
      // machine driving a dedicated headless decoder (never mVideoTest) one video at a time across
      // frames. Gated hard on "no live decoder" - the SoC has ONE HW video decoder (see wpVideoTick).
      void videoThumbTick();                                     // render thread, GL current: advance the auto-thumb machine one step
@@ -28764,7 +28768,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      void videoThumbEnqueueMissing();                           // after a drain: queue every fresh video with no 'v' poster on disk
      void videoThumbAbandon();                                  // cancel + async-free the headless decoder + reset to IDLE (decoder contended)
      enum VidThumbState { VT_IDLE = 0, VT_OPENING, VT_WAIT_FRAME, VT_CLOSE };
-@@ -3908,6 +4901,8 @@ private:
+@@ -3908,6 +4905,8 @@ private:
      void drawAssCue(const VidCue& c, float W, float H, int prX, int prY,
                      float sx, float sy, bool scaledBorder, float et);   // positioned/coloured ASS cue
      std::vector<std::string> wrapTextToWidth(const std::string& s, float fs, float maxW);   // greedy word-wrap (keeps \n)
@@ -28773,7 +28777,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      // ASS header + per-event parse (static: pure logic, no member state; access the private nested
      // VidCue/VidSubTrk/AssStyle types). parseAssHeader runs at track build (render thread);
      // parseAssEvent runs on the lazy-cue worker thread from a value-copied style snapshot.
-@@ -3981,7 +4976,6 @@ private:
+@@ -3981,7 +4980,6 @@ private:
      std::vector<std::string> mVidSubOpts;
      int   mVidSubSel = 0;
      bool  mVidPanelTouch = false;           // panel opened by a screen tap -> enlarge icons
@@ -28781,7 +28785,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      // Debounced touch scrub: NanoAudioPlayer::seek() joins+restarts the decode thread
      // (heavy, blocking on the render thread), so a live drag that seeks every move
      // freezes the render heartbeat and trips the 8s watchdog. Instead the drag only
-@@ -4002,11 +4996,13 @@ private:
+@@ -4002,11 +5000,13 @@ private:
      void drawVideoPanel(float closeT);      // render the panel (closeT>=0 drives close anim)
      // Shared XMB-style media option dialog (video + photo option lists): a solid dark
      // rounded panel centred on screen with a title + touch-capable rows. One look/behaviour
@@ -28798,7 +28802,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      GLuint vidIcon(int n);                  // load+cache a videoplayer icon (NanoMenuPS3Icons.cpp)
      float  vidIconAR(int n);                // cached aspect ratio (w/h)
      std::map<int, GLuint> mVidIconCache;
-@@ -4053,6 +5049,7 @@ private:
+@@ -4053,6 +5053,7 @@ private:
      bool  mVidSceneClosing = false;
      int   mVidSceneSel = 0;
      int   mVidSceneSelPrev = 0;
@@ -28806,7 +28810,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      float mVidSceneAnimStart = -1.0f;       // open fade start
      float mVidSceneCloseStart = -1.0f;
      float mVidSceneFocusStart = -1.0f;      // selection-change ease start
-@@ -4111,6 +5108,7 @@ private:
+@@ -4111,6 +5112,7 @@ private:
      void mpNext();
      void mpPrev();
      void musicTick();                  // per-frame: auto-advance on EOS + fades
@@ -28814,7 +28818,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      bool mpIsOpening() const;          // a track/station is loading (for the open spinner)
      float mMpOpenStartT = 0.0f;        // when the current open began (spinner delay + spin)
      bool mMpOpening = false;           // an OpenPlay was issued and audio has not started/failed yet.
-@@ -4159,10 +5157,6 @@ private:
+@@ -4159,10 +5161,6 @@ private:
      bool   mMpSeekPending = false;
      double mMpSeekTarget = 0.0;        // desired position (seconds) while scrubbing
      float  mMpSeekInputT = 0.0f;       // mEffectTime of the last scrub press
@@ -28825,7 +28829,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      // Async audio-control worker: NanoAudio control ops (play/pause/stop/seek/open)
      // can block on the audio server / codec; running them on the render thread risks
      // a watchdog abort or a hang. The render thread enqueues a command (cheap) and a
-@@ -4441,6 +5435,7 @@ private:
+@@ -4441,6 +5439,7 @@ private:
      int  gsearchResultAtVisRow(int visRow) const;  // result index at a visual row, -1 for a header/oob
      void renderGlobalSearch();    // draw the overlay (returns nothing; caller gates on mGSearchActive)
      void gsearchTouch();          // DSi theme: tap a result row to select+activate, tap Back to cancel
@@ -28833,7 +28837,7 @@ index 88e7cae6699..a1edc57e5e5 100644
  
      // VIDEO (R4) - the HW decoder instance for the player. Lazily created in
      // openVideoPlayer, fully torn down in closeVideoPlayer/videoTick so an idle launcher
-@@ -4507,7 +5502,6 @@ private:
+@@ -4507,7 +5506,6 @@ private:
      int  mPhotoGridCursor = 0;
      int  mPhotoGridTop = 0;               // top visible row (scroll, kept in sync with the pixel scroll)
      float mPhotoGridScrollY = 0.0f;       // smooth pixel scroll (finger-driven; source of truth for the render)
@@ -28841,7 +28845,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      std::string mPhotoGridTitle;
      float mPhotoGridAnim = 0.0f;          // open fade-in
      float mPhotoGridFocusStart = -1.0f;   // focus grow tween start
-@@ -4747,6 +5741,7 @@ private:
+@@ -4747,6 +5745,7 @@ private:
      void   ccPollBottomAppExit();          // watch the launched bottom app; clear + return to CC on exit
      void   ccEndBottomApp(bool stopApp);   // tear down bottom-app state (force-stop optional), restore drop_input
      bool   ccDrainBottomTouch();           // drain the BOTTOM digitizer; true if a touch-DOWN occurred this poll
@@ -28849,7 +28853,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      bool   ccPollTopTapDown();             // drain the TOP digitizer (gt9xx-1); true if a touch-DOWN occurred
      // Controller-focus pin: point sys.gammaos.nano.focus.display at the panel that should own the gamepad.
      // The Control Center itself never takes focus (it is touch-only); the pin is the top panel whenever the
-@@ -4790,8 +5785,9 @@ private:
+@@ -4790,8 +5789,9 @@ private:
          int   w = -1, h = -1;         // panel size -> layout scale (resize forces a rebuild)
          uint8_t tile[8] = {0};        // per-tile ccActState() 0/1/2 (bg + icon colour + shape + perf label)
          int   wday = -1, mday = -1;   // clock date "MON 20"
@@ -28860,7 +28864,7 @@ index 88e7cae6699..a1edc57e5e5 100644
              for (int i = 0; i < 8; i++) if (tile[i] != o.tile[i]) return false;
              return true;
          }
-@@ -4804,7 +5800,8 @@ private:
+@@ -4804,7 +5804,8 @@ private:
      void   ccEnsureStaticCache();          // (re)bake the static layers when the signature changes
      void   ccFreeStaticCache();            // delete the FBO + texture (teardown / GPU failure)
      void  pspClockPollInput();
@@ -28870,7 +28874,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      void  pspClockPollTilt(bool active);       // accel -> smoothed mPspTilt* parallax (gyro peek)
      float pspClockTextFade() const;            // smoothed XMB-text alpha multiplier (5.4)
      float pspClockChromeFade() const;          // whole-canvas backstop opacity (5.5, window 0.58..0.72)
-@@ -4915,6 +5912,9 @@ private:
+@@ -4915,6 +5916,9 @@ private:
      // it red) and beveled into a normal map for the XMB glass relight. Lazily built + cached.
      GLuint mHeartIconTex = 0, mHeartNmapTex = 0;
      void   ensureHeartIcon();               // build mHeartIconTex + mHeartNmapTex once
@@ -28880,7 +28884,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      GLuint gpGlassNmap(bool round, float wpx, float hpx);    // cached bevel nmap for a gamepad-tester button shape
      // Resolve a system iconRef (builtin:/retroarch:/core:/file:) to a (colour
      // tex, glass bevel nmap) pair, cached by ref string. See NanoMenuPS3Icons.cpp.
-@@ -4935,11 +5935,14 @@ private:
+@@ -4935,11 +5939,14 @@ private:
          std::vector<std::string> activePaths;
          std::string activePath;
          bool valid;              // true if scan found at least one path
@@ -28895,7 +28899,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      void bgScanThreadFunc();                  // the thread entry point
  
      // Settings column. Pinned as the leftmost XMB column at sentinel index -2.
-@@ -4998,7 +6001,6 @@ private:
+@@ -4998,7 +6005,6 @@ private:
      bool   mPs3WizActive = false;
      int    mPs3WizExit = 0;               // on close: +1 completed/forward, -1 cancelled/back (for the setup step)
      bool   mSetupNetWizSeen = false;      // setup-wizard tracking of the network step's wizard
@@ -28903,7 +28907,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      int    mPs3WizId = 0;                 // current screen (WizScreen enum, file-local)
      std::vector<int> mPs3WizStack;        // back stack of screen ids
      int    mPs3WizSel = 0;                // chooser/list selection
-@@ -5008,6 +6010,8 @@ private:
+@@ -5008,6 +6014,8 @@ private:
      int    mPs3WizSlideDir = 1;           // +1 forward (enter from right), -1 back
      float  mPs3WizSlideStart = 0.0f;      // mEffectTime at the start of the slide
      float  mPs3WizScreenStart = 0.0f;     // mEffectTime when the current screen opened
@@ -28912,7 +28916,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      int    mPs3WizTextField = 0;          // which value the open OSK is editing (WizField)
      std::string mPs3WizFieldError;        // inline validation message under the current text field (red)
      // Collected values (mirror web wizState.values):
-@@ -5029,8 +6033,7 @@ private:
+@@ -5029,8 +6037,7 @@ private:
                                          // a new OSK from inside the old OSK's callback)
      // Wizard lifecycle + render (NanoMenuPS3Menu.cpp).
      void startNetWizard();
@@ -28922,7 +28926,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      void openInternetBrowser();
      void openInternetSearch();
      void openGoToUrl();                  // OSK prefilled https:// -> launch the typed URL
-@@ -5053,7 +6056,6 @@ private:
+@@ -5053,7 +6060,6 @@ private:
      void renderNdsNetWizardBody(float rx, float ry, float rw, float rh);
      void ndsWizTouch();                   // DSi wizard bottom-panel touch: tap rows / Yes-No / Back-OK-Search bar
      void renderMinimaNetWizardBody(float rx, float ry, float rw, float rh);   // Minima-styled Wi-Fi/BT wizard
@@ -28930,7 +28934,7 @@ index 88e7cae6699..a1edc57e5e5 100644
  
      // Bluetooth sub-screen state
      std::vector<BtDevEntry> mBtEntries;
-@@ -5086,6 +6088,7 @@ private:
+@@ -5086,6 +6092,7 @@ private:
      std::string mBtWizInPasskey;              // inbound passkey to display for confirmation
      std::atomic<bool> mBtWizRadioOn{true};    // cached real radio state (dumpsys enabled:)
      std::atomic<bool> mBtWizToggling{false};  // a radio enable/disable is settling
@@ -28938,7 +28942,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      float mBtWizManageRefreshT = -999.0f;     // last live-refresh time while sitting on Manage
      void btWizToggleRadioAsync(bool on);      // enable/disable the radio + settle + refresh
  
-@@ -5168,6 +6171,7 @@ private:
+@@ -5168,6 +6175,7 @@ private:
      int   mTouchMinX = 0, mTouchMaxX = 0;   // digitizer X range (max<=min = unread)
      int   mTouchMinY = 0, mTouchMaxY = 0;   // digitizer Y range
      int   mTouchRawX = -1, mTouchRawY = -1; // last raw ABS_MT position (slot 0)
@@ -28946,7 +28950,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      bool  mTouchDown = false, mTouchWasDown = false;
      // Mouse/keyboard support for the nano UI. The cursor is accumulated from EV_REL in
      // logical-pixel space and drawn on top each frame; a left click is routed through the
-@@ -5176,35 +6180,89 @@ private:
+@@ -5176,35 +6184,89 @@ private:
      bool    mCursorVisible = false;             // shown while recently moved/clicked
      int64_t mLastPointerMs = 0;                 // last pointer activity (auto-hide timer)
      bool    mTouchFromPointer = false;          // current touch frame is a mouse click, not a finger
@@ -29052,7 +29056,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      std::vector<SearchResult> mSearchResults;
      int mSearchSelectedIndex;
      bool mSearchActive;        // Search results being displayed
-@@ -5229,7 +6287,11 @@ private:
+@@ -5229,7 +6291,11 @@ private:
      // font off EROFS every frame (a sustained decompress storm -> kernel OOM).
      // render() clears this at the top of each frame.
      bool mGlyphAtlasReset = false;
@@ -29064,7 +29068,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      // Currently-set atlas MIN_FILTER (texture-object state). setGlyphAtlasAA()
      // flips this to GL_LINEAR_MIPMAP_NEAREST only around the home-XMB menu
      // content and back to GL_LINEAR everywhere else, skipping redundant GL sets.
-@@ -5400,6 +6462,33 @@ private:
+@@ -5400,6 +6466,33 @@ private:
                                    // globe on black until ready so the one-time texture
                                    // load spike isn't charged against the 360ms fade
      int mTzSelOnOpen = 0;         // mTzSelected when the globe opened (restore on cancel)
@@ -29098,7 +29102,7 @@ index 88e7cae6699..a1edc57e5e5 100644
      GLuint mPs3TzHeaderTex = 0;   // cached xmb_icon_022 colour texture (header glyph)
      // System Language picker (Settings -> System Settings -> System Language).
      bool mPs3LangActive = false;  // gates the XMB fullscreen language picker
-@@ -5425,6 +6514,127 @@ private:
+@@ -5425,6 +6518,127 @@ private:
      std::thread mSetupLogThread;
      std::mutex mSetupLogMutex;
      bool mSetupLogExitRequested;
@@ -39155,7 +39159,7 @@ index 3f568ae08a5..376253abcc6 100644
      // Set the trigger LAST (after the theme/package/autoinstall props above are set): an init rule
      // (on property:sys.gammaos.ota.prestage=1) starts gammaos-ota while nano is still alive. The
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoMenuOverlay.cpp b/frameworks/base/cmds/gammaos-nano/NanoMenuOverlay.cpp
-index afbd4bb49c5..350c9efcaf3 100644
+index afbd4bb49c5..137eaefe09d 100644
 --- a/frameworks/base/cmds/gammaos-nano/NanoMenuOverlay.cpp
 +++ b/frameworks/base/cmds/gammaos-nano/NanoMenuOverlay.cpp
 @@ -40,10 +40,19 @@
@@ -40096,7 +40100,7 @@ index afbd4bb49c5..350c9efcaf3 100644
      bool standalone;
      bool fromRecent = false;
      if (mXmbSystemIndex == -1) {                  // Recently Played
-@@ -1643,16 +1799,29 @@ void NanoMenu::overlayLaunchGame() {
+@@ -1643,16 +1799,31 @@ void NanoMenu::overlayLaunchGame() {
          romPath = re.romPath; romDir = re.romDir; coreSo = re.coreSo;
          launchPkg = re.launchPkg; launchIntent = re.launchIntent; standalone = re.standalone;
          romName = re.displayName; fromRecent = true;
@@ -40118,27 +40122,30 @@ index afbd4bb49c5..350c9efcaf3 100644
      if (romPath.empty()) return;
 +    if (launchSelectedAppShortcut()) return;
 +    // The game's own emulator (Game Options > Emulator), over its system's or the recorded one.
++    bool gameEmu = false;
 +    { XmbSystem g;
 +      if (applyGameEmulator(romPath, g)) {
 +          coreSo = g.coreSo; launchPkg = g.launchPkg; launchIntent = g.launchIntent;
 +          launchArgs = g.launchArgs;
 +          standalone = g.isStandalone();
++          gameEmu = true;
 +      } }
      // Same check as the home launcher: a game whose file is gone (deleted, or its card is not
      // mounted) must say so instead of replacing the running app with an emulator that then dies.
      if (!romLaunchExists(romPath)) {
-@@ -1663,6 +1832,19 @@ void NanoMenu::overlayLaunchGame() {
+@@ -1663,6 +1834,20 @@ void NanoMenu::overlayLaunchGame() {
          return;
      }
  
 +    // OA-38: an emulator this platform cannot run starts with its default for this launch only.
 +    { XmbSystem g;
 +      const int si = fromRecent ? recentSystemIndex(mXmbRecent[mXmbGameIndex]) : mXmbSystemIndex;
-+      g.id = si >= 0 && si < (int)mXmbSystems.size() ? mXmbSystems[si].id : romDir;
++      const bool haveSys = si >= 0 && si < (int)mXmbSystems.size();
++      g.id = haveSys ? mXmbSystems[si].id : romDir;
 +      g.romDir = romDir;
 +      g.coreSo = coreSo; g.launchIntent = launchIntent;
 +      if (standalone) g.launchPkg = launchPkg;
-+      if (!emuCanRun(g) && emuApplyDefault(g)) {
++      if (emuLaunchFallback(g, gameEmu && haveSys ? &mXmbSystems[si] : nullptr) != EmuFallback::None) {
 +          coreSo = g.coreSo; launchPkg = g.launchPkg; launchIntent = g.launchIntent;
 +          launchArgs = g.launchArgs;
 +          standalone = g.isStandalone();
@@ -40147,7 +40154,7 @@ index afbd4bb49c5..350c9efcaf3 100644
      // Same emulator guard as the home launcher: if the core .so or standalone app is not on the
      // device, warn instead of replacing the running app with an emulator that immediately dies.
      if (standalone) {
-@@ -1683,7 +1865,7 @@ void NanoMenu::overlayLaunchGame() {
+@@ -1683,7 +1868,7 @@ void NanoMenu::overlayLaunchGame() {
      property_get("persist.gammaos.nano.drastic_nano", dnGate, "0");
      char dnBackend[PROPERTY_VALUE_MAX] = {};
      property_get("persist.gammaos.drastic_nano.backend", dnBackend, "auto");
@@ -40156,7 +40163,7 @@ index afbd4bb49c5..350c9efcaf3 100644
          setDrasticNanoRomPath(romPath);
          // Keep Quick Resume's boot preview in sync with the game launched here. The
          // preview shows qr_game_name and, when storage is slow to mount, falls back
-@@ -1709,7 +1891,9 @@ void NanoMenu::overlayLaunchGame() {
+@@ -1709,7 +1894,9 @@ void NanoMenu::overlayLaunchGame() {
              property_set("sys.gammaos.nano.cache_ready", "0");
              property_set("sys.gammaos.nano.cache_op", "populate_drastic");
          }
@@ -40167,7 +40174,7 @@ index afbd4bb49c5..350c9efcaf3 100644
              // SurfaceFlinger mode: launch the DrasticSf host activity through the
              // SAME overlay launch path as any other app (overlayLaunchCommand).
              // That is what dismisses the XMB onto the new app (overlayPoll), sets
-@@ -1729,29 +1913,12 @@ void NanoMenu::overlayLaunchGame() {
+@@ -1729,29 +1916,12 @@ void NanoMenu::overlayLaunchGame() {
          // owns the panel now. Clear the QR prime so the home comes back plain.
          // The dual-display RG DS uses this DRM path, unchanged.
          //
@@ -40199,7 +40206,7 @@ index afbd4bb49c5..350c9efcaf3 100644
          // The app the overlay is sitting over (a RetroArch game, say) must be gone
          // before drastic-nano takes DRM master: left running it keeps rendering and
          // holding the GPU and CPU under the DS session, and SurfaceFlinger keeps
-@@ -1766,7 +1933,8 @@ void NanoMenu::overlayLaunchGame() {
+@@ -1766,7 +1936,8 @@ void NanoMenu::overlayLaunchGame() {
                  // overlay never recorded it; the framework's launch_app is the running app.
                  char la[PROPERTY_VALUE_MAX] = {};
                  property_get("sys.gammaos.nano.launch_app", la, "");
@@ -40209,7 +40216,7 @@ index afbd4bb49c5..350c9efcaf3 100644
              }
              mOverlayPausedPkg.clear();
              unlink(kOverlayFrozenMarker);
-@@ -1800,15 +1968,20 @@ void NanoMenu::overlayLaunchGame() {
+@@ -1800,15 +1971,20 @@ void NanoMenu::overlayLaunchGame() {
      std::string pkg, cmd;
      if (standalone) {
          pkg = launchPkg;
@@ -40237,7 +40244,7 @@ index afbd4bb49c5..350c9efcaf3 100644
      } else {
          pkg = "com.retroarch.aarch64";
          std::string rom = romPath;                   // direct FUSE path for RetroArch
-@@ -1833,7 +2006,7 @@ void NanoMenu::overlayLaunchGame() {
+@@ -1833,7 +2009,7 @@ void NanoMenu::overlayLaunchGame() {
                " -a android.intent.action.MAIN -c android.intent.category.LAUNCHER"
                " --activity-clear-task --activity-clear-top"
                " --es ROM " + overlayShq(rom) +
@@ -40246,7 +40253,7 @@ index afbd4bb49c5..350c9efcaf3 100644
                " --es DATADIR " + overlayShq(dataDir) +
                " --es SDCARD " + overlayShq(std::string("/storage/emulated/0")) +
                " --es EXTERNAL " + overlayShq(ext);
-@@ -1848,6 +2021,7 @@ void NanoMenu::overlayLaunchGame() {
+@@ -1848,6 +2024,7 @@ void NanoMenu::overlayLaunchGame() {
      // list the next time it is opened. mXmbSystemIndex/mXmbGameIndex still hold the
      // selected entry. For a re-launch from Recently Played itself, move it to front.
      if (mXmbSystemIndex == -1) {
@@ -40254,7 +40261,7 @@ index afbd4bb49c5..350c9efcaf3 100644
          if (mXmbGameIndex > 0 && mXmbGameIndex < (int)mXmbRecent.size()) {
              XmbRecentEntry moved = mXmbRecent[mXmbGameIndex];
              mXmbRecent.erase(mXmbRecent.begin() + mXmbGameIndex);
-@@ -1857,6 +2031,10 @@ void NanoMenu::overlayLaunchGame() {
+@@ -1857,6 +2034,10 @@ void NanoMenu::overlayLaunchGame() {
      } else {
          addXmbRecent(mXmbSystemIndex, mXmbGameIndex);
      }
@@ -40265,7 +40272,7 @@ index afbd4bb49c5..350c9efcaf3 100644
      // Quick Resume prime for the overlay-launched game, mirroring the home XMB
      // launch (launchXmbGame). On the Brick the resident overlay IS the home after
      // the first game, so every launch after that comes through here -- and without
-@@ -2020,6 +2198,11 @@ void NanoMenu::overlayUpdateSurfaceSize() {
+@@ -2020,6 +2201,11 @@ void NanoMenu::overlayUpdateSurfaceSize() {
          // and the overlay goes blank/upside-down (the "overlay over the app is blank at 90" bug).
          renderSelfRot = (physical - (int)state.orientation) & 3;
      }
@@ -40277,7 +40284,7 @@ index afbd4bb49c5..350c9efcaf3 100644
      // Turn nano's own rendering to match, compensating for any SurfaceFlinger display transform.
      nanoSetOverlayRenderRotation(renderSelfRot);
      // Instrumentation for the seamless-rotation work: log only on a change so the sequence during a
-@@ -2040,8 +2223,14 @@ void NanoMenu::overlayUpdateSurfaceSize() {
+@@ -2040,8 +2226,14 @@ void NanoMenu::overlayUpdateSurfaceSize() {
      const int lw = (int)state.layerStackSpaceRect.getWidth();
      const int lh = (int)state.layerStackSpaceRect.getHeight();
      if (lw <= 0 || lh <= 0) return;
@@ -40294,7 +40301,7 @@ index afbd4bb49c5..350c9efcaf3 100644
      // We must land a producer buffer of the NEW size so SurfaceFlinger composites
      // us over the whole rotated display. setBuffersDimensions alone is not enough:
      // the GLES driver caches the window geometry at eglCreateWindowSurface time and
-@@ -2090,12 +2279,12 @@ void NanoMenu::overlayUpdateSurfaceSize() {
+@@ -2090,12 +2282,12 @@ void NanoMenu::overlayUpdateSurfaceSize() {
          ns = eglCreateWindowSurface(mDisplay, config, mFlingerSurface.get(), nullptr);
          if (ns == EGL_NO_SURFACE) {
              ALOGE("nano overlay: fallback surface create failed (0x%x)", eglGetError());
@@ -40309,7 +40316,7 @@ index afbd4bb49c5..350c9efcaf3 100644
      }
      eglMakeCurrent(mDisplay, ns, ns, mContext);
      // Overlay pacing is swap-interval 0 (the threadLoop top-up sleep drives frames),
-@@ -2111,6 +2300,602 @@ void NanoMenu::overlayUpdateSurfaceSize() {
+@@ -2111,6 +2303,602 @@ void NanoMenu::overlayUpdateSurfaceSize() {
            lw, lh, qw, qh, prevW, prevH);
      mWidth = qw; mHeight = qh;
      mDisplayDirty = true;
@@ -42290,7 +42297,7 @@ index 166225b4864..e03697cb284 100644
  };
  #endif
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoMenuPS3EmuCatalog.cpp b/frameworks/base/cmds/gammaos-nano/NanoMenuPS3EmuCatalog.cpp
-index d1b72700c49..55ca4cdd495 100644
+index d1b72700c49..500abed023b 100644
 --- a/frameworks/base/cmds/gammaos-nano/NanoMenuPS3EmuCatalog.cpp
 +++ b/frameworks/base/cmds/gammaos-nano/NanoMenuPS3EmuCatalog.cpp
 @@ -15,16 +15,21 @@
@@ -42703,7 +42710,7 @@ index d1b72700c49..55ca4cdd495 100644
      saveSystemsConfig();
  
      if (adding) {
-@@ -429,4 +643,371 @@ void NanoMenu::applyEmulatorChoice(int catIdx) {
+@@ -429,4 +643,390 @@ void NanoMenu::applyEmulatorChoice(int catIdx) {
      buildPs3Cats();
  }
  
@@ -42901,6 +42908,25 @@ index d1b72700c49..55ca4cdd495 100644
 +    s.launchIntent = d.launchIntent;
 +    s.launchArgs.clear();   // the system's extra arguments belong to its own emulator
 +    return true;
++}
++
++// What a launch whose emulator cannot run here starts instead, for that launch only (nothing is
++// saved): the image's default for its system, else, for a game whose own pick s carries (own is
++// that game's system), the system's own emulator, as such a game started before its pick was kept.
++NanoMenu::EmuFallback NanoMenu::emuLaunchFallback(XmbSystem& s, const XmbSystem* own) {
++    if (emuCanRun(s)) return EmuFallback::None;
++    if (emuApplyDefault(s)) return EmuFallback::ImageDefault;
++    if (!own || !emuCanRun(*own)) return EmuFallback::None;
++    ALOGI("emucatalog: the game's emulator (%s) cannot run here and %s has no default that can; this launch "
++          "uses the system's own %s", s.isStandalone() ? s.launchPkg.c_str() : s.coreSo.c_str(), own->id.c_str(),
++          own->isStandalone() ? own->launchPkg.c_str() : own->coreSo.c_str());
++    s.launchType = own->launchType;
++    s.coreSo = own->coreSo;
++    s.packageName = own->packageName;
++    s.launchPkg = own->launchPkg;
++    s.launchIntent = own->launchIntent;
++    s.launchArgs = own->launchArgs;   // its own emulator's extra arguments
++    return EmuFallback::SystemOwn;
 +}
 +
 +// ---- Emulators as ES-DE names them (the ES-DE folder as Nano's store) ----
@@ -60909,7 +60935,7 @@ index 0fa4e98c671..ec8fdd431f0 100644
  
  }  // namespace android
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoMenuXmb.cpp b/frameworks/base/cmds/gammaos-nano/NanoMenuXmb.cpp
-index a0824b29e6e..2dcbd11e61f 100644
+index a0824b29e6e..611d7fcf9d9 100644
 --- a/frameworks/base/cmds/gammaos-nano/NanoMenuXmb.cpp
 +++ b/frameworks/base/cmds/gammaos-nano/NanoMenuXmb.cpp
 @@ -27,6 +27,7 @@
@@ -63608,10 +63634,13 @@ index a0824b29e6e..2dcbd11e61f 100644
  
          // A recent entry outlives the file it points at (game deleted, card removed). Refuse the
          // launch and drop the dead row rather than starting an emulator that cannot open it.
-@@ -2646,6 +3831,19 @@ void NanoMenu::launchXmbGame() {
+@@ -2646,6 +3831,24 @@ void NanoMenu::launchXmbGame() {
              return;
          }
  
++        // What Recently Played keeps when the entry moves to the front: the fallback below is this
++        // launch's only.
++        const XmbRecentEntry recorded = re;
 +        // OA-38: an emulator this platform cannot run starts with its default for this launch only.
 +        { XmbSystem g;
 +          const int si = recentSystemIndex(re);
@@ -63619,16 +63648,18 @@ index a0824b29e6e..2dcbd11e61f 100644
 +          g.romDir = si >= 0 ? mXmbSystems[si].romDir : re.romDir;
 +          g.coreSo = re.coreSo; g.launchIntent = re.launchIntent;
 +          if (re.standalone) g.launchPkg = re.launchPkg;
-+          if (!emuCanRun(g) && emuApplyDefault(g)) {
++          const EmuFallback fb = emuLaunchFallback(g, gameEmu && si >= 0 ? &mXmbSystems[si] : nullptr);
++          if (fb != EmuFallback::None) {
 +              re.coreSo = g.coreSo; re.launchPkg = g.launchPkg; re.launchIntent = g.launchIntent;
 +              re.standalone = g.isStandalone();
-+              gameEmu = true;   // the system's extra arguments are its own emulator's
++              // The system's extra arguments are its own emulator's: kept for it, dropped for a default.
++              gameEmu = fb == EmuFallback::ImageDefault;
 +          } }
 +
          // The emulator that opens this game may not be on the device (a core was never installed, or
          // the standalone app was uninstalled). Warn instead of black-screening on launch.
          if (re.standalone) {
-@@ -2654,6 +3852,37 @@ void NanoMenu::launchXmbGame() {
+@@ -2654,48 +3857,62 @@ void NanoMenu::launchXmbGame() {
              showEmuMissingMsg(re.displayName, false); return;
          }
  
@@ -63666,7 +63697,14 @@ index a0824b29e6e..2dcbd11e61f 100644
          // Move to front of recent list -- only on disk, not in-memory.
          // Modifying the vector causes a visible shuffle during the
          // transition frames before NanoMenu exits.
-@@ -2667,35 +3896,18 @@ void NanoMenu::launchXmbGame() {
+         if (mXmbGameIndex > 0) {
+             std::vector<XmbRecentEntry> saved = mXmbRecent;
+             saved.erase(saved.begin() + mXmbGameIndex);
+-            saved.insert(saved.begin(), re);
++            saved.insert(saved.begin(), recorded);
+             std::swap(mXmbRecent, saved);
+             saveXmbRecent();
+             std::swap(mXmbRecent, saved); // restore in-memory order
          }
  
          if (re.standalone) {
@@ -63709,7 +63747,7 @@ index a0824b29e6e..2dcbd11e61f 100644
                  if (mQuickResumeEnabled) {
                      setQrRomPath(re.romPath);
                      android::base::SetProperty(
-@@ -2746,10 +3958,14 @@ void NanoMenu::launchXmbGame() {
+@@ -2746,10 +3963,14 @@ void NanoMenu::launchXmbGame() {
              }
          } else {
              std::string corePath = "/data/data/com.retroarch.aarch64/cores/" + re.coreSo;
@@ -63728,7 +63766,7 @@ index a0824b29e6e..2dcbd11e61f 100644
              property_set("sys.gammaos.nano.cache_ready", "0");
              property_set("sys.gammaos.nano.cache_op", "populate");
              if (mQuickResumeEnabled) {
-@@ -2776,10 +3992,10 @@ void NanoMenu::launchXmbGame() {
+@@ -2776,10 +3997,10 @@ void NanoMenu::launchXmbGame() {
          mSearchActive = false; mOskActive = false;
          property_set("sys.gammaos.nano.xmb_return_sys", "-1");
          property_set("sys.gammaos.nano.xmb_return_game", "0");
@@ -63741,7 +63779,7 @@ index a0824b29e6e..2dcbd11e61f 100644
          struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
          int64_t fenceNs = (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec;
          char buf[32]; snprintf(buf, sizeof(buf), "%" PRId64, fenceNs);
-@@ -2789,9 +4005,10 @@ void NanoMenu::launchXmbGame() {
+@@ -2789,9 +4010,10 @@ void NanoMenu::launchXmbGame() {
      }
  
      if (mSearchActive) {
@@ -63754,7 +63792,7 @@ index a0824b29e6e..2dcbd11e61f 100644
          sysIdx = mSearchResults[mSearchSelectedIndex].sysIdx;
          gameIdx = mSearchResults[mSearchSelectedIndex].gameIdx;
      } else {
-@@ -2800,8 +4017,25 @@ void NanoMenu::launchXmbGame() {
+@@ -2800,8 +4022,28 @@ void NanoMenu::launchXmbGame() {
      }
  
      if (sysIdx < 0 || sysIdx >= (int)mXmbSystems.size()) return;
@@ -63773,16 +63811,19 @@ index a0824b29e6e..2dcbd11e61f 100644
 +    // OA-38: an emulator this platform cannot run starts with its default for this launch only.
 +    if (!emuCanRun(*sysp)) {
 +        XmbSystem fallback = *sysp;
-+        if (emuApplyDefault(fallback)) {
++        const EmuFallback fb = emuLaunchFallback(fallback, sysp == &gameSys ? &mXmbSystems[sysIdx] : nullptr);
++        if (fb == EmuFallback::ImageDefault) {
 +            gameSys = std::move(fallback);
 +            sysp = &gameSys;
++        } else if (fb == EmuFallback::SystemOwn) {
++            sysp = &mXmbSystems[sysIdx];   // the game starts as its system does
 +        }
 +    }
 +    const auto& sys = *sysp;
  
      std::string romPath = sys.roms[gameIdx];
      if (romPath.find("/data/media/0/") == 0) {
-@@ -2831,45 +4065,30 @@ void NanoMenu::launchXmbGame() {
+@@ -2831,45 +4073,30 @@ void NanoMenu::launchXmbGame() {
          std::string filename;
          { size_t ls = fullRomPath.rfind('/');
            filename = (ls != std::string::npos) ? fullRomPath.substr(ls + 1) : fullRomPath; }
@@ -63845,7 +63886,7 @@ index a0824b29e6e..2dcbd11e61f 100644
          {
              const char* intentFile = "/data/system/nano_launch_intent.txt";
              int ifd = open(intentFile, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-@@ -2877,16 +4096,18 @@ void NanoMenu::launchXmbGame() {
+@@ -2877,16 +4104,18 @@ void NanoMenu::launchXmbGame() {
                  write(ifd, tabIntent.c_str(), tabIntent.size());
                  close(ifd);
                  chmod(intentFile, 0644);
@@ -63869,7 +63910,7 @@ index a0824b29e6e..2dcbd11e61f 100644
              if (mQuickResumeEnabled) {
                  setQrRomPath(romPath);
                  android::base::SetProperty(
-@@ -2944,10 +4165,13 @@ void NanoMenu::launchXmbGame() {
+@@ -2944,10 +4173,13 @@ void NanoMenu::launchXmbGame() {
          // RetroArch core
          std::string corePath = "/data/data/com.retroarch.aarch64/cores/" + sys.coreSo;
          ALOGI("NanoMenu XMB: launching %s core=%s", romPath.c_str(), corePath.c_str());
@@ -63887,7 +63928,7 @@ index a0824b29e6e..2dcbd11e61f 100644
          property_set("sys.gammaos.nano.cache_ready", "0");
          property_set("sys.gammaos.nano.cache_op", "populate");
  
-@@ -2995,10 +4219,10 @@ void NanoMenu::launchXmbGame() {
+@@ -2995,10 +4227,10 @@ void NanoMenu::launchXmbGame() {
          }
      }
  
@@ -63900,7 +63941,7 @@ index a0824b29e6e..2dcbd11e61f 100644
  
      struct timespec ts;
      clock_gettime(CLOCK_MONOTONIC, &ts);
-@@ -3110,8 +4334,8 @@ void NanoMenu::renderXmb() {
+@@ -3110,8 +4342,8 @@ void NanoMenu::renderXmb() {
          float cb = isSel ? iconB : dimIconB;
          drawIcon(iconId, ix, iy, sz, cr, cg, cb, alpha);
          if (isSel) {
@@ -63911,7 +63952,7 @@ index a0824b29e6e..2dcbd11e61f 100644
                               : (idx >= 0 && idx < numSys) ? mXmbSystems[idx].name.c_str()
                               : "";
              float nameY = iy + sz + 6.0f * sf;
-@@ -3244,10 +4468,10 @@ void NanoMenu::renderXmb() {
+@@ -3244,10 +4476,10 @@ void NanoMenu::renderXmb() {
          }
          glDisable(GL_SCISSOR_TEST);
      } else if (!mSearchActive) {
@@ -63924,7 +63965,7 @@ index a0824b29e6e..2dcbd11e61f 100644
          float msgW = measureText(msg, textScale);
          drawText(msg, (mWidth - msgW) / 2.0f, iconBarY + 40.0f * sf,
                   textScale, 0.5f, 0.5f, 0.5f, 0.7f);
-@@ -3257,16 +4481,16 @@ void NanoMenu::renderXmb() {
+@@ -3257,16 +4489,16 @@ void NanoMenu::renderXmb() {
      float footH = FONT_CHAR_H * footScale;
      float footY = mHeight - footH - 8.0f * sf;
      const char* footer = mSearchActive
