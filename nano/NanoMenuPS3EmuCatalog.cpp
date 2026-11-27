@@ -22,6 +22,7 @@
 
 #include <dirent.h>
 #include <stdio.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
@@ -774,6 +775,37 @@ void NanoMenu::loadEmuDefaults() {
         if (d.coreSo.empty() == d.package.empty()) continue;   // a core or an app, not both
         mEmuDefaults[kv.first] = std::move(d);
     }
+}
+
+bool NanoMenu::emuDefaultsStored() {
+    struct stat st;
+    return stat(kEmuDefaultsPath, &st) == 0 || errno != ENOENT;
+}
+
+bool NanoMenu::emuDefaultsSave(const std::map<std::string, EmuDefault>& defaults) {
+    njson::Value systems = njson::Value::makeObject();
+    for (const auto& kv : defaults) {
+        njson::Value o = njson::Value::makeObject();
+        if (!kv.second.coreSo.empty()) {
+            o.set("core") = njson::Value::makeString(kv.second.coreSo);
+        } else {
+            o.set("package") = njson::Value::makeString(kv.second.package);
+            o.set("intent") = njson::Value::makeString(kv.second.intent);
+        }
+        systems.set(kv.first) = std::move(o);
+    }
+    njson::Value root = njson::Value::makeObject();
+    root.set("version") = njson::Value::makeNumber(1);
+    root.set("systems") = std::move(systems);
+    const std::string text = njson::serialize(root, true);
+    const std::string tmp = std::string(kEmuDefaultsPath) + ".tmp." + std::to_string(getpid());
+    const int fd = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+    if (fd < 0) { ALOGW("emucatalog: cannot write %s", tmp.c_str()); return false; }
+    const bool ok = write(fd, text.data(), text.size()) == (ssize_t)text.size() && fsync(fd) == 0;
+    close(fd);
+    if (!ok || rename(tmp.c_str(), kEmuDefaultsPath) != 0) { unlink(tmp.c_str()); return false; }
+    mEmuDefaultsLoaded = false;   // read again at the next fallback
+    return true;
 }
 
 bool NanoMenu::emuCanRun(const XmbSystem& s) {

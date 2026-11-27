@@ -24,8 +24,9 @@
 //   the emulator definitions' Linux block), and an Android package is never installed here, so the
 //   ES-DE move and the app-mirror sync find no Android app to act for (LIBRARY-FORMAT.md 9, G6).
 // - imageDefaults: Linux's table of the image's default emulator per system (defaultEmulators()),
-//   only the entries whose core the image ships; Nano writes them into the device's store of
-//   defaults on its first run (OA-38).
+//   whole: Nano writes it into the device's store of defaults on its first run (OA-38), and a launch
+//   uses a default only when coreInstalled says the image ships its core (an image built without
+//   some of the cores, apps-alpha's, keeps every system's entry for a later image's cores).
 #pragma once
 
 #include <memory>

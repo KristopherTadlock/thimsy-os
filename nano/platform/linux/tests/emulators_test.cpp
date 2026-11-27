@@ -15,7 +15,7 @@
  */
 
 // The Linux Emulators (Emulators.h, W8-EMU): cores answered from a scratch core folder, every app
-// refused, and the image defaults filtered to the cores the folder holds.
+// refused, and the image defaults: Linux's whole table, each entry a core.
 
 #include "Emulators.h"
 
@@ -85,17 +85,18 @@ TEST_F(EmulatorsTest, NoAppIsInstalled) {
     EXPECT_TRUE(emus->appInstalled(""));
 }
 
-TEST_F(EmulatorsTest, ImageDefaultsAreTheShippedCores) {
-    EXPECT_TRUE(emus->imageDefaults().empty());
-    ship("pcsx_rearmed");
-    ship("snes9x");
-    std::set<std::string> systems;
-    for (const nanoplat::SystemEmulator& e : emus->imageDefaults()) {
-        systems.insert(e.system);
-        EXPECT_TRUE(e.package.empty()) << e.system;
-        EXPECT_TRUE(e.intent.empty()) << e.system;
+TEST_F(EmulatorsTest, ImageDefaultsAreLinuxsTable) {
+    // Whole, shipped or not: a launch asks coreInstalled before it uses one.
+    const std::vector<nanoplat::SystemEmulator> d = emus->imageDefaults();
+    ASSERT_EQ(d.size(), nanolinux::defaultEmulators().size());
+    for (size_t i = 0; i < d.size(); i++) {
+        EXPECT_EQ(d[i].system, nanolinux::defaultEmulators()[i].system);
+        EXPECT_EQ(d[i].coreSo, nanolinux::defaultEmulators()[i].coreSo);
+        EXPECT_TRUE(d[i].intent.empty()) << d[i].system;
     }
-    EXPECT_EQ(systems, (std::set<std::string>{"psx", "snes"}));
+    ship("pcsx_rearmed");
+    for (const nanoplat::SystemEmulator& e : d)
+        if (e.system == "psx") EXPECT_TRUE(emus->coreInstalled(e.coreSo));
 }
 
 TEST(EmulatorsTable, EveryEntryIsACoreInNanosNames) {

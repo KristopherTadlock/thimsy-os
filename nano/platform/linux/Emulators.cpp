@@ -54,12 +54,7 @@ class LinuxEmulators : public nanoplat::Emulators {
 
     bool appInstalled(const std::string& package) override { return package.empty(); }
 
-    std::vector<nanoplat::SystemEmulator> imageDefaults() override {
-        std::vector<nanoplat::SystemEmulator> out;
-        for (const nanoplat::SystemEmulator& e : defaultEmulators())
-            if (coreInstalled(e.coreSo)) out.push_back(e);
-        return out;
-    }
+    std::vector<nanoplat::SystemEmulator> imageDefaults() override { return defaultEmulators(); }
 
  private:
     const EmulatorsOptions options_;

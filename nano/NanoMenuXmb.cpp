@@ -340,6 +340,7 @@ void NanoMenu::initXmbSystems() {
     if (!loadSystemsConfig()) {
         seedSystemsConfig();
     }
+    seedEmuDefaults();   // OA-38: once, on the first run
 
     for (auto& sys : mXmbSystems) {
         // Legacy per-system prop overrides keyed on the original built-in
@@ -923,6 +924,41 @@ void NanoMenu::seedSystemsConfig() {
     ALOGI("NanoMenu: seeding nano_systems.json from %d built-in defaults",
           kNumXmbSystemDefs);
     saveSystemsConfig();
+}
+
+// OA-38: the image's default emulator for each system, written into the device's store
+// (nano_emu_defaults.json, which emuApplyDefault reads) the first time Nano runs, as OA-35 stores the
+// theme's defaults: a later release that changes a default reaches new installs only. They are the
+// platform's own table when it has one (Linux's), else the build's systems, else Nano's built-in table.
+void NanoMenu::seedEmuDefaults() {
+    if (emuDefaultsStored()) return;
+    std::map<std::string, EmuDefault> defaults;
+    for (const auto& e : nanoplat::get().emulators->imageDefaults())
+        if (!e.system.empty() && e.coreSo.empty() != e.package.empty())
+            defaults.emplace(e.system, EmuDefault{e.coreSo, e.package, e.intent});
+    const char* from = "the platform's table";
+    if (defaults.empty()) {
+        std::vector<XmbSystem> image;
+        if (loadBundledSystems(&image)) {
+            from = nanosys::kBundledSystems;
+            for (const auto& s : image) {
+                const std::string key = s.romDir.empty() ? s.id : s.romDir;
+                if (key.empty()) continue;
+                if (s.isStandalone()) defaults.emplace(key, EmuDefault{std::string(), s.launchPkg, s.launchIntent});
+                else if (s.launchType == XLT_LIBRETRO_CORE && !s.coreSo.empty())
+                    defaults.emplace(key, EmuDefault{s.coreSo, std::string(), std::string()});
+            }
+        } else {
+            from = "the built-in systems";
+            for (int i = 0; i < kNumXmbSystemDefs; i++) {
+                const SystemDef& d = kXmbSystemDefs[i];
+                if (d.launchPkg[0]) defaults.emplace(d.romDir, EmuDefault{std::string(), d.launchPkg, d.launchIntent});
+                else if (d.coreSo[0]) defaults.emplace(d.romDir, EmuDefault{d.coreSo, std::string(), std::string()});
+            }
+        }
+    }
+    if (emuDefaultsSave(defaults))
+        ALOGI("NanoMenu: the image's default emulators stored (%zu systems, from %s)", defaults.size(), from);
 }
 
 void NanoMenu::saveSystemsConfig(bool quiet) {

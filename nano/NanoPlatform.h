@@ -451,7 +451,7 @@ class Emulators {
     virtual bool coreInstalled(const std::string& coreSo) = 0;
     // The standalone emulator `package` can run here. True for "": no app to check.
     virtual bool appInstalled(const std::string& package) = 0;
-    // The image's default emulator for each system it ships one for, which Nano writes into the
+    // The image's default emulator for each system it has one for, which Nano writes into the
     // device's store of defaults on its first run (OA-38). Empty when the image's defaults are the
     // systems shared code already reads: the firmware's are the build's nano_systems.json, else
     // Nano's built-in table.

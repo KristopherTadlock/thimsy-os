@@ -456,6 +456,7 @@ private:
     // writes it; saveSystemsConfig serializes mXmbSystems back atomically.
     bool loadSystemsConfig();
     void seedSystemsConfig();
+    void seedEmuDefaults();   // OA-38: the image's default emulators into the device's store, once
     void saveSystemsConfig(bool quiet = false);   // quiet: no banner when it cannot be saved now
     // Cross-process config coherence: nanosecond mtime stamp of
     // nano_systems.json (-1 when absent) and the stamp of this process's last
@@ -3684,6 +3685,8 @@ private:
     void loadEmuDefaults();
     bool emuCanRun(const XmbSystem& s);       // the launch guard's test: its core, or its app
     bool emuApplyDefault(XmbSystem& s);       // s's launch fields become its default, when that can run
+    bool emuDefaultsStored();                 // the store exists (seeded), readable or not
+    bool emuDefaultsSave(const std::map<std::string, EmuDefault>& defaults);
     int recentSystemIndex(const XmbRecentEntry& re) const;   // the system a recent entry belongs to, -1 if none
     void openGameEmulatorPicker(int sysIdx, const std::string& romPath);
     std::string mGameEmuRom;                    // the game the emulator picker is open for
