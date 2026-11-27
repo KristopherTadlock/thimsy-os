@@ -86,6 +86,12 @@ nanoarc::Format comicFormat(const std::string& path) {
     return nanoarc::Format::None;
 }
 
+nanoarc::Format comicFormat(const std::string& path, nanoarc::Format content) {
+    const nanoarc::Format byName = comicFormat(path);
+    if (byName == nanoarc::Format::None) return byName;
+    return content != nanoarc::Format::None ? content : byName;
+}
+
 bool unsupportedFormat(nanoarc::Err err) {
     return err == nanoarc::Err::Rar || err == nanoarc::Err::Unsupported;
 }

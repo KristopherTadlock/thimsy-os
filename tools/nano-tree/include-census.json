@@ -1508,6 +1508,7 @@
     "lib:gles:GLES2/gl2.h",
     "lib:libpng:png.h",
     "lib:tinyxml2:tinyxml2.h",
+    "nano:NanoArchive.h",
     "nano:NanoEsdeSystemName.h",
     "nano:NanoEsdeTheme.h",
     "nano:NanoI18n.h",

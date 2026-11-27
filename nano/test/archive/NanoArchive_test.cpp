@@ -158,6 +158,32 @@ TEST(ArchiveFormat, ByExtension) {
     EXPECT_EQ(nanoarc::formatFromName("d.txt"), nanoarc::Format::None);
 }
 
+Format magic(const std::string& head) {
+    return nanoarc::formatFromMagic(reinterpret_cast<const uint8_t*>(head.data()), head.size());
+}
+
+TEST(ArchiveFormat, ByMagic) {
+    EXPECT_EQ(magic(std::string("PK\x03\x04\x14\x00", 6)), Format::Zip);
+    EXPECT_EQ(magic(std::string("PK\x05\x06", 4)), Format::Zip);   // an empty zip
+    EXPECT_EQ(magic(std::string("7z\xBC\xAF\x27\x1C\x00\x04", 8)), Format::SevenZip);
+    EXPECT_EQ(magic(std::string("Rar!\x1A\x07\x00", 7)), Format::Rar);       // RAR 4
+    EXPECT_EQ(magic(std::string("Rar!\x1A\x07\x01\x00", 8)), Format::Rar);   // RAR 5
+    // Too short, or close but not it.
+    EXPECT_EQ(magic(std::string("PK\x03", 3)), Format::None);
+    EXPECT_EQ(magic(std::string("7z\xBC\xAF\x27", 5)), Format::None);
+    EXPECT_EQ(magic(std::string("Rar!\x1A\x08", 6)), Format::None);
+    EXPECT_EQ(magic("%PDF-1.4"), Format::None);
+    EXPECT_EQ(magic(""), Format::None);
+    EXPECT_EQ(nanoarc::formatFromMagic(nullptr, 0), Format::None);
+}
+
+TEST(ArchiveFormat, WhatThisBackEndReads) {
+    EXPECT_TRUE(nanoarc::canRead(Format::Zip));
+    EXPECT_TRUE(nanoarc::canRead(Format::SevenZip));
+    EXPECT_FALSE(nanoarc::canRead(Format::Rar));
+    EXPECT_FALSE(nanoarc::canRead(Format::None));
+}
+
 TEST_F(ArchiveTest, ZipIndexAndExtract) {
     const std::string a = zip("good.zip", {
         {"top.txt", "hello top\n"},
@@ -530,6 +556,128 @@ TEST_F(ArchiveTest, ComicRarIsRefusedAsUnsupported) {
     EXPECT_EQ(nanoarc::readEntry(cbr, Format::Rar, "p1.jpg", kMiB, kMiB).err, Err::Rar);
 }
 
+TEST_F(ArchiveTest, FormatFromContent) {
+    EXPECT_EQ(nanoarc::formatFromContent(zip("Game.cbr", {{"p1.jpg", "1"}})), Format::Zip);
+    EXPECT_EQ(nanoarc::formatFromContent(zip("empty.cbz", {})), Format::Zip);
+    EXPECT_EQ(nanoarc::formatFromContent(nanotest::fixture("archive/good.7z")), Format::SevenZip);
+    writeFile(tmp + "/rar4.cbz", std::string("Rar!\x1a\x07\x00", 7));
+    EXPECT_EQ(nanoarc::formatFromContent(tmp + "/rar4.cbz"), Format::Rar);
+    writeFile(tmp + "/rar5.cbz", std::string("Rar!\x1a\x07\x01\x00", 8));
+    EXPECT_EQ(nanoarc::formatFromContent(tmp + "/rar5.cbz"), Format::Rar);
+    writeFile(tmp + "/short.cbz", "PK");
+    EXPECT_EQ(nanoarc::formatFromContent(tmp + "/short.cbz"), Format::None);
+    writeFile(tmp + "/text.cbz", "not an archive at all");
+    EXPECT_EQ(nanoarc::formatFromContent(tmp + "/text.cbz"), Format::None);
+    EXPECT_EQ(nanoarc::formatFromContent(tmp + "/missing.cbz"), Format::None);
+    EXPECT_EQ(nanoarc::formatFromContent(tmp), Format::None);   // a folder
+}
+
+TEST_F(ArchiveTest, OpenArchiveReadsEntriesWithoutReopening) {
+    const std::string a = zip("Game.cbz", {
+        {"p1.jpg", "one"},
+        {"p2.jpg", std::string(5000, 'b')},
+        {"dir/", "", false, -1, 0x0800, 040755},
+    });
+    Index idx;
+    const nanoarc::ArchivePtr arc(nanoarc::openArchive(a, Format::Zip, &idx));
+    ASSERT_TRUE(arc);
+    ASSERT_EQ(idx.err, Err::None);
+    EXPECT_TRUE(hasEntry(idx, "p1.jpg"));
+    EXPECT_TRUE(hasEntry(idx, "p2.jpg"));
+    // The same archive answers every read, in any order and more than once.
+    for (int round = 0; round < 2; round++) {
+        EntryData d = nanoarc::readEntry(arc.get(), "p2.jpg", kMiB, kMiB);
+        ASSERT_EQ(d.err, Err::None);
+        EXPECT_EQ(bytes(d), std::string(5000, 'b'));
+        d = nanoarc::readEntry(arc.get(), "p1.jpg", kMiB, kMiB);
+        ASSERT_EQ(d.err, Err::None);
+        EXPECT_EQ(bytes(d), "one");
+    }
+    // The rules hold as for a one-off read: the cap, missing files, folders.
+    EXPECT_EQ(nanoarc::readEntry(arc.get(), "p2.jpg", 4999, kMiB).err, Err::TooBig);
+    EXPECT_EQ(nanoarc::readEntry(arc.get(), "missing.jpg", kMiB, kMiB).err, Err::Open);
+    EXPECT_EQ(nanoarc::readEntry(arc.get(), "dir", kMiB, kMiB).err, Err::Open);
+    // A failed read leaves the archive usable.
+    EXPECT_EQ(bytes(nanoarc::readEntry(arc.get(), "p1.jpg", kMiB, kMiB)), "one");
+    // No archive: nothing to read.
+    EXPECT_EQ(nanoarc::readEntry(nullptr, "p1.jpg", kMiB, kMiB).err, Err::Open);
+    nanoarc::closeArchive(nullptr);
+}
+
+TEST_F(ArchiveTest, OpenArchiveFailures) {
+    Index idx;
+    idx.entries.push_back(nanoarc::Entry());   // cleared by every open
+    EXPECT_EQ(nanoarc::openArchive(tmp + "/missing.cbz", Format::Zip, &idx), nullptr);
+    EXPECT_EQ(idx.err, Err::Open);
+    EXPECT_TRUE(idx.entries.empty());
+    const std::string cbr = tmp + "/Game.cbr";
+    writeFile(cbr, std::string("Rar!\x1a\x07\x00", 7));
+    EXPECT_EQ(nanoarc::openArchive(cbr, Format::Rar, &idx), nullptr);
+    EXPECT_EQ(idx.err, Err::Rar);
+    writeFile(tmp + "/junk.cbz", "not an archive at all");
+    EXPECT_EQ(nanoarc::openArchive(tmp + "/junk.cbz", Format::Zip, &idx), nullptr);
+    EXPECT_EQ(idx.err, Err::Corrupt);
+    EXPECT_EQ(nanoarc::openArchive(tmp + "/junk.cbz", Format::None, &idx), nullptr);
+    EXPECT_EQ(idx.err, Err::Open);
+}
+
+TEST_F(ArchiveTest, OpenSevenZipKeepsItsBlockBetweenReads) {
+    const std::string a = nanotest::fixture("archive/good.7z");
+    Index idx;
+    const nanoarc::ArchivePtr arc(nanoarc::openArchive(a, Format::SevenZip, &idx));
+    ASSERT_TRUE(arc);
+    std::string readme;
+    for (int i = 0; i < 50; i++) readme += "seven zip\n";
+    // Back and forth, as page turns go: each read is whole and right whether or not its block is
+    // the one already decoded.
+    for (int round = 0; round < 2; round++) {
+        EntryData d = nanoarc::readEntry(arc.get(), "readme.txt", kMiB, kMiB);
+        ASSERT_EQ(d.err, Err::None);
+        EXPECT_EQ(bytes(d), readme);
+        d = nanoarc::readEntry(arc.get(), "folder/inner.bin", kMiB, kMiB);
+        ASSERT_EQ(d.err, Err::None);
+        EXPECT_EQ(d.data.size(), 3000u);
+        d = nanoarc::readEntry(arc.get(), "empty.txt", kMiB, kMiB);
+        EXPECT_EQ(d.err, Err::None);
+        EXPECT_TRUE(d.data.empty());
+    }
+}
+
+// A comic book manual's format as the viewer picks it: the content first, then the extension.
+Format comicFormatOf(const std::string& path) {
+    return nanomanual::comicFormat(path, nanoarc::formatFromContent(path));
+}
+
+TEST_F(ArchiveTest, ComicCbrThatIsReallyAZipOpens) {
+    const std::string a = zip("Game.cbr", {{"p2.jpg", "2"}, {"p1.jpg", "1"}});
+    ASSERT_EQ(nanomanual::comicFormat(a), Format::Rar);   // its name says RAR
+    const Format fmt = comicFormatOf(a);
+    ASSERT_EQ(fmt, Format::Zip);
+    Index idx;
+    const nanoarc::ArchivePtr arc(nanoarc::openArchive(a, fmt, &idx));
+    ASSERT_TRUE(arc);
+    const std::vector<std::string> pages = nanomanual::comicPages(idx.entries);
+    ASSERT_EQ(pages, (std::vector<std::string>{"p1.jpg", "p2.jpg"}));
+    EXPECT_EQ(bytes(nanoarc::readEntry(arc.get(), pages[0], kMiB, kMiB)), "1");
+}
+
+TEST_F(ArchiveTest, ComicCbzThatIsReallyARarIsUnsupported) {
+    const std::string cbz = tmp + "/Game.cbz";
+    writeFile(cbz, std::string("Rar!\x1a\x07\x01\x00", 8));
+    const Format fmt = comicFormatOf(cbz);
+    ASSERT_EQ(fmt, Format::Rar);
+    EXPECT_FALSE(nanoarc::canRead(fmt));
+    Index idx;
+    EXPECT_EQ(nanoarc::openArchive(cbz, fmt, &idx), nullptr);
+    EXPECT_EQ(idx.err, Err::Rar);
+    EXPECT_TRUE(nanomanual::unsupportedFormat(idx.err));   // UNSUPPORTED MANUAL FORMAT
+    // Damaged content that announces nothing is still read by its extension, and says so.
+    writeFile(cbz, "not an archive at all");
+    ASSERT_EQ(comicFormatOf(cbz), Format::Zip);
+    EXPECT_EQ(nanoarc::openArchive(cbz, Format::Zip, &idx), nullptr);
+    EXPECT_FALSE(nanomanual::unsupportedFormat(idx.err));   // THIS MANUAL CAN'T BE OPENED
+}
+
 TEST_F(ArchiveTest, ComicManualPagesThroughNanoarc) {
     const std::string a = zip("Game.cbz", {
         {"Game/p10.jpg", "10"},
@@ -540,16 +688,18 @@ TEST_F(ArchiveTest, ComicManualPagesThroughNanoarc) {
         {"../p0.jpg", "evil"},
         {"Game/link.jpg", "/etc/passwd", false, -1, 0x0800, 0120777},
     });
-    const Format fmt = nanomanual::comicFormat(a);
+    const Format fmt = comicFormatOf(a);
     ASSERT_EQ(fmt, Format::Zip);
-    const Index idx = nanoarc::readIndex(a, fmt);
+    Index idx;
+    const nanoarc::ArchivePtr arc(nanoarc::openArchive(a, fmt, &idx));
+    ASSERT_TRUE(arc);
     ASSERT_EQ(idx.err, Err::None);
     const std::vector<std::string> pages = nanomanual::comicPages(idx.entries);
     ASSERT_EQ(pages, (std::vector<std::string>{"Game/P1.jpg", "Game/p2.jpg", "Game/p10.jpg"}));
     const char* const want[] = {"1", "2", "10"};
     for (size_t i = 0; i < pages.size(); i++) {
         const EntryData d =
-            nanoarc::readEntry(a, fmt, pages[i], nanomanual::kMaxPageBytes, nanomanual::kMaxBlockBytes);
+            nanoarc::readEntry(arc.get(), pages[i], nanomanual::kMaxPageBytes, nanomanual::kMaxBlockBytes);
         ASSERT_EQ(d.err, Err::None) << pages[i];
         EXPECT_EQ(bytes(d), want[i]);
     }

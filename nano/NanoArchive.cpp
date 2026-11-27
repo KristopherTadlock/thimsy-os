@@ -598,6 +598,10 @@ Err writeZip(FILE* f, const std::vector<ZipItem>& items, Progress& prog, std::st
 
 }  // namespace
 
+struct Archive {
+    std::unique_ptr<Source> src;
+};
+
 Format formatFromName(const std::string& name) {
     if (endsWithNoCase(name, ".zip")) return Format::Zip;
     if (endsWithNoCase(name, ".7z")) return Format::SevenZip;
@@ -605,44 +609,92 @@ Format formatFromName(const std::string& name) {
     return Format::None;
 }
 
+Format formatFromMagic(const uint8_t* p, size_t n) {
+    auto starts = [&](const char* sig, size_t len) { return n >= len && memcmp(p, sig, len) == 0; };
+    if (starts("PK\x03\x04", 4) || starts("PK\x05\x06", 4)) return Format::Zip;
+    if (starts("7z\xBC\xAF\x27\x1C", 6)) return Format::SevenZip;
+    if (starts("Rar!\x1A\x07", 6)) return Format::Rar;
+    return Format::None;
+}
+
+Format formatFromContent(const std::string& path) {
+    // O_NONBLOCK: a FIFO of that name must not hang the caller (the menu's media lookup).
+    unique_fd fd(open(path.c_str(), O_RDONLY | O_NONBLOCK | O_CLOEXEC));
+    struct stat st;
+    if (!fd.ok() || fstat(fd.get(), &st) != 0 || !S_ISREG(st.st_mode)) return Format::None;
+    uint8_t head[8];
+    size_t got = 0;
+    while (got < sizeof(head)) {
+        const ssize_t n = read(fd.get(), head + got, sizeof(head) - got);
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) break;
+        got += (size_t)n;
+    }
+    return formatFromMagic(head, got);
+}
+
+// The formats makeSource has a Source for.
+bool canRead(Format fmt) { return fmt == Format::Zip || fmt == Format::SevenZip; }
+
 Index readIndex(const std::string& archive) { return readIndex(archive, formatFromName(archive)); }
 
 Index readIndex(const std::string& archive, Format fmt) {
     Index idx;
-    std::unique_ptr<Source> src;
-    if ((idx.err = makeSource(fmt, &src)) != Err::None) return idx;
-    if ((idx.err = src->open(archive, nullptr)) != Err::None) return idx;
-    for (const RawEntry& e : src->entries()) {
+    closeArchive(openArchive(archive, fmt, &idx));
+    return idx;
+}
+
+Archive* openArchive(const std::string& archive, Format fmt, Index* idx) {
+    *idx = Index();
+    std::unique_ptr<Archive> a(new Archive());
+    if ((idx->err = makeSource(fmt, &a->src)) != Err::None) return nullptr;
+    if ((idx->err = a->src->open(archive, nullptr)) != Err::None) return nullptr;
+    for (const RawEntry& e : a->src->entries()) {
         Entry out;
         if (cleanName(e.name, &out.path) != Name::Ok) continue;
         out.isDir = e.isDir;
         out.isLink = e.isLink;
         out.size = e.isDir ? 0 : e.size;
-        idx.entries.push_back(std::move(out));
+        idx->entries.push_back(std::move(out));
     }
-    return idx;
+    return a.release();
 }
 
-EntryData readEntry(const std::string& archive, Format fmt, const std::string& inner, uint64_t maxBytes,
-                    uint64_t maxBlock) {
+void closeArchive(Archive* a) { delete a; }
+
+EntryData readEntry(Archive* a, const std::string& inner, uint64_t maxBytes, uint64_t maxBlock) {
     EntryData res;
-    std::unique_ptr<Source> src;
-    if ((res.err = makeSource(fmt, &src)) != Err::None) return res;
-    if ((res.err = src->open(archive, nullptr)) != Err::None) return res;
+    if (!a) {
+        res.err = Err::Open;
+        return res;
+    }
+    Source& src = *a->src;
     // The first file of that name, as readIndex lists it; a folder of the same name is not it.
-    for (const RawEntry& e : src->entries()) {
+    for (const RawEntry& e : src.entries()) {
         std::string clean;
         if (e.isDir || cleanName(e.name, &clean) != Name::Ok || clean != inner) continue;
         if (e.isLink) res.err = Err::Link;
         else if (e.encrypted) res.err = Err::Encrypted;
         else if (e.unsupported) res.err = Err::Method;
         else if (e.size > maxBytes) res.err = Err::TooBig;
-        else if (src->blockSize(e) > std::min(maxBlock, k7zBlockCap)) res.err = Err::BlockTooBig;
-        else if ((res.err = src->load(e, &res.data)) != Err::None) res.data.clear();
+        else if (src.blockSize(e) > std::min(maxBlock, k7zBlockCap)) res.err = Err::BlockTooBig;
+        else if ((res.err = src.load(e, &res.data)) != Err::None) res.data.clear();
         return res;
     }
     res.err = Err::Open;
     return res;
+}
+
+EntryData readEntry(const std::string& archive, Format fmt, const std::string& inner, uint64_t maxBytes,
+                    uint64_t maxBlock) {
+    Index idx;
+    const ArchivePtr a(openArchive(archive, fmt, &idx));
+    if (!a) {
+        EntryData res;
+        res.err = idx.err;
+        return res;
+    }
+    return readEntry(a.get(), inner, maxBytes, maxBlock);
 }
 
 ExtractResult extract(const std::string& archive, const std::string& inner, const std::string& dest,

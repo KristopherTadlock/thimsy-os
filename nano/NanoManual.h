@@ -39,8 +39,13 @@ extern const char* const kManualExts[];
 enum class Kind { None, Pdf, Comic };
 Kind kindOf(const std::string& path);   // by extension, in any case
 
-// The archive format a comic book manual is read as: .cbz Zip, .cb7 SevenZip, .cbr Rar; else None.
+// The archive format a comic book manual's extension names: .cbz Zip, .cb7 SevenZip, .cbr Rar; else None.
 nanoarc::Format comicFormat(const std::string& path);
+// The format a comic book manual is read as: what its first bytes announce (content, from
+// nanoarc::formatFromContent) when they announce one, so a .cbz that is really a RAR is refused as a RAR
+// and a .cbr that is really a zip opens; else what its extension names. None when path is not a comic
+// book manual's name, whatever the content.
+nanoarc::Format comicFormat(const std::string& path, nanoarc::Format content);
 
 // An archive the reader can't open because of its format, not its content: a RAR where nanoarc has
 // no RAR reader, or a 7z whose file list needs a method the decoder lacks.

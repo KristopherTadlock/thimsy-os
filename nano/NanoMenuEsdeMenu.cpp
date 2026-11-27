@@ -1049,8 +1049,9 @@ void NanoMenu::esdeViewerOpen(int sysIdx, int romIdx) {
         mEsdeViewerTypes.push_back(t.label);
     }
     mEsdeViewerManual = esdeGameMediaPath(rom, "manual");
-    // The reader opens PDFs and comic book archives (OA-42); one whose format the archive reader
-    // can't open (a .cbr on Android) says so when opened.
+    // The reader opens PDFs and comic book archives (OA-42). esdeGameMediaPath prefers a manual it
+    // can open, so one whose format the archive reader can't open (a .cbr on Android) is offered
+    // only when the game has no other, and says so when opened.
     if (nanomanual::kindOf(mEsdeViewerManual) == nanomanual::Kind::None) mEsdeViewerManual.clear();
     mEsdeViewerVideo = esdeGameMediaPath(rom, "video");
     esdeEnsureGamelistLoaded(sysIdx, kGlWait);

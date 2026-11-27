@@ -16,8 +16,9 @@
 // PDFium renders pages on a worker thread; the render thread uploads them as textures and keeps
 // the current page and its neighbours. The worker holds its own reference to the shared state, so
 // closing never waits for a page that is still rendering.
-// A comic book manual (.cbz, .cb7, .cbr; OA-42) is shown the same way: its worker reads each page's
-// image through nanoarc and decodes it with AImageDecoder instead (NanoManual.h).
+// A comic book manual (.cbz, .cb7, .cbr; OA-42) is shown the same way: its worker keeps the archive
+// open through nanoarc, reads each page's image from it and decodes it with AImageDecoder instead
+// (NanoManual.h).
 
 #include "NanoMenu.h"
 #include "NanoI18n.h"          // trDyn
@@ -44,13 +45,13 @@ bool gPdfiumInit = false;
 constexpr int kPdfMaxDim = 4096;
 constexpr size_t kPdfMaxTextures = 4;
 
-// One page of a comic book manual: its image read from the archive and decoded, opaque on white like
-// a PDF page, at the size the view's zoom asks for (nanomanual::pageSize). False when the page can't
-// be read or decoded; the viewer then shows it as a page that can't be shown.
-bool comicPage(const std::string& path, nanoarc::Format fmt, const std::string& entry, int zoom, int boxW,
-               int boxH, int* outW, int* outH, std::vector<uint8_t>* out) {
+// One page of a comic book manual: its image read from the open archive and decoded, opaque on white
+// like a PDF page, at the size the view's zoom asks for (nanomanual::pageSize). False when the page
+// can't be read or decoded; the viewer then shows it as a page that can't be shown.
+bool comicPage(nanoarc::Archive* arc, const std::string& entry, int zoom, int boxW, int boxH, int* outW,
+               int* outH, std::vector<uint8_t>* out) {
     const nanoarc::EntryData bytes =
-        nanoarc::readEntry(path, fmt, entry, nanomanual::kMaxPageBytes, nanomanual::kMaxBlockBytes);
+        nanoarc::readEntry(arc, entry, nanomanual::kMaxPageBytes, nanomanual::kMaxBlockBytes);
     if (bytes.err != nanoarc::Err::None || bytes.data.empty()) return false;
     AImageDecoder* dec = nullptr;   // reads from bytes, which outlives it
     if (AImageDecoder_createFromBuffer(bytes.data.data(), bytes.data.size(), &dec) != ANDROID_IMAGE_DECODER_SUCCESS
@@ -129,16 +130,20 @@ void NanoMenu::pdfOpen(const std::string& path) {
     mDisplayDirty = true;
     if (kind == nanomanual::Kind::Comic) {
         // The pages are the archive's images in natural order, read and decoded one at a time as
-        // the view asks for them. A format nanoarc can't open (RAR where it has no RAR reader)
-        // says so.
+        // the view asks for them. The format is the one the file's content announces, else its
+        // extension's; one nanoarc can't open (RAR where it has no RAR reader) says so. The archive
+        // stays open until the worker ends, so a page turn does not open it again and a 7z decodes
+        // a solid block once for all the pages in it (its block stays held, within kMaxBlockBytes).
         std::thread([s, path] {
-            const nanoarc::Format fmt = nanomanual::comicFormat(path);
+            const nanoarc::Format fmt = nanomanual::comicFormat(path, nanoarc::formatFromContent(path));
             nanoarc::Err err = nanoarc::Err::None;
             std::vector<std::string> pages;
+            nanoarc::ArchivePtr arc;
             {
-                const nanoarc::Index idx = nanoarc::readIndex(path, fmt);
+                nanoarc::Index idx;
+                arc.reset(nanoarc::openArchive(path, fmt, &idx));
                 err = idx.err;
-                if (err == nanoarc::Err::None) pages = nanomanual::comicPages(idx.entries);
+                if (arc) pages = nanomanual::comicPages(idx.entries);
             }
             const int count = (int)pages.size();
             {
@@ -161,7 +166,7 @@ void NanoMenu::pdfOpen(const std::string& path) {
                 }
                 PdfShared::Res out{r.page, r.zoom, 0, 0, {}};
                 if (r.page >= 0 && r.page < count)
-                    comicPage(path, fmt, pages[(size_t)r.page], r.zoom, r.w, r.h, &out.w, &out.h, &out.px);
+                    comicPage(arc.get(), pages[(size_t)r.page], r.zoom, r.w, r.h, &out.w, &out.h, &out.px);
                 std::lock_guard<std::mutex> lk(s->mu);
                 s->busyPage = s->busyZoom = -1;
                 if (!s->quit) s->results.push_back(std::move(out));

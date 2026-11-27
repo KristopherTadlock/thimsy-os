@@ -4106,10 +4106,10 @@ index 00000000000..8fde7ba66b0
 +}  // namespace android
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoArchive.cpp b/frameworks/base/cmds/gammaos-nano/NanoArchive.cpp
 new file mode 100644
-index 00000000000..8af44dbc886
+index 00000000000..b1c1cbd9033
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/NanoArchive.cpp
-@@ -0,0 +1,904 @@
+@@ -0,0 +1,956 @@
 +#define LOG_TAG "NanoArchive"
 +
 +#include "NanoArchive.h"
@@ -4710,6 +4710,10 @@ index 00000000000..8af44dbc886
 +
 +}  // namespace
 +
++struct Archive {
++    std::unique_ptr<Source> src;
++};
++
 +Format formatFromName(const std::string& name) {
 +    if (endsWithNoCase(name, ".zip")) return Format::Zip;
 +    if (endsWithNoCase(name, ".7z")) return Format::SevenZip;
@@ -4717,44 +4721,92 @@ index 00000000000..8af44dbc886
 +    return Format::None;
 +}
 +
++Format formatFromMagic(const uint8_t* p, size_t n) {
++    auto starts = [&](const char* sig, size_t len) { return n >= len && memcmp(p, sig, len) == 0; };
++    if (starts("PK\x03\x04", 4) || starts("PK\x05\x06", 4)) return Format::Zip;
++    if (starts("7z\xBC\xAF\x27\x1C", 6)) return Format::SevenZip;
++    if (starts("Rar!\x1A\x07", 6)) return Format::Rar;
++    return Format::None;
++}
++
++Format formatFromContent(const std::string& path) {
++    // O_NONBLOCK: a FIFO of that name must not hang the caller (the menu's media lookup).
++    unique_fd fd(open(path.c_str(), O_RDONLY | O_NONBLOCK | O_CLOEXEC));
++    struct stat st;
++    if (!fd.ok() || fstat(fd.get(), &st) != 0 || !S_ISREG(st.st_mode)) return Format::None;
++    uint8_t head[8];
++    size_t got = 0;
++    while (got < sizeof(head)) {
++        const ssize_t n = read(fd.get(), head + got, sizeof(head) - got);
++        if (n < 0 && errno == EINTR) continue;
++        if (n <= 0) break;
++        got += (size_t)n;
++    }
++    return formatFromMagic(head, got);
++}
++
++// The formats makeSource has a Source for.
++bool canRead(Format fmt) { return fmt == Format::Zip || fmt == Format::SevenZip; }
++
 +Index readIndex(const std::string& archive) { return readIndex(archive, formatFromName(archive)); }
 +
 +Index readIndex(const std::string& archive, Format fmt) {
 +    Index idx;
-+    std::unique_ptr<Source> src;
-+    if ((idx.err = makeSource(fmt, &src)) != Err::None) return idx;
-+    if ((idx.err = src->open(archive, nullptr)) != Err::None) return idx;
-+    for (const RawEntry& e : src->entries()) {
++    closeArchive(openArchive(archive, fmt, &idx));
++    return idx;
++}
++
++Archive* openArchive(const std::string& archive, Format fmt, Index* idx) {
++    *idx = Index();
++    std::unique_ptr<Archive> a(new Archive());
++    if ((idx->err = makeSource(fmt, &a->src)) != Err::None) return nullptr;
++    if ((idx->err = a->src->open(archive, nullptr)) != Err::None) return nullptr;
++    for (const RawEntry& e : a->src->entries()) {
 +        Entry out;
 +        if (cleanName(e.name, &out.path) != Name::Ok) continue;
 +        out.isDir = e.isDir;
 +        out.isLink = e.isLink;
 +        out.size = e.isDir ? 0 : e.size;
-+        idx.entries.push_back(std::move(out));
++        idx->entries.push_back(std::move(out));
 +    }
-+    return idx;
++    return a.release();
 +}
 +
-+EntryData readEntry(const std::string& archive, Format fmt, const std::string& inner, uint64_t maxBytes,
-+                    uint64_t maxBlock) {
++void closeArchive(Archive* a) { delete a; }
++
++EntryData readEntry(Archive* a, const std::string& inner, uint64_t maxBytes, uint64_t maxBlock) {
 +    EntryData res;
-+    std::unique_ptr<Source> src;
-+    if ((res.err = makeSource(fmt, &src)) != Err::None) return res;
-+    if ((res.err = src->open(archive, nullptr)) != Err::None) return res;
++    if (!a) {
++        res.err = Err::Open;
++        return res;
++    }
++    Source& src = *a->src;
 +    // The first file of that name, as readIndex lists it; a folder of the same name is not it.
-+    for (const RawEntry& e : src->entries()) {
++    for (const RawEntry& e : src.entries()) {
 +        std::string clean;
 +        if (e.isDir || cleanName(e.name, &clean) != Name::Ok || clean != inner) continue;
 +        if (e.isLink) res.err = Err::Link;
 +        else if (e.encrypted) res.err = Err::Encrypted;
 +        else if (e.unsupported) res.err = Err::Method;
 +        else if (e.size > maxBytes) res.err = Err::TooBig;
-+        else if (src->blockSize(e) > std::min(maxBlock, k7zBlockCap)) res.err = Err::BlockTooBig;
-+        else if ((res.err = src->load(e, &res.data)) != Err::None) res.data.clear();
++        else if (src.blockSize(e) > std::min(maxBlock, k7zBlockCap)) res.err = Err::BlockTooBig;
++        else if ((res.err = src.load(e, &res.data)) != Err::None) res.data.clear();
 +        return res;
 +    }
 +    res.err = Err::Open;
 +    return res;
++}
++
++EntryData readEntry(const std::string& archive, Format fmt, const std::string& inner, uint64_t maxBytes,
++                    uint64_t maxBlock) {
++    Index idx;
++    const ArchivePtr a(openArchive(archive, fmt, &idx));
++    if (!a) {
++        EntryData res;
++        res.err = idx.err;
++        return res;
++    }
++    return readEntry(a.get(), inner, maxBytes, maxBlock);
 +}
 +
 +ExtractResult extract(const std::string& archive, const std::string& inner, const std::string& dest,
@@ -5016,10 +5068,10 @@ index 00000000000..8af44dbc886
 +}  // namespace nanoarc
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoArchive.h b/frameworks/base/cmds/gammaos-nano/NanoArchive.h
 new file mode 100644
-index 00000000000..a6e44e037f2
+index 00000000000..36296f52979
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/NanoArchive.h
-@@ -0,0 +1,103 @@
+@@ -0,0 +1,129 @@
 +// Archive reading, extraction and zip creation for the File Explorer.
 +//
 +// Zip goes through libziparchive (read) and ZipWriter (create, deflate); 7z through the LZMA SDK
@@ -5034,8 +5086,10 @@ index 00000000000..a6e44e037f2
 +
 +#pragma once
 +
++#include <stddef.h>
 +#include <stdint.h>
 +#include <atomic>
++#include <memory>
 +#include <string>
 +#include <vector>
 +
@@ -5043,10 +5097,17 @@ index 00000000000..a6e44e037f2
 +
 +enum class Format { None, Zip, SevenZip, Rar };
 +Format formatFromName(const std::string& name);   // by extension
++// The format an archive's first bytes announce: zip ("PK\3\4", or "PK\5\6" for an empty one), 7z
++// ("7z\xBC\xAF\x27\x1C") or RAR ("Rar!\x1A\x07", RAR 4 and 5); None for anything else, or too few bytes.
++Format formatFromMagic(const uint8_t* p, size_t n);
++// The same for a file's first bytes; None when it is not a regular file or can't be read.
++Format formatFromContent(const std::string& path);
++// Whether this back end reads the format: zip and 7z. It has no RAR reader, so RAR is refused (Err::Rar).
++bool canRead(Format fmt);
 +
 +enum class Err {
 +    None,
-+    Open,          // the archive or a source could not be opened
++    Open,          // the archive or a source could not be opened; readEntry: no such file in it
 +    Corrupt,       // damaged, not a valid archive, or an entry did not match its declared size
 +    NameEncoding,  // a zip whose names are not UTF-8 (CP437, Shift-JIS...), which libziparchive refuses
 +    Unsupported,   // a 7z whose file list needs a method the decoder lacks (usually encrypted names)
@@ -5060,7 +5121,7 @@ index 00000000000..a6e44e037f2
 +    Write,
 +    Read,
 +    NoFreeName,
-+    TooBig,        // over ZipWriter's limits (no zip64): 4 GB, 65,535 entries
++    TooBig,        // over ZipWriter's limits (no zip64): 4 GB, 65,535 entries; readEntry: over maxBytes
 +    BadName,       // a name ZipWriter cannot store (not valid UTF-8)
 +    TmpfsDest,     // the zip would land on a RAM-backed folder (a storage root or a share's parent)
 +    Link,          // Compress was asked to zip a link
@@ -5093,6 +5154,23 @@ index 00000000000..a6e44e037f2
 +struct EntryData { Err err = Err::None; std::vector<uint8_t> data; };
 +EntryData readEntry(const std::string& archive, Format fmt, const std::string& inner, uint64_t maxBytes,
 +                    uint64_t maxBlock);
++
++// An archive kept open to read its entries one at a time, for as long as the caller shows them (a
++// comic book manual's pages), so a read does not open the archive again: a 7z keeps the last solid
++// block it decoded, and the next entry in that block is read without decoding it again. Opaque; used
++// by one thread at a time.
++struct Archive;
++// Opens the archive as fmt and lists its entries in *idx as readIndex does; nullptr, with idx->err
++// set, when it can't be opened.
++Archive* openArchive(const std::string& archive, Format fmt, Index* idx);
++// One file entry of an open archive into memory, by the rules of readEntry above; Open for a null one.
++EntryData readEntry(Archive* a, const std::string& inner, uint64_t maxBytes, uint64_t maxBlock);
++// Closes the archive and frees what it holds (a 7z's decoded block). A null one is fine.
++void closeArchive(Archive* a);
++struct ArchiveCloser {
++    void operator()(Archive* a) const { closeArchive(a); }
++};
++using ArchivePtr = std::unique_ptr<Archive, ArchiveCloser>;
 +
 +struct ExtractResult {
 +    Err err = Err::None;
@@ -25232,10 +25310,10 @@ index 00000000000..dafc3384a6f
 +}  // namespace android
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoManual.cpp b/frameworks/base/cmds/gammaos-nano/NanoManual.cpp
 new file mode 100644
-index 00000000000..2433b27ef4a
+index 00000000000..05326eace72
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/NanoManual.cpp
-@@ -0,0 +1,131 @@
+@@ -0,0 +1,137 @@
 +/*
 + * Copyright (C) 2026 The Thimsy OS Project
 + *
@@ -25324,6 +25402,12 @@ index 00000000000..2433b27ef4a
 +    return nanoarc::Format::None;
 +}
 +
++nanoarc::Format comicFormat(const std::string& path, nanoarc::Format content) {
++    const nanoarc::Format byName = comicFormat(path);
++    if (byName == nanoarc::Format::None) return byName;
++    return content != nanoarc::Format::None ? content : byName;
++}
++
 +bool unsupportedFormat(nanoarc::Err err) {
 +    return err == nanoarc::Err::Rar || err == nanoarc::Err::Unsupported;
 +}
@@ -25369,10 +25453,10 @@ index 00000000000..2433b27ef4a
 +}  // namespace nanomanual
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoManual.h b/frameworks/base/cmds/gammaos-nano/NanoManual.h
 new file mode 100644
-index 00000000000..f435016afd4
+index 00000000000..474ad22bed0
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/NanoManual.h
-@@ -0,0 +1,77 @@
+@@ -0,0 +1,82 @@
 +/*
 + * Copyright (C) 2026 The Thimsy OS Project
 + *
@@ -25414,8 +25498,13 @@ index 00000000000..f435016afd4
 +enum class Kind { None, Pdf, Comic };
 +Kind kindOf(const std::string& path);   // by extension, in any case
 +
-+// The archive format a comic book manual is read as: .cbz Zip, .cb7 SevenZip, .cbr Rar; else None.
++// The archive format a comic book manual's extension names: .cbz Zip, .cb7 SevenZip, .cbr Rar; else None.
 +nanoarc::Format comicFormat(const std::string& path);
++// The format a comic book manual is read as: what its first bytes announce (content, from
++// nanoarc::formatFromContent) when they announce one, so a .cbz that is really a RAR is refused as a RAR
++// and a .cbr that is really a zip opens; else what its extension names. None when path is not a comic
++// book manual's name, whatever the content.
++nanoarc::Format comicFormat(const std::string& path, nanoarc::Format content);
 +
 +// An archive the reader can't open because of its format, not its content: a RAR where nanoarc has
 +// no RAR reader, or a 7z whose file list needs a method the decoder lacks.
@@ -31103,7 +31192,7 @@ index 00000000000..00290e36aba
 +
 +#endif // GAMMAOS_NANO_MENU_DRM_BUFFERS_H
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoMenuEsdeMenu.cpp b/frameworks/base/cmds/gammaos-nano/NanoMenuEsdeMenu.cpp
-index 2d621760914..0500ba70b10 100644
+index 2d621760914..c6f33375332 100644
 --- a/frameworks/base/cmds/gammaos-nano/NanoMenuEsdeMenu.cpp
 +++ b/frameworks/base/cmds/gammaos-nano/NanoMenuEsdeMenu.cpp
 @@ -11,21 +11,32 @@
@@ -31771,7 +31860,7 @@ index 2d621760914..0500ba70b10 100644
      });
  }
  
-@@ -820,8 +1018,498 @@ void NanoMenu::esdeDlTick() {
+@@ -820,8 +1018,499 @@ void NanoMenu::esdeDlTick() {
      for (auto& e : mEsdeDlList)
          e.installed = access(("/data/system/nano_esde_themes/" + e.reponame + "/capabilities.xml").c_str(), F_OK) == 0
                     || access(("/system/etc/nano_esde_themes/" + e.reponame + "/capabilities.xml").c_str(), F_OK) == 0
@@ -31807,8 +31896,9 @@ index 2d621760914..0500ba70b10 100644
 +        mEsdeViewerTypes.push_back(t.label);
 +    }
 +    mEsdeViewerManual = esdeGameMediaPath(rom, "manual");
-+    // The reader opens PDFs and comic book archives (OA-42); one whose format the archive reader
-+    // can't open (a .cbr on Android) says so when opened.
++    // The reader opens PDFs and comic book archives (OA-42). esdeGameMediaPath prefers a manual it
++    // can open, so one whose format the archive reader can't open (a .cbr on Android) is offered
++    // only when the game has no other, and says so when opened.
 +    if (nanomanual::kindOf(mEsdeViewerManual) == nanomanual::Kind::None) mEsdeViewerManual.clear();
 +    mEsdeViewerVideo = esdeGameMediaPath(rom, "video");
 +    esdeEnsureGamelistLoaded(sysIdx, kGlWait);
@@ -51066,10 +51156,10 @@ index c6a8e9c9dc1..3743802d1a6 100644
  } // namespace android
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoMenuPdf.cpp b/frameworks/base/cmds/gammaos-nano/NanoMenuPdf.cpp
 new file mode 100644
-index 00000000000..f6d8e6f7f63
+index 00000000000..b0d12e1ec7f
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/NanoMenuPdf.cpp
-@@ -0,0 +1,492 @@
+@@ -0,0 +1,497 @@
 +/*
 + * Copyright (C) 2026 GammaOS
 + *
@@ -51088,8 +51178,9 @@ index 00000000000..f6d8e6f7f63
 +// PDFium renders pages on a worker thread; the render thread uploads them as textures and keeps
 +// the current page and its neighbours. The worker holds its own reference to the shared state, so
 +// closing never waits for a page that is still rendering.
-+// A comic book manual (.cbz, .cb7, .cbr; OA-42) is shown the same way: its worker reads each page's
-+// image through nanoarc and decodes it with AImageDecoder instead (NanoManual.h).
++// A comic book manual (.cbz, .cb7, .cbr; OA-42) is shown the same way: its worker keeps the archive
++// open through nanoarc, reads each page's image from it and decodes it with AImageDecoder instead
++// (NanoManual.h).
 +
 +#include "NanoMenu.h"
 +#include "NanoI18n.h"          // trDyn
@@ -51116,13 +51207,13 @@ index 00000000000..f6d8e6f7f63
 +constexpr int kPdfMaxDim = 4096;
 +constexpr size_t kPdfMaxTextures = 4;
 +
-+// One page of a comic book manual: its image read from the archive and decoded, opaque on white like
-+// a PDF page, at the size the view's zoom asks for (nanomanual::pageSize). False when the page can't
-+// be read or decoded; the viewer then shows it as a page that can't be shown.
-+bool comicPage(const std::string& path, nanoarc::Format fmt, const std::string& entry, int zoom, int boxW,
-+               int boxH, int* outW, int* outH, std::vector<uint8_t>* out) {
++// One page of a comic book manual: its image read from the open archive and decoded, opaque on white
++// like a PDF page, at the size the view's zoom asks for (nanomanual::pageSize). False when the page
++// can't be read or decoded; the viewer then shows it as a page that can't be shown.
++bool comicPage(nanoarc::Archive* arc, const std::string& entry, int zoom, int boxW, int boxH, int* outW,
++               int* outH, std::vector<uint8_t>* out) {
 +    const nanoarc::EntryData bytes =
-+        nanoarc::readEntry(path, fmt, entry, nanomanual::kMaxPageBytes, nanomanual::kMaxBlockBytes);
++        nanoarc::readEntry(arc, entry, nanomanual::kMaxPageBytes, nanomanual::kMaxBlockBytes);
 +    if (bytes.err != nanoarc::Err::None || bytes.data.empty()) return false;
 +    AImageDecoder* dec = nullptr;   // reads from bytes, which outlives it
 +    if (AImageDecoder_createFromBuffer(bytes.data.data(), bytes.data.size(), &dec) != ANDROID_IMAGE_DECODER_SUCCESS
@@ -51201,16 +51292,20 @@ index 00000000000..f6d8e6f7f63
 +    mDisplayDirty = true;
 +    if (kind == nanomanual::Kind::Comic) {
 +        // The pages are the archive's images in natural order, read and decoded one at a time as
-+        // the view asks for them. A format nanoarc can't open (RAR where it has no RAR reader)
-+        // says so.
++        // the view asks for them. The format is the one the file's content announces, else its
++        // extension's; one nanoarc can't open (RAR where it has no RAR reader) says so. The archive
++        // stays open until the worker ends, so a page turn does not open it again and a 7z decodes
++        // a solid block once for all the pages in it (its block stays held, within kMaxBlockBytes).
 +        std::thread([s, path] {
-+            const nanoarc::Format fmt = nanomanual::comicFormat(path);
++            const nanoarc::Format fmt = nanomanual::comicFormat(path, nanoarc::formatFromContent(path));
 +            nanoarc::Err err = nanoarc::Err::None;
 +            std::vector<std::string> pages;
++            nanoarc::ArchivePtr arc;
 +            {
-+                const nanoarc::Index idx = nanoarc::readIndex(path, fmt);
++                nanoarc::Index idx;
++                arc.reset(nanoarc::openArchive(path, fmt, &idx));
 +                err = idx.err;
-+                if (err == nanoarc::Err::None) pages = nanomanual::comicPages(idx.entries);
++                if (arc) pages = nanomanual::comicPages(idx.entries);
 +            }
 +            const int count = (int)pages.size();
 +            {
@@ -51233,7 +51328,7 @@ index 00000000000..f6d8e6f7f63
 +                }
 +                PdfShared::Res out{r.page, r.zoom, 0, 0, {}};
 +                if (r.page >= 0 && r.page < count)
-+                    comicPage(path, fmt, pages[(size_t)r.page], r.zoom, r.w, r.h, &out.w, &out.h, &out.px);
++                    comicPage(arc.get(), pages[(size_t)r.page], r.zoom, r.w, r.h, &out.w, &out.h, &out.px);
 +                std::lock_guard<std::mutex> lk(s->mu);
 +                s->busyPage = s->busyZoom = -1;
 +                if (!s->quit) s->results.push_back(std::move(out));
@@ -72766,10 +72861,10 @@ index 00000000000..351435ccbdb
 +}  // namespace nanosys
 +}  // namespace android
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoThemeEngine.cpp b/frameworks/base/cmds/gammaos-nano/NanoThemeEngine.cpp
-index 857edadb1e6..3520ab9f258 100644
+index 857edadb1e6..756ca1b71de 100644
 --- a/frameworks/base/cmds/gammaos-nano/NanoThemeEngine.cpp
 +++ b/frameworks/base/cmds/gammaos-nano/NanoThemeEngine.cpp
-@@ -13,13 +13,20 @@
+@@ -13,13 +13,21 @@
  
  #include "NanoMenu.h"
  #include "NanoEsdeTheme.h"
@@ -72779,6 +72874,7 @@ index 857edadb1e6..3520ab9f258 100644
  #include "NanoMenuShaders.h"   // FONT_CHAR_H
 +#include "NanoScraper.h"       // cacheKey (the ES-DE return position)
 +#include "NanoManual.h"        // nanomanual::kManualExts
++#include "NanoArchive.h"       // nanoarc: whether a comic book manual's format can be read
  #include <tinyxml2.h>          // parse ES-DE gamelist.xml for per-game metadata (matches the control)
  #include "nanosvg.h"           // vendored SVG parser (declarations; impl in libnanosvg_nano)
  #include "nanosvgrast.h"       // vendored SVG rasterizer
@@ -72790,7 +72886,7 @@ index 857edadb1e6..3520ab9f258 100644
  #include <android/bitmap.h>         // ANDROID_BITMAP_FORMAT_RGBA_8888
  #include <fcntl.h>                  // open() for AImageDecoder_createFromFd
  
-@@ -30,31 +37,45 @@
+@@ -30,31 +38,45 @@
  #include <log/log.h>
  #include <cutils/properties.h>
  #include <utils/SystemClock.h>   // uptimeMillis (carousel slide animation clock)
@@ -72842,7 +72938,7 @@ index 857edadb1e6..3520ab9f258 100644
          if (access((d + "/capabilities.xml").c_str(), F_OK) == 0) return d;
      }
      return "";
-@@ -74,101 +95,42 @@ static std::string esdeAssetPath(const char* sub, const std::string& file) {
+@@ -74,101 +96,42 @@ static std::string esdeAssetPath(const char* sub, const std::string& file) {
      return dataP;
  }
  
@@ -72977,7 +73073,7 @@ index 857edadb1e6..3520ab9f258 100644
  }
  
  // Build the ${system.*} variables ES-DE themes reference. system.fullName resolves to the ES-DE
-@@ -198,18 +160,9 @@ static std::map<std::string, std::string> esdeSysVars(const std::string& sysThem
+@@ -198,18 +161,9 @@ static std::map<std::string, std::string> esdeSysVars(const std::string& sysThem
  // (Title Case - lowercase then upper-case the first letter of each whitespace-delimited word,
  // matching Utils::String::toCapitalized). Any other value (incl. "none") leaves the text as-is.
  static void esdeLetterCase(std::string& s, const std::string& lc) {
@@ -72999,7 +73095,7 @@ index 857edadb1e6..3520ab9f258 100644
  }
  
  // A 1x1 white texture, created once. Lets a solid ES-DE colour band be drawn through the cover FX
-@@ -310,34 +263,385 @@ std::string NanoMenu::esdeEffectiveVariant(const std::string& selectedVariant, i
+@@ -310,34 +264,385 @@ std::string NanoMenu::esdeEffectiveVariant(const std::string& selectedVariant, i
      return selectedVariant;
  }
  
@@ -73392,7 +73488,7 @@ index 857edadb1e6..3520ab9f258 100644
          return;
      }
      // Pick a representative system's theme folder for the shared layout load.
-@@ -345,7 +649,7 @@ void NanoMenu::ensureEsdeTheme() {
+@@ -345,7 +650,7 @@ void NanoMenu::ensureEsdeTheme() {
      int repIdx = -1;
      for (int i = 0; i < (int)mXmbSystems.size(); i++) {
          if (!mXmbSystems[i].enabled) continue;
@@ -73401,7 +73497,7 @@ index 857edadb1e6..3520ab9f258 100644
          sysName = mXmbSystems[i].name;
          repIdx = i;
          break;
-@@ -358,21 +662,47 @@ void NanoMenu::ensureEsdeTheme() {
+@@ -358,21 +663,47 @@ void NanoMenu::ensureEsdeTheme() {
      property_get("persist.gammaos.nano.esde.variant", va, "");
      property_get("persist.gammaos.nano.esde.aspectratio", ar, "automatic");
      float aspect = mHeight > 0 ? (float)mWidth / (float)mHeight : 1.7778f;
@@ -73457,7 +73553,7 @@ index 857edadb1e6..3520ab9f258 100644
      }
      if (!ok)
          ALOGW("esde: load '%s' failed: %s", want.c_str(), mEsdeDoc.error().c_str());
-@@ -406,11 +736,12 @@ void NanoMenu::esdeSdcardThemesTick() {
+@@ -406,11 +737,12 @@ void NanoMenu::esdeSdcardThemesTick() {
      // theme.xml/capabilities.xml when it lives on the sdcard, which changes on an in-place edit
      // -> reparse just that set.
      uint64_t dirSig = 1;
@@ -73473,7 +73569,7 @@ index 857edadb1e6..3520ab9f258 100644
      uint64_t activeSig = 0;
      if (activeOnSdcard) {
          activeSig = 1;
-@@ -438,12 +769,13 @@ void NanoMenu::esdeSdcardThemesTick() {
+@@ -438,12 +770,13 @@ void NanoMenu::esdeSdcardThemesTick() {
  // info lines, per-system band colours) tracks the carousel. Only the XML model is rebuilt; the GL
  // texture caches and the carousel animation state are untouched, so it is cheap and flicker-free.
  void NanoMenu::esdeReloadForSystem(int sysIdx) {
@@ -73488,7 +73584,7 @@ index 857edadb1e6..3520ab9f258 100644
      std::string sysName = s.name;
      char fs[PROPERTY_VALUE_MAX] = {0}, cs[PROPERTY_VALUE_MAX] = {0}, va[PROPERTY_VALUE_MAX] = {0};
      char ar[PROPERTY_VALUE_MAX] = {0};
-@@ -455,11 +787,26 @@ void NanoMenu::esdeReloadForSystem(int sysIdx) {
+@@ -455,11 +788,26 @@ void NanoMenu::esdeReloadForSystem(int sysIdx) {
      // Resolve this system's noMedia/noVideos variant trigger up front (capabilities are already
      // parsed from the prior load), so a media-less system reparses straight into its fallback
      // variant instead of the selected one - matching ES-DE's per-system ViewController scan.
@@ -73518,7 +73614,7 @@ index 857edadb1e6..3520ab9f258 100644
          mEsdeRepSysTheme = sysTheme;
          mEsdeLoadedSysIdx = sysIdx;
      }
-@@ -480,7 +827,7 @@ void NanoMenu::esdeRebuildSysList() {
+@@ -480,7 +828,7 @@ void NanoMenu::esdeRebuildSysList() {
      for (int i = 0; i < (int)mXmbSystems.size(); i++) {
          if (!mXmbSystems[i].enabled || mXmbSystems[i].roms.empty()) continue;
          const auto& s = mXmbSystems[i];
@@ -73527,7 +73623,7 @@ index 857edadb1e6..3520ab9f258 100644
          if (full.empty()) full = s.name;
          for (auto& ch : full) ch = (char)toupper((unsigned char)ch);
          keyed.emplace_back(std::move(full), i);
-@@ -512,10 +859,11 @@ void NanoMenu::esdeRebuildSysList() {
+@@ -512,10 +860,11 @@ void NanoMenu::esdeRebuildSysList() {
              std::string want = go;
              for (int i = 0; i < (int)mEsdeSysList.size(); i++) {
                  const auto& s = mXmbSystems[mEsdeSysList[i]];
@@ -73540,7 +73636,7 @@ index 857edadb1e6..3520ab9f258 100644
                      mEsdeGridAnimDur = 0.0f; mEsdeGridTransFactor = 1.0f;
                      break;
                  }
-@@ -523,6 +871,56 @@ void NanoMenu::esdeRebuildSysList() {
+@@ -523,6 +872,56 @@ void NanoMenu::esdeRebuildSysList() {
          }
          mEsdeGotoDone = true;
      }
@@ -73597,7 +73693,7 @@ index 857edadb1e6..3520ab9f258 100644
  }
  
  // Decode a standard base64 string (RFC 4648) into raw bytes, skipping any whitespace/newlines.
-@@ -547,34 +945,215 @@ static std::vector<unsigned char> esdeBase64Decode(const char* s, size_t n) {
+@@ -547,34 +946,215 @@ static std::vector<unsigned char> esdeBase64Decode(const char* s, size_t n) {
      return out;
  }
  
@@ -73834,7 +73930,7 @@ index 857edadb1e6..3520ab9f258 100644
          if (f) {
              fseek(f, 0, SEEK_END); long sz = ftell(f); fseek(f, 0, SEEK_SET);
              std::string txt;
-@@ -595,52 +1174,329 @@ NanoMenu::EsdeSvg NanoMenu::esdeRasterSvg(const std::string& path, int boxW, int
+@@ -595,52 +1175,329 @@ NanoMenu::EsdeSvg NanoMenu::esdeRasterSvg(const std::string& path, int boxW, int
                      // box; the embedded raster fills that viewBox via its <use> transform.
                      float s = (float)boxW / img->width, sy = (float)boxH / img->height;
                      if (sy < s) s = sy;
@@ -74197,7 +74293,7 @@ index 857edadb1e6..3520ab9f258 100644
      mEsdeSvgCache[key] = out;   // cache failures (tex 0) too, to avoid re-parsing a bad file
      return out;
  }
-@@ -650,11 +1506,12 @@ std::string NanoMenu::esdeResolveSystemPath(const std::string& raw, int sysIdx)
+@@ -650,11 +1507,12 @@ std::string NanoMenu::esdeResolveSystemPath(const std::string& raw, int sysIdx)
      if (raw.find("${system.") == std::string::npos) return raw;
      if (sysIdx < 0 || sysIdx >= (int)mXmbSystems.size()) return raw;
      const auto& s = mXmbSystems[sysIdx];
@@ -74213,7 +74309,7 @@ index 857edadb1e6..3520ab9f258 100644
      };
      rep("${system.theme}", theme);
      rep("${system.fullName}", s.name);
-@@ -662,46 +1519,6 @@ std::string NanoMenu::esdeResolveSystemPath(const std::string& raw, int sysIdx)
+@@ -662,46 +1520,6 @@ std::string NanoMenu::esdeResolveSystemPath(const std::string& raw, int sysIdx)
      return out;
  }
  
@@ -74260,7 +74356,7 @@ index 857edadb1e6..3520ab9f258 100644
  // Universal raster decode via Android's AImageDecoder (libjnigraphics). stb_image and libpng
  // cannot decode WebP/GIF/HEIF/AVIF, yet many modern ES-DE themes (Linear, Canvas, Aura, ...)
  // ship their system art and backgrounds as .webp, so those elements would silently draw nothing
-@@ -839,42 +1656,49 @@ const NanoMenu::EsdeAnim* NanoMenu::esdeAnimGet(const std::string& path) {
+@@ -839,42 +1657,49 @@ const NanoMenu::EsdeAnim* NanoMenu::esdeAnimGet(const std::string& path) {
      return a.frames.empty() ? nullptr : &a;
  }
  
@@ -74339,7 +74435,7 @@ index 857edadb1e6..3520ab9f258 100644
      }
      if (!tex) return EsdeSvg{};
      int iw, ih;
-@@ -895,6 +1719,11 @@ NanoMenu::EsdeSvg NanoMenu::esdeArtTex(const std::string& path, int boxW, int bo
+@@ -895,6 +1720,11 @@ NanoMenu::EsdeSvg NanoMenu::esdeArtTex(const std::string& path, int boxW, int bo
      return out;
  }
  
@@ -74351,7 +74447,7 @@ index 857edadb1e6..3520ab9f258 100644
  // Resolve a game's media for an ES-DE imageType from the shared ES-DE downloaded_media tree
  // (downloaded_media/<system>/<subdir>/<rom-basename>.<ext>), the same files real ES-DE draws, so a
  // gamelist element that asks for a screenshot/marquee/titlescreen shows that instead of nano's single
-@@ -904,6 +1733,187 @@ NanoMenu::EsdeSvg NanoMenu::esdeArtTex(const std::string& path, int boxW, int bo
+@@ -904,6 +1734,194 @@ NanoMenu::EsdeSvg NanoMenu::esdeArtTex(const std::string& path, int boxW, int bo
  // Resolve the on-disk media file for a rom + ES-DE imageType (or "" if none exists), caching the
  // result per rom+type so the extension probe runs once. Shared by esdeGameMediaTex (to load the
  // texture) and the <gameselector> pick (to prefer a game that actually has the requested media).
@@ -74395,6 +74491,13 @@ index 857edadb1e6..3520ab9f258 100644
 +    static const char* const kVideo[] = {".mp4", ".mkv", ".webm", ".avi", nullptr};
 +    if (subdir == "manuals") return nanomanual::kManualExts;
 +    return subdir == "videos" ? kVideo : kImage;
++}
++
++// Whether the manual reader opens this manual: a PDF, or a comic book archive in a format nanoarc
++// reads, judged by its content as the reader judges it (NanoMenuPdf.cpp).
++static bool esdeManualOpens(const std::string& path) {
++    if (nanomanual::kindOf(path) != nanomanual::Kind::Comic) return true;
++    return nanoarc::canRead(nanomanual::comicFormat(path, nanoarc::formatFromContent(path)));
 +}
 +
 +// Where a game's ES-DE media can be: the system folder names to try and the file names (without
@@ -74539,7 +74642,7 @@ index 857edadb1e6..3520ab9f258 100644
  std::string NanoMenu::esdeGameMediaPath(const std::string& romPath, const std::string& imageType) {
      if (romPath.empty()) return std::string();
      // ES-DE imageType -> downloaded_media subdirectory. "image" defaults to the miximage.
-@@ -913,41 +1923,37 @@ std::string NanoMenu::esdeGameMediaPath(const std::string& romPath, const std::s
+@@ -913,41 +1931,37 @@ std::string NanoMenu::esdeGameMediaPath(const std::string& romPath, const std::s
          {"screenshot", "screenshots"}, {"titlescreen", "titlescreens"},
          {"marquee", "marquees"},       {"3dbox", "3dboxes"},
          {"physicalmedia", "physicalmedia"}, {"fanart", "fanart"},
@@ -74604,7 +74707,7 @@ index 857edadb1e6..3520ab9f258 100644
      auto tokens = imageType;
      size_t start = 0;
      while (start <= tokens.size() && found.empty()) {
-@@ -958,11 +1964,17 @@ std::string NanoMenu::esdeGameMediaPath(const std::string& romPath, const std::s
+@@ -958,14 +1972,32 @@ std::string NanoMenu::esdeGameMediaPath(const std::string& romPath, const std::s
          while (!tok.empty() && (tok.back() == ' ')) tok.pop_back();
          auto it = kSub.find(tok);
          if (it != kSub.end()) {
@@ -74613,13 +74716,24 @@ index 857edadb1e6..3520ab9f258 100644
 -                for (const char* ext : {".png", ".jpg", ".jpeg", ".webp"}) {
 -                    std::string p = stem + ext;
 -                    if (access(p.c_str(), R_OK) == 0) { found = p; break; }
++            // A manual the reader can't open (a .cbr where nanoarc has no RAR reader) gives way to
++            // one of the game's manuals it can open, wherever that is; it is offered only when the
++            // game has no other, and says why when opened (OA-42, OA-4).
++            const bool manuals = it->second == "manuals";
++            std::string unopenable;
 +            for (const auto& root : roots) {
 +                for (const auto& sd : sysDirs) {
 +                    for (const auto& nm : names) {
 +                        std::string stem = root + sd + "/" + it->second + "/" + nm;
 +                        for (const char* const* ext = esdeMediaExts(it->second); *ext; ext++) {
 +                            std::string p = stem + *ext;
-+                            if (access(p.c_str(), R_OK) == 0 && !(skipIcons && androidGamesIcon(p))) { found = p; break; }
++                            if (access(p.c_str(), R_OK) != 0 || (skipIcons && androidGamesIcon(p))) continue;
++                            if (manuals && !esdeManualOpens(p)) {
++                                if (unopenable.empty()) unopenable = p;
++                                continue;
++                            }
++                            found = p;
++                            break;
 +                        }
 +                        if (!found.empty()) break;
 +                    }
@@ -74627,7 +74741,11 @@ index 857edadb1e6..3520ab9f258 100644
                  }
                  if (!found.empty()) break;
              }
-@@ -974,21 +1986,10 @@ std::string NanoMenu::esdeGameMediaPath(const std::string& romPath, const std::s
++            if (found.empty()) found = unopenable;
+         }
+         if (comma == std::string::npos) break;
+         start = comma + 1;
+@@ -974,21 +2006,10 @@ std::string NanoMenu::esdeGameMediaPath(const std::string& romPath, const std::s
      return found;
  }
  
@@ -74653,7 +74771,7 @@ index 857edadb1e6..3520ab9f258 100644
  }
  
  GLuint NanoMenu::esdeGameMediaTex(const std::string& romPath, const std::string& imageType, float* outAR) {
-@@ -1002,6 +2003,23 @@ GLuint NanoMenu::esdeGameMediaTex(const std::string& romPath, const std::string&
+@@ -1002,6 +2023,23 @@ GLuint NanoMenu::esdeGameMediaTex(const std::string& romPath, const std::string&
          size_t a = imageType.find_first_not_of(" \t\r\n"), b = imageType.find_last_not_of(" \t\r\n");
          if (a != std::string::npos && imageType.compare(a, b - a + 1, "none") == 0) return 0;
      }
@@ -74677,7 +74795,7 @@ index 857edadb1e6..3520ab9f258 100644
      std::string found = esdeGameMediaPath(romPath, imageType);
      if (found.empty()) {
          // No ES-DE media of any listed type. nano's own scraper keeps two images per game, the 2D
-@@ -1024,12 +2042,11 @@ GLuint NanoMenu::esdeGameMediaTex(const std::string& romPath, const std::string&
+@@ -1024,12 +2062,11 @@ GLuint NanoMenu::esdeGameMediaTex(const std::string& romPath, const std::string&
              p = q + 1;
              if (tok.empty()) continue;
              any = true;
@@ -74692,7 +74810,7 @@ index 857edadb1e6..3520ab9f258 100644
                      auto fd = mEsdePngDims.find(se->fan);
                      if (fd != mEsdePngDims.end() && fd->second.second > 0 && outAR)
                          *outAR = (float)fd->second.first / (float)fd->second.second;
-@@ -1042,80 +2059,383 @@ GLuint NanoMenu::esdeGameMediaTex(const std::string& romPath, const std::string&
+@@ -1042,80 +2079,383 @@ GLuint NanoMenu::esdeGameMediaTex(const std::string& romPath, const std::string&
      }
      EsdeSvg a = esdeArtTex(found, mWidth, mHeight);           // load + cache (decode-budgeted)
      if (!a.tex) return 0;
@@ -75127,7 +75245,7 @@ index 857edadb1e6..3520ab9f258 100644
  // ES-DE lastplayed: a <datetime metadata="lastplayed"> auto-enables displayRelative, so a set time
  // reads the relative age "N days/hours/minutes/seconds ago" (DateTimeComponent::getDisplayString).
  // The gamelist value is ISO basic YYYYMMDDThhmmss; parse it as UTC (timegm) and compare to now so the
-@@ -1137,12 +2457,14 @@ static std::string esdeLastPlayedString(const std::string& iso) {
+@@ -1137,12 +2477,14 @@ static std::string esdeLastPlayedString(const std::string& iso) {
      long dur = (long)(time(nullptr) - t);
      if (dur < 0) dur = 0;
      auto ago = [](long n, const char* one, const char* many) {
@@ -75147,7 +75265,7 @@ index 857edadb1e6..3520ab9f258 100644
  }
  
  // ES-DE playtime (FileData::getPlayTimeString): 1..119s -> "1 minute"; 2..119 min -> "N minutes";
-@@ -1154,13 +2476,17 @@ static std::string esdePlayTimeString(const std::string& secsStr) {
+@@ -1154,13 +2496,17 @@ static std::string esdePlayTimeString(const std::string& secsStr) {
      if (!secsStr.empty()) { secs = strtol(secsStr.c_str(), nullptr, 10); if (secs < 0) secs = 0; }
      int hour = (int)(secs / 3600), min = (int)((secs % 3600) / 60), sec = (int)(secs % 60);
      auto pl = [](int n, const char* one, const char* many) {
@@ -75170,7 +75288,7 @@ index 857edadb1e6..3520ab9f258 100644
      return out;
  }
  
-@@ -1215,19 +2541,85 @@ std::string NanoMenu::esdeDefaultStarPath(bool filled) {
+@@ -1215,19 +2561,85 @@ std::string NanoMenu::esdeDefaultStarPath(bool filled) {
  
  // ---------------------------------------------------------------- render
  
@@ -75259,7 +75377,7 @@ index 857edadb1e6..3520ab9f258 100644
  
      // ES-DE draws text flat - no drop shadow or outline (its Font has none). nano's drawText
      // otherwise adds an outline/shadow (mTextOutlineMode), so force flat here and restore on exit,
-@@ -1244,6 +2636,10 @@ void NanoMenu::renderEsde() {
+@@ -1244,6 +2656,10 @@ void NanoMenu::renderEsde() {
          int foc = mEsdeSysList[mEsdeSysSel];
          if (foc != mEsdeLoadedSysIdx) esdeReloadForSystem(foc);
      }
@@ -75270,7 +75388,7 @@ index 857edadb1e6..3520ab9f258 100644
  
      // mEsdeForceView lets a slide transition render either view (from the stored selection) so both
      // can be composited; 0 = follow the live mEsdeInGamelist.
-@@ -1251,6 +2647,10 @@ void NanoMenu::renderEsde() {
+@@ -1251,6 +2667,10 @@ void NanoMenu::renderEsde() {
      const bool gamelist = inGamelist && !mEsdeSysList.empty();
      const nanoesde::View* view =
          mEsdeDoc.valid() ? mEsdeDoc.view(gamelist ? "gamelist" : "system") : nullptr;
@@ -75281,7 +75399,7 @@ index 857edadb1e6..3520ab9f258 100644
  
      // In-game overlay scrim: when nano is the overlay layer composited over a still-running app
      // (mOverlayMode && !mOverlayWallpaper), the dispatcher clears the frame to a translucent black
-@@ -1260,17 +2660,19 @@ void NanoMenu::renderEsde() {
+@@ -1260,17 +2680,19 @@ void NanoMenu::renderEsde() {
      // full-screen so it still draws over the scrim; only a screen-covering opaque background element
      // is skipped (esdeCoversScreen below). When the app is exited (mOverlayWallpaper true) this is
      // false and the full opaque home draws as normal.
@@ -75306,7 +75424,7 @@ index 857edadb1e6..3520ab9f258 100644
                   sc * 0.8f, 0.7f, 0.7f, 0.75f, 1.0f);
          mTextOutlineMode = esdePrevOutline;
          return;
-@@ -1531,6 +2933,8 @@ void NanoMenu::renderEsde() {
+@@ -1531,6 +2953,8 @@ void NanoMenu::renderEsde() {
                                 ? (int)mXmbSystems[mEsdeSysList[mEsdeSysSel]].roms.size() : 0)
                          : (int)mEsdeSysList.size();
          int sel = gamelist ? mEsdeGameSel : mEsdeSysSel;
@@ -75315,7 +75433,7 @@ index 857edadb1e6..3520ab9f258 100644
          auto label = [&](int i) -> std::string {
              if (gamelist) {
                  const auto& sys = mXmbSystems[mEsdeSysList[mEsdeSysSel]];
-@@ -1548,7 +2952,7 @@ void NanoMenu::renderEsde() {
+@@ -1548,7 +2972,7 @@ void NanoMenu::renderEsde() {
                  // shows it (GamelistBase), never the carousel/grid, and never in a favourites
                  // collection (nano has none). The star renders through nano's FA fallback face.
                  if (haveRom && !isCarousel && !isGrid &&
@@ -75324,7 +75442,7 @@ index 857edadb1e6..3520ab9f258 100644
                      std::string ind = primary->getS("indicators", std::string("symbols"));
                      if (ind == "ascii")     nm = "* " + nm;
                      else if (ind != "none") nm = "\xEF\x80\x85  " + nm;   // U+F005 + two spaces
-@@ -1560,7 +2964,7 @@ void NanoMenu::renderEsde() {
+@@ -1560,7 +2984,7 @@ void NanoMenu::renderEsde() {
              // fall back to nano's own name for a non-standard system.
              if (i < 0 || i >= (int)mEsdeSysList.size()) return std::string();
              const auto& s = mXmbSystems[mEsdeSysList[i]];
@@ -75333,7 +75451,7 @@ index 857edadb1e6..3520ab9f258 100644
              return full.empty() ? s.name : full;
          };
          // Per-cell rom path for the grid's cover art (reuses the sys.roms indexing).
-@@ -1572,7 +2976,7 @@ void NanoMenu::renderEsde() {
+@@ -1572,7 +2996,7 @@ void NanoMenu::renderEsde() {
  
          if (count <= 0) {
              float sc = h > 0 ? h * 0.2f / FONT_CHAR_H : mHeight * 0.03f / FONT_CHAR_H;
@@ -75342,7 +75460,7 @@ index 857edadb1e6..3520ab9f258 100644
          } else if (isCarousel) {
              // ES-DE horizontal carousel (CarouselComponent): items sit at fixed positions
              // spaced by itemSpacing = ((size - itemSize*maxItemCount)/maxItemCount) + itemSize;
-@@ -1627,6 +3031,7 @@ void NanoMenu::renderEsde() {
+@@ -1627,6 +3051,7 @@ void NanoMenu::renderEsde() {
                  ? ((h - itemH * maxItemCount) / maxItemCount) + itemH
                  : ((w - itemW * maxItemCount) / maxItemCount) + itemW;
              if (spacing < 1.0f) spacing = isVertical ? itemH : itemW;
@@ -75350,7 +75468,7 @@ index 857edadb1e6..3520ab9f258 100644
              // ES-DE WHEEL carousels (verticalWheel / horizontalWheel): items are NOT laid out along a
              // straight axis. They sit co-located at the wheel centre (itemSpacing stays {0,0}) and each
              // one is rotated by itemRotation*distance about a pivot itemRotationOrigin*itemSize away, so
-@@ -1860,6 +3265,7 @@ void NanoMenu::renderEsde() {
+@@ -1860,6 +3285,7 @@ void NanoMenu::renderEsde() {
                  if (!isWheel && !isVertical && ss != 1.0f && itemVA == "top")
                      slotCy += itemH * (ss - 1.0f) * 0.5f;
                  int bw = (int)(itemW * ss), bh = (int)(itemH * ss);
@@ -75358,7 +75476,7 @@ index 857edadb1e6..3520ab9f258 100644
                  float ad = fabsf(distance);
                  float opacity = (distance == 0.0f || unfOpacity == 1.0f) ? 1.0f
                                : (ad >= 1.0f ? unfOpacity
-@@ -1892,8 +3298,9 @@ void NanoMenu::renderEsde() {
+@@ -1892,8 +3318,9 @@ void NanoMenu::renderEsde() {
                  if (!gamelist && !artTmpl.empty()) {
                      int sysIdx = mEsdeSysList[idx];
                      EsdeSvg art = esdeArtTex(esdeResolveSystemPath(artTmpl, sysIdx), bw, bh);
@@ -75369,7 +75487,7 @@ index 857edadb1e6..3520ab9f258 100644
                      if (art.tex) {
                          // ES-DE tints the focused item with imageSelectedColor when the theme sets
                          // it, and every other item with imageColor.
-@@ -1941,8 +3348,10 @@ void NanoMenu::renderEsde() {
+@@ -1941,8 +3368,10 @@ void NanoMenu::renderEsde() {
                  // skip the art entirely and let the label draw.
                  if (gamelist && primary->getS("imageType", std::string()) != "none") {
                      std::string rom = gameRom(idx);
@@ -75380,7 +75498,7 @@ index 857edadb1e6..3520ab9f258 100644
                      if (tex && ar > 0.0f && bw > 1 && bh > 1) {
                          float ic[4] = {imgC[0], imgC[1], imgC[2], imgC[3]};
                          if (idx == sel) primary->getColor("imageSelectedColor", ic);
-@@ -2107,6 +3516,7 @@ void NanoMenu::renderEsde() {
+@@ -2107,6 +3536,7 @@ void NanoMenu::renderEsde() {
              float spY = primary->has("itemSpacing")
                          ? clampf(primary->getPair("itemSpacing", 1, 0.0f), 0.0f, 0.1f) * mHeight
                          : (itemScale < 1.0f ? 0.0f : ((itemScale - 1.0f) * itemH) * 0.5f);
@@ -75388,7 +75506,7 @@ index 857edadb1e6..3520ab9f258 100644
              float hMargin = 0.0f, vMargin = 0.0f;
              if (itemScale >= 1.0f) {
                  hMargin = (itemW * (scaleInwards ? 1.0f : itemScale) - itemW) * 0.5f;
-@@ -2217,6 +3627,7 @@ void NanoMenu::renderEsde() {
+@@ -2217,6 +3647,7 @@ void NanoMenu::renderEsde() {
                  }
                  float cellW = itemW * scale, cellH = itemH * scale;
                  float bx = ccx - cellW * 0.5f, by = ccy - cellH * 0.5f;
@@ -75396,7 +75514,7 @@ index 857edadb1e6..3520ab9f258 100644
                  // ES-DE grid selector (GridComponent): a selectorImage tinted by selectorColor if the
                  // theme sets one, else a selectorColor rounded rect. selectorLayer chooses the draw
                  // order relative to the cell background box and the cell art (GridComponent.h
-@@ -2303,8 +3714,10 @@ void NanoMenu::renderEsde() {
+@@ -2303,8 +3734,10 @@ void NanoMenu::renderEsde() {
                      EsdeSvg a{};
                      if (cellSys >= 0 && !tmpl.empty())
                          a = esdeArtTex(esdeResolveSystemPath(tmpl, cellSys), bW, bH);
@@ -75409,7 +75527,7 @@ index 857edadb1e6..3520ab9f258 100644
                          // The focused cell uses imageSelectedColor (adroit tints it dark so the
                          // logo reads against the light selector); others use imageColor.
                          float ic[4] = {1, 1, 1, 1};
-@@ -2335,7 +3748,7 @@ void NanoMenu::renderEsde() {
+@@ -2335,7 +3768,7 @@ void NanoMenu::renderEsde() {
                          std::string s;
                          if (cellSys >= 0 && cellSys < (int)mXmbSystems.size()) {
                              const auto& gsys = mXmbSystems[cellSys];
@@ -75418,7 +75536,7 @@ index 857edadb1e6..3520ab9f258 100644
                              if (s.empty()) s = gsys.name;
                          }
                          esdeLetterCase(s, glc);
-@@ -2482,6 +3895,7 @@ void NanoMenu::renderEsde() {
+@@ -2482,6 +3915,7 @@ void NanoMenu::renderEsde() {
              lineSp = lineSp < 0.5f ? 0.5f : (lineSp > 3.0f ? 3.0f : lineSp);
              float rowH = fontPx(primary, 0.045f) * FONT_CHAR_H * lineSp;
              if (rowH < 1) rowH = mHeight * 0.06f;
@@ -75426,7 +75544,7 @@ index 857edadb1e6..3520ab9f258 100644
              // ES-DE TextListComponent fits ceil-ish rows: floor((size.y + lineSpacingHeight/2) /
              // entrySize) where lineSpacingHeight = entrySize - fontSize. This can fit one more row
              // than a plain floor(h/entrySize) when the remainder is at least half the extra spacing.
-@@ -2537,6 +3951,7 @@ void NanoMenu::renderEsde() {
+@@ -2537,6 +3971,7 @@ void NanoMenu::renderEsde() {
              for (int r = 0; r < rows && first + r < count; r++) {
                  int i = first + r;
                  float ry = y + r * rowH;
@@ -75434,7 +75552,7 @@ index 857edadb1e6..3520ab9f258 100644
                  bool cur = (i == sel);
                  std::string lbl = label(i);
                  esdeLetterCase(lbl, tlCase);
-@@ -2666,10 +4081,9 @@ void NanoMenu::renderEsde() {
+@@ -2666,10 +4101,9 @@ void NanoMenu::renderEsde() {
          }
      };
  
@@ -75448,7 +75566,7 @@ index 857edadb1e6..3520ab9f258 100644
  
      // ES-DE's SystemView/GamelistView keep exactly ONE primary navigation element per view (the
      // first textlist/carousel/grid by name, skipping the rest), so a variant that layers a
-@@ -2691,7 +4105,11 @@ void NanoMenu::renderEsde() {
+@@ -2691,7 +4125,11 @@ void NanoMenu::renderEsde() {
                             ? mEsdeSysList[mEsdeSysSel] : -1;
      // Pull the focused system's ES-DE gamelist.xml metadata (once) so the metadata elements below
      // read the same description/rating/date/etc as real ES-DE rather than nano's own scrape store.
@@ -75461,7 +75579,7 @@ index 857edadb1e6..3520ab9f258 100644
      auto esdeGsRom = [&](const std::string& selName, const std::string& imageType) -> std::string {
          if (esdeGsSel.empty() || esdeFocSys < 0 || esdeFocSys >= (int)mXmbSystems.size()) return std::string();
          const auto& roms = mXmbSystems[esdeFocSys].roms;
-@@ -2711,7 +4129,7 @@ void NanoMenu::renderEsde() {
+@@ -2711,7 +4149,7 @@ void NanoMenu::renderEsde() {
      // --- draw every element in zIndex order ---
      for (const nanoesde::Element* e : view->drawOrder) {
          if (!e->getB("visible", true)) continue;
@@ -75470,7 +75588,7 @@ index 857edadb1e6..3520ab9f258 100644
          // scope=none hides an element in this view (ABN hides the clock in gamelist);
          // scope=menu elements only show over a menu, which this view path never draws.
          const std::string& scope = e->getS("scope", std::string());
-@@ -2815,6 +4233,7 @@ void NanoMenu::renderEsde() {
+@@ -2815,6 +4253,7 @@ void NanoMenu::renderEsde() {
                                      ? esdeResolveSystemPath(rawPath, focSys) : rawPath;
                  if (boxW >= 1.0f && boxH >= 1.0f && !p.empty()) {
                      EsdeSvg a = esdeArtTex(p, (int)boxW, (int)boxH);   // loads tex + caches native dims
@@ -75478,7 +75596,7 @@ index 857edadb1e6..3520ab9f258 100644
                      if (a.tex) {
                          int iw = a.w, ih = a.h;                        // fall back to fitted aspect
                          auto dit = mEsdePngDims.find(p);
-@@ -2880,6 +4299,7 @@ void NanoMenu::renderEsde() {
+@@ -2880,6 +4319,7 @@ void NanoMenu::renderEsde() {
                  if (szx == 0.0f && szy > 0.0f) rw = (int)(h * 8.0f);
                  else if (szy == 0.0f && szx > 0.0f) rh = (int)(w * 8.0f);
                  EsdeSvg a = esdeArtTex(p, rw, rh);
@@ -75486,7 +75604,7 @@ index 857edadb1e6..3520ab9f258 100644
                  if (!a.tex) return false;
                  if (stretch) {
                      drawImg(a.tex, x + xoff, y, w, h, c[0], c[1], c[2], c[3], rotRad);
-@@ -2910,6 +4330,7 @@ void NanoMenu::renderEsde() {
+@@ -2910,6 +4350,7 @@ void NanoMenu::renderEsde() {
              if (!rawPath.empty() && drawSysImage(focSys, 0.0f)) continue;
              // No static art: bind the scraped cover (gamelist imageType), else the default.
              GLuint tex = 0; float coverAr = 1.0f;
@@ -75494,7 +75612,7 @@ index 857edadb1e6..3520ab9f258 100644
              if (e->has("imageType")) {
                  // The navigated game, or a gameselector-picked game (system-view background art).
                  std::string iRom = curRom;
-@@ -2927,6 +4348,7 @@ void NanoMenu::renderEsde() {
+@@ -2927,6 +4368,7 @@ void NanoMenu::renderEsde() {
                  if (!iRom.empty())
                      tex = esdeGameMediaTex(iRom, imgType, &coverAr);
              }
@@ -75502,7 +75620,7 @@ index 857edadb1e6..3520ab9f258 100644
              if (!tex) {
                  // ES-DE loads <default> through the SAME setImage/resize path as the resolved media
                  // (ImageComponent::setDefaultImage), so the fallback honors the element's size/maxSize/
-@@ -3115,7 +4537,7 @@ void NanoMenu::renderEsde() {
+@@ -3115,7 +4557,7 @@ void NanoMenu::renderEsde() {
                  // metadata, so the counter matches the control and the textlist star indicator.
                  for (const auto& r : sys.roms) {
                      const ScrapeEntry* se = esdeMetaFor(r);
@@ -75511,7 +75629,7 @@ index 857edadb1e6..3520ab9f258 100644
                  }
                  s = "\xEF\x84\x9B " + std::to_string(total) +      // U+F11B controller
                      "  \xEF\x80\x85 " + std::to_string(favs);      // U+F005 star
-@@ -3171,7 +4593,7 @@ void NanoMenu::renderEsde() {
+@@ -3171,7 +4613,7 @@ void NanoMenu::renderEsde() {
                      if (md == "sourceSystemName" || md == "systemName") s = sys.name;
                      else {
                          std::string full =
@@ -75520,7 +75638,7 @@ index 857edadb1e6..3520ab9f258 100644
                          s = full.empty() ? sys.name : full;
                      }
                  }
-@@ -3187,7 +4609,7 @@ void NanoMenu::renderEsde() {
+@@ -3187,7 +4629,7 @@ void NanoMenu::renderEsde() {
                  // <systemdata>fullname</systemdata> title (artflix/ps5-menu/xmb-menu/codywheel
                  // system-name) resolved empty and vanished. Map "name" to the internal key and
                  // "fullname" through nano's ES-DE full-name table (the same lookup the carousel uses).
@@ -75529,7 +75647,7 @@ index 857edadb1e6..3520ab9f258 100644
                  if (sd == "name") s = !sysKey.empty() ? sysKey : sys.name;
                  else if (sd == "fullname") { s = esdeSystemFullName(sysKey); if (s.empty()) s = sys.name; }
                  else if (sd.rfind("gamecount", 0) == 0) {
-@@ -3200,17 +4622,19 @@ void NanoMenu::renderEsde() {
+@@ -3200,17 +4642,19 @@ void NanoMenu::renderEsde() {
                      int favs = 0;
                      for (const auto& r : sys.roms) {
                          const ScrapeEntry* se = esdeMetaFor(r);
@@ -75555,7 +75673,7 @@ index 857edadb1e6..3520ab9f258 100644
                  }
              }
              // ES-DE: a metadata/systemdata-bound text with no value falls back to <defaultValue>
-@@ -3229,7 +4653,7 @@ void NanoMenu::renderEsde() {
+@@ -3229,7 +4673,7 @@ void NanoMenu::renderEsde() {
                      const std::string& md = e->getS("metadata", std::string());
                      if (md == "genre" || md == "developer" || md == "publisher" ||
                          md == "players" || md == "playtime")
@@ -75564,7 +75682,7 @@ index 857edadb1e6..3520ab9f258 100644
                  }
              }
              if (!s.empty()) {
-@@ -3418,16 +4842,19 @@ void NanoMenu::renderEsde() {
+@@ -3418,16 +4862,19 @@ void NanoMenu::renderEsde() {
              if (noImageType) {
                  float vsx = e->getPair("size", 0, 0.0f), vsy = e->getPair("size", 1, 0.0f);
                  if (vsx * vsy >= 0.2f) {
@@ -75591,7 +75709,7 @@ index 857edadb1e6..3520ab9f258 100644
                      }
                  }
              }
-@@ -3476,11 +4903,6 @@ void NanoMenu::renderEsde() {
+@@ -3476,11 +4923,6 @@ void NanoMenu::renderEsde() {
              // than standing in with the scraped cover, matching what the control shows when a game
              // has no video (aura/xmb-menu/ps5-menu game-video regions). A mixed list keeps its
              // cover-family fallback below; only the whole-string "none" is suppressed.
@@ -75603,7 +75721,7 @@ index 857edadb1e6..3520ab9f258 100644
              std::string vRom = curRom;
              if (vRom.empty()) {
                  std::string gs = e->getS("gameselector", std::string());
-@@ -3491,7 +4913,70 @@ void NanoMenu::renderEsde() {
+@@ -3491,7 +4933,70 @@ void NanoMenu::renderEsde() {
              const bool fullBg = (boxW <= 1.0f || boxH <= 1.0f);
              if (fullBg) { boxW = (float)mWidth; boxH = (float)mHeight; }
              bool drewVideo = false;
@@ -75675,7 +75793,7 @@ index 857edadb1e6..3520ab9f258 100644
                  float ar = 1.0f;
                  GLuint tex = esdeGameMediaTex(vRom, vImgType, &ar);
                  if (tex && ar > 0.0f) {
-@@ -3644,21 +5129,15 @@ void NanoMenu::renderEsde() {
+@@ -3644,21 +5149,15 @@ void NanoMenu::renderEsde() {
                  }
              }
  
@@ -75702,7 +75820,7 @@ index 857edadb1e6..3520ab9f258 100644
                  // datetime: a per-game metadata date, NOT the current time. nano shows the scraped
                  // release date and the ES-DE gamelist lastplayed (playtime is a text element below).
                  const std::string& md = e->getS("metadata", std::string());
-@@ -3713,13 +5192,13 @@ void NanoMenu::renderEsde() {
+@@ -3713,13 +5212,13 @@ void NanoMenu::renderEsde() {
                      // With no <defaultValue>, a relative lastplayed on a never-played game reads
                      // "never" (DateTimeComponent.cpp:96).
                      if (s.empty() && md == "lastplayed" && e->getB("displayRelative", true))
@@ -75718,7 +75836,7 @@ index 857edadb1e6..3520ab9f258 100644
                  }
              }
              // ES-DE datetime/clock inherit TextComponent's letterCase (uppercase/lowercase/
-@@ -3742,9 +5221,8 @@ void NanoMenu::renderEsde() {
+@@ -3742,9 +5241,8 @@ void NanoMenu::renderEsde() {
                  // the box to one line. A datetime value that sits just below a label (showcase's
                  // RELEASED: over its release year) must therefore centre in its size box, or it rides
                  // up and overlaps the label. Reuse the text branch's centre seating for the sized box;
@@ -75730,7 +75848,7 @@ index 857edadb1e6..3520ab9f258 100644
                  if (sizedDate) {
                      float emPx = sc * (float)FONT_CHAR_H;
                      int capRpx = (int)lroundf(emPx); if (capRpx < 6) capRpx = 6;
-@@ -3811,12 +5289,12 @@ void NanoMenu::renderEsde() {
+@@ -3811,12 +5309,12 @@ void NanoMenu::renderEsde() {
              std::vector<ActiveBadge> active;
              for (auto& slot : slots) {
                  bool on = false; std::string ctrl;
@@ -75745,7 +75863,7 @@ index 857edadb1e6..3520ab9f258 100644
                  else if (slot == "controller") { if (meta && !meta->controller.empty()) { on = true; ctrl = meta->controller; } }
                  // folder / collection: nano's ES-DE gamelist has no folder entries or collection
                  // editing, so those slots never activate (matches an empty-metadata game).
-@@ -3910,7 +5388,7 @@ void NanoMenu::renderEsde() {
+@@ -3910,7 +5408,7 @@ void NanoMenu::renderEsde() {
      // cluster (top-right Bluetooth / Wi-Fi / battery icon + battery %) is gated only by hardware
      // presence and the SystemStatus* settings, all of which default ON, so a theme like SimpleMenu
      // that omits <systemstatus> still shows the status bar on real ES-DE. The default clock is gated
@@ -75754,7 +75872,7 @@ index 857edadb1e6..3520ab9f258 100644
      // default element and route it through the same draw path so every theme matches the control.
      bool viewHasStatus = false, viewHasClock = false;
      for (const nanoesde::Element* e : view->drawOrder) {
-@@ -3936,10 +5414,10 @@ void NanoMenu::renderEsde() {
+@@ -3936,10 +5434,10 @@ void NanoMenu::renderEsde() {
      if (!viewHasClock && esdeShowClock) {
          // DateTimeComponent clock defaults (DateTimeComponent.cpp:191-204): pos {0.018,0.016},
          // origin {0,0}, FONT_SIZE_SMALL (0.035*min(W,H)), white, format "%H:%M".
@@ -75769,7 +75887,7 @@ index 857edadb1e6..3520ab9f258 100644
      }
      mTextOutlineMode = esdePrevOutline;
  }
-@@ -3991,6 +5469,7 @@ std::string NanoMenu::esdeHelpIconPath(const std::string& id) {
+@@ -3991,6 +5489,7 @@ std::string NanoMenu::esdeHelpIconPath(const std::string& id) {
          {"x", "button_x_XBOX.svg"}, {"y", "button_y_XBOX.svg"},
          {"start", "button_start_XBOX.svg"}, {"back", "button_back_XBOX.svg"},
          {"left/right", "dpad_leftright.svg"}, {"up/down", "dpad_updown.svg"},
@@ -75777,7 +75895,7 @@ index 857edadb1e6..3520ab9f258 100644
          {"up/down/left/right", "dpad_all.svg"}, {"lr", "button_lr.svg"},
          {"ltrt", "button_ltrt.svg"}, {"l", "button_l.svg"}, {"r", "button_r.svg"},
          {"lt", "button_lt.svg"}, {"rt", "button_rt.svg"}, {"thumbstickclick", "thumbstick.svg"},
-@@ -4030,6 +5509,7 @@ void NanoMenu::esdeDrawHelp(const nanoesde::Element* e, bool gamelist,
+@@ -4030,6 +5529,7 @@ void NanoMenu::esdeDrawHelp(const nanoesde::Element* e, bool gamelist,
      // theme's <entries> list then selects which of these actually show (ABN trims the gamelist
      // bar to back,start,a = OPTIONS MENU SELECT); "all"/absent keeps every prompt.
      std::vector<std::pair<std::string, std::string>> prompts;
@@ -75785,7 +75903,7 @@ index 857edadb1e6..3520ab9f258 100644
      // When the ES-DE options menu is open its help bar replaces the view's, exactly as ES-DE's
      // HelpComponent shows the top GUI's prompts. Build the menu prompts (per focused row) and render
      // them through this same glyph + helpsystem-style path so the menu legend matches the control.
-@@ -4054,10 +5534,10 @@ void NanoMenu::esdeDrawHelp(const nanoesde::Element* e, bool gamelist,
+@@ -4054,10 +5554,10 @@ void NanoMenu::esdeDrawHelp(const nanoesde::Element* e, bool gamelist,
          prompts.push_back({"a", "select"});
          prompts.push_back({"b", "back"});
          prompts.push_back({"x", "view media"});
@@ -75798,7 +75916,7 @@ index 857edadb1e6..3520ab9f258 100644
      } else {
          // The "choose" icon tracks the system view's primary: a vertical carousel or a textlist
          // navigates up/down, a horizontal carousel left/right, a grid all four directions.
-@@ -4072,14 +5552,9 @@ void NanoMenu::esdeDrawHelp(const nanoesde::Element* e, bool gamelist,
+@@ -4072,14 +5572,9 @@ void NanoMenu::esdeDrawHelp(const nanoesde::Element* e, bool gamelist,
          }
          prompts.push_back({chooseIcon, "choose"});
          prompts.push_back({"a", "select"});
@@ -75816,7 +75934,7 @@ index 857edadb1e6..3520ab9f258 100644
      }
  
      // Apply the helpsystem's <entries> allow-list (icon ids, whitespace or comma separated). The
-@@ -4134,6 +5609,19 @@ void NanoMenu::esdeDrawHelp(const nanoesde::Element* e, bool gamelist,
+@@ -4134,6 +5629,19 @@ void NanoMenu::esdeDrawHelp(const nanoesde::Element* e, bool gamelist,
          }
          prompts.swap(dd);
      }
@@ -75836,7 +75954,7 @@ index 857edadb1e6..3520ab9f258 100644
      if (prompts.empty()) return;
  
      float fs = e->getF("fontSize", 0.035f);
-@@ -4171,14 +5659,15 @@ void NanoMenu::esdeDrawHelp(const nanoesde::Element* e, bool gamelist,
+@@ -4171,14 +5679,15 @@ void NanoMenu::esdeDrawHelp(const nanoesde::Element* e, bool gamelist,
          // A theme's <customButtonIcon> overrides the built-in glyph for this button (Analogue OS
          // Menu replaces the whole set with its own icons); fall back to the built-in otherwise.
          std::string path;
@@ -75855,7 +75973,7 @@ index 857edadb1e6..3520ab9f258 100644
          esdeLetterCase(en.label, lc);
          en.lw = measureText(en.label.c_str(), sc, face);
          total += (en.tex ? en.iw + iconTextSp : 0.0f) + en.lw;
-@@ -4201,7 +5690,9 @@ void NanoMenu::esdeDrawHelp(const nanoesde::Element* e, bool gamelist,
+@@ -4201,7 +5710,9 @@ void NanoMenu::esdeDrawHelp(const nanoesde::Element* e, bool gamelist,
      esdeDrawPlate(e, x0, yTop, total, rowH);
  
      float cx = x0;
@@ -75866,7 +75984,7 @@ index 857edadb1e6..3520ab9f258 100644
          if (en.tex) {
              drawIconTex(en.tex, cx, yTop + (rowH - en.ih) * 0.5f, en.iw, en.ih,
                          iconC[0], iconC[1], iconC[2], iconC[3]);
-@@ -4209,13 +5700,91 @@ void NanoMenu::esdeDrawHelp(const nanoesde::Element* e, bool gamelist,
+@@ -4209,13 +5720,91 @@ void NanoMenu::esdeDrawHelp(const nanoesde::Element* e, bool gamelist,
          }
          drawText(en.label.c_str(), cx, yTop + (rowH - glyphH) * 0.5f, sc,
                   textC[0], textC[1], textC[2], textC[3], face);
@@ -75959,7 +76077,7 @@ index 857edadb1e6..3520ab9f258 100644
  void NanoMenu::esdeDrawSystemStatus(const nanoesde::Element* e) {
      // ES-DE's SystemStatusComponent default textRelativeScale is 0.9 (applyTheme), not 1.0.
      float rel = e->getF("textRelativeScale", 0.9f);
-@@ -4251,9 +5820,16 @@ void NanoMenu::esdeDrawSystemStatus(const nanoesde::Element* e) {
+@@ -4251,9 +5840,16 @@ void NanoMenu::esdeDrawSystemStatus(const nanoesde::Element* e) {
      };
  
      // Assemble items left-to-right in ES-DE's order: bluetooth, wifi, battery icon, battery percent.
@@ -75977,7 +76095,7 @@ index 857edadb1e6..3520ab9f258 100644
      auto addIcon = [&](const std::string& path) {
          if (path.empty()) return;
          EsdeSvg a = esdeArtTex(path, (int)iconBox, (int)iconBox);
-@@ -4313,7 +5889,7 @@ void NanoMenu::esdeDrawSystemStatus(const nanoesde::Element* e) {
+@@ -4313,7 +5909,7 @@ void NanoMenu::esdeDrawSystemStatus(const nanoesde::Element* e) {
          } else {
              drawText(it.text.c_str(), cx, yTop + (rowH - glyphH) * 0.5f, sc,
                       col[0], col[1], col[2], col[3], statusFace);
@@ -75986,7 +76104,7 @@ index 857edadb1e6..3520ab9f258 100644
          }
      }
  }
-@@ -4322,11 +5898,18 @@ void NanoMenu::esdeDrawSystemStatus(const nanoesde::Element* e) {
+@@ -4322,11 +5918,18 @@ void NanoMenu::esdeDrawSystemStatus(const nanoesde::Element* e) {
  // XMB wave. A themed secondary view is a follow-up.
  void NanoMenu::renderEsdeSecondary() {
      // This pass starts with whatever GL state the ES-DE primary pass ended in, which can leave
@@ -76010,7 +76128,7 @@ index 857edadb1e6..3520ab9f258 100644
      // Over a live app (in-game scrim) leave the dispatcher's app-dim scrim clear untouched instead of
      // repainting an opaque backdrop, so the running app shows through the bottom panel too (mirrors
      // renderMinimaSecondary). The opaque fill returns once back at the launcher (mOverlayWallpaper).
-@@ -4372,6 +5955,7 @@ bool NanoMenu::esdeGamelistIsHorizontal() {
+@@ -4372,6 +5975,7 @@ bool NanoMenu::esdeGamelistIsHorizontal() {
  // dx: system change (system view) / unused in gamelist; dy: row move. Kept simple and
  // self-contained; launching reuses the shared launchXmbGame() path.
  void NanoMenu::esdeNav(int dx, int dy) {
@@ -76018,7 +76136,7 @@ index 857edadb1e6..3520ab9f258 100644
      if (mEsdeXsActive) return;                 // ignore navigation while a view transition plays
      esdeRebuildSysList();
      if (mEsdeSysList.empty()) return;
-@@ -4448,18 +6032,210 @@ bool NanoMenu::esdeSelect() {
+@@ -4448,18 +6052,210 @@ bool NanoMenu::esdeSelect() {
      if (mEsdeGameSel >= 0 && mEsdeGameSel < (int)sys.roms.size()) {
          mXmbSystemIndex = mEsdeSysList[mEsdeSysSel];
          mXmbGameIndex = mEsdeGameSel;
@@ -76229,7 +76347,7 @@ index 857edadb1e6..3520ab9f258 100644
  // Apply the actual system<->gamelist state change. On entering a gamelist the grid cursor/scroll
  // are snapped so it does not ease in from the previous system's state.
  void NanoMenu::esdeApplyViewSwap(bool toGamelist) {
-@@ -4566,6 +6342,22 @@ void NanoMenu::esdeDrawRotatedText(const std::string& s, float pivotX, float piv
+@@ -4566,6 +6362,22 @@ void NanoMenu::esdeDrawRotatedText(const std::string& s, float pivotX, float piv
  
  // renderEsde() wrapped with the active view transition. No transition -> straight passthrough.
  void NanoMenu::renderEsdeHome() {
@@ -157150,10 +157268,10 @@ index b7a812e4485..12c450a4050 100644
 +liblog; `tools/esde-parsecheck` loads every theme in a folder across its full capability matrix.
 diff --git a/frameworks/base/cmds/gammaos-nano/test/archive/NanoArchive_test.cpp b/frameworks/base/cmds/gammaos-nano/test/archive/NanoArchive_test.cpp
 new file mode 100644
-index 00000000000..9d3c74ea27f
+index 00000000000..e1ed73be2b6
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/test/archive/NanoArchive_test.cpp
-@@ -0,0 +1,566 @@
+@@ -0,0 +1,716 @@
 +// Host tests for NanoArchive (zip via libziparchive, 7z via the LZMA SDK), and comic book manual pages
 +// read through it (NanoManual).
 +//
@@ -157312,6 +157430,32 @@ index 00000000000..9d3c74ea27f
 +    EXPECT_EQ(nanoarc::formatFromName("b.7z"), nanoarc::Format::SevenZip);
 +    EXPECT_EQ(nanoarc::formatFromName("c.rar"), nanoarc::Format::Rar);
 +    EXPECT_EQ(nanoarc::formatFromName("d.txt"), nanoarc::Format::None);
++}
++
++Format magic(const std::string& head) {
++    return nanoarc::formatFromMagic(reinterpret_cast<const uint8_t*>(head.data()), head.size());
++}
++
++TEST(ArchiveFormat, ByMagic) {
++    EXPECT_EQ(magic(std::string("PK\x03\x04\x14\x00", 6)), Format::Zip);
++    EXPECT_EQ(magic(std::string("PK\x05\x06", 4)), Format::Zip);   // an empty zip
++    EXPECT_EQ(magic(std::string("7z\xBC\xAF\x27\x1C\x00\x04", 8)), Format::SevenZip);
++    EXPECT_EQ(magic(std::string("Rar!\x1A\x07\x00", 7)), Format::Rar);       // RAR 4
++    EXPECT_EQ(magic(std::string("Rar!\x1A\x07\x01\x00", 8)), Format::Rar);   // RAR 5
++    // Too short, or close but not it.
++    EXPECT_EQ(magic(std::string("PK\x03", 3)), Format::None);
++    EXPECT_EQ(magic(std::string("7z\xBC\xAF\x27", 5)), Format::None);
++    EXPECT_EQ(magic(std::string("Rar!\x1A\x08", 6)), Format::None);
++    EXPECT_EQ(magic("%PDF-1.4"), Format::None);
++    EXPECT_EQ(magic(""), Format::None);
++    EXPECT_EQ(nanoarc::formatFromMagic(nullptr, 0), Format::None);
++}
++
++TEST(ArchiveFormat, WhatThisBackEndReads) {
++    EXPECT_TRUE(nanoarc::canRead(Format::Zip));
++    EXPECT_TRUE(nanoarc::canRead(Format::SevenZip));
++    EXPECT_FALSE(nanoarc::canRead(Format::Rar));
++    EXPECT_FALSE(nanoarc::canRead(Format::None));
 +}
 +
 +TEST_F(ArchiveTest, ZipIndexAndExtract) {
@@ -157686,6 +157830,128 @@ index 00000000000..9d3c74ea27f
 +    EXPECT_EQ(nanoarc::readEntry(cbr, Format::Rar, "p1.jpg", kMiB, kMiB).err, Err::Rar);
 +}
 +
++TEST_F(ArchiveTest, FormatFromContent) {
++    EXPECT_EQ(nanoarc::formatFromContent(zip("Game.cbr", {{"p1.jpg", "1"}})), Format::Zip);
++    EXPECT_EQ(nanoarc::formatFromContent(zip("empty.cbz", {})), Format::Zip);
++    EXPECT_EQ(nanoarc::formatFromContent(nanotest::fixture("archive/good.7z")), Format::SevenZip);
++    writeFile(tmp + "/rar4.cbz", std::string("Rar!\x1a\x07\x00", 7));
++    EXPECT_EQ(nanoarc::formatFromContent(tmp + "/rar4.cbz"), Format::Rar);
++    writeFile(tmp + "/rar5.cbz", std::string("Rar!\x1a\x07\x01\x00", 8));
++    EXPECT_EQ(nanoarc::formatFromContent(tmp + "/rar5.cbz"), Format::Rar);
++    writeFile(tmp + "/short.cbz", "PK");
++    EXPECT_EQ(nanoarc::formatFromContent(tmp + "/short.cbz"), Format::None);
++    writeFile(tmp + "/text.cbz", "not an archive at all");
++    EXPECT_EQ(nanoarc::formatFromContent(tmp + "/text.cbz"), Format::None);
++    EXPECT_EQ(nanoarc::formatFromContent(tmp + "/missing.cbz"), Format::None);
++    EXPECT_EQ(nanoarc::formatFromContent(tmp), Format::None);   // a folder
++}
++
++TEST_F(ArchiveTest, OpenArchiveReadsEntriesWithoutReopening) {
++    const std::string a = zip("Game.cbz", {
++        {"p1.jpg", "one"},
++        {"p2.jpg", std::string(5000, 'b')},
++        {"dir/", "", false, -1, 0x0800, 040755},
++    });
++    Index idx;
++    const nanoarc::ArchivePtr arc(nanoarc::openArchive(a, Format::Zip, &idx));
++    ASSERT_TRUE(arc);
++    ASSERT_EQ(idx.err, Err::None);
++    EXPECT_TRUE(hasEntry(idx, "p1.jpg"));
++    EXPECT_TRUE(hasEntry(idx, "p2.jpg"));
++    // The same archive answers every read, in any order and more than once.
++    for (int round = 0; round < 2; round++) {
++        EntryData d = nanoarc::readEntry(arc.get(), "p2.jpg", kMiB, kMiB);
++        ASSERT_EQ(d.err, Err::None);
++        EXPECT_EQ(bytes(d), std::string(5000, 'b'));
++        d = nanoarc::readEntry(arc.get(), "p1.jpg", kMiB, kMiB);
++        ASSERT_EQ(d.err, Err::None);
++        EXPECT_EQ(bytes(d), "one");
++    }
++    // The rules hold as for a one-off read: the cap, missing files, folders.
++    EXPECT_EQ(nanoarc::readEntry(arc.get(), "p2.jpg", 4999, kMiB).err, Err::TooBig);
++    EXPECT_EQ(nanoarc::readEntry(arc.get(), "missing.jpg", kMiB, kMiB).err, Err::Open);
++    EXPECT_EQ(nanoarc::readEntry(arc.get(), "dir", kMiB, kMiB).err, Err::Open);
++    // A failed read leaves the archive usable.
++    EXPECT_EQ(bytes(nanoarc::readEntry(arc.get(), "p1.jpg", kMiB, kMiB)), "one");
++    // No archive: nothing to read.
++    EXPECT_EQ(nanoarc::readEntry(nullptr, "p1.jpg", kMiB, kMiB).err, Err::Open);
++    nanoarc::closeArchive(nullptr);
++}
++
++TEST_F(ArchiveTest, OpenArchiveFailures) {
++    Index idx;
++    idx.entries.push_back(nanoarc::Entry());   // cleared by every open
++    EXPECT_EQ(nanoarc::openArchive(tmp + "/missing.cbz", Format::Zip, &idx), nullptr);
++    EXPECT_EQ(idx.err, Err::Open);
++    EXPECT_TRUE(idx.entries.empty());
++    const std::string cbr = tmp + "/Game.cbr";
++    writeFile(cbr, std::string("Rar!\x1a\x07\x00", 7));
++    EXPECT_EQ(nanoarc::openArchive(cbr, Format::Rar, &idx), nullptr);
++    EXPECT_EQ(idx.err, Err::Rar);
++    writeFile(tmp + "/junk.cbz", "not an archive at all");
++    EXPECT_EQ(nanoarc::openArchive(tmp + "/junk.cbz", Format::Zip, &idx), nullptr);
++    EXPECT_EQ(idx.err, Err::Corrupt);
++    EXPECT_EQ(nanoarc::openArchive(tmp + "/junk.cbz", Format::None, &idx), nullptr);
++    EXPECT_EQ(idx.err, Err::Open);
++}
++
++TEST_F(ArchiveTest, OpenSevenZipKeepsItsBlockBetweenReads) {
++    const std::string a = nanotest::fixture("archive/good.7z");
++    Index idx;
++    const nanoarc::ArchivePtr arc(nanoarc::openArchive(a, Format::SevenZip, &idx));
++    ASSERT_TRUE(arc);
++    std::string readme;
++    for (int i = 0; i < 50; i++) readme += "seven zip\n";
++    // Back and forth, as page turns go: each read is whole and right whether or not its block is
++    // the one already decoded.
++    for (int round = 0; round < 2; round++) {
++        EntryData d = nanoarc::readEntry(arc.get(), "readme.txt", kMiB, kMiB);
++        ASSERT_EQ(d.err, Err::None);
++        EXPECT_EQ(bytes(d), readme);
++        d = nanoarc::readEntry(arc.get(), "folder/inner.bin", kMiB, kMiB);
++        ASSERT_EQ(d.err, Err::None);
++        EXPECT_EQ(d.data.size(), 3000u);
++        d = nanoarc::readEntry(arc.get(), "empty.txt", kMiB, kMiB);
++        EXPECT_EQ(d.err, Err::None);
++        EXPECT_TRUE(d.data.empty());
++    }
++}
++
++// A comic book manual's format as the viewer picks it: the content first, then the extension.
++Format comicFormatOf(const std::string& path) {
++    return nanomanual::comicFormat(path, nanoarc::formatFromContent(path));
++}
++
++TEST_F(ArchiveTest, ComicCbrThatIsReallyAZipOpens) {
++    const std::string a = zip("Game.cbr", {{"p2.jpg", "2"}, {"p1.jpg", "1"}});
++    ASSERT_EQ(nanomanual::comicFormat(a), Format::Rar);   // its name says RAR
++    const Format fmt = comicFormatOf(a);
++    ASSERT_EQ(fmt, Format::Zip);
++    Index idx;
++    const nanoarc::ArchivePtr arc(nanoarc::openArchive(a, fmt, &idx));
++    ASSERT_TRUE(arc);
++    const std::vector<std::string> pages = nanomanual::comicPages(idx.entries);
++    ASSERT_EQ(pages, (std::vector<std::string>{"p1.jpg", "p2.jpg"}));
++    EXPECT_EQ(bytes(nanoarc::readEntry(arc.get(), pages[0], kMiB, kMiB)), "1");
++}
++
++TEST_F(ArchiveTest, ComicCbzThatIsReallyARarIsUnsupported) {
++    const std::string cbz = tmp + "/Game.cbz";
++    writeFile(cbz, std::string("Rar!\x1a\x07\x01\x00", 8));
++    const Format fmt = comicFormatOf(cbz);
++    ASSERT_EQ(fmt, Format::Rar);
++    EXPECT_FALSE(nanoarc::canRead(fmt));
++    Index idx;
++    EXPECT_EQ(nanoarc::openArchive(cbz, fmt, &idx), nullptr);
++    EXPECT_EQ(idx.err, Err::Rar);
++    EXPECT_TRUE(nanomanual::unsupportedFormat(idx.err));   // UNSUPPORTED MANUAL FORMAT
++    // Damaged content that announces nothing is still read by its extension, and says so.
++    writeFile(cbz, "not an archive at all");
++    ASSERT_EQ(comicFormatOf(cbz), Format::Zip);
++    EXPECT_EQ(nanoarc::openArchive(cbz, Format::Zip, &idx), nullptr);
++    EXPECT_FALSE(nanomanual::unsupportedFormat(idx.err));   // THIS MANUAL CAN'T BE OPENED
++}
++
 +TEST_F(ArchiveTest, ComicManualPagesThroughNanoarc) {
 +    const std::string a = zip("Game.cbz", {
 +        {"Game/p10.jpg", "10"},
@@ -157696,16 +157962,18 @@ index 00000000000..9d3c74ea27f
 +        {"../p0.jpg", "evil"},
 +        {"Game/link.jpg", "/etc/passwd", false, -1, 0x0800, 0120777},
 +    });
-+    const Format fmt = nanomanual::comicFormat(a);
++    const Format fmt = comicFormatOf(a);
 +    ASSERT_EQ(fmt, Format::Zip);
-+    const Index idx = nanoarc::readIndex(a, fmt);
++    Index idx;
++    const nanoarc::ArchivePtr arc(nanoarc::openArchive(a, fmt, &idx));
++    ASSERT_TRUE(arc);
 +    ASSERT_EQ(idx.err, Err::None);
 +    const std::vector<std::string> pages = nanomanual::comicPages(idx.entries);
 +    ASSERT_EQ(pages, (std::vector<std::string>{"Game/P1.jpg", "Game/p2.jpg", "Game/p10.jpg"}));
 +    const char* const want[] = {"1", "2", "10"};
 +    for (size_t i = 0; i < pages.size(); i++) {
 +        const EntryData d =
-+            nanoarc::readEntry(a, fmt, pages[i], nanomanual::kMaxPageBytes, nanomanual::kMaxBlockBytes);
++            nanoarc::readEntry(arc.get(), pages[i], nanomanual::kMaxPageBytes, nanomanual::kMaxBlockBytes);
 +        ASSERT_EQ(d.err, Err::None) << pages[i];
 +        EXPECT_EQ(bytes(d), want[i]);
 +    }
@@ -172240,10 +172508,10 @@ index 00000000000..07499bdf363
 +}
 diff --git a/frameworks/base/cmds/gammaos-nano/test/unit/NanoManual_test.cpp b/frameworks/base/cmds/gammaos-nano/test/unit/NanoManual_test.cpp
 new file mode 100644
-index 00000000000..e2845107bf6
+index 00000000000..777e6d45a69
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/test/unit/NanoManual_test.cpp
-@@ -0,0 +1,183 @@
+@@ -0,0 +1,200 @@
 +// Game manuals (NanoManual): which file is a manual and how it is read, and the order and choice of a
 +// comic book manual's pages (OA-42).
 +
@@ -172308,6 +172576,23 @@ index 00000000000..e2845107bf6
 +    EXPECT_EQ(nanomanual::comicFormat("a.cbr"), Format::Rar);
 +    EXPECT_EQ(nanomanual::comicFormat("a.pdf"), Format::None);
 +    EXPECT_EQ(nanomanual::comicFormat("a.zip"), Format::None);   // only a manual's names
++}
++
++TEST(Manual, ComicFormatByContentFirst) {
++    // What the first bytes announce wins: a .cbz that is really a RAR is read (and refused) as a RAR,
++    // and a .cbr that is really a zip or a 7z opens.
++    EXPECT_EQ(nanomanual::comicFormat("a.cbz", Format::Rar), Format::Rar);
++    EXPECT_EQ(nanomanual::comicFormat("a.cbr", Format::Zip), Format::Zip);
++    EXPECT_EQ(nanomanual::comicFormat("a.CBR", Format::SevenZip), Format::SevenZip);
++    EXPECT_EQ(nanomanual::comicFormat("a.cb7", Format::SevenZip), Format::SevenZip);
++    // Content that announces no format: the extension decides.
++    EXPECT_EQ(nanomanual::comicFormat("a.cbz", Format::None), Format::Zip);
++    EXPECT_EQ(nanomanual::comicFormat("a.cb7", Format::None), Format::SevenZip);
++    EXPECT_EQ(nanomanual::comicFormat("a.cbr", Format::None), Format::Rar);
++    // Not a comic book manual's name: none, whatever the content.
++    EXPECT_EQ(nanomanual::comicFormat("a.zip", Format::Zip), Format::None);
++    EXPECT_EQ(nanomanual::comicFormat("a.pdf", Format::Zip), Format::None);
++    EXPECT_EQ(nanomanual::comicFormat("", Format::Rar), Format::None);
 +}
 +
 +TEST(Manual, UnsupportedFormatIsRarOrAnUndecodableFileList) {

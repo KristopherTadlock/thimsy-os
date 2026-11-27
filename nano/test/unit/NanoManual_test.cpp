@@ -64,6 +64,23 @@ TEST(Manual, ComicFormatByExtension) {
     EXPECT_EQ(nanomanual::comicFormat("a.zip"), Format::None);   // only a manual's names
 }
 
+TEST(Manual, ComicFormatByContentFirst) {
+    // What the first bytes announce wins: a .cbz that is really a RAR is read (and refused) as a RAR,
+    // and a .cbr that is really a zip or a 7z opens.
+    EXPECT_EQ(nanomanual::comicFormat("a.cbz", Format::Rar), Format::Rar);
+    EXPECT_EQ(nanomanual::comicFormat("a.cbr", Format::Zip), Format::Zip);
+    EXPECT_EQ(nanomanual::comicFormat("a.CBR", Format::SevenZip), Format::SevenZip);
+    EXPECT_EQ(nanomanual::comicFormat("a.cb7", Format::SevenZip), Format::SevenZip);
+    // Content that announces no format: the extension decides.
+    EXPECT_EQ(nanomanual::comicFormat("a.cbz", Format::None), Format::Zip);
+    EXPECT_EQ(nanomanual::comicFormat("a.cb7", Format::None), Format::SevenZip);
+    EXPECT_EQ(nanomanual::comicFormat("a.cbr", Format::None), Format::Rar);
+    // Not a comic book manual's name: none, whatever the content.
+    EXPECT_EQ(nanomanual::comicFormat("a.zip", Format::Zip), Format::None);
+    EXPECT_EQ(nanomanual::comicFormat("a.pdf", Format::Zip), Format::None);
+    EXPECT_EQ(nanomanual::comicFormat("", Format::Rar), Format::None);
+}
+
 TEST(Manual, UnsupportedFormatIsRarOrAnUndecodableFileList) {
     EXPECT_TRUE(nanomanual::unsupportedFormat(Err::Rar));
     EXPECT_TRUE(nanomanual::unsupportedFormat(Err::Unsupported));
