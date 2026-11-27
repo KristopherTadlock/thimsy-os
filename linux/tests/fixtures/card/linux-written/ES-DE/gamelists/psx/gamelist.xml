@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <alternativeEmulator>
-	<label>Beetle PSX HW</label>
+	<label>PCSX ReARMed</label>
 </alternativeEmulator>
 <gameList>
 	<game>
@@ -17,5 +17,6 @@
 		<name>Spyro the Dragon</name>
 		<hidden>true</hidden>
 		<favorite>true</favorite>
+		<altemulator>PCSX ReARMed</altemulator>
 	</game>
 </gameList>

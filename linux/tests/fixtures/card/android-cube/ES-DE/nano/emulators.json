@@ -5,6 +5,11 @@
       "game": "n64/Mario Kart 64 (USA).z64",
       "label": "M64Plus FZ",
       "am": "-n org.mupen64plusae.v3.fzurita/paulscode.android.mupen64plusae.SplashActivity -a android.intent.action.VIEW -d {file.uri}"
+    },
+    {
+      "game": "n64/Super Mario 64 (USA).z64",
+      "label": "M64Plus FZ",
+      "am": "-n org.mupen64plusae.v3.fzurita/paulscode.android.mupen64plusae.SplashActivity -a android.intent.action.VIEW -d {file.uri}"
     }
   ]
 }
