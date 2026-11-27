@@ -168,7 +168,10 @@ every start (OA-4 migration step 1): Android's USB-C role flipper in Nano's shar
 port's `port_type` under a crash guard Linux refuses, and with the class empty it finds no port. A
 masked path or directory that does not exist is skipped. If the namespace can't be set up otherwise,
 Nano is not started (fail closed). The namespace is a slave of the session's, so drives mounted
-later appear in it.
+later appear in it, once the session has made `/` shared. If that fails (kmsg says so), a device with
+no eMMC to mask starts Nano in the session's own namespace with `/sys/class/typec` visible, rather
+than leave Nano blind to SD cards and USB drives inserted later. The `nano started` kmsg line counts
+the directories actually hidden (those that exist).
 
 ### Deferred services
 

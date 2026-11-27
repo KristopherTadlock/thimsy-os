@@ -193,3 +193,16 @@ TEST(NanoJail, AFileGoneSinceThePlanIsSkipped) {
     EXPECT_TRUE(applyJail({"/dev/mmcblk0p1"}, {}, &err, kFake));
     EXPECT_EQ(gCalls.back().what, std::string("dropcap"));
 }
+
+// "/" not shared: a namespace of Nano's own would miss drives mounted later, so with no eMMC Nano
+// keeps the session's namespace (nothing hidden, no unshare); with an eMMC the namespace is made anyway.
+TEST(NanoJail, DirectoriesAreHiddenOnlyWhenLaterMountsStillReachNano) {
+    EXPECT_EQ(jailDirsFor(true, false), jailDirMasks());
+    EXPECT_EQ(jailDirsFor(true, true), jailDirMasks());
+    EXPECT_EQ(jailDirsFor(false, true), jailDirMasks());
+    EXPECT_TRUE(jailDirsFor(false, false).empty());
+    resetFake();
+    std::string err;
+    EXPECT_TRUE(applyJail({}, jailDirsFor(false, false), &err, kFake));
+    EXPECT_TRUE(gCalls.empty());
+}

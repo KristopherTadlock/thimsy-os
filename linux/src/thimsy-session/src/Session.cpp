@@ -174,6 +174,7 @@ class Session {
     std::map<int, pid_t> fsckPids_;
     std::map<int, std::string> fsckPidFiles_;   // job -> its file under kFsckDir
     std::vector<std::string> nanoJail_;          // the eMMC nodes masked in the running Nano's namespace
+    bool rootShared_ = false;                    // "/" was made shared: Nano's namespace sees later mounts
     bool jailRestartPending_ = false;            // checkNanoJail asked for a restart that has not spawned yet
     BootDisk boot_;
     std::string family_;
@@ -463,8 +464,13 @@ bool Session::init() {
 
     if (!opts_.fakeHw) {
         // Mounts made later must reach Nano's namespace, a slave of this one.
-        if (mount(nullptr, "/", nullptr, MS_REC | MS_SHARED, nullptr) != 0) {
-            log("making / shared failed: " + std::string(strerror(errno)));
+        if (mount(nullptr, "/", nullptr, MS_REC | MS_SHARED, nullptr) == 0) {
+            rootShared_ = true;
+        } else {
+            // Without it a namespace of Nano's own would not see drives mounted later, so with no
+            // eMMC to mask Nano shares this namespace and the directories stay visible (jailDirsFor).
+            kmsg("making / shared failed: " + std::string(strerror(errno)) +
+                 "; with no eMMC Nano keeps this namespace and /sys/class/typec is not hidden");
         }
         mounter_ = makeSyscallMounter();
     } else {
@@ -542,24 +548,33 @@ void Session::runSup(const std::vector<SupAction>& acts) {
                 s.env.push_back("ALSA_CARD=" + audioCard_);
                 s.logFile = P(std::string(kLogDir) + "/nano.log");
                 std::vector<std::string> plan = jailPlan();
+                // A namespace of its own even with no eMMC, so /sys/class/typec is hidden
+                // (NanoJail.h), unless "/" could not be made shared (jailDirsFor).
+                const std::vector<std::string> dirs =
+                    opts_.fakeHw ? jailDirMasks() : jailDirsFor(rootShared_, !plan.empty());
                 if (opts_.fakeHw) {
-                    std::string text, dirs;
+                    std::string text, dirText;
                     for (const std::string& p : plan) text += p + "\n";
-                    for (const std::string& d : jailDirMasks()) dirs += d + "\n";
+                    for (const std::string& d : dirs) dirText += d + "\n";
                     // jail.dirs first: the E2E waits for jail.plan, then reads both.
-                    writeFileAtomic(P(std::string(kStateDir) + "/jail.dirs"), dirs, {0644, false});
+                    writeFileAtomic(P(std::string(kStateDir) + "/jail.dirs"), dirText, {0644, false});
                     writeFileAtomic(P(std::string(kStateDir) + "/jail.plan"), text, {0644, false});
                 } else {
-                    // Always a namespace: /sys/class/typec is hidden even with no eMMC (NanoJail.h).
-                    s.preExec = [plan](std::string* err) { return applyJail(plan, jailDirMasks(), err); };
+                    s.preExec = [plan, dirs](std::string* err) { return applyJail(plan, dirs, err); };
                 }
                 pid_t pid = spawnChild(s, Role::Nano);
                 nanoJail_ = plan;
                 jailRestartPending_ = false;
                 if (pid > 0) {
                     writeFileAtomic(P("/run/thimsy/nano.pid"), std::to_string(pid) + "\n", {0644, false});
+                    // The child skips a directory that does not exist (ENOENT), so count those that do.
+                    size_t hidden = 0;
+                    struct stat dst;
+                    for (const std::string& d : dirs) {
+                        if (stat(P(d).c_str(), &dst) == 0 && S_ISDIR(dst.st_mode)) hidden++;
+                    }
                     kmsg("nano started (" + std::to_string(pid) + ", " + std::to_string(plan.size()) +
-                         " eMMC nodes masked, " + std::to_string(jailDirMasks().size()) + " directories hidden)");
+                         " eMMC nodes masked, " + std::to_string(hidden) + " directories hidden)");
                 }
                 runSup(sup_.nanoStarted(now, pid));
                 break;

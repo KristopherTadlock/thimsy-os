@@ -66,6 +66,11 @@ const std::vector<std::string>& jailDirMasks() {
     return dirs;
 }
 
+std::vector<std::string> jailDirsFor(bool rootShared, bool emmcMasked) {
+    if (!rootShared && !emmcMasked) return {};
+    return jailDirMasks();
+}
+
 const JailOps& realJailOps() {
     static const JailOps ops = {realUnshare, realMount, realDropCap};
     return ops;

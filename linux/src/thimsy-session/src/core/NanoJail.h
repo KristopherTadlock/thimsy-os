@@ -42,6 +42,13 @@ std::vector<std::string> planJail(const std::string& devDir, const std::vector<s
 // The directories hidden from Nano on every start: /sys/class/typec.
 const std::vector<std::string>& jailDirMasks();
 
+// The directories to hide in a Nano started now. Nano's namespace is a slave of the session's, so
+// drives mounted later (SD cards, USB drives) reach it only when the session made "/" shared
+// (rootShared). When that failed and there is no eMMC to mask (emmcMasked false), Nano is better off
+// in the session's own namespace than blind to hot-plugged volumes: none (the session says so in
+// kmsg). Otherwise jailDirMasks(): with an eMMC to mask the namespace is made anyway.
+std::vector<std::string> jailDirsFor(bool rootShared, bool emmcMasked);
+
 // The system calls applyJail makes, replaceable by tests (they return -1 and set errno on failure).
 struct JailOps {
     int (*unshareNs)(int flags);
