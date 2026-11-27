@@ -43,6 +43,27 @@ SettingsRecord gRecord;  // guarded by gRecordMu
 const SettingSource kStores[] = {SettingSource::kProp, SettingSource::kGlobal, SettingSource::kSecure,
                                  SettingSource::kSystem};
 
+// The system settings Linux implements itself, kept as the properties Linux keeps them in
+// (platform/linux/Settings.cpp's kNative; test_nano_ratchets checks the two lists agree), so a
+// scenario sees such a write land in persist.props as it would on Linux.
+struct LinuxNativeSetting {
+    SettingSource source;
+    const char* key;
+    const char* storeKey;
+};
+constexpr LinuxNativeSetting kLinuxNative[] = {
+    {SettingSource::kSystem, "font_scale", "persist.gammaos.nano.fontscale"},
+    {SettingSource::kSystem, "screen_off_timeout", "persist.thimsy.system.screen_off_timeout"},
+};
+
+// The property (source, key) is also kept in, or nullptr.
+const char* linuxStoreKey(SettingSource source, const std::string& key) {
+    for (const LinuxNativeSetting& n : kLinuxNative) {
+        if (n.source == source && key == n.key) return n.storeKey;
+    }
+    return nullptr;
+}
+
 class FakeSettings : public nanoplat::Settings {
  public:
     explicit FakeSettings(const FakeSettingsConfig& config)
@@ -68,6 +89,11 @@ class FakeSettings : public nanoplat::Settings {
             property_get(key.c_str(), buf, def.c_str());
             return buf;
         }
+        if (const char* storeKey = linuxStoreKey(source, key)) {
+            char buf[PROPERTY_VALUE_MAX] = {};
+            property_get(storeKey, buf, "");
+            if (buf[0] != '\0') return buf;   // else the config's seed, as for any table setting
+        }
         std::lock_guard<std::mutex> lock(mu_);
         auto it = tables_.find(std::string(settingStoreName(source)) + ":" + key);
         return it == tables_.end() || it->second.empty() ? def : it->second;
@@ -86,6 +112,8 @@ class FakeSettings : public nanoplat::Settings {
         if (source == SettingSource::kProp) {
             if (property_set(key.c_str(), value.c_str()) != 0) return false;
         } else {
+            const char* storeKey = linuxStoreKey(source, key);
+            if (storeKey && property_set(storeKey, value.c_str()) != 0) return false;
             {
                 std::lock_guard<std::mutex> lock(mu_);
                 tables_[std::string(settingStoreName(source)) + ":" + key] = value;

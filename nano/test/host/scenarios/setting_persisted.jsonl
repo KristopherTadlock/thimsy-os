@@ -1,9 +1,10 @@
-# Change a setting and see it persisted: Font Size writes Android's System font_scale (through the
-# shell, which the host's gate records and answers) and mirrors it to persist.gammaos.nano.fontscale,
-# which the store writes to persist.props.
+# Change a setting and see it persisted: Font Size writes the platform's system font_scale through
+# the settings dispatcher (nanoplat::Settings, W6-caps). The host's fake settings emit it as a
+# "setting" event and, as Linux does, keep it as persist.gammaos.nano.fontscale, which the store
+# writes to persist.props. No settings command runs.
 # TODO(G10): the key sequence below is a first guess at the path to Settings > Display > Font Size;
 # fix it from the first run's captures and events.
-{"boot": {"props": {"persist.gammaos.nano.theme": "xmb", "persist.gammaos.nano.grab_input": "1"}, "shell": {"rules": [{"match": "settings put system font_scale ", "status": 0}, {"match": "settings get ", "status": 0, "stdout": "1.0\n"}]}}}
+{"boot": {"props": {"persist.gammaos.nano.theme": "xmb", "persist.gammaos.nano.grab_input": "1"}}}
 {"expect": {"present_count_at_least": 5}, "within_ms": 30000}
 {"press": "DPAD_LEFT"}
 {"wait_ms": 300}
@@ -14,7 +15,8 @@
 {"press": "DPAD_RIGHT"}
 {"wait_ms": 300}
 {"press": "A"}
+{"expect": {"event": {"ev": "setting", "op": "put", "source": "system", "key": "font_scale"}}, "note": "the font scale went to the platform's settings"}
 {"expect_persist": {"key": "persist.gammaos.nano.fontscale", "nonempty": true}, "within_ms": 5000}
-{"expect": {"event": {"ev": "shell", "fn": "system", "rule": 0}}, "note": "settings put system font_scale went to the gate"}
+{"expect_no_shell": ["settings "], "note": "no settings command; the dispatcher is the platform's"}
 {"quit": true, "within_ms": 10000}
 {"expect_persist": {"key": "persist.gammaos.nano.fontscale", "nonempty": true}, "note": "still there after exit"}

@@ -25,7 +25,10 @@
 // are never supported. kProp settings live in the property store (so a write shows as the host's
 // {"ev":"prop"} event); the global, secure and system tables are kept in memory, starting from
 // "values", and each write to them is emitted as {"ev":"setting","op":"put","source":...,"key":...,
-// "value":...}. A write to an unsupported setting stores nothing, is emitted as {"ev":"setting",
+// "value":...}. The system settings Linux implements itself are also kept where Linux keeps them, as
+// Linux does (system font_scale as persist.gammaos.nano.fontscale, screen_off_timeout as
+// persist.thimsy.system.screen_off_timeout; platform/linux/Settings.h): a write goes to the property
+// store too, and a read gives the property when it is set, else the table's value. A write to an unsupported setting stores nothing, is emitted as {"ev":"setting",
 // "op":"refused","source":...,"key":...} and returns false; a read of one gives the default. No
 // post-write hooks run (they are the firmware's). Every call is recorded (settingsRecord()). Any
 // thread.

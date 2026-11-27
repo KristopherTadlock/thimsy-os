@@ -165,6 +165,7 @@ std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs&
     platform->net = std::move(net);   // G7-net: the config's scripted networks and devices
     platform->boot = createFakeBoot(nanoOwnsBootScreen);   // W6-boot: the config's answer; nothing waits
     platform->caps = std::move(caps);   // W6-caps: true unless the config's "caps" says otherwise
-    platform->settings = std::move(settings);   // W6-caps: the config's "settings"; tables in memory
+    platform->settings = std::move(settings);   // W6-caps: the config's "settings"; tables in memory, Linux's
+                                                // native system settings also as properties
     return platform;
 }

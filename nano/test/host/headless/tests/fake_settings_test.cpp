@@ -140,6 +140,37 @@ TEST_F(SettingsTest, FakeRefusesWhatTheConfigTurnsOff) {
     EXPECT_EQ(r.writes, 0);
 }
 
+TEST_F(SettingsTest, FakeKeepsLinuxsSystemSettingsAsProperties) {
+    FakeSettingsConfig c;
+    c.values["system:screen_off_timeout"] = "300000";
+    std::unique_ptr<nanoplat::Settings> s = createFakeSettings(c);
+    EXPECT_EQ(s->read(SettingSource::kSystem, "screen_off_timeout", "60000"), "300000");   // seeded
+    // Font Size lands where Linux keeps it (and the render loop reads it), and is still an event.
+    EXPECT_TRUE(s->write(SettingSource::kSystem, "font_scale", "1.15"));
+    EXPECT_EQ(prop("persist.gammaos.nano.fontscale"), "1.15");
+    EXPECT_EQ(s->read(SettingSource::kSystem, "font_scale", "1.0"), "1.15");
+    EXPECT_TRUE(logged("\"op\":\"put\",\"source\":\"system\",\"key\":\"font_scale\",\"value\":\"1.15\""));
+    EXPECT_TRUE(s->write(SettingSource::kSystem, "screen_off_timeout", "120000"));
+    EXPECT_EQ(prop("persist.thimsy.system.screen_off_timeout"), "120000");
+    EXPECT_EQ(s->read(SettingSource::kSystem, "screen_off_timeout", "60000"), "120000");
+    // Only those two: another system setting stays in memory, and the same key in another table is
+    // not Linux's.
+    EXPECT_TRUE(s->write(SettingSource::kGlobal, "font_scale", "2.0"));
+    EXPECT_EQ(prop("persist.gammaos.nano.fontscale"), "1.15");
+    EXPECT_EQ(prop("font_scale"), "<unset>");
+    EXPECT_FALSE(logged("\"ev\":\"shell\""));
+    EXPECT_EQ(settingsRecord().writes, 3);
+}
+
+TEST_F(SettingsTest, FakeRefusesLinuxsSystemSettingsWhenTheConfigTurnsThemOff) {
+    FakeSettingsConfig c;
+    c.unsupported = {"system:font_scale"};
+    std::unique_ptr<nanoplat::Settings> s = createFakeSettings(c);
+    EXPECT_FALSE(s->write(SettingSource::kSystem, "font_scale", "1.15"));
+    EXPECT_EQ(prop("persist.gammaos.nano.fontscale"), "<unset>");   // nothing stored
+    EXPECT_EQ(s->read(SettingSource::kSystem, "font_scale", "1.0"), "1.0");
+}
+
 TEST(SettingSpec, StoresAndKeys) {
     EXPECT_TRUE(validSettingSpec("prop"));
     EXPECT_TRUE(validSettingSpec("system:font_scale"));
