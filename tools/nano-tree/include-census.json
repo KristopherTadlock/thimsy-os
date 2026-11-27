@@ -1497,6 +1497,7 @@
     "lib:tinyxml2:tinyxml2.h",
     "nano:NanoEsdeSystemName.h",
     "nano:NanoEsdeTheme.h",
+    "nano:NanoEsdeThemeFallback.h",
     "nano:NanoI18n.h",
     "nano:NanoMenu.h",
     "nano:NanoMenuShaders.h",
@@ -3138,6 +3139,12 @@
     "nano:NanoEsdeSystemName.h",
     "nano:NanoJson.h",
     "nano:test/unit/nano_test_util.h"
+   ]
+  },
+  "test/unit/NanoEsdeThemeFallback_test.cpp": {
+   "includes": [
+    "gtest:gtest/gtest.h",
+    "nano:NanoEsdeThemeFallback.h"
    ]
   },
   "test/unit/NanoEsdeTheme_test.cpp": {
@@ -5879,6 +5886,12 @@
      "ziparchive/zip_archive.h"
     ]
    }
+  },
+  "test/unit/NanoEsdeThemeFallback_test.cpp": {
+   "modules": [
+    "gammaos_nano_unit_tests"
+   ],
+   "needs": {}
   },
   "test/unit/NanoEsdeTheme_test.cpp": {
    "modules": [

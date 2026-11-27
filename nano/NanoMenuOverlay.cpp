@@ -612,6 +612,7 @@ void NanoMenu::overlayPrepareXmb(int summon) {
     mOverlayXmbDeferred = false;
     esdeGamelistFlush();   // before the lists are read back from the files
     esdeStoreTick();
+    esdeMissingSetRecheck("home raised");   // OA-37: an ES-DE theme set missing at its load may be back
     // Re-apply the user's saved Theme Settings (wave colour, day/night, particles)
     // every time the overlay is raised, so the overlay wallpaper matches whatever
     // the user picked in the home XMB's Theme Settings - including changes made

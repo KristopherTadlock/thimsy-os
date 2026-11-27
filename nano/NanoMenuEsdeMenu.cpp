@@ -147,6 +147,9 @@ int NanoMenu::esdeMenuOptionCtx(int row, std::string& label, std::string& prop,
     label = kEsdeMenuRows[row].label;
     prop = kEsdeMenuRows[row].prop;
     const nanoesde::Capabilities& caps = mEsdeDoc.capabilities();
+    // OA-37: while the default stands in for a missing chosen set, the option rows are that set's:
+    // they are greyed out (no options), so the stand-in's options never overwrite the set's own.
+    if (row > 0 && !mEsdeMissingSet.empty()) return 0;
 
     if (row == 0) {                                   // THEME: installed sets
         // ES-DE labels a set by its <themeName> ("Slate"), not the directory ("slate-es-de").
@@ -155,6 +158,10 @@ int NanoMenu::esdeMenuOptionCtx(int row, std::string& label, std::string& prop,
             opts.push_back({s.name, tn.empty() ? esdeMenuDisplay(s.name, true)
                                                : esdeMenuDisplay(tn, false)});
         }
+        // OA-37: a chosen set that is not installed (the default stands in for it) stays the selection.
+        bool listed = mEsdeMissingSet.empty();
+        for (const auto& o : opts) if (o.first == mEsdeMissingSet) listed = true;
+        if (!listed) opts.push_back({mEsdeMissingSet, esdeMenuDisplay(mEsdeMissingSet, true)});
     } else if (row == 1) {                            // VARIANT
         // ES-DE lists only selectable variants; trigger-only override variants (selectable=false)
         // never appear in the menu (ThemeData parseThemeCapabilities / GuiMenu).
@@ -223,6 +230,7 @@ void NanoMenu::esdeMenuEnumerateInstalled() {
 
 void NanoMenu::esdeMenuOpen() {
     cancelPendingLaunch();           // a deferred A press would land on a menu row
+    esdeMissingSetRecheck("theme menu opened");   // OA-37: a chosen set that is back loads now
     ensureEsdeTheme();               // make sure caps reflect the current set
     esdeMenuEnumerateInstalled();
     mEsdeMenuActive = true;
