@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+import tempfile
 import unittest
 
 TOOL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -233,7 +234,7 @@ class Unit(unittest.TestCase):
         self.assertEqual(len(out.problems), 1)
         # The ratchet: a spec key with no row fails, and so does an enum row missing a value the spec offers.
         rows = [{"match": "persist.gammaos.shader.custom.scanline_density", "class": "A",
-                 "ini": "android.shader.custom.scanline_density", "type": "enum", "default": "",
+                 "ini": "android.shader.custom.scanline_density", "type": "enum", "default": "auto",
                  "values": ["auto", "fine"], "note": "n"}]
         found = Found({"persist.gammaos.shader.custom.scanline_density": u})
         text = "\n".join(check_table({"rows": [], "unclassified": []}, found))
@@ -254,9 +255,60 @@ class Unit(unittest.TestCase):
             expand_runtime(out, ctx, ())
             self.assertIn("helper.cpp:1 builds keys from '%s_%d'", "\n".join(out.problems), body)
         ctx, out = Context(), Found()
-        scan_text('void f() { printf("%s: %d", a, b); }', "log.cpp", out, ctx)
+        scan_text('void f(const char* base) { char k[92]; snprintf(k, sizeof k, "%s.top", base); }', "dot.cpp",
+                  out, ctx)
+        expand_runtime(out, ctx, ())
+        self.assertIn("dot.cpp:1 builds keys from '%s.top'", "\n".join(out.problems))
+        ctx, out = Context(), Found()
+        scan_text('void f() { printf("%s: %d", a, b); printf("%s. Select to show", c); }', "log.cpp", out, ctx)
         expand_runtime(out, ctx, ())
         self.assertEqual(out.problems, [])
+
+    def test_runtime_shapes_without_a_family(self):
+        # "%s.suffix" templates and a key literal joined with + fail unless a family claims them.
+        ctx, out = Context(), Found()
+        scan_text('''
+            void f(const char* base, const char* leaf, const char* p, int i) { char k[92];
+                snprintf(k, sizeof k, "%s.top", base);
+                snprintf(k, sizeof k, "%s.%s", base, leaf);
+                snprintf(k, sizeof k, "%sact%d", p, i);
+                std::string a = "persist.gammaos.nano.slot" + std::to_string(i);
+                std::string b = std::string("persist.gammaos.nano.row") + "_count";
+                std::string c = std::string("persist.q.pa") + std::to_string(i) + "_";
+                std::string d = "persist.gammaos.nano.whole";
+                int e = property_get_int32("persist.gammaos.nano.n", 0) + 1; }
+        ''', "a.cpp", out, ctx)
+        expand_runtime(out, ctx, ({"name": "rules", "file": "a.cpp", "templates": "%sact",
+                                   "prefixes": ("persist.q.pa%d_",)},))
+        self.assertIn("built", out["persist.q.pa%d_act%d"].ops)
+        text = "\n".join(out.problems)
+        self.assertIn("a.cpp:3 builds keys from '%s.top'", text)
+        self.assertIn("a.cpp:4 builds keys from '%s.%s'", text)
+        self.assertIn("a.cpp:6 joins key persist.gammaos.nano.slot to a value chosen at run time", text)
+        self.assertIn("a.cpp:7 joins key persist.gammaos.nano.row to", text)
+        self.assertEqual(len(out.problems), 4, text)                              # persist.q.pa is the family's
+        self.assertIn("persist.gammaos.nano.slot", out)                           # still a key
+
+    def test_linux_tree(self):
+        # linux_files picks the overlay scripts and linux/src; the same run-time checks apply to linux/src.
+        with tempfile.TemporaryDirectory() as root:
+            files = {"linux/src/s/S.cpp": 'std::string k = "persist.thimsy.slot" + std::to_string(i);\n'
+                                          'snprintf(k, n, "%s.top", base);\n',
+                     "linux/src/s/tests/T.cpp": 'property_set("persist.thimsy.test", "1");\n',
+                     "linux/board/common/rootfs-overlay/etc/init.d/S10x": '#!/bin/sh\nthimsy_persist "$K" 0\n'
+                                                                          'thimsy_persist "persist.thimsy.q" 1\n',
+                     "linux/board/common/post-build.d/20-x.sh": "thimsy_persist persist.thimsy.build 1\n"}
+            for rel, body in files.items():
+                path = os.path.join(root, *rel.split("/"))
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "w", encoding="utf-8", newline="\n") as f:
+                    f.write(body)
+            found = scan(root, files=[], linux_root=root)
+        self.assertEqual(sorted(found), ["persist.thimsy.q", "persist.thimsy.slot"])
+        text = "\n".join(p for p in found.problems if "linux/" in p)
+        self.assertIn("linux/src/s/S.cpp:1 joins key persist.thimsy.slot", text)
+        self.assertIn("linux/src/s/S.cpp:2 builds keys from '%s.top'", text)
+        self.assertIn('S10x:2: thimsy_persist "$K": the key is a variable', text)
 
     def test_linux_scripts(self):
         out = {}
@@ -271,6 +323,35 @@ class Unit(unittest.TestCase):
         self.assertEqual(out["persist.thimsy.time.ntp"].defaults, {"1"})
         self.assertEqual(out["ro.thimsy.device.audio.card"].defaults, {""})
         self.assertEqual(out["persist.thimsy.time.ntp"].calls, {"thimsy_persist"})
+
+    def test_linux_script_forms(self):
+        # Quoted keys are read; a key the scan cannot read is a problem, not a silent miss or a cut key.
+        out = Found()
+        scan_linux_script("#!/bin/sh\n"
+                          'thimsy_persist "persist.thimsy.foo.enabled" 0\n'
+                          "thimsy_ro 'ro.thimsy.device.x' 'a b'\n"
+                          'thimsy_persist "$KEY" 1\n'
+                          "thimsy_ro ${K} 1\n"
+                          "thimsy_persist persist.thimsy.bar.$x 1\n"
+                          'setprop "persist.thimsy.baz.${n}" 1\n'
+                          "v=$(getprop persist.thimsy.get)\n"
+                          'grep -q "^persist.thimsy.qux=1" "$THIMSY_CONFIG/persist.props"\n'
+                          "sed -i '/^persist\\.thimsy\\.quux=/d' persist.props\n"
+                          'while read -r l; do :; done < "$THIMSY_CONFIG/persist.props"\n'
+                          "setprop bluetooth.$x 1\n", "linux/board/x/S99x", out)
+        self.assertEqual(sorted(out), ["persist.thimsy.foo.enabled", "persist.thimsy.get", "ro.thimsy.device.x"])
+        self.assertEqual(out["persist.thimsy.foo.enabled"].defaults, {"0"})
+        self.assertEqual(out["ro.thimsy.device.x"].defaults, {"a b"})
+        self.assertEqual(out["persist.thimsy.get"].ops, {"get"})
+        text = "\n".join(out.problems)
+        for want in ('S99x:4: thimsy_persist "$KEY": the key is a variable',
+                     "S99x:5: thimsy_ro ${K}: the key is a variable",
+                     "S99x:6: thimsy_persist persist.thimsy.bar.$x: the key is built with a $-expansion",
+                     'S99x:7: setprop "persist.thimsy.baz.${n}": the key is built with a $-expansion',
+                     "S99x:9: persist.thimsy.qux is in a grep, sed or awk line",
+                     "S99x:10: persist\\.thimsy\\.quux is in a grep, sed or awk line"):
+            self.assertIn(want, text)
+        self.assertEqual(len(out.problems), 6, text)
 
     def test_owner(self):
         found = Found()
@@ -314,6 +395,11 @@ class Unit(unittest.TestCase):
             {"match": "persist.old", "class": "D", "note": "n"},
             {"match": "persist.c", "class": "?", "note": "n", "source": "manual"},
             {"match": "persist.d", "class": "S", "ini": "x.d", "note": "n", "source": "manual"},
+            {"match": "persist.g", "class": "D", "type": "enum", "default": "", "values": ["auto"], "note": "n",
+             "source": "manual"},
+            {"match": "persist.h", "class": "D", "type": "enum", "default": "x", "note": "n", "source": "manual"},
+            {"match": "persist.i", "class": "D", "type": "enum", "default": "auto", "values": ["auto"], "note": "n",
+             "source": "manual"},
         ]
         problems = check_table({"rows": rows, "unclassified": []}, found)
         text = "\n".join(problems)
@@ -327,6 +413,9 @@ class Unit(unittest.TestCase):
         self.assertIn("persist.e: a bool, but its device-store encoding is None", text)
         self.assertIn("persist.f: default '1' is not in its encoding true/false", text)
         self.assertIn("system:g: a settings-provider key on the card for Linux too, but no \"linux\"", text)
+        self.assertIn("persist.g: an enum whose default '' is not one of its values (auto)", text)
+        self.assertIn("persist.h: an enum, but no \"values\"", text)
+        self.assertNotIn("persist.i", text)
         self.assertNotIn("persist.a.y", text)        # covered by the glob
 
     def test_scripts(self):

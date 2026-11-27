@@ -21,8 +21,10 @@ Keys built at run time are found through RUNTIME_FAMILIES, which says how each f
 - a template whose prefix comes at run time (`"%sact%d_code"` with actScopePrefix()'s prefixes,
   `"%s_%d"` with the base keys passed to the chunked-list helpers): the scan lists each prefix with
   each template.
-Two checks keep the families honest: a `"%s..."` key template the families do not claim is a problem,
-and so is a key prefix (a key literal ending in ".") with an exact row and no family. A new family is
+Three checks keep the families honest. A `"%s..."` key template the families do not claim is a problem
+(`"%sact%d_code"`, `"%s.top"`, `"%s.%s"`). So is a key literal not ending in "." joined to a run-time value
+with + (`"persist.gammaos.nano.slot" + std::to_string(i)`), unless it is a family's prefix in that file.
+And so is a key prefix (a key literal ending in ".") with an exact row and no family. A new family is
 declared in RUNTIME_FAMILIES, or covered by a glob row. The template check reads every file that could
 hold such a template (_TEMPLATE_HINT), not only the files that name a key (_WORTH): a helper that builds
 keys from a prefix passed in by another file names no key itself.
@@ -47,10 +49,15 @@ portable one says in its "linux" field where Linux will keep it.
 
 Other Linux components keep keys in the same store: thimsy-session (`persist.thimsy.audio.volume`) and
 the init scripts (`thimsy_persist persist.thimsy.time.ntp 1` in D40time). With linux_root, scan() also
-reads the C and C++ sources under linux/src (tests left out) and the shell scripts in linux/board's root
-file system overlays (thimsy_persist, thimsy_ro, thimsy_build_prop, setprop, getprop). Their files are
-named from the repository root ("linux/src/..."); nano/'s from nano/. A pref-namespace key that only
-those files name has an exact row with an "owner": the component that keeps it.
+reads the C and C++ sources under linux/src (tests left out; the same checks as nano/'s, with no
+runtime families) and the shell scripts in linux/board's root file system overlays: `property:K`, and
+the KEY of thimsy_persist, thimsy_ro, thimsy_build_prop, setprop and getprop, bare or quoted. A KEY the
+scan cannot read is a problem: a variable (`thimsy_persist "$KEY" 1`), a key with a $-expansion in it
+(`persist.thimsy.bar.$x`), or persist.* text in a grep, sed or awk line (`grep "^persist.thimsy.qux=1"`).
+Their files are named from the repository root ("linux/src/..."); nano/'s from nano/. A pref-namespace
+key that only those files name has an exact row with an "owner": the component that keeps it.
+Not scanned: libthimsy/tools/thimsy-prop.cpp and linux/board/common/post-build.d/20-build-props.sh.
+They write only ro.* keys (device.json's scalars, build.props), all under the ro.* glob row (class R).
 """
 from __future__ import annotations
 
@@ -98,8 +105,9 @@ RUNTIME_FAMILIES = (
      "bases_from": ("nanoPkgListRead", "nanoPkgListHas", "nanoPkgListSet", "qsSpecList"),
      "params": ("baseProp", "base")},
 )
-# A printf template whose prefix comes at run time: "%s" then key characters and %d fields.
-RUNTIME_TEMPLATE = re.compile(r"%s[_A-Za-z](?:[A-Za-z0-9_.\-]|%0?\d*[du])*\Z")
+# A printf template whose prefix comes at run time: "%s" then key characters ("%sact", "%s.top") and
+# %d, %u or %s fields ("%s_%d", "%s.%s").
+RUNTIME_TEMPLATE = re.compile(r"%s[_A-Za-z.](?:[A-Za-z0-9_.\-]|%0?\d*[dus])*\Z")
 
 # A printf template of a key: a property key with %s, %d, %u or %02d style fields in it.
 PROP_TEMPLATE = re.compile(r"(?:%s)\.(?:[A-Za-z0-9_\-]|%%0?\d*[sdu])+(?:\.(?:[A-Za-z0-9_\-]|%%0?\d*[sdu])+)*\.?\Z"
@@ -141,9 +149,9 @@ _TOKEN = re.compile(r"""
 # A file worth tokenising names a key in a literal, a settings row or a shell property command.
 _WORTH = re.compile(r'"(?:%s)\.|SettingSource::|setprop|getprop|settings (?:get|put)' % "|".join(PROP_NAMESPACES))
 # A file that may hold a "%s..." template (RUNTIME_TEMPLATE), whether or not it names a key: "%s" then a
-# key character, a line continuation, or the end of a literal joined to the next ("%s" "_%d"). Only a
-# "%s" spelled with an escape ("\x25s") or split across literals ("%" "s_%d") gets past it.
-_TEMPLATE_HINT = re.compile(r'%s(?:[_A-Za-z]|\\\r?\n|"\s*(?:u8|u|U|L)?R?")')
+# key character or ".", a line continuation, or the end of a literal joined to the next ("%s" "_%d").
+# Only a "%s" spelled with an escape ("\x25s") or split across literals ("%" "s_%d") gets past it.
+_TEMPLATE_HINT = re.compile(r'%s(?:[_A-Za-z.]|\\\r?\n|"\s*(?:u8|u|U|L)?R?")')
 
 
 class Tok(tuple):
@@ -248,11 +256,12 @@ class Use:
 
 
 class Context:
-    """What the runtime families need from the scan: "%s..." templates, helper calls, named key
-    literals and each file's tokens."""
+    """What the runtime families need from the scan: "%s..." templates, key literals joined with +,
+    helper calls, named key literals and each file's tokens."""
 
     def __init__(self) -> None:
         self.templates: Dict[str, Dict[str, int]] = {}      # file -> {template: first line}
+        self.joins: Dict[str, Dict[str, int]] = {}          # file -> {key joined with +: first line}
         self.consts: Dict[str, Dict[str, str]] = {}         # file -> {name: key literal}
         self.toks: Dict[str, List[Tok]] = {}
 
@@ -263,6 +272,16 @@ def _family_files() -> Set[str]:
 
 def _base_calls() -> Set[str]:
     return {fn for f in RUNTIME_FAMILIES for fn in f.get("bases_from", ())}
+
+
+def _joined(toks: List[Tok], i: int) -> bool:
+    """True when the string literal at I is joined to what follows with +: `"K" + x` or
+    `std::string("K") + x`."""
+    j = i + 1
+    if j < len(toks) and toks[j].text == ")" and i >= 2 and toks[i - 1].text == "(" and toks[i - 2].kind == "i" \
+            and toks[i - 2].text.endswith("string"):
+        j += 1
+    return j < len(toks) and toks[j].kind == "o" and toks[j].text == "+"
 
 
 def scan_text(text: str, rel: str, out: Dict[str, Use], ctx: Optional[Context] = None) -> None:
@@ -316,6 +335,8 @@ def scan_text(text: str, rel: str, out: Dict[str, Use], ctx: Optional[Context] =
         if ctx is not None and PROP_KEY.match(s) and i >= 2 and toks[i - 1].kind == "o" and toks[i - 1].text == "=" \
                 and toks[i - 2].kind == "i":
             ctx.consts.setdefault(rel, {})[toks[i - 2].text] = s
+        if ctx is not None and PROP_KEY.match(s) and not s.endswith(".") and _joined(toks, i):
+            ctx.joins.setdefault(rel, {}).setdefault(s, t.line)
         if is_key(s):
             op = "other"
             fn = ""
@@ -374,33 +395,74 @@ LINUX_SRC = "linux/src"
 LINUX_BOARD = "linux/board"
 OUTSIDE = "linux/"  # a file named from the repository root; nano/ has no linux/ folder
 # The init library's readers: thimsy_persist KEY DEFAULT (persist.props), thimsy_ro KEY DEFAULT,
-# thimsy_build_prop KEY DEFAULT (usr/share/thimsy/init/lib.sh).
-_LINUX_SCRIPT_KEY = re.compile(r"\b(thimsy_persist|thimsy_ro|thimsy_build_prop)\s+(%s)"
-                               r"(?:\s+('[^']*'|\"[^\"]*\"|[^\s;&|]+))?" % _KEYCHARS)
+# thimsy_build_prop KEY DEFAULT (usr/share/thimsy/init/lib.sh); and setprop K V, getprop K. A word is
+# bare or quoted, or both joined (persist.thimsy."$x").
+_SHELL_WORD = r"""(?:"[^"]*"|'[^']*'|[^\s;&|()`"']+)+"""
+_LINUX_SCRIPT_CALL = re.compile(r"(?<![A-Za-z0-9_\-])(thimsy_persist|thimsy_ro|thimsy_build_prop|setprop|getprop)"
+                                r"[ \t]+(%s)(?:[ \t]+(%s))?" % (_SHELL_WORD, _SHELL_WORD))
+_LINUX_READERS = ("thimsy_persist", "thimsy_ro", "thimsy_build_prop")
+_SCRIPT_TRIGGER = re.compile(r"property:(%s)" % _KEYCHARS)
+_SCRIPT_KEY_WORD = re.compile(r"(%s)\Z" % _KEYCHARS)
+_SCRIPT_NS = re.compile(r"(?:%s)\." % "|".join(PROP_NAMESPACES))
+# A line that runs grep, sed or awk, and persist.* text in it ("^persist\.thimsy\.x=", escaped dots
+# included). A path's last part ("$THIMSY_CONFIG/persist.props") is a file, not a key, and so is the
+# store's own name, persist.props.
+_PATTERN_CMD = re.compile(r"(?:^|[\s;&|(`!])(?:grep|egrep|fgrep|sed|awk)(?=\s|\Z)")
+_PATTERN_KEY = re.compile(r"(?<![A-Za-z0-9_./\\\-])persist\\{0,2}\.[A-Za-z0-9_.\\\-]*")
+STORE_FILE = "persist.props"
 
 
 def scan_linux_script(text: str, rel: str, out: Dict[str, Use]) -> None:
-    """Keys in an init or shell script of linux/board: the init library's readers (with their
-    defaults), and setprop, getprop and property:K as in scan_script."""
-    scan_script(text, rel, out)
+    """Keys in an init or shell script of linux/board: property:K, and the KEY of the init library's
+    readers (with their defaults), setprop and getprop, bare or quoted. With OUT a Found, a KEY the scan
+    cannot read is a problem: a variable, a key with a $-expansion in it, or persist.* text in a grep,
+    sed or awk line."""
+    problems = out.problems if isinstance(out, Found) else None
+
+    def note(key: str, op: str, n: int) -> Use:
+        u = out.setdefault(key, Use())
+        u.files.add(rel)
+        u.ops.add(op)
+        if len(u.where) < 12:
+            u.where.append("%s:%d" % (rel, n))
+        return u
+
     for n, ln in enumerate(text.split("\n"), 1):
         if ln.lstrip().startswith("#"):
             continue
-        for m in _LINUX_SCRIPT_KEY.finditer(ln):
-            key = m.group(2).rstrip(".")
-            u = out.setdefault(key, Use())
-            u.files.add(rel)
-            u.ops.add("get")
-            u.calls.add(m.group(1))
-            if m.group(3) is not None:
-                u.defaults.add(m.group(3).strip("'\""))
-            if len(u.where) < 12:
-                u.where.append("%s:%d" % (rel, n))
+        for m in _SCRIPT_TRIGGER.finditer(ln):
+            note(m.group(1).rstrip("."), "get", n)
+        for m in _LINUX_SCRIPT_CALL.finditer(ln):
+            cmd, word, arg = m.groups()
+            bare = word.replace('"', "").replace("'", "")
+            if "$" in bare:
+                if problems is not None and (bare.startswith("$") or _SCRIPT_NS.match(bare)):
+                    problems.append("%s:%d: %s %s: the key is %s, which prefs.scan_linux_script cannot read: "
+                                    "name the key in full" % (rel, n, cmd, word, "a variable" if bare.startswith("$")
+                                                              else "built with a $-expansion"))
+                continue
+            if not _SCRIPT_KEY_WORD.match(bare):
+                continue  # another namespace (setprop bluetooth.profile.x false), not Nano's
+            u = note(bare.rstrip("."), "set" if cmd == "setprop" else "get", n)
+            if cmd in _LINUX_READERS:
+                u.calls.add(cmd)
+                if arg is not None and "$" not in arg:
+                    u.defaults.add(arg.replace('"', "").replace("'", ""))
+        if problems is not None and _PATTERN_CMD.search(ln):
+            for m in _PATTERN_KEY.finditer(ln):
+                if m.group(0) != STORE_FILE:
+                    problems.append("%s:%d: %s is in a grep, sed or awk line, a form prefs.scan_linux_script does "
+                                    "not read: read the key with thimsy_persist, or teach the scan the form"
+                                    % (rel, n, m.group(0)))
 
 
 def linux_files(root: str) -> List[str]:
     """Paths (relative to the repository root) of the C and C++ sources under linux/src (tests left
-    out) and the shell scripts in linux/board's root file system overlays."""
+    out) and the shell scripts in linux/board's root file system overlays (*/rootfs-overlay*/: a .sh
+    file or a file whose #! line names a shell). Nothing else outside nano/ is scanned: not libthimsy
+    (libthimsy/tools/thimsy-prop.cpp writes device.json's scalars as ro.thimsy.*), and not
+    linux/board's build scripts (post-build.d/20-build-props.sh writes build.props, ro.* only). Every
+    key those two write is under the ro.* glob row (class R)."""
     out = []
     for top, want_src in ((LINUX_SRC, True), (LINUX_BOARD, False)):
         for dirpath, dirnames, names in os.walk(os.path.join(root, *top.split("/"))):
@@ -479,7 +541,8 @@ def _string(field: List[Tok]) -> Optional[str]:
 
 def expand_runtime(found: Found, ctx: Context, families=RUNTIME_FAMILIES) -> None:
     """Adds the keys of each runtime family to FOUND (op "built"), and the problems: a family that
-    lists nothing, a prefix no longer in its file, an unresolved base, a template no family claims."""
+    lists nothing, a prefix no longer in its file, an unresolved base, a template no family claims, a
+    key literal joined with + that is no family's prefix in its file."""
 
     def add(key: str, fam: dict, where: str, default: Optional[str] = None) -> None:
         u = found.setdefault(key, Use())
@@ -563,11 +626,23 @@ def expand_runtime(found: Found, ctx: Context, families=RUNTIME_FAMILIES) -> Non
             if (rel, t) not in claimed:
                 found.problems.append("%s:%d builds keys from %r with a prefix chosen at run time: declare the "
                                       "family in prefs.RUNTIME_FAMILIES" % (rel, ln, t))
+    heads: Dict[str, Set[str]] = {}
+    for fam in families:
+        own = heads.setdefault(fam["file"], set())
+        if "prefix" in fam:
+            own.add(fam["prefix"])
+        own.update(p.split("%", 1)[0] for p in fam.get("prefixes", ()))
+    for rel, joins in sorted(ctx.joins.items()):
+        for k, ln in sorted(joins.items()):
+            if k not in heads.get(rel, ()):
+                found.problems.append("%s:%d joins key %s to a value chosen at run time with +: the keys built on it "
+                                      "have no rows. Declare the family in prefs.RUNTIME_FAMILIES" % (rel, ln, k))
 
 
 def scan(nano_dir: str, files: Optional[List[str]] = None, linux_root: Optional[str] = None) -> Found:
     """{key: Use} over FILES (default: scanned_files), with the runtime families expanded; with
-    LINUX_ROOT (the repository root), also over linux_files. The runtime families are nano/'s only."""
+    LINUX_ROOT (the repository root), also over linux_files. The runtime families are nano/'s only: a
+    "%s..." template or a key joined with + in linux/src is a problem."""
     out = Found()
     ctx = Context()
     for rel in files if files is not None else scanned_files(nano_dir):
@@ -579,13 +654,15 @@ def scan(nano_dir: str, files: Optional[List[str]] = None, linux_root: Optional[
             scan_text(text, rel, out, ctx)
     expand_runtime(out, ctx)
     if linux_root is not None:
+        lctx = Context()
         for rel in linux_files(linux_root):
             with open(os.path.join(linux_root, *rel.split("/")), "rb") as f:
                 text = f.read().decode("utf-8", "replace")
             if rel.startswith(LINUX_SRC + "/"):
-                scan_text(text, rel, out)
+                scan_text(text, rel, out, lctx)
             else:
                 scan_linux_script(text, rel, out)
+        expand_runtime(out, lctx, ())
     res = Found(sorted(out.items()))
     res.problems, res.family_prefixes = out.problems, out.family_prefixes
     return res
@@ -640,8 +717,9 @@ def option_values(options: str) -> List[str]:
 
 
 def check_table(table: dict, found: Dict[str, Use]) -> List[str]:
-    """Problems: malformed rows, scanned keys with no row, rows that cover nothing, a broken
-    unclassified list, and portable rows whose default or values disagree with the code."""
+    """Problems: malformed rows (an enum's default must be one of its values), scanned keys with no
+    row, rows that cover nothing, a broken unclassified list, and portable rows whose default or values
+    disagree with the code."""
     problems: List[str] = list(getattr(found, "problems", []))
     rows = table.get("rows", [])
     unclassified = table.get("unclassified", [])
@@ -663,6 +741,12 @@ def check_table(table: dict, found: Dict[str, Use]) -> List[str]:
             problems.append("%s: no note or label" % m)
         if r.get("type") is not None and r["type"] not in TYPES:
             problems.append("%s: type %r is not one of %s" % (m, r["type"], ", ".join(TYPES)))
+        if r.get("type") == "enum":
+            if not r.get("values"):
+                problems.append("%s: an enum, but no \"values\"" % m)
+            elif "default" in r and str(r["default"]) not in r["values"]:
+                problems.append("%s: an enum whose default %r is not one of its values (%s)"
+                                % (m, r["default"], ", ".join(r["values"])))
         ini = r.get("ini")
         part_of = r.get("part_of")
         if part_of:
