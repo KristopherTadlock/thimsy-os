@@ -37,7 +37,7 @@ LOWER = "py -3.12 tools/nano-tree/tests/test_linux_ratchets.py --lower"
 
 # Functions that start a program (and pclose, which the gate must see to answer its own streams).
 WRAPPED_FUNCS = SPAWNERS + ("pclose",)
-CALL = re.compile(r"(?<![A-Za-z0-9_.>:])(?:::)?(%s)\s*\(" % "|".join(WRAPPED_FUNCS))
+CALL = re.compile(r"(?<![A-Za-z0-9_.>:])(?:(?:std)?::)?(%s)\s*\(" % "|".join(WRAPPED_FUNCS))
 EXEC_FUNCS = ("execv", "execvp", "execve", "execl", "execlp", "execle", "execvpe", "fexecve")
 # fork and vfork start nothing by themselves (the exec after them does): they need no wrap.
 UNWRAPPED_OK = ("fork", "vfork")
