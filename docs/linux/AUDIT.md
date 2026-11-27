@@ -29,7 +29,7 @@ Owner:
 - `drmSetupZeroCopy`'s pre-existing leak on Android: fix (an Android behaviour change) or leave.
 - Merging nano-144 when only nano-144 changed the patch: run `import-patch --old <previous merge base>`.
 - Audit Nano before dropping CAP_SYS_ADMIN from its jail.
-- Linux default ES-DE theme: a filtered Slate or another theme; update ASSETS.md's Akrobat row to REPLACE.
+- ~~Linux default ES-DE theme~~: decided 2026-11-26, it follows the Android release's modified Colorful (Simplified) (DECISIONS.md OA-1).
 - A UI to fetch excluded proprietary firmware from the user's device (installer, Phase 4).
 
 Hardware (Phase 0/2a):
@@ -58,7 +58,7 @@ Source: `docs/linux/DECISIONS.md`, sections "Implementation decisions (wave 3)" 
 
 ### (b) Pending the owner
 
-- Linux's default ES-DE theme (Deferred, "Slate (gfix)"): (a) answer the trademark-logo ASK and ship Slate whole; (b) a filtered Slate without the logos; (c) Colorful (Simplified) via a shared theme script, still needing the webp ASK; (d) no theme. gfix recommends (a), else (b).
+- ~~Linux's default ES-DE theme~~: decided 2026-11-26, the Android release's modified Colorful (Simplified) (DECISIONS.md OA-1).
 - Accept the shell gate's documented limits, or have a G7 step narrow them.
 - `drmSetupZeroCopy`'s leak, now more visible with GBM on Linux (the waves 1-2 Android-fix question stands).
 - At each nano-144 merge that adds a unit test or changes includes: edit `sources.txt` and run `include_census.py write`.

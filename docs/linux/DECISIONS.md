@@ -279,7 +279,7 @@ The owner's own decisions of 2026-11-25, listed for context. They were not chang
 | Q8, Q9, Q16, Q18 | device checks of answers from code | Phase 0 (g), Phase 3, Phase 4 |
 | Q10 tests | core speed, builds and save round trips | section 6.2's core tests, Phases 2 and 3 |
 | D4, D11, D23, D25 | Phase 0 or 2a confirmation | each entry above says what reopens it |
-| Slate (gfix) | Linux's default ES-DE theme. Slate is denied as a whole because ASSETS.md marks its per-system `*/images/logo.svg` ASK (trademark logos); Colorful is not in the export and its `*.webp` art is ASK too, so Linux has no ES-DE theme. Options: (a) the owner answers the trademark ASK: if nominative logo use is acceptable (every ES-DE build ships it), the ASK rows become KEEP and Slate ships whole, the cheapest option; (b) a filtered Slate: `assets_allowlist` denies archive members instead of the whole archive and thimsy-data rebuilds `slate-es-de.zip` reproducibly without the logos (Nano's fallback for a missing logo needs checking); (c) Colorful (Simplified) as Android ships it, with `mods/50-nano.sh`'s theme preparation (Urbanist/Barlow swaps, XML edits, quake.webp removal) moved into a script both builds share, which still needs the same ASK answered for the webp art; (d) no theme, relying on Nano's built-in look, which needs checking that Nano starts on Linux without any theme | the owner's decision, pending; gfix recommends (a) if the owner agrees, else (b) |
+| ~~Slate (gfix)~~ | Linux's default ES-DE theme. **Decided by the owner on 2026-11-26 (OA-1, below): it follows the Android release**, a modified Colorful (Simplified) prepared as `mods/50-nano.sh` does; Slate stays out, as on Android. | decided (OA-1); the work is listed under OA-1 |
 | Android set-up prompt (review device-safety-3) | Android shows 'Unsupported SD card, set up' for a freshly written Thimsy card until Linux's first boot creates the basic-data games entry; tapping set up erases the Thimsy install (not user data). Options: (a) installer and docs warning only (current); (b) the image carries a small formatted basic-data entry (e.g. a FAT THIMSY-README) so vold mounts something and no wizard appears, which changes the layout and gpt_check's vold rule | the owner's decision, pending; recommended (b) if a FAT stub is acceptable on the card, else (a) |
 | Display EGL moves (G7D-2, G7D-3) | readyToRun's headless pbuffer EGL set-up, the SurfaceFlinger window surface and NanoMenuRender.cpp's present stay in core, because they write NanoMenu's private members and NanoMenu.h is frozen; Mesa may need a GBM or surfaceless EGL display there | the owner's decision: allow a G7-display-b step that adds accessors to NanoMenu.h (an Android-surface change), or leave it to G10 if Linux works without it; recommended: decide after G10's first headless and on-device run |
 | Release-build SSH keys (gfix2) | a release build with SSH turned on has no way to install root's authorized_keys (no shell, and the ext4 data partition can't be written from Windows); dev builds' empty password is probably refused by dropbear without -B, so dev logins likely need keys too | the owner's decision: a key-import path (for example a file on the exFAT that D50ssh moves to /root/.ssh once and deletes), or keep release SSH unusable; recommended: the key-import path |
@@ -680,7 +680,7 @@ Each still-open problem from the reports, once, with who must act. Items a later
 
 ### Assets, owner's choices
 
-- Slate is denied as a whole and the Colorful theme is not in the export, so Linux needs a filtered Slate or another default theme (G2d). *(owner)*
+- ~~Slate is denied as a whole and the Colorful theme is not in the export, so Linux needs a filtered Slate or another default theme (G2d).~~ Decided: OA-1.
 - ASSETS.md's table still says KEEP for Akrobat, though its "Changes since the audit" says REPLACE (G2d). *(owner)*
 
 ### Notes, no action needed
@@ -843,7 +843,7 @@ Each still-open problem from the wave 3 reports, once, with who acts: integ3 (th
 
 ### Owner's choices
 
-- Linux's default ES-DE theme: Slate, filtered Slate, Colorful or none; options (a) to (d) and gfix's recommendation are in the Deferred table (gfix). *(owner)*
+- ~~Linux's default ES-DE theme: Slate, filtered Slate, Colorful or none (gfix).~~ Decided: OA-1.
 - The shell gate's documented limits: `$(...)` inside double quotes is not examined; a `sh -c` string is not rewritten, so `/system/bin/rm` inside `sh -c` would fail on Linux; `&&` and `||` are not told apart in route strings; when the gate refuses an exec, the forked child logs with a raw `write(2)` to stderr, not through the compat logger (G9). *(owner: accept, or ask a G7 step to narrow them)*
 - `drmSetupZeroCopy`'s pre-existing leak is more visible with GBM: a ring that fails part-way keeps its earlier framebuffers until the fd closes; release does not RMFB itself, because DRM reuses fb ids at once (G9; the waves 1 and 2 item on the Android fix stands). *(owner)*
 - Any nano-144 merge that adds a unit test or changes includes fails `test_nano_sources` until `sources.txt` is edited and `include_census.py write` is run; fork-only, so it never gates the Android build (G1c). *(owner, at each nano-144 merge)*
@@ -1079,3 +1079,11 @@ Two steps ran in parallel, each adversarially verified and repaired until clean:
 - Sleep does not stop or restart Bluetooth; bluez-alsa (Bluetooth audio) is not added; the launch-loop limits are untuned.
 - A controller missing at a later boot makes that boot's D35bluetooth wait 5 s with the key still 1.
 - tools/nano-tree/control-keys.json's notes on the nano_action rows, G's "G7-power and actions" row (names nano/third_party/wpa_ctrl), and upstream.json's fork_only `third_party/wpa_ctrl/**` glob are stale but harmless; NanoMenuSettings.cpp's and NanoMenuNet.cpp's file headers still describe `cmd wifi`.
+
+## Owner audit answers (2026-11-26)
+
+The owner went through AUDIT.md and the Deferred table one item at a time. Each answer has an id `OA-n`; the work it creates is listed with it and done in a later step unless it says otherwise.
+
+- **OA-1, Linux's default ES-DE theme (Slate (gfix)):** the default theme follows the Android release: Colorful (Simplified) at the commit `mods/50-nano.sh` pins, modified the same way (Gilroy and Akrobat replaced by Urbanist 1.330 and Barlow Semi Condensed 1.422 with their OFL texts, `quake.webp` removed, Thimsy's console pictures and `theme-colours.json` added, `check_system_art.py` passing). Slate is not shipped, as on Android (50-nano.sh deletes `slate-es-de.zip`). The per-system webp art's ASK is settled the way Android settled it: shipped, with the credits in NOTICE and ATTRIBUTION.md. This is option (c) of the Deferred row.
+  - Work: move 50-nano.sh's theme preparation (fetch and checksum, font swaps, theme.xml edits, console pictures, colours, art check) into one script both builds call, so the two themes cannot drift; Android's output must stay byte-identical. thimsy-data runs it at build time and installs the result where Nano's Linux build reads bundled themes; `assets_allowlist` accepts the prepared theme and still denies Slate and every removed file.
+  - Work: Linux's property defaults match Android's theme block (`esde.themeset=colorful-simplified-es-de`, `esde.colorscheme=colorful-dark`, `esde.settingstheme=minima`, `ndstheme=3`, the Minima background and nav sounds off), from the same list rather than a copy.
