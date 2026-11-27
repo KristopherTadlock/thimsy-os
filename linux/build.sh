@@ -30,15 +30,16 @@
 # files it names exist, --publish only for a publish target); then
 # tools/build_guard.sh, which refuses while the Android build may be running
 # and holds /mnt/wsl/thimsy-build.lock for the rest of the run; then git archive
-# tarballs of libthimsy/ and nano/ at HEAD and the exported Nano assets, with
-# hash files, into the download directory (E.1: the recipes build from them, so
-# legal-info saves them and nothing untracked reaches an image); then Buildroot
+# tarballs of libthimsy/ and nano/ at HEAD and the exported Nano assets (with
+# the Colorful theme prepared as Android prepares it, OA-1), with hash files,
+# into the download directory (E.1: the recipes build from them, so legal-info
+# saves them and nothing untracked reaches an image); then Buildroot
 # in a debian:trixie-slim container, as an amd64 cross build.
 # Make targets default to "all sdk" for a tier (the hardware packs build with
 # its SDK) and "all" for a hardware pack.
 #
 # THIMSY_WORK (default <repo>/work/linux): dl/ (downloads; dl/thimsy-src/ the
-#   tarballs), images/<target>/ and build logs.
+#   tarballs, dl/colorful-theme/ the theme's), images/<target>/ and build logs.
 # THIMSY_BUILD_DIR (default <work>/build): Buildroot, the output trees, ccache
 #   and the unpacked SDK. ext4 only: never under /mnt/<drive> (plan section 10).
 # THIMSY_PYTHON (default python3) runs tools/defconfig.py.
@@ -260,12 +261,26 @@ archive thimsy-nano nano nano
 # (security-1). thimsy-data's install applies the same list again.
 # export-assets takes its output directory as a positional argument.
 step archive "nano_tree.py export-assets, filtered by package/thimsy-data/assets.list -> dl/thimsy-src/nano-assets-$SHA.tar.gz (package thimsy-data)"
+step theme "scripts/colorful_theme.sh prepare (HEAD's, downloads in dl/colorful-theme) into the export before the filter, Slate removed, and mods/nano-theme.props as .thimsy-defaults/ (OA-1)"
 if [ "$dry" = 0 ]; then
   [ -f "$REPO/tools/nano-tree/nano_tree.py" ] ||
     die 1 "tools/nano-tree/nano_tree.py is missing (step G0); cannot export the assets"
   assets="$BUILD_DIR/nano-assets-$SHA"
   rm -rf "$assets"
   "$PY" "$REPO/tools/nano-tree/nano_tree.py" export-assets "$assets/export"
+  # The default ES-DE theme is Android's (OA-1): Colorful (Simplified), prepared
+  # by the script mods/50-nano.sh runs, at HEAD, with the same pins and console
+  # pictures, so both builds ship the same tree; the filter below still applies
+  # assets.list to it. Slate is not shipped, as on Android.
+  git -C "$REPO" archive -o "$assets/theme-src.tar" HEAD scripts/colorful_theme.sh mods/console-pictures
+  mkdir -p "$assets/theme-src"
+  tar -xf "$assets/theme-src.tar" -C "$assets/theme-src"
+  theme_sh="$assets/theme-src/scripts/colorful_theme.sh"
+  themes="$assets/export/nano_esde_themes"
+  rm -f "$themes/slate-es-de.zip"
+  mkdir -p "$themes"
+  THIMSY_PYTHON="$PY" bash "$theme_sh" prepare "$DL/colorful-theme" "$themes/$(bash "$theme_sh" name)" ||
+    die 1 "the Colorful theme could not be prepared (scripts/colorful_theme.sh)"
   # The licence texts legal-info saves with the package (thimsy-data.mk's
   # LICENSE_FILES), at HEAD like the rest: ATTRIBUTION.md and NOTICE.
   mkdir -p "$assets/licences"
@@ -275,7 +290,12 @@ if [ "$dry" = 0 ]; then
   "$PY" "$HERE/tools/assets_allowlist.py" filter --list "$HERE/package/thimsy-data/assets.list" \
     --licence "$assets/licences/ATTRIBUTION.md" --licence "$assets/licences/NOTICE" \
     "$assets/export" "$assets/nano-assets-$SHA"
-  rm -rf "$assets/export"
+  # Nano's theme settings, the lines Android's build.prop gets (OA-1), at HEAD:
+  # thimsy-data installs them as /usr/share/thimsy/persist-defaults.props.
+  mkdir -p "$assets/nano-assets-$SHA/.thimsy-defaults"
+  git -C "$REPO" show HEAD:mods/nano-theme.props \
+    >"$assets/nano-assets-$SHA/.thimsy-defaults/nano-theme.props" || die 1 "mods/nano-theme.props is not in HEAD"
+  rm -rf "$assets/export" "$assets/theme-src" "$assets/theme-src.tar"
   epoch="$(git -C "$REPO" log -1 --format=%ct HEAD)"
   tar -C "$assets" --sort=name --mtime="@$epoch" --owner=0 --group=0 --numeric-owner \
     -cf - "nano-assets-$SHA" | gzip -9n >"$SRC/nano-assets-$SHA.tar.gz"

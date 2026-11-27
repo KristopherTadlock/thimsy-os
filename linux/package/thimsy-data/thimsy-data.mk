@@ -15,6 +15,17 @@
 # and its deny lines (every REPLACE and ASK row) win over any keep line
 # (decision I38). Nano falls back where an asset is missing.
 #
+# The export's ES-DE theme is Android's (decision OA-1): build.sh prepares
+# Colorful (Simplified) into it with scripts/colorful_theme.sh, the script
+# mods/50-nano.sh runs, and removes Slate, before the filter; assets.list keeps
+# the prepared theme (THEME_DATA, and this project's quake.webp by its sha256)
+# and still denies Gilroy, Akrobat, the theme's own quake.webp and Slate. It is
+# installed where Nano reads bundled themes, nano_esde_themes/ under the
+# directory below. build.sh also puts mods/nano-theme.props, the theme
+# settings Android's build.prop gets, into .thimsy-defaults/; it is installed
+# as /usr/share/thimsy/persist-defaults.props, which S01props applies to
+# settings the user has not chosen.
+#
 # Nano's two Akrobat files are denied (Fontfabric's EULA forbids redistribution)
 # but Nano opens them for theme text with no fontPath, so, as mods/50-nano.sh
 # does on Android, Barlow Semi Condensed Medium and SemiBold (OFL-1.1) are
@@ -26,13 +37,16 @@ THIMSY_DATA_VERSION = $(THIMSY_GIT_SHA)
 THIMSY_DATA_SITE = $(or $(THIMSY_SRC_DIR),$(DL_DIR)/thimsy-src)
 THIMSY_DATA_SITE_METHOD = file
 THIMSY_DATA_SOURCE = nano-assets-$(THIMSY_DATA_VERSION).tar.gz
-THIMSY_DATA_LICENSE = CC-BY-4.0 (RetroArch icons), CC-BY-NC-4.0 (controller drawings), OFL-1.1 (fonts, Barlow Semi Condensed in place of Akrobat), MIT (ES-DE icons), Apache-2.0, Public Domain (NASA maps), Pixabay Content License (preview.wav)
+THIMSY_DATA_LICENSE = CC-BY-4.0 (RetroArch icons), CC-BY-NC-4.0 (controller drawings), OFL-1.1 (fonts, Barlow Semi Condensed in place of Akrobat, Urbanist in place of Gilroy), MIT (ES-DE icons), Apache-2.0, Public Domain (NASA maps), Pixabay Content License (preview.wav), CC-BY-NC-SA-2.0 (the Colorful (Simplified) theme), CC-BY-SA or CC-BY-NC-4.0 (Thimsy's console pictures, per picture)
 # The export carries no licence texts except the controllers' LICENSE, so
 # build.sh adds the repository's ATTRIBUTION.md and NOTICE (at HEAD) to the
 # tarball under .thimsy-licences/ ("assets_allowlist.py filter --licence"),
 # where legal-info finds them; the install skips .thimsy- files.
 THIMSY_DATA_LICENSE_FILES = nano_xmb/controllers/LICENSE .thimsy-barlow/OFL.txt \
-	.thimsy-licences/ATTRIBUTION.md .thimsy-licences/NOTICE
+	.thimsy-licences/ATTRIBUTION.md .thimsy-licences/NOTICE \
+	nano_esde_themes/colorful-simplified-es-de/README.md \
+	nano_esde_themes/colorful-simplified-es-de/_inc/fonts/Urbanist-OFL.txt \
+	nano_esde_themes/colorful-simplified-es-de/_inc/systems/THIMSY-PICTURES-LICENSE.txt
 THIMSY_DATA_DEPENDENCIES = host-python3
 
 THIMSY_DATA_BARLOW_COMMIT = 697600fcece1685b0ba409eb82868546def9a84e
@@ -66,6 +80,8 @@ define THIMSY_DATA_INSTALL_TARGET_CMDS
 		--report $(@D)/.thimsy-data-report.txt \
 		--replacements $(@D)/.thimsy-barlow \
 		$(@D) $(TARGET_DIR)$(THIMSY_DATA_ETC)
+	$(INSTALL) -D -m 0644 $(@D)/.thimsy-defaults/nano-theme.props \
+		$(TARGET_DIR)/usr/share/thimsy/persist-defaults.props
 endef
 
 $(eval $(generic-package))

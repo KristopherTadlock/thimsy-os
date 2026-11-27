@@ -54,12 +54,24 @@ Besides ASSETS.md's images, fonts and sounds, Nano reads data files that
 ASSETS.md does not cover (translations, the button-map and controller data,
 Daijishou's platform definitions). DATA lists them with their licences
 (ATTRIBUTION.md); they are kept unless a deny line says otherwise.
+THEME_DATA does the same for the Colorful theme that linux/build.sh prepares
+with scripts/colorful_theme.sh, as Android does (decision OA-1): its XML, its
+README (the licence, credits and Thimsy's changes) and the licence texts the
+script adds.
 
-Lines of the list: "keep<TAB>PATTERN<TAB>WHY" and "deny<TAB>PATTERN<TAB>WHY",
-PATTERN an installed path under /system/etc in which '*' stays inside one
-folder. "install" copies a file only if a keep pattern matches it and no deny
-pattern does; it lists in --report every file it left out, and refuses a
-symlink or a path that leaves SRC.
+That theme carries one of this project's console pictures under the name of a
+theme file ASSETS.md denies (quake.webp, mods/console-pictures). For each such
+file, from THIMSY_PICTURES, the list has a "keep-sha256" line with the
+picture's sha256: the file is installed when its bytes are exactly the
+picture's, so the denied original never is.
+
+Lines of the list: "keep<TAB>PATTERN<TAB>WHY", "deny<TAB>PATTERN<TAB>WHY" and
+"keep-sha256<TAB>PATH<TAB>SHA256<TAB>WHY", PATTERN an installed path under
+/system/etc in which '*' stays inside one folder and "**/" stands for any
+number of folders. "install" copies a file only if a keep pattern matches it
+and no deny pattern does, or a keep-sha256 line names it with its sha256; it
+lists in --report every file it left out, and refuses a symlink or a path
+that leaves SRC.
 
 Some denied assets have a free replacement that Android installs under the
 same name (mods/50-nano.sh): Nano's two Akrobat files become Barlow Semi
@@ -71,11 +83,13 @@ it; without it the path is only left out.
 
 Exit status: 0 done, 1 an error or (--check) a stale list, 2 usage.
 Standard library only; Python 3.8 and later. Generating needs the repository
-(ASSETS.md, nano/Android.bp and tools/nano-tree); "install" needs only the list.
+(ASSETS.md, nano/Android.bp, tools/nano-tree and mods/console-pictures);
+"install" needs only the list.
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import re
 import shutil
@@ -94,8 +108,10 @@ HEADER = """\
 # for where each file is installed); do not edit. Regenerate with
 #   python3 linux/tools/assets_allowlist.py
 # keep: installed when a file of the asset export matches; deny: never installed,
-# even when a keep line matches (decision I38). Patterns are paths under
-# /system/etc ('*' stays inside one folder). thimsy-data.mk installs with
+# even when a keep line matches (decision I38); keep-sha256: installed only with
+# exactly this sha256 (a Thimsy file under a denied name). Patterns are paths under
+# /system/etc ('*' stays inside one folder, '**/' is any number of folders).
+# thimsy-data.mk installs with
 #   assets_allowlist.py install --list assets.list SRC DEST
 """
 
@@ -108,6 +124,27 @@ DATA: Tuple[Tuple[str, str], ...] = (
     ("ps3xmb/controllers/LICENSE", "data: the controller drawings' licence"),
     ("ps3xmb/controllers/svg/*.svg", "data: controller drawings (CC BY-NC 4.0, ATTRIBUTION.md)"),
     ("ps3xmb/daijishou/*.json", "data: Daijishou's platform definitions (MIT, ATTRIBUTION.md)"),
+)
+
+# The Colorful theme as scripts/colorful_theme.sh prepares it (decision OA-1):
+# its data files, which ASSETS.md (images, fonts, sounds) does not cover, as
+# (installed pattern, why).
+COLORFUL = "nano_esde_themes/colorful-simplified-es-de"
+THEME_DATA: Tuple[Tuple[str, str], ...] = (
+    (COLORFUL + "/**/*.xml", "data: the Colorful theme's XML (CC BY-NC-SA 2.0) and the console "
+     "pictures' metadata (CC BY-NC 4.0, ATTRIBUTION.md)"),
+    (COLORFUL + "/README.md", "data: the theme's licence, credits and Thimsy's changes"),
+    (COLORFUL + "/LICENSE*", "data: the theme's licence"),
+    (COLORFUL + "/_inc/fonts/Urbanist-OFL.txt", "data: Urbanist's licence (OFL-1.1)"),
+    (COLORFUL + "/_inc/fonts/Barlow-OFL.txt", "data: Barlow Semi Condensed's licence (OFL-1.1)"),
+    (COLORFUL + "/_inc/systems/THIMSY-PICTURES-LICENSE.txt",
+     "data: the console pictures' sources and licences (mods/console-pictures/LICENSE)"),
+)
+# This project's files that the prepared theme installs, as (folder in the
+# repository, installed folder): one whose installed path a deny line names
+# gets a keep-sha256 line with its hash.
+THIMSY_PICTURES: Tuple[Tuple[str, str], ...] = (
+    ("mods/console-pictures/images", COLORFUL + "/_inc/systems/images"),
 )
 
 # Denied assets installed under the same name from a free replacement, as
@@ -128,27 +165,48 @@ RANGE_RE = re.compile(r"(\d+)\.\.(\d+)")
 BRACE_RE = re.compile(r"\{([^{}]*)\}")
 
 
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
 class Entry:
-    def __init__(self, action: str, pattern: str, why: str) -> None:
+    def __init__(self, action: str, pattern: str, why: str, sha256: str = "") -> None:
         self.action = action
         self.pattern = pattern
         self.why = why
+        self.sha256 = sha256
 
     def line(self) -> str:
+        if self.action == "keep-sha256":
+            return "%s\t%s\t%s\t%s" % (self.action, self.pattern, self.sha256, self.why)
         return "%s\t%s\t%s" % (self.action, self.pattern, self.why)
+
+
+def file_sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(str(path), "rb") as f:
+        for block in iter(lambda: f.read(1 << 16), b""):
+            h.update(block)
+    return h.hexdigest()
 
 
 # -- patterns ----------------------------------------------------------------
 
 def glob_regex(pattern: str) -> "re.Pattern[str]":
     out = []
-    for ch in pattern:
+    i = 0
+    while i < len(pattern):
+        if pattern.startswith("**/", i):
+            out.append("(?:[^/]+/)*")
+            i += 3
+            continue
+        ch = pattern[i]
         if ch == "*":
             out.append("[^/]*")
         elif ch == "?":
             out.append("[^/]")
         else:
             out.append(re.escape(ch))
+        i += 1
     return re.compile("^" + "".join(out) + "$")
 
 
@@ -371,7 +429,10 @@ class Mapper:
 
 # -- the list ----------------------------------------------------------------
 
-def generate(assets_text: str, mapper: Mapper) -> Tuple[List[Entry], List[str]]:
+def generate(assets_text: str, mapper: Mapper,
+             repo: Optional[Path] = None) -> Tuple[List[Entry], List[str]]:
+    """The list's entries and ASSETS.md's unmapped paths; with repo, the
+    keep-sha256 lines of THIMSY_PICTURES too."""
     rows, changes = read_assets(assets_text)
     entries: List[Entry] = []
     unmapped: List[str] = []
@@ -385,12 +446,25 @@ def generate(assets_text: str, mapper: Mapper) -> Tuple[List[Entry], List[str]]:
             entries.append(Entry(row.kind, inst, "ASSETS.md:%d %s" % (row.line_no, row.verdict)))
     for src, why in DATA:
         entries.append(Entry("keep", mapper.nano_path(src), why))
+    for pattern, why in THEME_DATA:
+        entries.append(Entry("keep", pattern, why))
     # "Changes since the audit": a font family that counts as REPLACE or ASK.
     for name, verdict, line_no in changes:
         for e in list(entries):
             if e.action == "keep" and name.lower() in os.path.basename(e.pattern).lower():
                 entries.append(Entry("deny", e.pattern, "ASSETS.md:%d %s counts as %s"
                                      % (line_no, name, verdict)))
+    # This project's pictures under a denied name: kept only with their own bytes.
+    if repo is not None:
+        denied = Allowlist(entries)
+        for folder, inst_dir in THIMSY_PICTURES:
+            for p in sorted((repo / folder).iterdir()):
+                inst = inst_dir + "/" + p.name
+                why = denied.decide(inst)[1]
+                if p.is_file() and why.startswith("denied: "):
+                    entries.append(Entry("keep-sha256", inst, "%s/%s, not the file %s denies"
+                                         % (folder, p.name, why[len("denied: "):].split(" (", 1)[1][:-1]),
+                                         file_sha256(p)))
     # One line per (action, pattern): the first reason found.
     seen = {}
     for e in entries:
@@ -417,6 +491,11 @@ def read_list(path: Path) -> List[Entry]:
         if not raw.strip() or raw.startswith("#"):
             continue
         parts = raw.split("\t")
+        if parts[0] == "keep-sha256":
+            if len(parts) < 3 or not parts[1] or has_glob(parts[1]) or not SHA256_RE.match(parts[2]):
+                raise ValueError("%s:%d: not a keep-sha256 line (PATH, a sha256)" % (path, n))
+            entries.append(Entry(parts[0], parts[1], parts[3] if len(parts) > 3 else "", parts[2]))
+            continue
         if len(parts) < 2 or parts[0] not in ("keep", "deny") or not parts[1]:
             raise ValueError("%s:%d: not a keep or deny line" % (path, n))
         entries.append(Entry(parts[0], parts[1], parts[2] if len(parts) > 2 else ""))
@@ -425,10 +504,16 @@ def read_list(path: Path) -> List[Entry]:
 
 class Allowlist:
     def __init__(self, entries: Iterable[Entry]) -> None:
+        entries = list(entries)
         self.keep = [(glob_regex(e.pattern), e) for e in entries if e.action == "keep"]
         self.deny = [(glob_regex(e.pattern), e) for e in entries if e.action == "deny"]
+        self.exact = {e.pattern: e for e in entries if e.action == "keep-sha256"}
 
-    def decide(self, rel: str) -> Tuple[bool, str]:
+    def decide(self, rel: str, path: Optional[Path] = None) -> Tuple[bool, str]:
+        """Whether the file at rel is installed; a keep-sha256 line needs the file (path)."""
+        e = self.exact.get(rel)
+        if e is not None and path is not None and file_sha256(path) == e.sha256:
+            return True, "%s (sha256 %s)" % (e.pattern, e.sha256)
         for r, e in self.deny:
             if r.match(rel):
                 return False, "denied: %s (%s)" % (e.pattern, e.why)
@@ -479,7 +564,7 @@ def install(list_path: Path, src: Path, dest: Path, report: Optional[Path],
             if p.is_symlink():
                 print("assets_allowlist: refusing the symlink %s" % rel, file=sys.stderr)
                 return 1
-            ok, why = al.decide(rel)
+            ok, why = al.decide(rel, p)
             if not ok:
                 left.append("%s\t%s" % (rel, why))
                 denied.add(rel)
@@ -525,9 +610,12 @@ def install(list_path: Path, src: Path, dest: Path, report: Optional[Path],
 
 # -- main --------------------------------------------------------------------
 
-def build(assets: Path, bp: Path) -> str:
+def build(assets: Path, bp: Path, repo: Optional[Path] = None) -> str:
+    """The list for ASSETS.md and Android.bp; repo (default: ASSETS.md's folder)
+    holds THIMSY_PICTURES' folders."""
     mapper = Mapper.from_blueprint(bp)
-    entries, unmapped = generate(assets.read_text(encoding="utf-8"), mapper)
+    entries, unmapped = generate(assets.read_text(encoding="utf-8"), mapper,
+                                 repo if repo is not None else assets.resolve().parent)
     return render(entries, unmapped)
 
 

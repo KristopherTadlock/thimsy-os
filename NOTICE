@@ -34,11 +34,13 @@ With ES-DE, the build includes MAGISK_ES-DE_fix.zip from GammaOS Next
 (https://github.com/TheGammaSqueeze/GammaOSNext), unchanged, Copyright
 TheGammaSqueeze, Apache License 2.0.
 
-On the 1.4.4 base, the build downloads and includes the Colorful (Simplified)
-theme for ES-DE (https://github.com/anthonycaccese/colorful-simplified-es-de)
+On the 1.4.4 base, and in the Linux build, the build downloads and includes
+the Colorful (Simplified) theme for ES-DE
+(https://github.com/anthonycaccese/colorful-simplified-es-de)
 by ant, based on the Colorful theme by viking and faeran, under the Creative
 Commons Attribution-NonCommercial-ShareAlike 2.0 license; its README, with
-the full credits, is installed with it. Its artwork credits, as the theme
+the full credits, is installed with it. scripts/colorful_theme.sh prepares it
+the same way for both builds. Its artwork credits, as the theme
 gives them:
 
   Most artwork originally created by viking

@@ -15,8 +15,8 @@ PICTURES = os.path.join(util.MODS, "console-pictures")
 
 
 def colorful_zip():
-    """The Colorful zip 50-nano.sh bundles, in the build cache."""
-    mod = util.slurp(f"{util.MODS}/50-nano.sh", text=True)
+    """The Colorful zip 50-nano.sh bundles (scripts/colorful_theme.sh's pins), in the build cache."""
+    mod = util.slurp(f"{util.SCRIPTS}/colorful_theme.sh", text=True)
     theme = re.search(r'^THEME="([^"]+)"', mod, re.M).group(1)
     commit = re.search(r'^THEME_COMMIT="([^"]+)"', mod, re.M).group(1)
     return os.path.join(util.TEST_CACHE or os.path.join(util.ROOT, "work/cache"), "nano", f"{theme}-{commit}.zip")
