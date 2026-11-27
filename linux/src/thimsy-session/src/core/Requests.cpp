@@ -22,6 +22,7 @@ constexpr VerbName kVerbs[] = {
     {"restart-nano", Verb::RestartNano, false},
     {"brightness", Verb::Brightness, true},
     {"take-ownership", Verb::TakeOwnership, true},
+    {"keep-read-only", Verb::KeepReadOnly, true},
 };
 
 bool allDigits(std::string_view s) {
@@ -87,7 +88,7 @@ bool parseRequest(std::string_view value, Request* out, std::string* err) {
             return fail(err, "brightness must be 0 to 100");
         }
     }
-    if (r.verb == Verb::Eject || r.verb == Verb::TakeOwnership) {
+    if (r.verb == Verb::Eject || r.verb == Verb::TakeOwnership || r.verb == Verb::KeepReadOnly) {
         for (char c : r.arg) {
             bool ok = (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '-';
             if (!ok) return fail(err, "bad volume id");

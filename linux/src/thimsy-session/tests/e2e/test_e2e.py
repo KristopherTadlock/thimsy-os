@@ -608,6 +608,12 @@ class RespawnedSession(SessionCase):
         r.write("/run/thimsy/props/sys.thimsy.nano.first_frame", "1")
         r.write("/proc/mounts", "/dev/mmcblk1p3 / erofs ro 0 0\n/dev/mmcblk1p4 /storage ext4 rw 0 0\n"
                                 "/dev/mmcblk2p1 /storage/1234-ABCD vfat rw 0 0\n")
+        # The session adopts drives from mountinfo (its superblock options, W8-IDMAP-16).
+        r.write("/proc/self/mountinfo",
+                "22 1 179:3 / / ro,relatime shared:1 - erofs /dev/mmcblk1p3 ro\n"
+                "23 22 179:4 / /storage rw,relatime shared:2 - ext4 /dev/mmcblk1p4 rw\n"
+                "40 23 179:33 / /storage/1234-ABCD rw,nosuid,nodev,noexec,noatime shared:9 - "
+                "vfat /dev/mmcblk2p1 rw\n")
 
     @classmethod
     def tearDownClass(cls) -> None:

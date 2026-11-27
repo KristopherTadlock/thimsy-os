@@ -25,7 +25,9 @@
 // ext2/3/4 drives that are not read-only are mounted for Nano (OA-29, io/Idmap.h): as they are
 // when their top folder belongs to `nano` (1000), else through an idmapped mount that shows the
 // owner as `nano`, else read-only with an ownership decision pending; the "take-ownership" request
-// then chowns the top folder and mounts the drive writable (takeOwnership()).
+// then chowns the top folder and mounts the drive writable (takeOwnership()), and "keep-read-only"
+// records that the user declined (keepReadOnly(), which the session saves per drive id). A drive
+// whose filesystem went read-only by itself (ext4 errors) is a filesystem error, not a decision.
 #pragma once
 
 #include <cstdint>
@@ -111,11 +113,37 @@ enum class Ownership {
     Nano,           // its top folder belongs to nano: as it was, or after take-ownership
     Idmapped,       // the owner shows as nano through an idmapped mount
     NeedsDecision,  // no idmapped mount: read-only for Nano until the user lets Thimsy take it
+    Declined,       // as NeedsDecision, but the user said no: Nano does not ask again (take-ownership
+                    // still works when the user asks for it)
+    FsError,        // the superblock is read-only by itself (ext4 found errors): read-only for Nano
 };
 const char* toString(Ownership o);
-// The ownership of an ext4 mount a respawned session finds in /proc/mounts, from its type and
-// options as shown there: "idmapped" -> Idmapped; "ro" -> NeedsDecision; else Nano. Not ext4: None.
-Ownership ownershipOfMount(const std::string& fsType, const std::string& options);
+// The ownership of an ext4 mount a respawned session finds in /proc/self/mountinfo, from its type,
+// its own options and its superblock's: a read-only superblock -> FsError (a drive mounted for Nano
+// never has one on purpose); "idmapped" -> Idmapped; "ro" (that mount only) -> NeedsDecision; else
+// Nano. Not ext4: None. A kept decline is applied later (VolumeManager).
+Ownership ownershipOfMount(const std::string& fsType, const std::string& mountOptions,
+                           const std::string& superOptions);
+// Whether a comma-separated option list ("rw,nosuid,idmapped") holds opt.
+bool hasMountOption(const std::string& options, const std::string& opt);
+
+// One line of /proc/self/mountinfo (paths keep the kernel's octal escapes).
+struct MountInfo {
+    std::string mountPoint;
+    std::string mountOptions;  // this mount's: "rw" or "ro", then nosuid, nodev, idmapped and so on
+    std::string fsType;
+    std::string source;
+    std::string superOptions;  // the superblock's: "rw" or "ro", then the filesystem's own
+};
+// The lines of /proc/self/mountinfo, in order; a malformed line is skipped.
+std::vector<MountInfo> parseMountInfo(const std::string& text);
+// Whether the topmost mount at mountPoint has a read-only superblock (false if nothing is there).
+bool superblockReadOnlyAt(const std::vector<MountInfo>& mounts, const std::string& mountPoint);
+
+// The drives the user chose to keep read-only, as the session saves them (W8-IDMAP-15): one id per
+// line. A line that is not shaped like a volume id (letters, digits and '-') is skipped.
+std::set<std::string> parseKeptReadOnly(const std::string& text);
+std::string keptReadOnlyText(const std::set<std::string>& ids);
 
 struct Volume {
     std::string dev;
@@ -164,11 +192,19 @@ class VolumeManager {
     // Unmounts a mounted drive by id. False (with *err) if there is no such mounted drive.
     bool eject(const std::string& id, std::vector<VolAction>* out, std::string* err);
     // The user agreed that Thimsy takes the drive's top folder (OA-29). False (with *err) if there
-    // is no such mounted drive or it has no ownership decision pending.
+    // is no such mounted drive or it has no ownership decision pending (NeedsDecision or Declined).
     bool takeOwnership(const std::string& id, std::vector<VolAction>* out, std::string* err);
-    // stillMounted: false when the drive lost its mount on the way.
+    // stillMounted: false when the drive lost its mount on the way. fsError: it failed because the
+    // drive's superblock is read-only (the session read that from mountinfo).
     std::vector<VolAction> onTakeOwnershipDone(const std::string& dev, bool ok, bool stillMounted,
-                                               const std::string& err);
+                                               const std::string& err, bool fsError = false);
+    // The user declined that Thimsy takes the drive's top folder: it stays read-only and shows as
+    // Declined, now and at every later mount of that id. False (with *err) if there is no such
+    // mounted drive or it has no decision pending. The caller saves keptReadOnly().
+    bool keepReadOnly(const std::string& id, std::string* err);
+    // The ids the user declined for earlier (the session's saved list, at start), and now.
+    void setKeptReadOnly(std::set<std::string> ids);
+    const std::set<std::string>& keptReadOnly() const { return keptReadOnly_; }
     // A mount found at start (a respawned session): <storageDir>/<id> from <dev> is mounted, as own
     // says (read from its mount options).
     void adoptMounted(const std::string& dev, const std::string& id, Ownership own = Ownership::None);
@@ -186,6 +222,7 @@ class VolumeManager {
     std::vector<VolAction> resolveDuplicates();
     std::string mountPointFor(const std::string& id) const;
     VolAction mountAction(const Volume& v) const;
+    Ownership decided(const std::string& id, Ownership own) const;  // NeedsDecision -> Declined if kept
 
     // Bookkeeping per device that toJson() does not show.
     struct Extra {
@@ -202,6 +239,7 @@ class VolumeManager {
         Ownership ownership = Ownership::None;
     };
     std::map<std::string, Adopted> adopted_;  // by dev
+    std::set<std::string> keptReadOnly_;      // ids the user declined to let Thimsy take
     int nextJob_ = 1;
     bool changed_ = true;
 };

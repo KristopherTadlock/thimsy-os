@@ -3,7 +3,8 @@
 //
 // Mounting drives: mount(2) and umount2(2) on a device; on fake hardware, the mount and umount
 // programs from the tool directory (which log what they were asked), with the same options.
-// ext2/3/4 drives are mounted for Nano through Idmap.h's steps (OA-29).
+// ext2/3/4 drives are mounted for Nano through Idmap.h's steps (OA-29). On a device every drive
+// mount carries nosuid and nodev (kDriveMountFlags), whatever its options say (W8-IDMAP-13).
 #pragma once
 
 #include <memory>
@@ -23,6 +24,10 @@ class Mounter {
                        const std::string& options, std::string* err) = 0;
     // lazy: MNT_DETACH (the device is gone).
     virtual bool unmount(const std::string& dir, bool lazy, std::string* err) = 0;
+    // Idmap.h's step 0, once, before Nano starts: the private staging point. mountForNano and
+    // takeOwnership refuse until it succeeded; it is never tried again later, when its bind would
+    // reach Nano's namespace (W8-IDMAP-14). False (with *err) on failure.
+    virtual bool prepareForNano(std::string* err) = 0;
     // An ext2/3/4 drive for Nano (OA-29, Idmap.h): at dir, owned by 1000, mapped to 1000 or
     // read-only; res says which. False (with *err) when nothing could be mounted at dir.
     virtual bool mountForNano(const std::string& dev, const std::string& dir, const std::string& fs,
@@ -34,8 +39,8 @@ class Mounter {
                                const std::string& options, bool* stillMounted, std::string* err) = 0;
 };
 
-// stageRoot: the private staging directory for Idmap.h's steps (made a private mount at the first
-// mount for Nano).
+// stageRoot: the private staging directory for Idmap.h's steps (made a private mount by
+// prepareForNano, and detached when the mounter goes).
 std::unique_ptr<Mounter> makeSyscallMounter(std::string stageRoot);
 // The same, with the system calls given (tests).
 std::unique_ptr<Mounter> makeSyscallMounter(std::string stageRoot, std::unique_ptr<MountSys> sys);

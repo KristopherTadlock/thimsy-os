@@ -30,6 +30,10 @@ TEST(Requests, PlainAndNumbered) {
     EXPECT_EQ(r.seq, "21");
     EXPECT_EQ(r.arg, "0b1c2d3e-0000-4000-8000-00000000abcd");
     EXPECT_STREQ(toString(r.verb), "take-ownership");
+    ASSERT_TRUE(parseRequest("22:keep-read-only:0b1c2d3e-0000-4000-8000-00000000abcd", &r));
+    EXPECT_EQ(r.verb, Verb::KeepReadOnly);
+    EXPECT_EQ(r.arg, "0b1c2d3e-0000-4000-8000-00000000abcd");
+    EXPECT_STREQ(toString(r.verb), "keep-read-only");
 }
 
 TEST(Requests, RefusesBadOnes) {
@@ -47,6 +51,8 @@ TEST(Requests, RefusesBadOnes) {
     EXPECT_FALSE(parseRequest("take-ownership:", &r, &err));
     EXPECT_FALSE(parseRequest("take-ownership:../../etc", &r, &err));
     EXPECT_FALSE(parseRequest("take-ownership:a b", &r, &err));
+    EXPECT_FALSE(parseRequest("keep-read-only", &r, &err));
+    EXPECT_FALSE(parseRequest("keep-read-only:../x", &r, &err));
     EXPECT_FALSE(parseRequest("", &r, &err));
 }
 

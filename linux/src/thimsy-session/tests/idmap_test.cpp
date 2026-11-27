@@ -2,8 +2,9 @@
 // Copyright (c) 2026 Thimsy OS contributors
 //
 // ext2/3/4 drives for Nano (io/Idmap.h, OA-29): the staging, owner check, idmapped mount and
-// read-only fallback sequences, and taking a drive's top folder, over a fake MountSys that records
-// every call and keeps a simple table of what is mounted where.
+// read-only fallback sequences, taking a drive's top folder, nosuid and nodev on every mount and the
+// private staging point, over a fake MountSys that records every call and keeps a simple table of
+// what is mounted where.
 #include <errno.h>
 #include <string.h>
 #include <sys/mount.h>
@@ -55,6 +56,9 @@ class FakeSys : public MountSys {
     std::set<pid_t> children;
     unsigned ownerUid = 0;
     unsigned ownerGid = 0;
+    bool readOnly = false;  // what statvfs says of any path (a superblock gone read-only)
+    // Every call is also appended here when set: it outlives the fake (a mounter's destructor).
+    std::vector<std::string>* journal = nullptr;
 
     int mount(const std::string& src, const std::string& dir, const std::string& fs, unsigned long flags,
               const std::string& data) override {
@@ -86,6 +90,11 @@ class FakeSys : public MountSys {
         *gid = ownerGid;
         return 0;
     }
+    int isReadOnly(const std::string& path, bool* ro) override {
+        if (int e = record("statvfs " + path)) return e;
+        *ro = readOnly;
+        return 0;
+    }
     int chown(const std::string& path, unsigned uid, unsigned gid) override {
         return record("chown " + path + " " + std::to_string(uid) + ":" + std::to_string(gid));
     }
@@ -115,8 +124,8 @@ class FakeSys : public MountSys {
         openFds.insert(*fd);
         return 0;
     }
-    int setIdmap(int treeFd, int usernsFd) override {
-        return record("setattr " + std::to_string(treeFd) + " " + std::to_string(usernsFd));
+    int setIdmap(int treeFd, int usernsFd, unsigned long flags) override {
+        return record("setattr " + std::to_string(treeFd) + " " + std::to_string(usernsFd) + " " + flagNames(flags));
     }
     int moveMount(int treeFd, const std::string& dir) override {
         if (int e = record("move_mount " + std::to_string(treeFd) + " " + dir)) return e;
@@ -143,6 +152,7 @@ class FakeSys : public MountSys {
  private:
     int record(const std::string& c) {
         calls.push_back(c);
+        if (journal) journal->push_back(c);
         for (const auto& f : failures) {
             if (c.compare(0, f.first.size(), f.first) == 0) return f.second;
         }
@@ -163,6 +173,7 @@ const std::vector<std::string> kStaged = {
     std::string("mkdir ") + kStage,
     std::string("mount /dev/sda1 ") + kStage + " ext4 nosuid,nodev,noexec,noatime",
     std::string("owner ") + kStage,
+    std::string("statvfs ") + kStage,
 };
 
 std::vector<std::string> plus(std::vector<std::string> a, const std::vector<std::string>& b) {
@@ -205,7 +216,7 @@ TEST(Idmap, APcDriveGetsAnIdmappedMountOfItsOwnerToNano) {
                                                            "open /proc/4242/ns/user",
                                                            "end 4242",
                                                            std::string("open_tree ") + kStage,
-                                                           "setattr 11 10",
+                                                           "setattr 11 10 nosuid,nodev,noexec",
                                                            std::string("move_mount 11 ") + kDir,
                                                            "close 11",
                                                            "close 10",
@@ -226,6 +237,82 @@ TEST(Idmap, TheOwnersOwnUidAndGidAreMapped) {
     EXPECT_EQ(res.access, NanoAccess::Idmapped);
     EXPECT_EQ(sys.countOf("write /proc/4242/uid_map 1001 1000 1\n"), 1);
     EXPECT_EQ(sys.countOf("write /proc/4242/gid_map 100 1000 1\n"), 1);
+}
+
+TEST(Idmap, EveryMountIsNosuidAndNodevWhateverTheOptionsSay) {
+    // With "0 1000 1" a uid-1000 process writes root-owned files; setuid ones must stay inert.
+    {
+        FakeSys sys;  // idmapped
+        NanoMountResult res;
+        std::string err;
+        ASSERT_TRUE(mountExtForNano(sys, kStage, "/dev/sda1", kDir, "ext4", "noatime", &res, &err)) << err;
+        EXPECT_EQ(res.access, NanoAccess::Idmapped);
+        EXPECT_EQ(sys.countOf(std::string("mount /dev/sda1 ") + kStage + " ext4 nosuid,nodev,noatime"), 1);
+        EXPECT_EQ(sys.countOf("setattr 11 10 nosuid,nodev"), 1);
+    }
+    {
+        FakeSys sys;  // the read-only fallback: a bind remount sets every per-mount flag anew
+        sys.failures.push_back({"setattr", EINVAL});
+        NanoMountResult res;
+        std::string err;
+        ASSERT_TRUE(mountExtForNano(sys, kStage, "/dev/sda1", kDir, "ext4", "", &res, &err)) << err;
+        EXPECT_EQ(res.access, NanoAccess::ReadOnly);
+        EXPECT_EQ(sys.countOf(std::string("mount - ") + kStage + " bind,remount,ro,nosuid,nodev"), 1);
+    }
+    {
+        FakeSys sys;  // owned: the staging mount itself moves
+        sys.ownerUid = kNanoId;
+        NanoMountResult res;
+        std::string err;
+        ASSERT_TRUE(mountExtForNano(sys, kStage, "/dev/sda1", kDir, "ext4", "", &res, &err)) << err;
+        EXPECT_EQ(sys.countOf(std::string("mount /dev/sda1 ") + kStage + " ext4 nosuid,nodev"), 1);
+    }
+    {
+        FakeSys sys;  // taking the top folder
+        sys.mounted.insert(kDir);
+        bool still = false;
+        std::string err;
+        ASSERT_TRUE(takeExtOwnership(sys, kStage, "/dev/sda1", kDir, "ext4", "ro,noatime", &still, &err)) << err;
+        EXPECT_EQ(sys.countOf(std::string("mount /dev/sda1 ") + kStage + " ext4 nosuid,nodev,noatime"), 1);
+    }
+    {
+        FakeSys* sys = new FakeSys();  // the plain mount of every other drive
+        std::unique_ptr<Mounter> m = makeSyscallMounter("/st", std::unique_ptr<MountSys>(sys));
+        std::string err;
+        ASSERT_TRUE(m->mount("/dev/sdc1", "/storage/C", "vfat", "utf8,noatime", &err)) << err;
+        EXPECT_EQ(joined(sys->calls), joined({"mount /dev/sdc1 /storage/C vfat nosuid,nodev,noatime data=utf8"}));
+        ASSERT_TRUE(m->unmount("/storage/C", true, &err)) << err;
+        EXPECT_EQ(sys->calls.back(), "umount /storage/C detach");
+    }
+}
+
+TEST(Idmap, ASuperblockGoneReadOnlyIsAFilesystemErrorNotADecision) {
+    FakeSys sys;  // ext4 found errors while mounting (errors=remount-ro)
+    sys.readOnly = true;
+    NanoMountResult res;
+    std::string err;
+    ASSERT_TRUE(mountIt(sys, &res, &err)) << err;
+    EXPECT_EQ(res.access, NanoAccess::FsError);
+    EXPECT_EQ(joined(sys.calls), joined(plus(kStaged, {std::string("mount ") + kStage + " " + kDir + " move"})));
+    EXPECT_FALSE(sys.called("userns"));
+    EXPECT_EQ(sys.mounted, std::set<std::string>({kDir}));
+
+    FakeSys asked;  // read-only because the options asked for it: no error, the usual steps
+    asked.readOnly = true;
+    ASSERT_TRUE(mountExtForNano(asked, kStage, "/dev/sda1", kDir, "ext4", std::string("ro,") + kOptions, &res, &err))
+        << err;
+    EXPECT_EQ(res.access, NanoAccess::Idmapped);
+
+    FakeSys unknown;  // statvfs fails: taken as writable
+    unknown.failures.push_back({"statvfs", EIO});
+    ASSERT_TRUE(mountIt(unknown, &res, &err)) << err;
+    EXPECT_EQ(res.access, NanoAccess::Idmapped);
+
+    FakeSys stuck;  // and it cannot be moved: nothing is left mounted
+    stuck.readOnly = true;
+    stuck.failures.push_back({std::string("mount ") + kStage + " " + kDir, EBUSY});
+    EXPECT_FALSE(mountIt(stuck, &res, &err));
+    EXPECT_TRUE(stuck.mounted.empty());
 }
 
 TEST(Idmap, AnyFailedStepFallsBackToReadOnly) {
@@ -373,7 +460,8 @@ TEST(Idmap, TheStageIsAPrivateBindOfItself) {
     FakeSys sys;
     std::string err;
     ASSERT_TRUE(prepareStage(sys, "/st", &err)) << err;
-    EXPECT_EQ(joined(sys.calls), joined({"mkdir /st", "umount /st detach", "mount /st /st bind", "mount - /st private"}));
+    EXPECT_EQ(joined(sys.calls),
+              joined({"mkdir /st", "umount /st detach", "mount /st /st bind", "mount - /st private"}));
     EXPECT_EQ(sys.mounted, std::set<std::string>({"/st"}));
     // A respawned session detaches its predecessor's bind first.
     sys.calls.clear();
@@ -381,17 +469,66 @@ TEST(Idmap, TheStageIsAPrivateBindOfItself) {
     EXPECT_EQ(sys.countOf("umount /st detach"), 2);
     EXPECT_EQ(sys.mounted, std::set<std::string>({"/st"}));
 
+    // A bind that cannot be made private is detached again: shared, it would pass on what is staged.
     FakeSys bad;
     bad.failures.push_back({"mount - /st private", EPERM});
     EXPECT_FALSE(prepareStage(bad, "/st", &err));
     EXPECT_NE(err.find("private mount"), std::string::npos);
+    EXPECT_EQ(bad.calls.back(), "umount /st detach");
+    EXPECT_TRUE(bad.mounted.empty());
+
+    FakeSys noBind;
+    noBind.failures.push_back({"mount /st /st bind", EPERM});
+    EXPECT_FALSE(prepareStage(noBind, "/st", &err));
+    EXPECT_NE(err.find("cannot bind"), std::string::npos);
+    EXPECT_FALSE(noBind.called("mount - /st private"));
+    EXPECT_TRUE(noBind.mounted.empty());
+}
+
+TEST(Idmap, TheSyscallMounterStagesOnlyWhenPreparedBeforeNano) {
+    std::vector<std::string> journal;
+    {
+        FakeSys* sys = new FakeSys();
+        sys->journal = &journal;
+        std::unique_ptr<Mounter> m = makeSyscallMounter("/st", std::unique_ptr<MountSys>(sys));
+        // Not prepared: refused, and the stage is not made now (its bind would reach Nano).
+        NanoMountResult res;
+        std::string err;
+        EXPECT_FALSE(m->mountForNano("/dev/sda1", "/storage/A", "ext4", kOptions, &res, &err));
+        EXPECT_NE(err.find("not prepared"), std::string::npos);
+        bool still = false;
+        EXPECT_FALSE(m->takeOwnership("/dev/sda1", "/storage/A", "ext4", kOptions, &still, &err));
+        EXPECT_TRUE(still);
+        EXPECT_TRUE(journal.empty());
+    }
+    EXPECT_TRUE(journal.empty());  // nothing to detach either
+
+    FakeSys* sys = new FakeSys();
+    sys->journal = &journal;
+    sys->failures.push_back({"mount - /st private", EPERM});
+    std::unique_ptr<Mounter> m = makeSyscallMounter("/st", std::unique_ptr<MountSys>(sys));
+    std::string err;
+    EXPECT_FALSE(m->prepareForNano(&err));
+    EXPECT_NE(err.find("private mount"), std::string::npos);
+    sys->failures.clear();
+    journal.clear();
+    EXPECT_FALSE(m->prepareForNano(&err));  // tried once only
+    NanoMountResult res;
+    EXPECT_FALSE(m->mountForNano("/dev/sda1", "/storage/A", "ext4", kOptions, &res, &err));
+    EXPECT_NE(err.find("private mount"), std::string::npos);
+    m.reset();
+    EXPECT_TRUE(journal.empty());
 }
 
 TEST(Idmap, TheSyscallMounterStagesOnceAndPerDevice) {
+    std::vector<std::string> journal;
     FakeSys* sys = new FakeSys();
+    sys->journal = &journal;
     std::unique_ptr<Mounter> m = makeSyscallMounter("/st", std::unique_ptr<MountSys>(sys));
     NanoMountResult res;
     std::string err;
+    ASSERT_TRUE(m->prepareForNano(&err)) << err;
+    ASSERT_TRUE(m->prepareForNano(&err)) << err;  // once
     ASSERT_TRUE(m->mountForNano("/dev/sda1", "/storage/A", "ext4", kOptions, &res, &err)) << err;
     EXPECT_EQ(res.access, NanoAccess::Idmapped);
     ASSERT_GE(sys->calls.size(), 5u);
@@ -407,10 +544,14 @@ TEST(Idmap, TheSyscallMounterStagesOnceAndPerDevice) {
     EXPECT_TRUE(still);
     EXPECT_EQ(sys->countOf("chown /st/sdb1 1000:1000"), 1);
     EXPECT_EQ(sys->mounted, std::set<std::string>({"/st", "/storage/A", "/storage/B"}));
+    // The session ends: the stage's bind is detached (the detach reaches Nano's copy too).
+    m.reset();
+    EXPECT_EQ(journal.back(), "umount /st detach");
 }
 
 TEST(Idmap, AccessNames) {
     EXPECT_STREQ(toString(NanoAccess::Owned), "owned");
     EXPECT_STREQ(toString(NanoAccess::Idmapped), "idmapped");
     EXPECT_STREQ(toString(NanoAccess::ReadOnly), "read-only");
+    EXPECT_STREQ(toString(NanoAccess::FsError), "filesystem-error");
 }

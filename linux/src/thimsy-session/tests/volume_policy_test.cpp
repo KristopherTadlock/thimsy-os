@@ -4,6 +4,7 @@
 // The volume policy: which partitions are drives, and the check-mount-remove life of a drive.
 // The device names follow the ARC-D: mmcblk0 the eMMC, mmcblk1 the boot card (slot 1), mmcblk2 a
 // second card.
+#include <set>
 #include <string>
 #include <vector>
 
@@ -169,6 +170,13 @@ TEST(Classify, MountOptionsAndChecks) {
     EXPECT_EQ(mountOptions("vfat", false), "utf8,shortname=mixed,dirsync,noatime,nodev,nosuid,noexec,flush");
     EXPECT_EQ(mountOptions("exfat", false), "dirsync,noatime,nodev,nosuid,noexec");
     EXPECT_EQ(mountOptions("exfat", true), "ro,dirsync,noatime,nodev,nosuid,noexec");
+    // Every drive is nosuid and nodev (the syscall mounter adds both again, W8-IDMAP-13).
+    for (const char* fs : {"vfat", "exfat", "ext4"}) {
+        for (bool ro : {false, true}) {
+            EXPECT_TRUE(hasMountOption(mountOptions(fs, ro), "nosuid")) << fs;
+            EXPECT_TRUE(hasMountOption(mountOptions(fs, ro), "nodev")) << fs;
+        }
+    }
     FsInfo f;
     f.type = "vfat";
     EXPECT_FALSE(fsckNeeded(f, false));
@@ -539,11 +547,15 @@ TEST(VolumeManager, AFailedTakeOwnershipKeepsTheReadOnlyMountOrLosesIt) {
 }
 
 TEST(VolumeManager, ARespawnedSessionKeepsAnAdoptedMountsOwnership) {
-    EXPECT_EQ(ownershipOfMount("ext4", "rw,nosuid,nodev,noexec,noatime,idmapped"), Ownership::Idmapped);
-    EXPECT_EQ(ownershipOfMount("ext4", "ro,nosuid,nodev,noexec,noatime"), Ownership::NeedsDecision);
-    EXPECT_EQ(ownershipOfMount("ext4", "rw,nosuid,nodev,noexec,noatime"), Ownership::Nano);
-    EXPECT_EQ(ownershipOfMount("exfat", "ro,nosuid"), Ownership::None);
-    EXPECT_EQ(ownershipOfMount("ext4", "rw,errors=remount-ro"), Ownership::Nano);
+    EXPECT_EQ(ownershipOfMount("ext4", "rw,nosuid,nodev,noexec,noatime,idmapped", "rw"), Ownership::Idmapped);
+    EXPECT_EQ(ownershipOfMount("ext4", "ro,nosuid,nodev,noexec,noatime", "rw,errors=remount-ro"),
+              Ownership::NeedsDecision);
+    EXPECT_EQ(ownershipOfMount("ext4", "rw,nosuid,nodev,noexec,noatime", "rw"), Ownership::Nano);
+    EXPECT_EQ(ownershipOfMount("exfat", "ro,nosuid", "ro"), Ownership::None);
+    EXPECT_EQ(ownershipOfMount("ext4", "rw,noatime", "rw,errors=remount-ro"), Ownership::Nano);
+    // The superblock went read-only by itself: a filesystem error, whatever the mount says.
+    EXPECT_EQ(ownershipOfMount("ext4", "ro,nosuid,nodev", "ro,errors=remount-ro"), Ownership::FsError);
+    EXPECT_EQ(ownershipOfMount("ext4", "rw,nosuid,nodev,idmapped", "ro"), Ownership::FsError);
 
     VolumeManager m;
     m.adoptMounted("mmcblk2p1", kExtId, Ownership::NeedsDecision);
@@ -559,4 +571,138 @@ TEST(VolumeManager, ARespawnedSessionKeepsAnAdoptedMountsOwnership) {
     ro.adoptMounted("mmcblk2p1", kExtId, Ownership::NeedsDecision);
     EXPECT_TRUE(ro.onDevice(extDrive(true), bootCard()).empty());
     EXPECT_EQ(ro.byId(kExtId)->ownership, Ownership::None);
+
+    // One whose filesystem went read-only since: reported as an error.
+    VolumeManager bad;
+    bad.adoptMounted("mmcblk2p1", kExtId, Ownership::FsError);
+    EXPECT_TRUE(bad.onDevice(extDrive(), bootCard()).empty());
+    EXPECT_EQ(stateOf(bad, "mmcblk2p1"), VolState::Mounted);
+    EXPECT_EQ(firstVolume(bad.toJson())["ownership"].asString(), "fs_error");
+    EXPECT_NE(bad.byId(kExtId)->error.find("read-only after an error"), std::string::npos);
+}
+
+TEST(MountInfo, LinesAndSuperblockOptions) {
+    const std::string text =
+        "22 1 179:3 / / ro,relatime shared:1 - erofs /dev/mmcblk1p3 ro\n"
+        "40 22 8:1 / /storage/0b1c2d3e-0000-4000-8000-00000000abcd ro,nosuid,nodev,noexec,noatime shared:9 - "
+        "ext4 /dev/sda1 rw,errors=remount-ro\n"
+        "41 22 8:17 / /storage/AAAA-0001 rw,nosuid,nodev,noexec,noatime - vfat /dev/sdb1 rw,fmask=0022\n"
+        "garbage line\n"
+        "42 22 8:33 / /storage/B rw,nosuid,idmapped master:3 shared:4 - ext4 /dev/sdc1 ro,errors=remount-ro";
+    std::vector<MountInfo> m = parseMountInfo(text);
+    ASSERT_EQ(m.size(), 4u);
+    EXPECT_EQ(m[0].mountPoint, "/");
+    EXPECT_EQ(m[0].fsType, "erofs");
+    EXPECT_EQ(m[1].mountPoint, "/storage/0b1c2d3e-0000-4000-8000-00000000abcd");
+    EXPECT_EQ(m[1].mountOptions, "ro,nosuid,nodev,noexec,noatime");
+    EXPECT_EQ(m[1].fsType, "ext4");
+    EXPECT_EQ(m[1].source, "/dev/sda1");
+    EXPECT_EQ(m[1].superOptions, "rw,errors=remount-ro");
+    EXPECT_EQ(m[2].source, "/dev/sdb1");   // no optional fields
+    EXPECT_EQ(m[3].mountOptions, "rw,nosuid,idmapped");   // two optional fields
+    EXPECT_EQ(m[3].superOptions, "ro,errors=remount-ro");
+    EXPECT_FALSE(superblockReadOnlyAt(m, "/storage/0b1c2d3e-0000-4000-8000-00000000abcd"));
+    EXPECT_TRUE(superblockReadOnlyAt(m, "/storage/B"));
+    EXPECT_FALSE(superblockReadOnlyAt(m, "/storage/none"));
+    // The topmost mount at a point decides.
+    m.push_back(m[1]);
+    m.back().superOptions = "ro";
+    EXPECT_TRUE(superblockReadOnlyAt(m, "/storage/0b1c2d3e-0000-4000-8000-00000000abcd"));
+    EXPECT_TRUE(parseMountInfo("").empty());
+
+    EXPECT_TRUE(hasMountOption("rw,nosuid,idmapped", "idmapped"));
+    EXPECT_TRUE(hasMountOption("ro", "ro"));
+    EXPECT_FALSE(hasMountOption("rw,errors=remount-ro", "ro"));
+    EXPECT_FALSE(hasMountOption("", "ro"));
+}
+
+TEST(VolumeManager, ADeclinedDriveStaysReadOnlyAndIsNotAskedAgain) {
+    // The saved list: one id per line; anything not shaped like an id is dropped.
+    const std::set<std::string> ids = {kExtId, "1234-ABCD"};
+    EXPECT_EQ(keptReadOnlyText(ids), std::string("0b1c2d3e-0000-4000-8000-00000000abcd\n1234-ABCD\n"));
+    EXPECT_EQ(parseKeptReadOnly(keptReadOnlyText(ids)), ids);
+    EXPECT_EQ(parseKeptReadOnly(std::string(kExtId) + "\n\n../etc\na b\n1234-ABCD"), ids);
+    EXPECT_TRUE(parseKeptReadOnly("").empty());
+    EXPECT_EQ(keptReadOnlyText({}), "");
+
+    VolumeManager m;
+    std::string err;
+    EXPECT_FALSE(m.keepReadOnly(kExtId, &err));
+    EXPECT_EQ(err, std::string("no mounted drive ") + kExtId);
+    checkedExt(&m);
+    m.onMountDone("mmcblk2p1", true, "", Ownership::NeedsDecision);
+    m.takeChanged();
+    ASSERT_TRUE(m.keepReadOnly(kExtId, &err)) << err;
+    EXPECT_TRUE(m.takeChanged());
+    EXPECT_EQ(m.keptReadOnly(), std::set<std::string>({kExtId}));
+    EXPECT_EQ(m.byId(kExtId)->ownership, Ownership::Declined);
+    EXPECT_EQ(firstVolume(m.toJson())["ownership"].asString(), "declined");
+    ASSERT_TRUE(m.keepReadOnly(kExtId, &err)) << err;   // again: nothing changes
+    EXPECT_FALSE(m.takeChanged());
+
+    // Pulled and inserted again: still declined, no question.
+    m.onRemoved("mmcblk2p1");
+    checkedExt(&m);
+    m.onMountDone("mmcblk2p1", true, "", Ownership::NeedsDecision);
+    EXPECT_EQ(m.byId(kExtId)->ownership, Ownership::Declined);
+
+    // The user asks after all: taken, and the decline is forgotten.
+    std::vector<VolAction> a;
+    ASSERT_TRUE(m.takeOwnership(kExtId, &a, &err)) << err;
+    ASSERT_EQ(a.size(), 1u);
+    EXPECT_EQ(a[0].kind, VolActKind::TakeOwnership);
+    m.onTakeOwnershipDone("mmcblk2p1", true, true, "");
+    EXPECT_EQ(m.byId(kExtId)->ownership, Ownership::Nano);
+    EXPECT_TRUE(m.keptReadOnly().empty());
+    EXPECT_FALSE(m.keepReadOnly(kExtId, &err));
+    EXPECT_NE(err.find("no ownership decision pending"), std::string::npos);
+    m.onRemoved("mmcblk2p1");
+    checkedExt(&m);
+    m.onMountDone("mmcblk2p1", true, "", Ownership::NeedsDecision);
+    EXPECT_EQ(m.byId(kExtId)->ownership, Ownership::NeedsDecision);
+
+    // Declines kept from earlier sessions apply to mounts and to adopted mounts.
+    VolumeManager later;
+    later.setKeptReadOnly({kExtId});
+    checkedExt(&later);
+    later.onMountDone("mmcblk2p1", true, "", Ownership::NeedsDecision);
+    EXPECT_EQ(later.byId(kExtId)->ownership, Ownership::Declined);
+    VolumeManager respawned;
+    respawned.setKeptReadOnly({kExtId});
+    respawned.adoptMounted("mmcblk2p1", kExtId, Ownership::NeedsDecision);
+    respawned.onDevice(extDrive(), bootCard());
+    EXPECT_EQ(respawned.byId(kExtId)->ownership, Ownership::Declined);
+    // Only a pending decision becomes declined.
+    VolumeManager mapped;
+    mapped.setKeptReadOnly({kExtId});
+    checkedExt(&mapped);
+    mapped.onMountDone("mmcblk2p1", true, "", Ownership::Idmapped);
+    EXPECT_EQ(mapped.byId(kExtId)->ownership, Ownership::Idmapped);
+    EXPECT_FALSE(mapped.keepReadOnly(kExtId, &err));
+}
+
+TEST(VolumeManager, AFilesystemGoneReadOnlyIsAnErrorNotADecision) {
+    VolumeManager m;
+    checkedExt(&m);
+    m.onMountDone("mmcblk2p1", true, "", Ownership::FsError);
+    EXPECT_EQ(stateOf(m, "mmcblk2p1"), VolState::Mounted);
+    EXPECT_EQ(firstVolume(m.toJson())["ownership"].asString(), "fs_error");
+    EXPECT_EQ(m.byId(kExtId)->error, "the filesystem went read-only after an error; check it on a computer");
+    std::vector<VolAction> a;
+    std::string err;
+    EXPECT_FALSE(m.takeOwnership(kExtId, &a, &err));
+    EXPECT_NE(err.find("read-only after an error"), std::string::npos);
+    EXPECT_TRUE(a.empty());
+    EXPECT_FALSE(m.keepReadOnly(kExtId, &err));
+    EXPECT_STREQ(toString(Ownership::FsError), "fs_error");
+    EXPECT_STREQ(toString(Ownership::Declined), "declined");
+
+    // Found while taking the top folder: the writable mount was refused because of it.
+    VolumeManager t;
+    checkedExt(&t);
+    t.onMountDone("mmcblk2p1", true, "", Ownership::NeedsDecision);
+    t.onTakeOwnershipDone("mmcblk2p1", false, true, "writable mount: Device or resource busy", true);
+    EXPECT_EQ(stateOf(t, "mmcblk2p1"), VolState::Mounted);
+    EXPECT_EQ(t.byId(kExtId)->ownership, Ownership::FsError);
+    EXPECT_NE(t.byId(kExtId)->error.find("read-only after an error"), std::string::npos);
 }

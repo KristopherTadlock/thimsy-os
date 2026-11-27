@@ -8,6 +8,7 @@
 #include <string.h>
 #include <sys/mount.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <sys/syscall.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -45,6 +46,7 @@ const char* toString(NanoAccess a) {
         case NanoAccess::Owned: return "owned";
         case NanoAccess::Idmapped: return "idmapped";
         case NanoAccess::ReadOnly: return "read-only";
+        case NanoAccess::FsError: return "filesystem-error";
     }
     return "?";
 }
@@ -53,9 +55,12 @@ namespace {
 
 // From <linux/mount.h>, under names of their own: glibc 2.36 and later declare the same names in
 // <sys/mount.h> (struct mount_attr among them) and older glibc not at all.
-constexpr unsigned kOpenTreeClone = 1;            // OPEN_TREE_CLONE
-constexpr unsigned kMoveMountFEmptyPath = 0x4;    // MOVE_MOUNT_F_EMPTY_PATH
-constexpr uint64_t kMountAttrIdmap = 0x00100000;  // MOUNT_ATTR_IDMAP
+constexpr unsigned kOpenTreeClone = 1;             // OPEN_TREE_CLONE
+constexpr unsigned kMoveMountFEmptyPath = 0x4;     // MOVE_MOUNT_F_EMPTY_PATH
+constexpr uint64_t kMountAttrIdmap = 0x00100000;   // MOUNT_ATTR_IDMAP
+constexpr uint64_t kMountAttrNosuid = 0x00000002;  // MOUNT_ATTR_NOSUID
+constexpr uint64_t kMountAttrNodev = 0x00000004;   // MOUNT_ATTR_NODEV
+constexpr uint64_t kMountAttrNoexec = 0x00000008;  // MOUNT_ATTR_NOEXEC
 
 // struct mount_attr, MOUNT_ATTR_SIZE_VER0.
 struct MountAttr {
@@ -68,6 +73,19 @@ static_assert(sizeof(MountAttr) == 32, "struct mount_attr is 32 bytes (MOUNT_ATT
 
 // The flags a MS_REMOUNT | MS_BIND sets on one mount (the rest belong to the superblock).
 constexpr unsigned long kPerMountFlags = MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_NOATIME | MS_NODIRATIME | MS_RELATIME;
+
+// The per-mount flags set again with the mapping (MountSys::setIdmap). The idmapped copy inherits
+// them from the staging mount; setting them in the same call keeps nosuid and nodev certain.
+constexpr unsigned long kIdmapFlags = MS_NOSUID | MS_NODEV | MS_NOEXEC;
+
+// mount(2)'s per-mount flags as mount_setattr's attributes.
+uint64_t mountAttrsFor(unsigned long flags) {
+    uint64_t a = 0;
+    if (flags & MS_NOSUID) a |= kMountAttrNosuid;
+    if (flags & MS_NODEV) a |= kMountAttrNodev;
+    if (flags & MS_NOEXEC) a |= kMountAttrNoexec;
+    return a;
+}
 
 bool fail(std::string* err, const std::string& why) {
     if (err) *err = why;
@@ -110,6 +128,13 @@ class RealMountSys : public MountSys {
         if (stat(path.c_str(), &st) != 0) return errno;
         *uid = st.st_uid;
         *gid = st.st_gid;
+        return 0;
+    }
+
+    int isReadOnly(const std::string& path, bool* readOnly) override {
+        struct statvfs sv;
+        if (statvfs(path.c_str(), &sv) != 0) return errno;
+        *readOnly = (sv.f_flag & ST_RDONLY) != 0;
         return 0;
     }
 
@@ -195,9 +220,9 @@ class RealMountSys : public MountSys {
         return 0;
     }
 
-    int setIdmap(int treeFd, int usernsFd) override {
+    int setIdmap(int treeFd, int usernsFd, unsigned long flags) override {
         MountAttr a = {};
-        a.attrSet = kMountAttrIdmap;
+        a.attrSet = kMountAttrIdmap | mountAttrsFor(flags);
         a.usernsFd = static_cast<uint64_t>(usernsFd);
         return syscall(__NR_mount_setattr, treeFd, "", AT_EMPTY_PATH, &a, sizeof(a)) == 0 ? 0 : errno;
     }
@@ -212,9 +237,10 @@ class RealMountSys : public MountSys {
     std::map<pid_t, int> holds_;  // a waiting child -> the session's end of its hold pipe
 };
 
-// Step 3 (Idmap.h): the idmapped copy of the staging mount, attached at dir.
+// Step 3 (Idmap.h): the idmapped copy of the staging mount, attached at dir. flags: the drive's
+// mount(2) flags.
 bool idmapOnto(MountSys& sys, const std::string& stage, const std::string& dir, unsigned uid, unsigned gid,
-               std::string* why) {
+               unsigned long flags, std::string* why) {
     int nsFd = -1;
     if (!makeIdmapUserns(sys, uid, gid, &nsFd, why)) return false;
     int tree = -1;
@@ -222,7 +248,7 @@ bool idmapOnto(MountSys& sys, const std::string& stage, const std::string& dir, 
     int e = sys.openTree(stage, &tree);
     if (e == 0) {
         step = "mount_setattr(MOUNT_ATTR_IDMAP)";
-        e = sys.setIdmap(tree, nsFd);
+        e = sys.setIdmap(tree, nsFd, flags & kIdmapFlags);
     }
     if (e == 0) {
         step = "move_mount";
@@ -245,8 +271,12 @@ bool prepareStage(MountSys& sys, const std::string& stageRoot, std::string* err)
     for (int i = 0; i < 8 && sys.umount(stageRoot, MNT_DETACH) == 0; ++i) {
     }
     e = sys.mount(stageRoot, stageRoot, "", MS_BIND, "");
-    if (e == 0) e = sys.mount("", stageRoot, "", MS_PRIVATE, "");
-    if (e != 0) return fail(err, "cannot make " + stageRoot + " a private mount: " + strerror(e));
+    if (e != 0) return fail(err, "cannot bind " + stageRoot + " to itself: " + strerror(e));
+    e = sys.mount("", stageRoot, "", MS_PRIVATE, "");
+    if (e != 0) {
+        sys.umount(stageRoot, MNT_DETACH);  // a shared bind would pass on what is staged under it
+        return fail(err, "cannot make " + stageRoot + " a private mount: " + strerror(e));
+    }
     return true;
 }
 
@@ -283,6 +313,7 @@ bool mountExtForNano(MountSys& sys, const std::string& stage, const std::string&
     unsigned long flags = 0;
     std::string data;
     splitMountOptions(options, &flags, &data);
+    flags |= kDriveMountFlags;
     *res = NanoMountResult();
     int e = sys.makeDir(stage);
     if (e != 0) return fail(err, "cannot make " + stage + ": " + strerror(e));
@@ -293,16 +324,20 @@ bool mountExtForNano(MountSys& sys, const std::string& stage, const std::string&
         sys.umount(stage, MNT_DETACH);
         return fail(err, std::string("cannot read the top folder's owner: ") + strerror(e));
     }
-    if (res->ownerUid == kNanoId) {
+    // Asked for writable but read-only: the superblock is (ext4 found errors). Unknown stays false.
+    bool readOnly = false;
+    sys.isReadOnly(stage, &readOnly);
+    const bool fsError = readOnly && !(flags & MS_RDONLY);
+    if (fsError || res->ownerUid == kNanoId) {
         e = sys.mount(stage, dir, "", MS_MOVE, "");
         if (e != 0) {
             sys.umount(stage, MNT_DETACH);
             return fail(err, "moving the mount to " + dir + ": " + strerror(e));
         }
-        res->access = NanoAccess::Owned;
+        res->access = fsError ? NanoAccess::FsError : NanoAccess::Owned;
         return true;
     }
-    if (idmapOnto(sys, stage, dir, res->ownerUid, res->ownerGid, &res->idmapError)) {
+    if (idmapOnto(sys, stage, dir, res->ownerUid, res->ownerGid, flags, &res->idmapError)) {
         sys.umount(stage, MNT_DETACH);  // the superblock stays mounted through the copy at dir
         res->access = NanoAccess::Idmapped;
         return true;
@@ -324,6 +359,7 @@ bool takeExtOwnership(MountSys& sys, const std::string& stage, const std::string
     std::string data;
     splitMountOptions(options, &flags, &data);
     flags &= ~static_cast<unsigned long>(MS_RDONLY);
+    flags |= kDriveMountFlags;
     *stillMounted = true;
     int e = sys.makeDir(stage);
     if (e != 0) return fail(err, "cannot make " + stage + ": " + strerror(e));
