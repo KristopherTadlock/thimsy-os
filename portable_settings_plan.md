@@ -1,6 +1,6 @@
 # Portable settings plan: Thimsy settings in a user-editable file on the card
 
-Status: draft for review (2026-11-26). Not started. Research and design only: nothing here has been built or run. Line numbers are at `linux` 1f45bd6. Facts that were not checked on a device or in a tool's source are marked **(verify)**; estimates are marked *(guess)*.
+Status: draft for review (2026-11-26). Phase 0 (the schema inventory, §7.1) is done; nothing else has been built or run. Line numbers are at `linux` 1f45bd6. Facts that were not checked on a device or in a tool's source are marked **(verify)**; estimates are marked *(guess)*.
 
 ## Requirement (owner, 2026-11-26, OA-20)
 
@@ -514,6 +514,13 @@ Values are resolved per key, lowest first:
 | 7 | **ES-DE and theme:** move the scraper mirror behind `home = esde`; theme keys into `[esde_theme]`; the guarded ES-DE theme mirror and downloads to `<store>/themes` if Q3 = yes (contract A6). | AS | 1 week |
 | 8 | **UI and docs.** Settings > System > **Settings on microSD**: where the file is, last sync, problems, **Save to microSD now**, **Settings from microSD: Always / Ask / Never**, **Repair settings file**. Export and Import Library carry the file. `SETTINGS-FORMAT.md`, a README section, and a link from `LIBRARY-FORMAT.md`. | AS + docs | 1 week |
 | 9 | **Turn it on for Android** after the AOSP build and the owner's smoke test of steps 1-8, including the ARC-D interop round trip (§7.2, device tests). | AS (default flip) | small |
+
+**Phase 0 result (2026-11-26).**
+- `tools/nano-tree/prefs.json` has a row for each of the 1,055 setting keys `nano/` names: 422 rows, 19 of them globs over whole families (`sys.*`, `persist.gammaos.bfi.*` and the like). By key: 93 P, 11 M, 44 A, 0 L, 13 E, 444 D, 6 S, 435 R, and 9 not yet classified.
+- `tools/nano-tree/nanotree/prefs.py` finds the keys: property literals, key prefixes, `%d` templates, `setprop`/`getprop` and `settings get|put` shell strings, and the settings-provider rows (written `global:K`, `secure:K`, `system:K`). It scans the Linux-only files too, and leaves out tests and the host's fake platform.
+- On Linux a property key is the same name in libthimsy's `ConfigStore` (no renaming). The settings-provider keys have no Linux store: ShellGate refuses `settings`, so reads give the default and writes are dropped. The one portable such key, `system:screen_off_timeout`, says so in its `linux` field until phase 6 gives it a store.
+- `tools/nano-tree/tests/test_prefs.py` fails on a key without a row, a stale row, a portable row without a settings.ini key, type or default, a portable bool without its device-store encoding (`1/0` or `true/false`), a default the code never uses, and a new unclassified key (the 9 are listed in `prefs.json` and may only shrink). It also checks the OA-32 answers.
+- Changes from §1: hotkey buttons, RGB and slide actions are D (OA-32 Q5); `[device.<model>]` holds only screen-dependent keys; `esde.gotosys` is D (a debug aid); `fontscale` and `clock12` are the prefs, and `system:font_scale` and `system:time_12_24` are their Android copies (R).
 
 **Total:** about 11 to 17 person-weeks *(guess)*. Steps 2, 3 and 5 are migration step 8 work that OA-4 needs anyway. The portable part proper (1, 4, 6-8) is about 6 to 9 weeks.
 
