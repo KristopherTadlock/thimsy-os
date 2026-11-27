@@ -1291,7 +1291,7 @@ Made by the implementing agents, verified adversarially, merged into `linux` by 
 
 ## Owner's rethink of config portability (2026-11-27)
 
-- **OA-46, per-device emulator configuration (replaces OA-38, OA-26 and OA-39):** emulator settings (RetroArch, PPSSPP, ScummVM and the rest of `emulator_config/`) and the emulator picks (which emulator launches each system and each game) are per device. One card can hold several devices' sets side by side, so different devices keep different settings on the same card.
+- **OA-46, per-device emulator configuration (replaces OA-38, OA-26 and OA-39):** emulator settings (RetroArch, PPSSPP, ScummVM and the rest of `emulator_config/`) and the launch configuration (which emulator, core or app launches each platform/system and each game, including the launch fields systems.json holds for each platform) are per device (owner, confirmed 2026-11-27). One card can hold several devices' sets side by side, so different devices keep different settings on the same card.
   - *Lookup:* Thimsy uses the card's set that matches this device; when there is none, it uses the device's local set.
   - *The "SD card settings" switch (user setting, per device):* turning it on copies this device's local set to the card. When it is already on and the card has no set for this device, the local set is copied to the card.
   - *Mirror:* the device always keeps a local mirror of its emulator settings and picks, so removing the card loses nothing. When the switch is on and both exist, the card's set takes priority and refreshes the mirror; changes made on the device are written to both.
