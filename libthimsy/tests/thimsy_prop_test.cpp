@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 #include <signal.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include <algorithm>
 #include <chrono>
@@ -280,6 +281,45 @@ TEST_F(PropTool, MissingDefaultsFileIsAWarning) {
     EXPECT_TRUE(s->readOnlySealed());
     EXPECT_EQ(s->get("ro.thimsy.version"), "0.1.0");
     EXPECT_EQ(s->list("persist.").size(), 0u);
+}
+
+// W8-DEFAULTS-10: the defaults do not depend on the seal. A second boot run in the same boot still
+// exits 1 at "already sealed", and seeds the defaults first.
+TEST_F(PropTool, AlreadySealedStillSeedsTheDefaults) {
+    writeBootFiles();
+    ASSERT_EQ(run({"boot"}).code(), 0);
+    thimsy_test::spit(dir / "defaults.props", "persist.gammaos.nano.ndstheme=3\nro.not.persist=1\n");
+    const auto r = run({"boot", "--defaults", dir / "defaults.props"});
+    EXPECT_EQ(r.code(), 1);
+    EXPECT_NE(r.err.find("already sealed"), std::string::npos) << r.err;
+    EXPECT_NE(r.err.find("\"ro.not.persist=1\" ignored"), std::string::npos) << r.err;
+    auto s = store();
+    ASSERT_TRUE(s != nullptr);
+    EXPECT_EQ(s->get("persist.gammaos.nano.ndstheme"), "3");
+    EXPECT_EQ(s->get("ro.not.persist"), "");
+    EXPECT_EQ(s->get("ro.thimsy.version"), "0.1.0");
+}
+
+// W8-DEFAULTS-10: when ro.* can't be sealed (here its directory is not writable) the run fails
+// (exit 1), and the defaults are stored all the same.
+TEST_F(PropTool, FailedSealStillSeedsTheDefaults) {
+    if (geteuid() == 0) GTEST_SKIP() << "root writes into a read-only directory";
+    writeBootFiles();
+    thimsy_test::spit(dir / "defaults.props", "persist.gammaos.nano.ndstheme=3\n");
+    {
+        auto s = store();  // creates the run dir's ro/
+        ASSERT_TRUE(s != nullptr);
+    }
+    const std::string roDir = roots.runDir + "/ro";
+    ASSERT_EQ(chmod(roDir.c_str(), 0555), 0);
+    const auto r = run({"boot", "--defaults", dir / "defaults.props"});
+    chmod(roDir.c_str(), 0755);
+    EXPECT_EQ(r.code(), 1);
+    EXPECT_NE(r.err.find("can't seal ro.*"), std::string::npos) << r.err;
+    auto s = store();
+    ASSERT_TRUE(s != nullptr);
+    EXPECT_FALSE(s->readOnlySealed());
+    EXPECT_EQ(s->get("persist.gammaos.nano.ndstheme"), "3");
 }
 
 TEST_F(PropTool, WatchPrintsAChange) {

@@ -164,8 +164,11 @@ sets, OA-1), `thimsy-prop boot` then stores each `persist.*` line whose key
 `persist.props` has no value for, in one write through the store, so Nano
 starts with Android's defaults, stored as a choice made in Settings is
 (OA-35). A value already there is never changed, so a later choice is kept,
-and once every key is there nothing is written. A malformed line is a
-warning (exit 2, which S01props logs), not a failure. The seeding is C++
+and once every key is there nothing is written. The seeding runs whenever
+the store opens, also when `ro.*` can't be sealed or was already sealed this
+boot (W8-DEFAULTS-10). A malformed line or a missing defaults file is a
+warning: exit 2, which S01props logs as "sealed with warnings"; any other
+non-zero exit it logs as "failed" with the code. The seeding is C++
 (libthimsy's `ConfigStore::trySetDefaults`, B.3), not a loop in the script
 (OA-36).
 

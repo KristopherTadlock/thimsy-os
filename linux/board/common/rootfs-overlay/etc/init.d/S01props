@@ -15,7 +15,12 @@
 # each persist.* line of /usr/share/thimsy/persist-defaults.props (thimsy-data's
 # copy of mods/nano-theme.props, the theme settings Android's build.prop sets,
 # OA-1) whose key persist.props has no value for is stored there, as a choice
-# made in Settings is (OA-35). A value already there is never changed.
+# made in Settings is (OA-35). A value already there is never changed. The
+# seeding runs whenever the store opens, even if ro.* can't be sealed.
+#
+# Exit 2 means it sealed ro.* with warnings (a malformed line, a missing file:
+# the details are in thimsy-prop's stderr); any other non-zero exit is a
+# failure.
 . "${THIMSY_ROOT:-}/usr/share/thimsy/init/lib.sh"
 
 TAG=S01props
@@ -26,8 +31,13 @@ start)
 		"$PROP" boot --device "$R/usr/share/thimsy/device.json" \
 			--install "$R/storage/thimsy/install.json" \
 			--build "$R/usr/share/thimsy/build.props" \
-			--defaults "$R/usr/share/thimsy/persist-defaults.props" ||
-			thimsy_warn $TAG "thimsy-prop boot failed ($?)"
+			--defaults "$R/usr/share/thimsy/persist-defaults.props"
+		rc=$?
+		case $rc in
+		0) ;;
+		2) thimsy_warn $TAG "thimsy-prop boot: sealed with warnings" ;;
+		*) thimsy_warn $TAG "thimsy-prop boot failed ($rc)" ;;
+		esac
 	else
 		thimsy_warn $TAG "thimsy-prop is missing: no ro.* properties, no default settings"
 	fi

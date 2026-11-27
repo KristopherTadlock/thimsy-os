@@ -13,7 +13,8 @@
 //   thimsy-prop boot [--device FILE] [--install FILE] [--build FILE] [--defaults FILE]
 //                                       write ro.* from build.props, device.json and install.json,
 //                                       then seal ro.*; then store each persist.* default of
-//                                       --defaults that persist.props has no value for (S01props).
+//                                       --defaults that persist.props has no value for (S01props),
+//                                       also when ro.* can't be sealed or was already sealed.
 //                                       Exit 0, 2 when sealed with warnings, 1 when it failed or
 //                                       already ran this boot
 //
@@ -336,6 +337,7 @@ bool seedDefaults(ConfigStore* store, const std::string& path, int* warnings) {
         return true;
     }
     const Source src = propsSource(text, path, "persist.", "a persist.*", warnings);
+    // trySetDefaults refuses the whole map for one bad value, so a bad value is dropped here, alone.
     std::map<std::string, std::string> defaults;
     for (const auto& kv : src.props) {
         ConfigStore::SetResult bad = ConfigStore::SetResult::Ok;
@@ -379,11 +381,14 @@ int cmdBoot(int argc, char** argv) {
     }
     auto store = openStore();
     if (!store) return 1;
+    int warnings = 0;
+    // The defaults are seeded whenever the store opens, as S01props' old loop did after a failed
+    // boot: also when ro.* was already sealed this boot or can't be sealed (W8-DEFAULTS-10).
     if (store->readOnlySealed()) {
         fprintf(stderr, "thimsy-prop boot: ro.* is already sealed for this boot\n");
+        if (!defaultsPath.empty()) seedDefaults(store.get(), defaultsPath, &warnings);
         return 1;
     }
-    int warnings = 0;
     std::vector<Source> sources;  // in precedence order: an earlier source's key wins
 
     std::string text;
@@ -433,12 +438,10 @@ int cmdBoot(int argc, char** argv) {
         if (r == ConfigStore::SetResult::IoError) failed = true;
         ++warnings;
     }
-    if (!store->sealReadOnly()) {
-        fprintf(stderr, "thimsy-prop boot: can't seal ro.*\n");
-        return 1;
-    }
+    const bool sealed = store->sealReadOnly();
+    if (!sealed) fprintf(stderr, "thimsy-prop boot: can't seal ro.*\n");
     if (!defaultsPath.empty() && !seedDefaults(store.get(), defaultsPath, &warnings)) failed = true;
-    if (failed) return 1;
+    if (failed || !sealed) return 1;
     return warnings ? 2 : 0;
 }
 

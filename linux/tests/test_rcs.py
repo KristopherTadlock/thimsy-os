@@ -215,9 +215,11 @@ thimsy-prop)
 			printf '%s\n' "$THIMSY_FAKE_FAMILY" > "$R/run/thimsy/props/ro/ro.thimsy.family"
 		[ -n "${THIMSY_FAKE_MODULES:-}" ] &&
 			printf '%s\n' "$THIMSY_FAKE_MODULES" > "$R/run/thimsy/props/ro/ro.thimsy.modules"
-		# THIMSY_FAKE_FAIL=thimsy-prop: sealed, with warnings (exit 2).
+		# THIMSY_FAKE_FAIL=thimsy-prop: sealed, with warnings (exit 2);
+		# =thimsy-prop-io: it failed (exit 1).
 		case " ${THIMSY_FAKE_FAIL:-} " in
 		*" thimsy-prop "*) exit 2 ;;
+		*" thimsy-prop-io "*) exit 1 ;;
 		esac
 	fi
 	;;
@@ -845,12 +847,27 @@ class TestPropsAndFamily(WorldCase):
         for gone in ("persist_defaults", "thimsy_persist", '"$PROP" set', "prefs: keys from"):
             self.assertNotIn(gone, src)
 
-    def test_thimsy_prop_boot_failure_is_a_warning(self) -> None:
-        # A defaults line thimsy-prop refuses makes it exit 2 (sealed, with warnings): S01props warns
-        # and goes on to the family.
+    def test_thimsy_prop_boot_warnings(self) -> None:
+        # W8-DEFAULTS-11: a defaults line thimsy-prop refuses makes it exit 2 (sealed, with
+        # warnings): S01props says so, not "failed", and goes on to the family.
         self.w.run(INITD + "/S01props", "start", env={"THIMSY_FAKE_FAIL": "thimsy-prop"})
-        self.assertIn("thimsy-prop boot failed", self.w.boot_log())
+        log = self.w.boot_log()
+        self.assertIn("thimsy-prop boot: sealed with warnings", log)
+        self.assertNotIn("boot failed", log)
         self.assertEqual(self.w.read("run/thimsy/family"), "rk3566\n")
+
+    def test_thimsy_prop_boot_failure_is_a_warning(self) -> None:
+        # Any other non-zero exit (here 1) is a failure: S01props warns with the code and goes on
+        # to the family.
+        self.w.run(INITD + "/S01props", "start", env={"THIMSY_FAKE_FAIL": "thimsy-prop-io"})
+        log = self.w.boot_log()
+        self.assertIn("thimsy-prop boot failed (1)", log)
+        self.assertNotIn("sealed with warnings", log)
+        self.assertEqual(self.w.read("run/thimsy/family"), "rk3566\n")
+
+    def test_no_warning_when_thimsy_prop_boot_succeeds(self) -> None:
+        self.w.run(INITD + "/S01props", "start")
+        self.assertNotIn("thimsy-prop boot", self.w.boot_log())
 
     def test_family_from_the_only_family_dir(self) -> None:
         self.w.run(INITD + "/S01props", "start")
