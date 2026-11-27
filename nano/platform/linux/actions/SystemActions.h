@@ -27,7 +27,7 @@
 //   (not when the script failed; tried up to 5 times 500 ms apart while it fails at once, as
 //   bluetoothd may not have registered the controller yet); off: `bluetoothctl power off`, then
 //   `D35bluetooth stop`. When the script says the device has no Bluetooth (status 3: device.json,
-//   the kernel, or no controller), the key goes back to 0.
+//   the kernel, or no controller), or the image has no D35bluetooth at all, the key goes back to 0.
 //   switchBluetooth is that whole switch on the caller's thread, for Network::setBtRadio (the PS3
 //   wizard's Turn On/Off, which Nano already calls on a thread of its own).
 //   connectBluetooth: `bluetoothctl connect <mac>`. An image without BlueZ logs that once per call.

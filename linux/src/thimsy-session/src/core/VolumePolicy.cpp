@@ -35,6 +35,10 @@ bool isEmmcHardwarePart(const std::string& name) {
     return startsWith(rest, "boot") && allDigits(rest, 4);
 }
 
+// A never-booted Thimsy card's info partition is 1 MiB (OA-33); anything up to 2 MiB named info is
+// taken for that stub (W8-SMALL-10).
+const uint64_t kInfoStubMaxBytes = 2 * 1024 * 1024;
+
 Classification ignore(std::string why) {
     Classification c;
     c.disposition = Disposition::Ignore;
@@ -73,6 +77,9 @@ Classification classify(const BlockDev& dev, const BootDisk& boot, const PolicyC
     if (dev.emmc) return ignore("on internal storage (eMMC)");
     if (!dev.partition && dev.diskHasPartitions) return ignore("a disk with partitions");
     if (dev.sizeBytes < cfg.minSizeBytes) return ignore("under 1 MiB");
+    if (dev.partition && dev.partName == "info" && dev.sizeBytes <= kInfoStubMaxBytes) {
+        return ignore("a Thimsy card's info stub (named info, 2 MiB or less)");
+    }
     if (dev.table == "gpt" && dev.partition) {
         if (dev.partType == kTypeLinuxReserved) return ignore("typed Linux reserved");
         if (dev.partType != kTypeBasicData && dev.partType != kTypeLinuxData) {

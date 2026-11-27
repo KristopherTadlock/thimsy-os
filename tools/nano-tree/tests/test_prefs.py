@@ -35,9 +35,9 @@ A glob takes in any new key under it, so test_prefs.py fails when this set chang
 class (give it its own row if the glob's class is wrong for it), then
   python3 tools/nano-tree/tests/test_prefs.py --update-globs"""
 # Keys with class "?" (the owner has not decided). The list in prefs.json may only shrink: classify a
-# key, drop it from "unclassified" and lower this number. 9 at first; 14 since the scan lists the
-# global button-action rules (persist.gammaos.gamepad.act*), which share the per-app rules' question.
-UNCLASSIFIED_BUDGET = 14
+# key, drop it from "unclassified" and lower this number. 9 at first; 14 once the scan listed the
+# global button-action rules (persist.gammaos.gamepad.act*); 0 since OA-41 made those and the A/B swap D.
+UNCLASSIFIED_BUDGET = 0
 
 
 @unittest.skipUnless(os.path.isdir(NANO) and os.path.isfile(TABLE), "no nano/ or prefs.json here")
@@ -128,7 +128,7 @@ class Prefs(unittest.TestCase):
             self.assertIn(k, built)
         self.assertEqual(f["persist.gammaos.hotkeys.save"].defaults, {"BUTTON_R1"})
         self.assertEqual(self.row("persist.gammaos.shader.blurfill.blur_scale")["class"], "A")
-        self.assertEqual(self.cls_of("persist.gammaos.gamepad.act_count"), "?")
+        self.assertEqual(self.cls_of("persist.gammaos.gamepad.act_count"), "D")
 
     def test_glob_keys_match_baseline(self):
         have = glob_lines(self.found, self.rows)
@@ -167,6 +167,19 @@ class Prefs(unittest.TestCase):
         for r in self.rows:
             if r["class"] == "M":
                 self.assertTrue(r["ini"].startswith("device.*."), r["match"])
+
+    def test_oa41_rules(self):
+        # The button-action rules (global and per-app) and the A/B swap are device only: they never travel,
+        # not even to a unit of the same model.
+        keys = ["persist.gammaos.gamepad.abxy_swap", "persist.gammaos.gamepad.pa", "persist.gammaos.gamepad.pa_count",
+                "persist.gammaos.gamepad.pa%d_pkg", "persist.gammaos.gamepad.pa%d_act_count",
+                "persist.gammaos.gamepad.act_count"]
+        for field in ("code", "hold", "s", "l"):
+            keys += ["persist.gammaos.gamepad.act%d_" + field, "persist.gammaos.gamepad.pa%d_act%d_" + field]
+        for k in keys:
+            self.assertIn(k, self.found, k)
+            self.assertEqual(self.cls_of(k), "D", k)
+            self.assertIn("OA-41", covering_row(k, self.rows)["note"], k)
 
     def test_linux_only_keys_are_not_android_section(self):
         cfg = Upstream.load(ROOT)

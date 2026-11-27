@@ -105,6 +105,44 @@ TEST(Classify, ASecondCardWithADataPartition) {
     EXPECT_FALSE(isDrive(part("mmcblk2", 5, "games", kTypeLinuxReserved)));
 }
 
+TEST(Classify, ASecondNeverBootedCardsInfoStubIsNotADriveWhenItsTableIsRead) {
+    // A second Thimsy card that never booted still has its 1 MiB info stub: FAT12, typed basic data
+    // until its first boot retypes it (OA-33). Its type passes, but name and size mark it a stub.
+    BlockDev info = withFs(part("mmcblk2", 5, "info", kTypeBasicData), "vfat", "1234-ABCD");
+    info.sizeBytes = 1024 * 1024;
+    EXPECT_FALSE(isDrive(info));
+    EXPECT_NE(classify(info, bootCard(), PolicyConfig()).reason.find("info stub"), std::string::npos);
+    // Up to 2 MiB counts as the stub.
+    info.sizeBytes = 2 * 1024 * 1024;
+    EXPECT_FALSE(isDrive(info));
+    // Just over 2 MiB is not a stub.
+    info.sizeBytes = 2 * 1024 * 1024 + 512;
+    EXPECT_TRUE(isDrive(info));
+}
+
+TEST(Classify, ASecondNeverBootedCardsInfoStubIsNotADriveWhenItsTableIsUnread) {
+    // With the table unread, only the name and size are known.
+    BlockDev info = withFs(part("mmcblk2", 5, "info", ""), "vfat", "1234-ABCD");
+    info.table = "";
+    info.sizeBytes = 1024 * 1024;
+    EXPECT_FALSE(isDrive(info));
+    EXPECT_NE(classify(info, bootCard(), PolicyConfig()).reason.find("info stub"), std::string::npos);
+    // Another name on a disk with an unread table is still a drive.
+    BlockDev other = info;
+    other.partName = "infos";
+    EXPECT_TRUE(isDrive(other));
+}
+
+TEST(Classify, ALargeUserPartitionNamedInfoIsStillADrive) {
+    // Someone's own 8 GiB partition that happens to be named info: not a Thimsy stub.
+    BlockDev read = withFs(part("mmcblk2", 1, "info", kTypeBasicData), "exfat", "5678-9ABC");
+    EXPECT_TRUE(isDrive(read));
+    BlockDev unread = read;
+    unread.table = "";
+    unread.partType = "";
+    EXPECT_TRUE(isDrive(unread));
+}
+
 TEST(Classify, TheEmmcIsNeverADrive) {
     BlockDev d = part("mmcblk0", 17, "userdata", kTypeBasicData);
     d.emmc = true;  // device/type is MMC

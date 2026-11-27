@@ -14,6 +14,9 @@
 //     home (a "data" partition, on any card), root and the rest are never mounted;
 //   - on the boot disk (from /run/thimsy/bootdisk, as S00base resolved it), only the partition
 //     named "games" typed basic data; when its type can't be read, not even that;
+//   - a partition named "info" of at most 2 MiB is never a drive, whether or not the table was
+//     read: a never-booted Thimsy card's README stub (OA-33, W8-SMALL-10), basic data until its
+//     first boot retypes it. A larger partition that happens to be named info is not a stub;
 //   - when the table can't be read, partitions named uboot, boot, root or data are not drives.
 // A drive's id is its filesystem serial: FAT and exFAT "XXXX-XXXX" (upper case, as vold and blkid
 // print it), ext4 its UUID (lower case, dashed). An all-zero serial is no id (plan 7.3). Two drives
