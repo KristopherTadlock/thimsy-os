@@ -127,6 +127,15 @@ class SurfaceUnit(unittest.TestCase):
                          [("2" * 40, ["X.cpp"]), ("3" * 40, ["Y.cpp"])])
         self.assertEqual(coverage(set(), [bare]), ([], []))
 
+    def test_coverage_wave_step(self):
+        """Migration-wave steps ("W6-boot") mark the surface like plan steps; an unknown prefix does not."""
+        wave = Commit("4" * 40, "Move Z\n\nandroid-surface: W6-boot move of Z (review: color-moved clean)\n",
+                      {"Z.cpp"})
+        other = Commit("5" * 40, "V\n\nandroid-surface: X1 move of V (review: color-moved clean)\n", {"V.cpp"})
+        missing, unannotated = coverage({"Z.cpp", "V.cpp"}, [wave, other])
+        self.assertEqual(missing, ["V.cpp"])
+        self.assertEqual([(c.sha, paths) for c, paths in unannotated], [("5" * 40, ["V.cpp"])])
+
     def test_surface_joins(self):
         """G7-main: P.cpp reached the patch off the surface (G5) and joined it in an annotated
         commit; Q.cpp joined it in an unannotated one; R.cpp was changed bare while on it."""
