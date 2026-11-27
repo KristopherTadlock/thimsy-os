@@ -394,6 +394,17 @@ TEST(VolumesJson, TheOwnershipMember) {
     v[0].state = "mounted";
     v[0].ownership = "idmapped";
     EXPECT_FALSE(nanolinux::needsOwnershipDecision(v[0]));
+    EXPECT_FALSE(nanolinux::readOnlyForNano(v[0]));
+    // Declined, or a filesystem error: read-only, but nothing to ask.
+    for (const char* o : {"declined", "fs_error"}) {
+        v[0].ownership = o;
+        EXPECT_FALSE(nanolinux::needsOwnershipDecision(v[0])) << o;
+        EXPECT_TRUE(nanolinux::readOnlyForNano(v[0])) << o;
+    }
+    v[0].ownership = "needs_decision";
+    EXPECT_TRUE(nanolinux::readOnlyForNano(v[0]));
+    v[0].state = "ejected";
+    EXPECT_FALSE(nanolinux::readOnlyForNano(v[0]));
     std::vector<VolumeEntry> keep(1);
     EXPECT_FALSE(nanolinux::parseVolumesJson(R"({"version": 1, "volumes": [{"ownership": 1}]})", &keep, &err));
 }
@@ -410,6 +421,18 @@ TEST(VolumesJson, TheTakeOwnershipRequest) {
     EXPECT_FALSE(nanolinux::requestTakeOwnership("thimsy", send));
     ASSERT_EQ(sent.size(), 1u);
     EXPECT_EQ(sent[0], "take-ownership:0b1c2d3e-0000-4000-8000-00000000abcd");
+}
+
+TEST(VolumesJson, TheKeepReadOnlyRequest) {
+    EXPECT_EQ(nanolinux::keepReadOnlyVerb("0b1c2d3e-0000-4000-8000-00000000abcd"),
+              "keep-read-only:0b1c2d3e-0000-4000-8000-00000000abcd");
+    EXPECT_EQ(nanolinux::keepReadOnlyVerb("../etc"), "");
+    std::vector<std::string> sent;
+    auto send = [&sent](const std::string& verb) { sent.push_back(verb); };
+    EXPECT_TRUE(nanolinux::requestKeepReadOnly("0b1c2d3e-0000-4000-8000-00000000abcd", send));
+    EXPECT_FALSE(nanolinux::requestKeepReadOnly("thimsy", send));
+    ASSERT_EQ(sent.size(), 1u);
+    EXPECT_EQ(sent[0], "keep-read-only:0b1c2d3e-0000-4000-8000-00000000abcd");
 }
 
 TEST_F(VolumesTest, TheDefaultRequestUsesNanosSequence) {
@@ -440,4 +463,19 @@ TEST_F(VolumesTest, ADriveAwaitingTheDecisionIsNotWritable) {
     std::sort(got.begin(), got.end());
     std::sort(want.begin(), want.end());
     EXPECT_EQ(got, want);
+}
+
+TEST_F(VolumesTest, DeclinedAndBrokenDrivesAreNotWritable) {
+    const std::string ext = drive("0b1c2d3e-0000-4000-8000-00000000abcd"), fat = drive("AAAA-0001");
+    ASSERT_EQ(mkdir((ext + "/ES-DE").c_str(), 0755), 0);
+    ASSERT_EQ(mkdir((fat + "/ES-DE").c_str(), 0755), 0);
+    auto v = make();
+    for (const char* o : {"declined", "fs_error"}) {
+        publish({withOwnership(entry("0b1c2d3e-0000-4000-8000-00000000abcd", "mounted", ext, "sd"), o),
+                 entry("AAAA-0001", "mounted", fat, "usb")});
+        EXPECT_EQ(v->cardRoot(), fat) << o;
+        std::vector<std::string> want = {fat + "/ES-DE"};
+        EXPECT_EQ(v->writableFolders("", "/ES-DE"), want) << o;
+        EXPECT_TRUE(v->present("0b1c2d3e-0000-4000-8000-00000000abcd")) << o;   // in, readable
+    }
 }

@@ -30,7 +30,11 @@
 // user's uids. The session mounts it through an idmapped mount, and where it cannot, read-only with
 // "ownership": "needs_decision"; such a drive is not writable (cardRoot, writableFolders) until the
 // user agrees that Thimsy takes its top folder: requestTakeOwnership() asks the session for that.
-// The shared prompt that asks the user, and the nanoplat call it will use, come with that prompt.
+// If the user declines, requestKeepReadOnly() tells the session, which keeps that per drive and
+// lists the drive as "declined" from then on, so Nano does not ask at every insert (taking it later
+// still works). "fs_error" is a drive whose filesystem went read-only by itself (ext4 errors):
+// read-only, nothing to ask. The shared prompt that asks the user, and the nanoplat call it will
+// use, come with that prompt.
 #pragma once
 
 #include <functional>
@@ -54,7 +58,8 @@ struct VolumeEntry {
     std::string kind;
     bool bootDisk = false;
     bool readOnly = false;
-    std::string ownership;   // ext2/3/4 only: "nano", "idmapped" or "needs_decision"; else ""
+    std::string ownership;   // ext2/3/4 only: "nano", "idmapped", "needs_decision", "declined",
+                             // "fs_error"; else ""
 };
 
 // Parses volumes.json's text. false, with *err set, on a syntax error, a version other than 1 or
@@ -68,6 +73,10 @@ bool looksLikeVolumeId(const std::string& id);
 // top folder (OA-29).
 bool needsOwnershipDecision(const VolumeEntry& v);
 
+// A mounted drive the session keeps read-only for Nano: a decision pending, declined, or a
+// filesystem error.
+bool readOnlyForNano(const VolumeEntry& v);
+
 // The thimsy-session request that takes drive `id`'s top folder for Nano, "take-ownership:<id>"
 // (linux/docs/session.md); "" when `id` is not shaped like a volume id.
 std::string takeOwnershipVerb(const std::string& id);
@@ -79,6 +88,15 @@ std::string takeOwnershipVerb(const std::string& id);
 // volume id.
 bool requestTakeOwnership(const std::string& id,
                           const std::function<void(const std::string& verb)>& sessionRequest = nullptr);
+
+// The thimsy-session request that records the user's "no" for drive `id`, "keep-read-only:<id>";
+// "" when `id` is not shaped like a volume id.
+std::string keepReadOnlyVerb(const std::string& id);
+
+// The user declined: asks thimsy-session to keep drive `id` read-only and not to list it as
+// needing a decision again ("ownership" becomes "declined"). As requestTakeOwnership otherwise.
+bool requestKeepReadOnly(const std::string& id,
+                         const std::function<void(const std::string& verb)>& sessionRequest = nullptr);
 
 struct VolumesOptions {
     std::string file = "/run/thimsy/volumes.json";
