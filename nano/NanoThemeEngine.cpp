@@ -570,6 +570,20 @@ std::string NanoMenu::esdeVariantFor(const std::string& selVariant, int sysIdx, 
     return esdeEffectiveVariant(selVariant, sysIdx);
 }
 
+// The variant to parse the default standing in for another set with for a system (OA-37, or a failed
+// load): esdeEffectiveVariant's noMedia/noVideos trigger for the variant the stand-in resolves to
+// (esdethemefb::triggerBase: it is loaded with none chosen, so the theme's first), and its own
+// selection when none fires (standInVariant). esdeVariantFor's records are the chosen set's, not used.
+std::string NanoMenu::esdeStandInVariant(const std::string& selVariant, int sysIdx) {
+    const auto& vars = mEsdeDoc.capabilities().variants;
+    bool declared = false;
+    for (const auto& v : vars)
+        if (v.name == selVariant) { declared = true; break; }
+    const std::string base =
+        esdethemefb::triggerBase(selVariant, declared, vars.empty() ? std::string() : vars.front().name);
+    return esdethemefb::standInVariant(selVariant, base, esdeEffectiveVariant(base, sysIdx));
+}
+
 // Remember (k) or forget (nullptr) the build for a record tag; the file is rewritten on a change.
 void NanoMenu::esdePredictRecord(const char* tag, const EsdeBuildKey* k) {
     size_t i = 0;
@@ -617,6 +631,27 @@ void NanoMenu::ensureEsdeTheme() {
         if (sEsdeRetryAtMs == 0 || want != sEsdeRetrySet || (int64_t)uptimeMillis() < sEsdeRetryAtMs) return;
         sEsdeRetryAtMs = 0;
         ALOGI("esde: trying theme set '%s' again after its load timed out", want.c_str());
+    }
+    // OA-37 at boot: a chosen set not found before storage is readable may be on it, so the first
+    // load waits for it (esdethemefb::waitForStorage) instead of building the default now and the set
+    // again once storage is up. The set is looked for once, as the wait starts; nothing is latched or
+    // cleared while it lasts, and the boot screen stays up over the home meanwhile.
+    if (mEsdeStorageWait != 2) {
+        const int64_t now = (int64_t)uptimeMillis();
+        if (mEsdeStorageWait == 0) {
+            mEsdeStorageWait =
+                mBootScreenActive && !mStorageReady && want != kEsdeDefaultSet && esdeSetDir(want).empty() ? 1 : 2;
+            mEsdeStorageWaitMs = now;
+            if (mEsdeStorageWait == 1)
+                ALOGI("esde: theme set '%s' not found before storage is readable; waiting for it", want.c_str());
+        }
+        if (mEsdeStorageWait == 1) {
+            if (mEsdeStorageSoundMs == 0 && bootSoundState() != 0) mEsdeStorageSoundMs = now;
+            if (esdethemefb::waitForStorage(mBootScreenActive, mStorageReady, now, mEsdeStorageSoundMs)) return;
+            ALOGI("esde: stopped waiting for storage after %lld ms (%s)", (long long)(now - mEsdeStorageWaitMs),
+                  mStorageReady ? "storage readable" : mBootScreenActive ? "timed out" : "boot screen gone");
+            mEsdeStorageWait = 2;
+        }
     }
 
     mEsdeSetName = want;
@@ -690,7 +725,8 @@ void NanoMenu::ensureEsdeTheme() {
     // Now that capabilities are parsed, honour the selected variant's noMedia/noVideos trigger
     // for the representative system and reparse once if it resolves to a different variant.
     if (ok && repIdx >= 0) {
-        std::string eff = esdeVariantFor(va, repIdx, sysTheme);
+        // The stand-in (OA-37) follows its own variant's trigger, not the chosen set's records.
+        std::string eff = load == want ? esdeVariantFor(va, repIdx, sysTheme) : esdeStandInVariant(va, repIdx);
         if (eff != va) {
             EsdeBuildKey effKey = key;
             effKey.variant = eff;
@@ -796,11 +832,15 @@ void NanoMenu::esdeSdcardThemesTick() {
     const bool dirChanged = (dirSig != mEsdeSdcardSig);
     const bool activeChanged = (activeSig != mEsdeSdcardActiveSig);
     if (!dirChanged && !activeChanged) return;
+    // The active set has just become readable (storage or its card came up) and is the one loaded
+    // already, from that folder (by esdeMissingSetRecheck or a first load that waited for storage):
+    // nothing to reparse (OA-37).
+    const bool justReadable = mEsdeSdcardActiveSig == 0 && mEsdeDocKey.dir == active;
     mEsdeSdcardSig = dirSig;
     mEsdeSdcardActiveSig = activeSig;
     if (dirChanged) esdeMenuEnumerateInstalled();  // a set appeared / disappeared: refresh the picker
     esdeMissingSetRecheck(dirChanged ? "theme folder changed" : "theme set's files changed");
-    if (activeChanged && activeOnSdcard) mEsdeLoaded = false;   // active set edited in place: reparse it
+    if (activeChanged && activeOnSdcard && !justReadable) mEsdeLoaded = false;   // edited in place: reparse it
     mDisplayDirty = true;
     ALOGI("esde: user theme folder changed (dir=%d active=%d)", (int)dirChanged, (int)activeChanged);
 }
@@ -838,9 +878,10 @@ void NanoMenu::esdeReloadForSystem(int sysIdx) {
     key.set = mEsdeSetName; key.dir = dir; key.selVariant = va; key.variant = eff;
     key.colorScheme = cs; key.aspectRatio = ar; key.fontSize = fs; key.locale = mEsdeDoc.locale();
     key.sysTheme = sysTheme; key.sysName = sysName; key.aspect = aspect;
-    if (standIn) {
+    if (standIn) {   // its own options, and its variant trigger for this system (as ensureEsdeTheme's)
         key.set = mEsdeDocKey.set; key.dir = mEsdeDocKey.dir;
-        key.selVariant = key.variant = mEsdeDocKey.selVariant;
+        key.selVariant = mEsdeDocKey.selVariant;
+        key.variant = esdeStandInVariant(key.selVariant, sysIdx);
         key.colorScheme = mEsdeDocKey.colorScheme; key.aspectRatio = mEsdeDocKey.aspectRatio;
         key.fontSize = mEsdeDocKey.fontSize;
     }

@@ -1,5 +1,7 @@
 // A chosen ES-DE theme set that is not installed (OA-37): the default stands in, the choice is
 // remembered, and the set is looked for again at most every few seconds unless something prompts it.
+// The stand-in follows each system's variant trigger, and the first load at boot waits for storage
+// a little before the default stands in.
 
 #include <gtest/gtest.h>
 
@@ -54,4 +56,25 @@ TEST(EsdeThemeFallback, NothingIsGoneWhileTheChosenSetIsThereOrNotTheOneShown) {
     EXPECT_FALSE(loadedSetGone(true, kDef, "slate-es-de", kDef, false));            // already a stand-in
     EXPECT_FALSE(loadedSetGone(true, kDef, kDef, kDef, false));                     // the default itself
     EXPECT_FALSE(loadedSetGone(true, "", "", kDef, false));
+}
+
+TEST(EsdeThemeFallback, TheStandInsTriggerIsItsFirstVariantsWhenNoneIsChosen) {
+    EXPECT_EQ(triggerBase("", false, "withVideos"), "withVideos");         // loaded with none chosen
+    EXPECT_EQ(triggerBase("noVideos", true, "withVideos"), "noVideos");    // a variant it declares
+    EXPECT_EQ(triggerBase("gone", false, "withVideos"), "withVideos");     // one it does not declare
+    EXPECT_EQ(triggerBase("", false, ""), "");                             // it declares no variant
+}
+
+TEST(EsdeThemeFallback, TheStandInIsParsedWithTheTriggeredVariantOrItsOwnSelection) {
+    EXPECT_EQ(standInVariant("", "withVideos", "noMedia"), "noMedia");     // a system without media
+    EXPECT_EQ(standInVariant("", "withVideos", "withVideos"), "");         // no trigger: the load's key
+    EXPECT_EQ(standInVariant("", "", ""), "");
+}
+
+TEST(EsdeThemeFallback, TheFirstLoadWaitsForStorageOnlyUnderTheBootScreenAndBriefly) {
+    EXPECT_TRUE(waitForStorage(true, false, 20000, 0));                    // the boot sound is not ready
+    EXPECT_TRUE(waitForStorage(true, false, 20000 + kStorageWaitMs - 1, 20000));
+    EXPECT_FALSE(waitForStorage(true, false, 20000 + kStorageWaitMs, 20000));   // waited long enough
+    EXPECT_FALSE(waitForStorage(true, true, 20000, 0));                    // storage is readable
+    EXPECT_FALSE(waitForStorage(false, false, 20000, 0));                  // no boot screen over the home
 }

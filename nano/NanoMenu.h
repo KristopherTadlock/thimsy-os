@@ -1796,6 +1796,10 @@ private:
     // and when it was last looked for (esdeMissingSetRecheck, NanoThemeEngine.cpp).
     std::string mEsdeMissingSet;
     int64_t mEsdeMissingCheckMs = 0;
+    // OA-37 at boot: whether the first load waits for storage (0 not decided, 1 waiting, 2 not or no
+    // longer), when the wait started, and when the boot screen's startup sound was ready during it.
+    int mEsdeStorageWait = 0;
+    int64_t mEsdeStorageWaitMs = 0, mEsdeStorageSoundMs = 0;
     // Theme parses run on worker threads (EsdeThemeBuilder, NanoThemeEngine.cpp): each builds a
     // separate nanoesde::Theme from an EsdeBuildKey (every input of Theme::load) and the render
     // thread swaps the finished one into mEsdeDoc. At startup the keys the last boot used
@@ -1846,6 +1850,7 @@ private:
     void esdePrebuildStart();
     bool esdeBuildTheme(const EsdeBuildKey& k, const char* why);   // build k, swap into mEsdeDoc
     std::string esdeVariantFor(const std::string& selVariant, int sysIdx, const std::string& sysTheme);
+    std::string esdeStandInVariant(const std::string& selVariant, int sysIdx);   // OA-37: a stand-in's, per system
     void esdePredictRecord(const char* tag, const EsdeBuildKey* k);
     // User theme folder watcher: users drop a theme under kEsdeSdcardDir (/sdcard/ES-DE/themes/<name>)
     // and the picker picks it up live. esdeSdcardThemesTick() polls the folder mtime/size (and, when

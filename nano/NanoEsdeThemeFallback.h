@@ -19,7 +19,9 @@
 // without changing the stored choice (persist.gammaos.nano.esde.themeset), remembers the set it
 // wants, and loads it once it is there again (NanoThemeEngine.cpp, esdeMissingSetRecheck). These are
 // the decisions; the theme engine does the file look-ups and the loads. The same holds when the
-// chosen set goes while it is up (loadedSetGone).
+// chosen set goes while it is up (loadedSetGone). The stand-in follows each system's variant
+// trigger (triggerBase, standInVariant), and at boot the first load waits a little for storage
+// before the default stands in (waitForStorage).
 #pragma once
 
 #include <cstdint>
@@ -58,6 +60,35 @@ inline bool recheckDue(const std::string& missing, int64_t nowMs, int64_t lastMs
 inline bool loadedSetGone(bool loaded, const std::string& shown, const std::string& chosen,
                           const std::string& def, bool chosenFound) {
     return loaded && !chosen.empty() && shown == chosen && chosen != def && !chosenFound;
+}
+
+// The variant whose noMedia/noVideos trigger applies to the default standing in for a set: the one
+// it was loaded with (sel) when the theme declares it, else the first the theme declares (first,
+// empty when it declares none), which is the one a load selects then (nanoesde::Theme::load). The
+// stand-in is loaded with no variant chosen, so it is the theme's first.
+inline std::string triggerBase(const std::string& sel, bool selDeclared, const std::string& first) {
+    return selDeclared || first.empty() ? sel : first;
+}
+
+// The variant the stand-in is parsed with for a system: the trigger's (eff, what the trigger check
+// made of base) when one fired, else the stand-in's own selection (sel), so a parse that changes
+// nothing has the stand-in load's key.
+inline std::string standInVariant(const std::string& sel, const std::string& base, const std::string& eff) {
+    return eff == base ? sel : eff;
+}
+
+// How long the first load waits for storage at most once the boot screen's startup sound is ready
+// (waitForStorage).
+constexpr int64_t kStorageWaitMs = 3000;
+
+// Whether the first load at boot waits for storage before the default stands in for a chosen set
+// that is not found: the set may be on that storage (its ES-DE/themes), and the wait spares a load
+// of the default followed at once by the set's. Only while the boot screen is up (it covers the
+// home, so the wait shows nothing) and storage is not readable yet, and for at most kStorageWaitMs
+// after the boot screen's startup sound is ready (soundReadyMs; 0 while it is not), as from then on
+// the wait is what keeps the boot screen up.
+inline bool waitForStorage(bool bootScreen, bool storageReady, int64_t nowMs, int64_t soundReadyMs) {
+    return bootScreen && !storageReady && (soundReadyMs == 0 || nowMs - soundReadyMs < kStorageWaitMs);
 }
 
 }  // namespace esdethemefb
