@@ -95,8 +95,11 @@ TEST_F(EmulatorsTest, ImageDefaultsAreLinuxsTable) {
         EXPECT_TRUE(d[i].intent.empty()) << d[i].system;
     }
     ship("pcsx_rearmed");
-    for (const nanoplat::SystemEmulator& e : d)
-        if (e.system == "psx") EXPECT_TRUE(emus->coreInstalled(e.coreSo));
+    for (const nanoplat::SystemEmulator& e : d) {
+        if (e.system == "psx") {
+            EXPECT_TRUE(emus->coreInstalled(e.coreSo));
+        }
+    }
 }
 
 TEST(EmulatorsTable, EveryEntryIsACoreInNanosNames) {
