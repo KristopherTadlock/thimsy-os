@@ -186,12 +186,13 @@ bool parseHostConfig(std::string_view text, HostConfig* out, std::string* err) {
     Reader r(err);
     const std::string top = "host config";
     if (!r.object(root, top, {"events", "control", "persist_file", "run_dir", "log_file", "display", "barrier",
-                              "devices", "shell", "record_props", "volumes", "network"}))
+                              "devices", "shell", "record_props", "volumes", "network", "nano_owns_boot_screen"}))
         return false;
     HostConfig c = *out;
     if (!r.str(root, "events", top, &c.events) || !r.str(root, "control", top, &c.control) ||
         !r.str(root, "persist_file", top, &c.persistFile) || !r.str(root, "run_dir", top, &c.runDir) ||
-        !r.str(root, "log_file", top, &c.logFile) || !r.boolean(root, "barrier", top, &c.barrier))
+        !r.str(root, "log_file", top, &c.logFile) || !r.boolean(root, "barrier", top, &c.barrier) ||
+        !r.boolean(root, "nano_owns_boot_screen", top, &c.nanoOwnsBootScreen))
         return false;
     if (const Value* d = root.find("display")) {
         const std::string w = top + ".display";

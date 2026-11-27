@@ -46,6 +46,7 @@ TEST(HostConfig, Defaults) {
     EXPECT_EQ(c.display.width, 1280);
     EXPECT_EQ(c.display.refreshHz, 60);
     EXPECT_EQ(c.shellDefaultStatus, 127);
+    EXPECT_TRUE(c.nanoOwnsBootScreen);  // W6-boot
     ASSERT_EQ(c.recordProps.size(), 1u);
     EXPECT_EQ(c.recordProps[0], "");
 }
@@ -53,7 +54,7 @@ TEST(HostConfig, Defaults) {
 TEST(HostConfig, Full) {
     const char* text = R"({
       "events": "/run/e.jsonl", "control": "/run/ctl", "persist_file": "/p/persist.props",
-      "run_dir": "/p/run", "log_file": "", "barrier": true,
+      "run_dir": "/p/run", "log_file": "", "barrier": true, "nano_owns_boot_screen": false,
       "display": {"width": 640, "height": 480, "refresh_hz": 50, "count": 2, "rotation": 270, "pace": false},
       "devices": [{"path": "/dev/input/event0", "name": "Pad", "bus": 6, "vendor": 21576, "product": 1,
                    "keys": [304, 305], "abs": [{"code": 16, "min": -1, "max": 1}], "props": [0]}],
@@ -68,6 +69,7 @@ TEST(HostConfig, Full) {
     EXPECT_EQ(c.persistFile, "/p/persist.props");
     EXPECT_EQ(c.logFile, "");
     EXPECT_TRUE(c.barrier);
+    EXPECT_FALSE(c.nanoOwnsBootScreen);  // W6-boot
     EXPECT_EQ(c.display.width, 640);
     EXPECT_EQ(c.display.count, 2);
     EXPECT_EQ(c.display.rotationDeg, 270);
@@ -92,7 +94,7 @@ TEST(HostConfig, Errors) {
         "{\"display\": {\"wide\": 1}}", "{\"devices\": [{\"name\": \"no path\"}]}",
         "{\"devices\": [{\"path\": \"/x\", \"keys\": [99999]}]}", "{\"shell\": {\"rules\": [{\"status\": 1}]}}",
         "{\"shell\": {\"rules\": [{\"match\": \"a\", \"status\": 256}]}}", "{\"barrier\": 1}", "{\"events\": 3}",
-        "{\"record_props\": [1]}", "{",
+        "{\"record_props\": [1]}", "{", "{\"nano_owns_boot_screen\": 0}",
     };
     for (const char* t : bad) {
         HostConfig c;
@@ -153,6 +155,8 @@ TEST(HostPlatform, CreateWiresTheChannel) {
     ASSERT_TRUE(p->net != nullptr);  // G7-net: the config's scripted networks
     EXPECT_EQ(p->net->wifiListRadio().connectedSsid, "Home");
     p->net->startWifiScan();
+    ASSERT_TRUE(p->boot != nullptr);  // W6-boot: the config's default, Nano owns the boot screen
+    EXPECT_TRUE(p->boot->nanoOwnsBootScreen());
     EXPECT_EQ(property_set("sys.gammaos.nano.launch_app", "com.example"), 0);
     EXPECT_EQ(property_set("persist.gammaos.nano.theme", "xmb"), 0);
     EXPECT_EQ(property_set("debug.unrecorded", "1"), 0);

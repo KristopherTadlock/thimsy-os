@@ -26,6 +26,7 @@
 //    "display": {"width": 1280, "height": 720, "refresh_hz": 60, "count": 1, "rotation": 0,
 //                "pace": true},
 //    "barrier": false,                                   start with the frame barrier on
+//    "nano_owns_boot_screen": true,                      false: Nano hands the boot over (FakeBoot.h)
 //    "devices": [{"path": "/dev/input/event0", "name": "Thimsy Gamepad", "phys": "", "uniq": "",
 //                 "bus": 6, "vendor": 21576, "product": 1, "version": 1,
 //                 "keys": [304, 305], "abs": [{"code": 16, "min": -1, "max": 1}], "rel": [],
@@ -64,6 +65,7 @@ struct HostConfig {
     std::string logFile = "/run/thimsy/log/nano.log";
     DisplayConfig display;
     bool barrier = false;
+    bool nanoOwnsBootScreen = true;  // W6-boot (FakeBoot.h)
     std::vector<evdev::Device> devices;
     std::vector<shell::Rule> shellRules;
     int shellDefaultStatus = 127;

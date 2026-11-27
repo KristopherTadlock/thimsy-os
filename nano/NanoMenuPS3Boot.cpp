@@ -8,6 +8,7 @@
 
 #include "NanoMenu.h"
 #include "NanoBootChime.h"     // direct-ALSA early-audio engine (bypasses AudioFlinger)
+#include "NanoPlatform.h"      // nanoplat::get().boot: the boot sound's wait for the sound system
 
 #include <math.h>
 #include <unistd.h>       // access() for the audio path fallback
@@ -214,7 +215,7 @@ void NanoMenu::bootSoundStart() {
         // once AudioService is up never will.
         const int64_t deadline = uptimeMillis() + kBootSoundWaitMs;
         auto waiting = [&]() { return uptimeMillis() < deadline && gBootSfxState.load() == 0; };
-        auto audioUp = []() { return defaultServiceManager()->checkService(String16("audio")) != nullptr; };
+        auto audioUp = []() { return nanoplat::get().boot->soundSystemReady(); };
         bool loaded = false;
         while (!loaded && waiting()) {
             const bool lastTry = audioUp();

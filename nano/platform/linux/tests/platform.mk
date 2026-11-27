@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # The Linux platform's host tests (docs/linux/IMPLEMENTATION.md G9, G7-main, G7-display, G7-launch-b,
-# G7-audio, G7-volumes, G7-power, G7-net): the shell gate, the control keys, the display
+# G7-audio, G7-volumes, G7-power, G7-net, W6-boot): the shell gate, the control keys, the display
 # (display/Display.cpp and PanelOrientation.cpp over fakes), the launcher (Launcher.cpp, with real
 # children), the platform's createPlatform (with nano/NanoPlatform.cpp), the audio streams' threads
 # (AudioPull.cpp), the Volumes (on data/'s files), the power (Power.cpp over a fake sysfs), and the
@@ -76,6 +76,10 @@ PLAT_SRCS_linuxplatform_test += InputPolicy.cpp
 PLAT_TESTS += network_test
 PLAT_SRCS_network_test := actions/Network.cpp actions/SystemActions.cpp actions/Run.cpp actions/WpaCtrl.cpp
 PLAT_SRCS_linuxplatform_test += actions/Network.cpp
+# W6-boot: the boot answers (Nano always owns the screen; nothing waits).
+PLAT_TESTS += boot_test
+PLAT_SRCS_boot_test := Boot.cpp
+PLAT_SRCS_linuxplatform_test += Boot.cpp
 PLAT_TEST_BINS := $(PLAT_TESTS:%=$(PLAT_O)/test/%)
 # volumes_test reads thimsy-session's own volumes.json files from data/.
 PLAT_TEST_DEFS := -DPLAT_TEST_DATA_DIR='"$(PLAT_TEST_DIR)/data"'

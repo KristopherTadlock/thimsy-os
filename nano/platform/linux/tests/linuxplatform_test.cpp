@@ -116,6 +116,8 @@ TEST(LinuxPlatform, HasEveryService) {
     EXPECT_TRUE(p->input != nullptr);  // G7-input
     ASSERT_TRUE(p->net != nullptr);  // G7-net
     p->net->autoEnableWifi();         // D30net remembers the radio: nothing to do
+    ASSERT_TRUE(p->boot != nullptr);  // W6-boot: Nano always owns the boot screen
+    EXPECT_TRUE(p->boot->nanoOwnsBootScreen());
 }
 
 }  // namespace

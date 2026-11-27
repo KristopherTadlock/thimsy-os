@@ -190,6 +190,69 @@ class FrozenApi(unittest.TestCase):
                          [("Scrape.cpp", "names nanoplat::"), ("sub/Deep.h", "includes ../NanoPlatform.h")])
 
 
+# --- Android's boot-owner decision stays in the firmware (W6-boot) ----------------------------------
+# Android's "run Nano or hand the screen to Android's boot animation" decision, its waits for init's
+# persistent properties and its ctl.start of the boot animation ended every Linux boot
+# (docs/linux/ARCHITECTURE-AUDIT.md defect 1). They now live behind nanoplat::Boot, in
+# platform/firmware/Boot.cpp. No file Linux compiles from Nano's shared code (sources.txt's [core]
+# and [drm]) may name them again: a string literal holding nano_skip, skip_nano or
+# ro.persistent_properties.ready, or a "ctl.start" literal followed by "bootanim" on its line.
+BOOT_OWNER_WORDS = ("nano_skip", "skip_nano", "ro.persistent_properties.ready")
+LINUX_SHARED_SECTIONS = ("core", "drm")
+
+
+def boot_owner_hits(nano_dir, files):
+    """[(file, line, why)] for the Android boot-owner literals in FILES (paths relative to NANO_DIR)."""
+    from nanotree.ratchets import lex
+    hits = []
+    for rel in files:
+        path = os.path.join(nano_dir, *rel.split("/"))
+        if not os.path.isfile(path):
+            continue
+        with open(path, "rb") as fh:
+            _, strings = lex(fh.read().decode("utf-8", "replace"))
+        for i, (line, text) in enumerate(strings):
+            for word in BOOT_OWNER_WORDS:
+                if word in text:
+                    hits.append((rel, line, '"%s" names %s' % (text, word)))
+            if text == "ctl.start" and i + 1 < len(strings) and strings[i + 1] == (line, "bootanim"):
+                hits.append((rel, line, '"ctl.start", "bootanim"'))
+    return hits
+
+
+@unittest.skipUnless(os.path.isfile(os.path.join(NANO, "build", "sources.txt")), "no nano/build/sources.txt")
+class BootOwnerInFirmware(unittest.TestCase):
+    def test_linux_compiled_shared_code_has_no_android_boot_decision(self):
+        from nanotree.sources import SourceList
+        src = SourceList.load(os.path.join(NANO, "build", "sources.txt"))
+        files = [f for s in LINUX_SHARED_SECTIONS for f in src[s]]
+        self.assertIn("NanoMenu.cpp", files)
+        self.assertNotIn("platform/firmware/Boot.cpp", files)
+        hits = boot_owner_hits(NANO, files)
+        self.assertEqual(hits, [], "Android's boot-owner decision in Linux-compiled shared code; it belongs in "
+                                   "platform/firmware/Boot.cpp behind nanoplat::Boot (W6-boot):\n  " +
+                         "\n  ".join("%s:%d %s" % h for h in hits))
+
+    def test_the_firmware_keeps_it(self):
+        hits = boot_owner_hits(NANO, ["platform/firmware/Boot.cpp"])
+        whys = " ".join(h[2] for h in hits)
+        for want in ("nano_skip", "skip_nano", "ro.persistent_properties.ready", '"ctl.start", "bootanim"'):
+            self.assertIn(want, whys)
+
+    def test_checker_finds_each_form(self):
+        import shutil
+        import tempfile
+        tmp = tempfile.mkdtemp(prefix="nano-boot-")
+        self.addCleanup(shutil.rmtree, tmp)
+        with open(os.path.join(tmp, "A.cpp"), "w", encoding="utf-8", newline="\n") as f:
+            f.write('// skip_nano and nano_skip in a comment are fine\n'
+                    'int a = open("/data/misc/bootanim/nano_skip", 0);\n'
+                    'void b() { property_set("ctl.start", "bootanim"); property_set("ctl.stop", "bootanim"); }\n'
+                    'const char* c = "ctl.start";\nconst char* d = "bootanim";\n')
+        self.assertEqual([(h[0], h[1]) for h in boot_owner_hits(tmp, ["A.cpp", "Missing.cpp"])],
+                         [("A.cpp", 2), ("A.cpp", 3)])
+
+
 if __name__ == "__main__":
     if sys.argv[1:] == ["--update-props"]:
         sys.exit(update_props())

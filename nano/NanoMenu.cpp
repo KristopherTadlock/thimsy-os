@@ -472,96 +472,13 @@ status_t NanoMenu::readyToRun() {
         ALOGI("GammaOS Nano: using early DRM master fd=%d from main()", earlyDrmFd);
     }
 
-    // GammaOS Nano: decide whether to run NanoMenu or bail to stock
-    // bootanim. The durable source of truth is
-    // persist.bootanim.skip_nano (loaded from /data/property/
-    // persistent_properties by init's load_persist_props), but that
-    // load completes after /data is decrypted and after this readyToRun
-    // call. To avoid a long wait on ro.persistent_properties.ready
-    // every boot, we cache the same value in /data/misc/bootanim/
-    // nano_skip whenever it changes through the on-device action
-    // dispatchers in init.rc. /data/misc/bootanim is in DE storage so
-    // it is readable as soon as /data is mounted, no FBE unlock
-    // required.
-    //
-    // Fast path: read the file. "0" = nano, "1" = bootanim. Anything
-    // else (file missing on first boot, malformed content) drops to
-    // the property fallback with a wait, mirroring the original
-    // behavior.
-    bool decided = false;
-    bool fileBootanim = false;
-    {
-        int fd = open("/data/misc/bootanim/nano_skip",
-                      O_RDONLY | O_CLOEXEC);
-        if (fd >= 0) {
-            char buf[8] = {};
-            ssize_t n = read(fd, buf, sizeof(buf) - 1);
-            close(fd);
-            if (n > 0) {
-                // Strip trailing newline/whitespace from init's
-                // `write` directive output.
-                for (ssize_t i = 0; i < n; i++) {
-                    if (buf[i] == '\n' || buf[i] == '\r' ||
-                        buf[i] == ' ') { buf[i] = 0; break; }
-                }
-                if (strcmp(buf, "0") == 0) {
-                    ALOGI("GammaOS Nano: DE state file = '0', "
-                          "running nano");
-                    decided = true;
-                } else if (strcmp(buf, "1") == 0) {
-                    ALOGI("GammaOS Nano: DE state file = '1', "
-                          "starting bootanim");
-                    decided = true;
-                    fileBootanim = true;
-                } else {
-                    ALOGW("GammaOS Nano: DE state file has "
-                          "unexpected content '%s', falling back to "
-                          "persist property", buf);
-                }
-            }
-        }
+    // GammaOS Nano: whether this boot is Nano's or the platform's own boot screen's, through the
+    // platform's Boot (NanoPlatform.h); when it is not Nano's, the platform hands the display over
+    // and ends the process.
+    if (!nanoplat::get().boot->nanoOwnsBootScreen()) {
+        nanoplat::get().boot->handOverBootScreen(earlyDrmFd, mOverlayMode);
     }
-
-    if (!decided) {
-        // Slow path: wait up to 10 s for persist props, then read.
-        char ready[PROPERTY_VALUE_MAX] = {};
-        property_get("ro.persistent_properties.ready", ready, "");
-        if (strcmp(ready, "true") != 0) {
-            ALOGI("GammaOS Nano: persist props not ready, waiting...");
-            for (int i = 0; i < 1000; i++) {
-                usleep(10000);
-                property_get("ro.persistent_properties.ready", ready, "");
-                if (strcmp(ready, "true") == 0) break;
-            }
-        }
-        char skip[PROPERTY_VALUE_MAX] = {};
-        property_get("persist.bootanim.skip_nano", skip, "");
-        if (strcmp(skip, "0") == 0) {
-            ALOGI("GammaOS Nano: skip_nano='0', running nano");
-        } else {
-            ALOGI("GammaOS Nano: skip_nano='%s' (not '0'), "
-                  "starting bootanim", skip);
-            fileBootanim = true;
-        }
-    }
-
-    if (fileBootanim) {
-        if (earlyDrmFd >= 0) {
-            ioctl(earlyDrmFd, DRM_IOCTL_DROP_MASTER, 0);
-            close(earlyDrmFd);
-        }
-        // The overlay process is NEVER the boot-animation owner. In normal Android
-        // (skip_nano != '0') persist.gammaos.nano.overlay stays 1 so the rc trigger
-        // can still start the overlay service; if it reaches here, starting bootanim
-        // is exactly what made the boot animation reappear at random. Just exit.
-        if (!mOverlayMode) {
-            property_set("ctl.start", "bootanim");
-        } else {
-            ALOGI("GammaOS Nano overlay: not nano mode (skip_nano!='0'), exiting without bootanim");
-        }
-        _exit(0);
-    }
-    tlog("skip_nano check passed");
+    tlog("boot owner check passed");
 
     // GammaOS: Detect drastic QR fast-path early so subsequent init
     // stages can skip heavy work (particle/fx/XMB shader compiles,
@@ -580,35 +497,9 @@ status_t NanoMenu::readyToRun() {
     //      qr_core distinguishes drastic QR from libretro QR (which
     //      stores a full core .so path).
     //
-    // Persist props can race with our early start. gammaos-nano begins
-    // around T+7 s on the Brick while persistent_properties loads at
-    // ~T+9 to 10 s. Without a brief wait here, the qr_prepared read
-    // below comes back "0" on every cold boot and the drastic fast
-    // path is silently skipped (NanoMenu falls into the XMB render
-    // loop instead). Wait up to 2 s, breaking out as soon as the
-    // property service publishes ro.persistent_properties.ready=true.
-    {
-        char ready[PROPERTY_VALUE_MAX] = {};
-        property_get("ro.persistent_properties.ready", ready, "");
-        if (strcmp(ready, "true") != 0) {
-            int waited = 0;
-            for (int i = 0; i < 200; i++) {
-                usleep(10000);
-                waited += 10;
-                property_get("ro.persistent_properties.ready",
-                             ready, "");
-                if (!strcmp(ready, "true")) break;
-            }
-            if (strcmp(ready, "true") == 0) {
-                ALOGI("NanoMenu: persist props ready after %d ms "
-                      "(drastic QR pre-check)", waited);
-            } else {
-                ALOGW("NanoMenu: persist props still not ready after "
-                      "%d ms (drastic QR pre-check), continuing",
-                      waited);
-            }
-        }
-    }
+    // The settings can race with our early start: the platform's Boot waits a bounded time for
+    // them before the reads below.
+    nanoplat::get().boot->awaitSavedSettings(nanoplat::Boot::SettingsReader::QuickResumeCheck);
     {
         char smoke[PROPERTY_VALUE_MAX] = {};
         property_get("persist.gammaos.nano.drastic_smoke", smoke, "0");
@@ -1459,35 +1350,9 @@ bool NanoMenu::threadLoop() {
     // the long-press-Back exit).
     if (!mOverlayMode) property_set("service.bootanim.exit", "0");
 
-    // Wait for persistent properties to load before reading any persist.*
-    // values. readyToRun() used to wait for ro.persistent_properties.ready
-    // up top, but the 2026-05-13 boot-speed work moved that wait out of
-    // the EGL hot path so first paint is not delayed. We still need the
-    // wait here, otherwise the re-reads below (and the Quick Resume gate
-    // further down at "if (mQuickResumeEnabled)") fall back to defaults
-    // when persist props have not loaded yet, silently disabling QR auto
-    // resume on every cold boot. Cap at 3 s, which is plenty given persist
-    // props normally settle within ~200 ms of /data being mounted.
-    {
-        char ready[PROPERTY_VALUE_MAX] = {};
-        property_get("ro.persistent_properties.ready", ready, "");
-        if (strcmp(ready, "true") != 0) {
-            int waited = 0;
-            for (int i = 0; i < 300; i++) {
-                usleep(10000);
-                waited += 10;
-                property_get("ro.persistent_properties.ready", ready, "");
-                if (!strcmp(ready, "true")) break;
-            }
-            if (strcmp(ready, "true") == 0) {
-                ALOGI("NanoMenu: persist props ready after %d ms", waited);
-            } else {
-                ALOGW("NanoMenu: persist props still not ready after "
-                      "%d ms, continuing with possibly stale defaults",
-                      waited);
-            }
-        }
-    }
+    // Wait (bounded) for the saved settings before the re-reads below and the Quick Resume gate,
+    // through the platform's Boot (NanoPlatform.h).
+    nanoplat::get().boot->awaitSavedSettings(nanoplat::Boot::SettingsReader::MenuSetup);
 
     // Initialize locale from system property
     nanoInitLocaleFromSystem();
