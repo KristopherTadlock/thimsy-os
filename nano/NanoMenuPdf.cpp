@@ -16,12 +16,18 @@
 // PDFium renders pages on a worker thread; the render thread uploads them as textures and keeps
 // the current page and its neighbours. The worker holds its own reference to the shared state, so
 // closing never waits for a page that is still rendering.
+// A comic book manual (.cbz, .cb7, .cbr; OA-42) is shown the same way: its worker reads each page's
+// image through nanoarc and decodes it with AImageDecoder instead (NanoManual.h).
 
 #include "NanoMenu.h"
 #include "NanoI18n.h"          // trDyn
 #include "NanoMenuShaders.h"   // FONT_CHAR_H
+#include "NanoArchive.h"       // nanoarc: a comic book manual's pages
+#include "NanoManual.h"        // nanomanual: manual kinds, page order and sizes
 
 #include <GLES2/gl2.h>
+#include <android/bitmap.h>         // ANDROID_BITMAP_FORMAT_RGBA_8888
+#include <android/imagedecoder.h>   // a comic book page's image
 #include <fpdfview.h>
 #include <linux/input.h>
 #include <utils/SystemClock.h>
@@ -37,6 +43,60 @@ std::mutex gPdfiumMutex;   // PDFium is not thread safe; a closing reader's work
 bool gPdfiumInit = false;
 constexpr int kPdfMaxDim = 4096;
 constexpr size_t kPdfMaxTextures = 4;
+
+// One page of a comic book manual: its image read from the archive and decoded, opaque on white like
+// a PDF page, at the size the view's zoom asks for (nanomanual::pageSize). False when the page can't
+// be read or decoded; the viewer then shows it as a page that can't be shown.
+bool comicPage(const std::string& path, nanoarc::Format fmt, const std::string& entry, int zoom, int boxW,
+               int boxH, int* outW, int* outH, std::vector<uint8_t>* out) {
+    const nanoarc::EntryData bytes =
+        nanoarc::readEntry(path, fmt, entry, nanomanual::kMaxPageBytes, nanomanual::kMaxBlockBytes);
+    if (bytes.err != nanoarc::Err::None || bytes.data.empty()) return false;
+    AImageDecoder* dec = nullptr;   // reads from bytes, which outlives it
+    if (AImageDecoder_createFromBuffer(bytes.data.data(), bytes.data.size(), &dec) != ANDROID_IMAGE_DECODER_SUCCESS
+        || !dec)
+        return false;
+    bool ok = false;
+    const AImageDecoderHeaderInfo* hi = AImageDecoder_getHeaderInfo(dec);
+    const int iw = AImageDecoderHeaderInfo_getWidth(hi), ih = AImageDecoderHeaderInfo_getHeight(hi);
+    if (nanomanual::pageDecodable(iw, ih)) {
+        int w = 0, h = 0;
+        nanomanual::pageSize(iw, ih, zoom, boxW, boxH, &w, &h);
+        AImageDecoder_setAndroidBitmapFormat(dec, ANDROID_BITMAP_FORMAT_RGBA_8888);
+        // An animated image may refuse another size: it is shown at its own, when that is not too large.
+        if ((w != iw || h != ih) && AImageDecoder_setTargetSize(dec, w, h) != ANDROID_IMAGE_DECODER_SUCCESS) {
+            w = iw;
+            h = ih;
+        }
+        if (w <= nanomanual::kMaxPageDim && h <= nanomanual::kMaxPageDim) {
+            const size_t stride = AImageDecoder_getMinimumStride(dec);
+            std::vector<uint8_t> buf(stride * (size_t)h);
+            if (AImageDecoder_decodeImage(dec, buf.data(), stride, buf.size()) == ANDROID_IMAGE_DECODER_SUCCESS) {
+                if (stride == (size_t)w * 4) {
+                    out->swap(buf);
+                } else {
+                    out->resize((size_t)w * h * 4);
+                    for (int y = 0; y < h; y++)
+                        memcpy(&(*out)[(size_t)y * w * 4], &buf[(size_t)y * stride], (size_t)w * 4);
+                }
+                // Premultiplied (AImageDecoder's default), so adding what alpha leaves out puts the
+                // image on white.
+                for (size_t i = 0; i + 3 < out->size(); i += 4) {
+                    const uint8_t gap = (uint8_t)(255 - (*out)[i + 3]);
+                    (*out)[i] = (uint8_t)((*out)[i] + gap);
+                    (*out)[i + 1] = (uint8_t)((*out)[i + 1] + gap);
+                    (*out)[i + 2] = (uint8_t)((*out)[i + 2] + gap);
+                    (*out)[i + 3] = 0xFF;
+                }
+                *outW = w;
+                *outH = h;
+                ok = true;
+            }
+        }
+    }
+    AImageDecoder_delete(dec);
+    return ok;
+}
 }  // namespace
 
 struct NanoMenu::PdfShared {
@@ -55,9 +115,8 @@ struct NanoMenu::PdfShared {
 
 void NanoMenu::pdfOpen(const std::string& path) {
     pdfClose();
-    std::string low = path;
-    for (auto& c : low) c = (char)tolower((unsigned char)c);
-    if (low.size() < 4 || low.compare(low.size() - 4, 4, ".pdf") != 0) {
+    const nanomanual::Kind kind = nanomanual::kindOf(path);
+    if (kind == nanomanual::Kind::None) {
         photoShowBanner(trDyn("This manual is not a PDF and can't be opened"));
         return;
     }
@@ -68,6 +127,48 @@ void NanoMenu::pdfOpen(const std::string& path) {
     mPdfTouchDrag = false;
     ps3Sfx(PS3_SFX_OK);
     mDisplayDirty = true;
+    if (kind == nanomanual::Kind::Comic) {
+        // The pages are the archive's images in natural order, read and decoded one at a time as
+        // the view asks for them. A format nanoarc can't open (RAR where it has no RAR reader)
+        // says so.
+        std::thread([s, path] {
+            const nanoarc::Format fmt = nanomanual::comicFormat(path);
+            nanoarc::Err err = nanoarc::Err::None;
+            std::vector<std::string> pages;
+            {
+                const nanoarc::Index idx = nanoarc::readIndex(path, fmt);
+                err = idx.err;
+                if (err == nanoarc::Err::None) pages = nanomanual::comicPages(idx.entries);
+            }
+            const int count = (int)pages.size();
+            {
+                std::lock_guard<std::mutex> lk(s->mu);
+                s->opened = true;
+                s->pageCount = count;
+                if (nanomanual::unsupportedFormat(err)) s->error = trDyn("UNSUPPORTED MANUAL FORMAT");
+                else if (err != nanoarc::Err::None) s->error = trDyn("THIS MANUAL CAN'T BE OPENED");
+                else if (count <= 0) s->error = trDyn("THIS MANUAL HAS NO PAGES");
+            }
+            while (count > 0) {
+                PdfShared::Req r;
+                {
+                    std::unique_lock<std::mutex> lk(s->mu);
+                    s->cv.wait(lk, [&] { return s->quit || !s->reqs.empty(); });
+                    if (s->quit) break;
+                    r = s->reqs.front();
+                    s->reqs.erase(s->reqs.begin());
+                    s->busyPage = r.page; s->busyZoom = r.zoom;
+                }
+                PdfShared::Res out{r.page, r.zoom, 0, 0, {}};
+                if (r.page >= 0 && r.page < count)
+                    comicPage(path, fmt, pages[(size_t)r.page], r.zoom, r.w, r.h, &out.w, &out.h, &out.px);
+                std::lock_guard<std::mutex> lk(s->mu);
+                s->busyPage = s->busyZoom = -1;
+                if (!s->quit) s->results.push_back(std::move(out));
+            }
+        }).detach();
+        return;
+    }
     std::thread([s, path] {
         FPDF_DOCUMENT doc = nullptr;
         int count = 0;

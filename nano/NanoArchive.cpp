@@ -213,6 +213,8 @@ class Source {
     virtual uint64_t blockSize(const RawEntry&) const { return 0; }
     // Writes the entry to fd; never more than e.size bytes. Method = skip this one, carry on.
     virtual Err write(const RawEntry& e, int fd, Progress& prog, int* sysErr) = 0;
+    // The entry into memory, never more than e.size bytes (readEntry).
+    virtual Err load(const RawEntry& e, std::vector<uint8_t>* out) = 0;
     const std::vector<RawEntry>& entries() const { return mEntries; }
 
   protected:
@@ -238,6 +240,21 @@ class CappedFdWriter final : public zip_archive::Writer {
     int mFd;
     uint64_t mCap, mWritten = 0;
     Progress& mProg;
+};
+
+// The same cap for an entry read into memory.
+class CappedMemWriter final : public zip_archive::Writer {
+  public:
+    CappedMemWriter(std::vector<uint8_t>* out, uint64_t cap) : mOut(out), mCap(cap) {}
+    bool Append(uint8_t* buf, size_t n) override {
+        if (n > mCap - mOut->size()) return false;
+        mOut->insert(mOut->end(), buf, buf + n);
+        return true;
+    }
+
+  private:
+    std::vector<uint8_t>* mOut;
+    uint64_t mCap;
 };
 
 class ZipSource final : public Source {
@@ -278,6 +295,15 @@ class ZipSource final : public Source {
         if (w.cancelled) return Err::Cancelled;
         if (w.sysErr) { *sysErr = w.sysErr; return writeErr(w.sysErr); }
         return Err::Corrupt;   // also an entry that inflated past its declared size
+    }
+
+    Err load(const RawEntry& e, std::vector<uint8_t>* out) override {
+        out->clear();
+        out->reserve((size_t)e.size);
+        CappedMemWriter w(out, e.size);
+        if (ExtractToWriter(mHandle, &mZips[e.ref], &w) == 0) return Err::None;
+        out->clear();
+        return Err::Corrupt;
     }
 
   private:
@@ -429,6 +455,33 @@ class SevenZSource final : public Source {
     Err write(const RawEntry& e, int fd, Progress& prog, int* sysErr) override {
         // An empty file has no folder to decode, and asking for one would drop the cached block.
         if (e.size == 0) return Err::None;
+        const uint8_t* p = nullptr;
+        const Err d = decode(e, &p);
+        if (d != Err::None) return d;
+        for (uint64_t left = e.size; left > 0;) {
+            const size_t n = (size_t)std::min<uint64_t>(left, 1 << 20);
+            if (!writeAll(fd, p, n)) { *sysErr = errno; return writeErr(errno); }
+            p += n;
+            left -= n;
+            if (!step(prog, n)) return Err::Cancelled;
+        }
+        return Err::None;
+    }
+
+    Err load(const RawEntry& e, std::vector<uint8_t>* out) override {
+        out->clear();
+        if (e.size == 0) return Err::None;   // as write: no folder to decode
+        const uint8_t* p = nullptr;
+        const Err d = decode(e, &p);
+        if (d != Err::None) return d;
+        out->assign(p, p + e.size);
+        return Err::None;
+    }
+
+  private:
+    // Decodes the entry's solid block (or keeps the one already decoded) and points *data at the
+    // entry's e.size bytes in it.
+    Err decode(const RawEntry& e, const uint8_t** data) {
         const UInt32 fo = mDb.FileToFolder[e.ref];
         if (mFolderState[fo] == 2) return Err::Method;
         size_t offset = 0, got = 0;
@@ -446,18 +499,10 @@ class SevenZSource final : public Source {
             return Err::Corrupt;
         }
         if (got != e.size) return Err::Corrupt;
-        const uint8_t* p = mBlock + offset;
-        for (uint64_t left = got; left > 0;) {
-            const size_t n = (size_t)std::min<uint64_t>(left, 1 << 20);
-            if (!writeAll(fd, p, n)) { *sysErr = errno; return writeErr(errno); }
-            p += n;
-            left -= n;
-            if (!step(prog, n)) return Err::Cancelled;
-        }
+        *data = mBlock + offset;
         return Err::None;
     }
 
-  private:
     // 0 decodable, 1 encrypted, 2 a method this decoder lacks. Mirrors 7zDec.c's method list; a
     // folder it still turns down is caught by SZ_ERROR_UNSUPPORTED at extraction.
     int folderState(UInt32 fo) {
@@ -501,8 +546,8 @@ class SevenZSource final : public Source {
     size_t mBlockSize = 0;
 };
 
-Err makeSource(const std::string& archive, std::unique_ptr<Source>* out) {
-    switch (formatFromName(archive)) {
+Err makeSource(Format fmt, std::unique_ptr<Source>* out) {
+    switch (fmt) {
         case Format::Zip:      out->reset(new ZipSource()); return Err::None;
         case Format::SevenZip: out->reset(new SevenZSource()); return Err::None;
         case Format::Rar:      return Err::Rar;
@@ -560,26 +605,51 @@ Format formatFromName(const std::string& name) {
     return Format::None;
 }
 
-Index readIndex(const std::string& archive) {
+Index readIndex(const std::string& archive) { return readIndex(archive, formatFromName(archive)); }
+
+Index readIndex(const std::string& archive, Format fmt) {
     Index idx;
     std::unique_ptr<Source> src;
-    if ((idx.err = makeSource(archive, &src)) != Err::None) return idx;
+    if ((idx.err = makeSource(fmt, &src)) != Err::None) return idx;
     if ((idx.err = src->open(archive, nullptr)) != Err::None) return idx;
     for (const RawEntry& e : src->entries()) {
         Entry out;
         if (cleanName(e.name, &out.path) != Name::Ok) continue;
         out.isDir = e.isDir;
+        out.isLink = e.isLink;
         out.size = e.isDir ? 0 : e.size;
         idx.entries.push_back(std::move(out));
     }
     return idx;
 }
 
+EntryData readEntry(const std::string& archive, Format fmt, const std::string& inner, uint64_t maxBytes,
+                    uint64_t maxBlock) {
+    EntryData res;
+    std::unique_ptr<Source> src;
+    if ((res.err = makeSource(fmt, &src)) != Err::None) return res;
+    if ((res.err = src->open(archive, nullptr)) != Err::None) return res;
+    // The first file of that name, as readIndex lists it; a folder of the same name is not it.
+    for (const RawEntry& e : src->entries()) {
+        std::string clean;
+        if (e.isDir || cleanName(e.name, &clean) != Name::Ok || clean != inner) continue;
+        if (e.isLink) res.err = Err::Link;
+        else if (e.encrypted) res.err = Err::Encrypted;
+        else if (e.unsupported) res.err = Err::Method;
+        else if (e.size > maxBytes) res.err = Err::TooBig;
+        else if (src->blockSize(e) > std::min(maxBlock, k7zBlockCap)) res.err = Err::BlockTooBig;
+        else if ((res.err = src->load(e, &res.data)) != Err::None) res.data.clear();
+        return res;
+    }
+    res.err = Err::Open;
+    return res;
+}
+
 ExtractResult extract(const std::string& archive, const std::string& inner, const std::string& dest,
                       bool newFolder, Progress& prog) {
     ExtractResult res;
     std::unique_ptr<Source> src;
-    if ((res.err = makeSource(archive, &src)) != Err::None) return res;
+    if ((res.err = makeSource(formatFromName(archive), &src)) != Err::None) return res;
     if ((res.err = src->open(archive, &prog)) != Err::None) return res;
 
     // Pick what is extracted, and where each piece goes relative to the destination.

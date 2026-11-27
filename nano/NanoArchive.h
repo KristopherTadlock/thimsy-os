@@ -55,11 +55,22 @@ struct Progress {
     void (*notify)() = nullptr;   // called from the worker whenever done moves
 };
 
-struct Entry { std::string path; uint64_t size = 0; bool isDir = false; };
+struct Entry { std::string path; uint64_t size = 0; bool isDir = false; bool isLink = false; };
 struct Index { Err err = Err::None; std::vector<Entry> entries; };
 
 // The archive's entries with cleaned names ("a/b", no trailing slash). Unsafe names are left out.
 Index readIndex(const std::string& archive);
+// The same for an archive whose name does not give its format (a comic book's .cbz is a zip).
+Index readIndex(const std::string& archive, Format fmt);
+
+// One file entry (a path as readIndex gives it) read into memory, for a caller that shows it rather
+// than extracting it: a comic book manual's page. Nothing is read when the entry is over maxBytes
+// (TooBig) or a 7z would decode a solid block over maxBlock to reach it (BlockTooBig; k7zBlockCap
+// applies too). Link for a link, Encrypted or Method for an entry the decoder can't read, Open when
+// there is no such file, Corrupt when it does not match its declared size; data is empty then.
+struct EntryData { Err err = Err::None; std::vector<uint8_t> data; };
+EntryData readEntry(const std::string& archive, Format fmt, const std::string& inner, uint64_t maxBytes,
+                    uint64_t maxBlock);
 
 struct ExtractResult {
     Err err = Err::None;

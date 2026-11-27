@@ -93,6 +93,7 @@ cc_binary {
         "NanoThemeEngine.cpp",
         "NanoMenuEsdeMenu.cpp",
         "NanoMenuPdf.cpp",
+        "NanoManual.cpp",           // game manuals: kinds, comic book page order (host-tested)
         "NanoMenuPS3Clock.cpp",
         "NanoControlCenter.cpp",
         "NanoMenuPS3Globe.cpp",
@@ -814,6 +815,7 @@ cc_test_host {
         "NanoTypec.cpp",
         "NanoMonitorMode.cpp",
         "NanoEmuSync.cpp",
+        "NanoManual.cpp",
         ":drastic_nano_layout_srcs",
     ],
     include_dirs: ["frameworks/base/cmds/drastic-nano"],   // DsScreenLayout.h
@@ -865,6 +867,7 @@ cc_test_host {
     srcs: [
         "test/archive/NanoArchive_test.cpp",
         "NanoArchive.cpp",
+        "NanoManual.cpp",   // a comic book manual's pages read through nanoarc
     ],
     data: ["test/fixtures/archive/*"],
     static_libs: [

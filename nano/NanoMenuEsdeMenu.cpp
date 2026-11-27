@@ -17,6 +17,7 @@
 #include "NanoVideo.h"         // NanoVideo::probe for a game's video
 #include "NanoJson.h"          // njson: themes.json parsing
 #include "NanoLaunch.h"        // isValidRepoName
+#include "NanoManual.h"        // nanomanual::kindOf: the manuals the reader opens
 
 #include <cutils/properties.h>
 #include <utils/SystemClock.h>
@@ -1048,12 +1049,9 @@ void NanoMenu::esdeViewerOpen(int sysIdx, int romIdx) {
         mEsdeViewerTypes.push_back(t.label);
     }
     mEsdeViewerManual = esdeGameMediaPath(rom, "manual");
-    {
-        // The reader opens PDFs; a comic book archive manual is not offered.
-        std::string low = mEsdeViewerManual;
-        for (auto& c : low) c = (char)tolower((unsigned char)c);
-        if (low.size() < 4 || low.compare(low.size() - 4, 4, ".pdf") != 0) mEsdeViewerManual.clear();
-    }
+    // The reader opens PDFs and comic book archives (OA-42); one whose format the archive reader
+    // can't open (a .cbr on Android) says so when opened.
+    if (nanomanual::kindOf(mEsdeViewerManual) == nanomanual::Kind::None) mEsdeViewerManual.clear();
     mEsdeViewerVideo = esdeGameMediaPath(rom, "video");
     esdeEnsureGamelistLoaded(sysIdx, kGlWait);
     mEsdeInfoRom = rom;

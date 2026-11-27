@@ -24,6 +24,7 @@ NanoHakuxSetup_test	NanoBiosCatalog.cpp NanoAppFiles.cpp NanoBiosUtil.cpp NanoHa
 NanoI18n_test	NanoJson.cpp NanoI18n.cpp	-
 NanoJson_test	NanoJson.cpp	-
 NanoLaunch_test	NanoJson.cpp NanoLaunch.cpp	@ps3xmb
+NanoManual_test	NanoManual.cpp	-
 NanoMenuUtils_test	NanoRaConfig.cpp	-
 NanoMonitorMode_test	NanoMonitorMode.cpp	-
 NanoNdsBanner_test	NanoNdsBanner.cpp	zlib.h

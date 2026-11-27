@@ -18,6 +18,7 @@
 #include "NanoUtf8Case.h"
 #include "NanoMenuShaders.h"   // FONT_CHAR_H
 #include "NanoScraper.h"       // cacheKey (the ES-DE return position)
+#include "NanoManual.h"        // nanomanual::kManualExts
 #include <tinyxml2.h>          // parse ES-DE gamelist.xml for per-game metadata (matches the control)
 #include "nanosvg.h"           // vendored SVG parser (declarations; impl in libnanosvg_nano)
 #include "nanosvgrast.h"       // vendored SVG rasterizer
@@ -1765,12 +1766,13 @@ static const std::vector<std::string>& esdeMediaRoots() {
     return roots;
 }
 
-// File extensions a media subfolder holds. ES-DE also opens comic book archives as manuals.
+// File extensions a media subfolder holds, best first. ES-DE opens only PDF manuals; Nano also opens
+// comic book archives with the same name (OA-42), after the PDF.
 static const char* const* esdeMediaExts(const std::string& subdir) {
     static const char* const kImage[] = {".png", ".jpg", ".jpeg", ".webp", nullptr};
-    static const char* const kManual[] = {".pdf", ".cbz", ".cbr", ".cb7", nullptr};
     static const char* const kVideo[] = {".mp4", ".mkv", ".webm", ".avi", nullptr};
-    return subdir == "manuals" ? kManual : subdir == "videos" ? kVideo : kImage;
+    if (subdir == "manuals") return nanomanual::kManualExts;
+    return subdir == "videos" ? kVideo : kImage;
 }
 
 // Where a game's ES-DE media can be: the system folder names to try and the file names (without

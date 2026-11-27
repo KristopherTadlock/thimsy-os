@@ -1,4 +1,5 @@
-// Host tests for NanoArchive (zip via libziparchive, 7z via the LZMA SDK).
+// Host tests for NanoArchive (zip via libziparchive, 7z via the LZMA SDK), and comic book manual pages
+// read through it (NanoManual).
 //
 // Zips are built byte by byte at test time so hostile layouts (names, flags, attributes, declared
 // sizes) can be written exactly. The 7z fixtures in test/fixtures/archive/ were written by a small
@@ -7,6 +8,7 @@
 // declared solid block) and trunc.7z (cut short).
 
 #include "NanoArchive.h"
+#include "NanoManual.h"
 
 #include <dirent.h>
 #include <fcntl.h>
@@ -26,8 +28,10 @@
 
 #include "../unit/nano_test_util.h"
 
+using nanoarc::EntryData;
 using nanoarc::Err;
 using nanoarc::ExtractResult;
+using nanoarc::Format;
 using nanoarc::Index;
 using nanoarc::Progress;
 
@@ -411,6 +415,152 @@ TEST_F(ArchiveTest, SevenZipOversizedBlockIsRefusedUpFront) {
     EXPECT_EQ(r.err, Err::BlockTooBig);
     EXPECT_GT(r.needBytes, nanoarc::k7zBlockCap);
     EXPECT_FALSE(exists(tmp + "/huge"));
+}
+
+// ---- comic book manuals: one entry read into memory ---------------------------------------------
+
+constexpr uint64_t kMiB = 1 << 20;
+
+std::string bytes(const EntryData& d) { return std::string(d.data.begin(), d.data.end()); }
+
+TEST_F(ArchiveTest, ReadEntryIntoMemory) {
+    const std::string a = zip("Game.cbz", {
+        {"p10.jpg", "ten"},
+        {"p2.jpg", std::string(5000, 'b')},
+        {"notes.txt", "n", false},
+        {"dir/", "", false, -1, 0x0800, 040755},
+    });
+    // A .cbz is a zip that its name does not announce: read as one only when told.
+    EXPECT_EQ(nanoarc::readIndex(a).err, Err::Open);
+    Index idx = nanoarc::readIndex(a, Format::Zip);
+    ASSERT_EQ(idx.err, Err::None);
+    EXPECT_TRUE(hasEntry(idx, "p10.jpg"));
+
+    EntryData d = nanoarc::readEntry(a, Format::Zip, "p2.jpg", kMiB, kMiB);
+    ASSERT_EQ(d.err, Err::None);
+    EXPECT_EQ(bytes(d), std::string(5000, 'b'));
+    d = nanoarc::readEntry(a, Format::Zip, "p10.jpg", kMiB, kMiB);
+    ASSERT_EQ(d.err, Err::None);
+    EXPECT_EQ(bytes(d), "ten");
+
+    // Over the cap, nothing is read.
+    d = nanoarc::readEntry(a, Format::Zip, "p2.jpg", 4999, kMiB);
+    EXPECT_EQ(d.err, Err::TooBig);
+    EXPECT_TRUE(d.data.empty());
+    EXPECT_EQ(nanoarc::readEntry(a, Format::Zip, "p2.jpg", 5000, kMiB).err, Err::None);
+
+    // No such file, and a folder is not one.
+    EXPECT_EQ(nanoarc::readEntry(a, Format::Zip, "missing.jpg", kMiB, kMiB).err, Err::Open);
+    EXPECT_EQ(nanoarc::readEntry(a, Format::Zip, "dir", kMiB, kMiB).err, Err::Open);
+    EXPECT_EQ(nanoarc::readEntry(a, Format::Zip, "", kMiB, kMiB).err, Err::Open);
+    EXPECT_EQ(nanoarc::readEntry(tmp + "/missing.cbz", Format::Zip, "p2.jpg", kMiB, kMiB).err, Err::Open);
+}
+
+TEST_F(ArchiveTest, ReadEntryRefusesLinksSecretsAndBombs) {
+    ZEntry lnk{"link.jpg", "/etc/passwd", false, -1, 0x0800, 0120777};
+    ZEntry secret{"secret.jpg", std::string(100, 's')};
+    secret.flags |= 1;
+    ZEntry bomb{"bomb.jpg", std::string(1 << 20, '\0')};
+    bomb.declSize = 100;
+    const std::string a = zip("evil.cbz", {lnk, secret, bomb, {"../up.jpg", "up"}});
+
+    EXPECT_EQ(nanoarc::readEntry(a, Format::Zip, "link.jpg", kMiB, kMiB).err, Err::Link);
+    EXPECT_EQ(nanoarc::readEntry(a, Format::Zip, "secret.jpg", kMiB, kMiB).err, Err::Encrypted);
+    // Inflating past its declared size stops at that size.
+    EntryData b = nanoarc::readEntry(a, Format::Zip, "bomb.jpg", 1ull << 30, kMiB);
+    EXPECT_EQ(b.err, Err::Corrupt);
+    EXPECT_TRUE(b.data.empty());
+    // An unsafe name is never an entry, by either spelling.
+    EXPECT_EQ(nanoarc::readEntry(a, Format::Zip, "up.jpg", kMiB, kMiB).err, Err::Open);
+    EXPECT_EQ(nanoarc::readEntry(a, Format::Zip, "../up.jpg", kMiB, kMiB).err, Err::Open);
+}
+
+TEST_F(ArchiveTest, ReadEntryFromSevenZip) {
+    const std::string a = nanotest::fixture("archive/good.7z");
+    EntryData d = nanoarc::readEntry(a, Format::SevenZip, "readme.txt", kMiB, kMiB);
+    ASSERT_EQ(d.err, Err::None);
+    std::string readme;
+    for (int i = 0; i < 50; i++) readme += "seven zip\n";
+    EXPECT_EQ(bytes(d), readme);
+    d = nanoarc::readEntry(a, Format::SevenZip, "folder/inner.bin", kMiB, kMiB);
+    ASSERT_EQ(d.err, Err::None);
+    EXPECT_EQ(d.data.size(), 3000u);
+    d = nanoarc::readEntry(a, Format::SevenZip, "empty.txt", kMiB, kMiB);
+    EXPECT_EQ(d.err, Err::None);
+    EXPECT_TRUE(d.data.empty());
+    // Its link is listed as one, and never read.
+    int links = 0;
+    for (const auto& e : nanoarc::readIndex(a, Format::SevenZip).entries) {
+        if (!e.isLink) continue;
+        links++;
+        EXPECT_EQ(nanoarc::readEntry(a, Format::SevenZip, e.path, kMiB, kMiB).err, Err::Link) << e.path;
+    }
+    EXPECT_EQ(links, 1);
+}
+
+// The first file entry readIndex lists, or "".
+std::string firstFile(const std::string& archive, Format fmt) {
+    for (const auto& e : nanoarc::readIndex(archive, fmt).entries)
+        if (!e.isDir) return e.path;
+    return std::string();
+}
+
+TEST_F(ArchiveTest, ReadEntryFromSevenZipRefusals) {
+    const std::string aes = nanotest::fixture("archive/aes.7z");
+    const std::string secret = firstFile(aes, Format::SevenZip);
+    ASSERT_FALSE(secret.empty());
+    EXPECT_EQ(nanoarc::readEntry(aes, Format::SevenZip, secret, kMiB, kMiB).err, Err::Encrypted);
+
+    // A solid block over the caller's cap, or over k7zBlockCap whatever the caller allows, is refused
+    // before anything is decoded.
+    const std::string huge = nanotest::fixture("archive/huge.7z");
+    const std::string big = firstFile(huge, Format::SevenZip);
+    ASSERT_FALSE(big.empty());
+    EXPECT_EQ(nanoarc::readEntry(huge, Format::SevenZip, big, UINT64_MAX, kMiB).err, Err::BlockTooBig);
+    EXPECT_EQ(nanoarc::readEntry(huge, Format::SevenZip, big, UINT64_MAX, UINT64_MAX).err, Err::BlockTooBig);
+}
+
+TEST_F(ArchiveTest, ComicRarIsRefusedAsUnsupported) {
+    const std::string cbr = tmp + "/Game.cbr";
+    writeFile(cbr, std::string("Rar!\x1a\x07\x00", 7));
+    ASSERT_EQ(nanomanual::comicFormat(cbr), Format::Rar);
+    const Index idx = nanoarc::readIndex(cbr, nanomanual::comicFormat(cbr));
+    EXPECT_EQ(idx.err, Err::Rar);
+    EXPECT_TRUE(nanomanual::unsupportedFormat(idx.err));
+    EXPECT_EQ(nanoarc::readEntry(cbr, Format::Rar, "p1.jpg", kMiB, kMiB).err, Err::Rar);
+}
+
+TEST_F(ArchiveTest, ComicManualPagesThroughNanoarc) {
+    const std::string a = zip("Game.cbz", {
+        {"Game/p10.jpg", "10"},
+        {"Game/p2.jpg", "2"},
+        {"Game/P1.jpg", "1"},
+        {"Game/ComicInfo.xml", "<ComicInfo/>"},
+        {"__MACOSX/Game/._P1.jpg", "fork"},
+        {"../p0.jpg", "evil"},
+        {"Game/link.jpg", "/etc/passwd", false, -1, 0x0800, 0120777},
+    });
+    const Format fmt = nanomanual::comicFormat(a);
+    ASSERT_EQ(fmt, Format::Zip);
+    const Index idx = nanoarc::readIndex(a, fmt);
+    ASSERT_EQ(idx.err, Err::None);
+    const std::vector<std::string> pages = nanomanual::comicPages(idx.entries);
+    ASSERT_EQ(pages, (std::vector<std::string>{"Game/P1.jpg", "Game/p2.jpg", "Game/p10.jpg"}));
+    const char* const want[] = {"1", "2", "10"};
+    for (size_t i = 0; i < pages.size(); i++) {
+        const EntryData d =
+            nanoarc::readEntry(a, fmt, pages[i], nanomanual::kMaxPageBytes, nanomanual::kMaxBlockBytes);
+        ASSERT_EQ(d.err, Err::None) << pages[i];
+        EXPECT_EQ(bytes(d), want[i]);
+    }
+}
+
+TEST_F(ArchiveTest, ComicManualPagesFromSevenZip) {
+    // good.7z holds no images: a comic manual made like it has no pages.
+    const std::string a = nanotest::fixture("archive/good.7z");
+    const Index idx = nanoarc::readIndex(a, Format::SevenZip);
+    ASSERT_EQ(idx.err, Err::None);
+    EXPECT_TRUE(nanomanual::comicPages(idx.entries).empty());
 }
 
 }  // namespace
