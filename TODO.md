@@ -341,6 +341,18 @@ Built 2026-11-21 from the plan docs in this folder, each checked against the REA
   - Then a `thimsy-nanod` helper and a switch to uid `system` with `SYS_NICE` and `BLOCK_SUSPEND`.
 - **(decide)** The plan's §9: the user and uid, games as `nano` or a separate uid, ext4 drives from a PC, Linux timing, OA-5's scripts moving into the session, the Android end state and SELinux enforcing, and an Android interim with `DAC_OVERRIDE`.
 
+### Portable settings on the card, Linux and Android (portable_settings_plan.md): not started (OA-20, 2026-11-26)
+- **Goal:** every relevant Thimsy setting lives in a user-editable file on the card, so it travels between Thimsy devices and between the Android and Linux builds. ES-DE's own files keep only ES-DE formats.
+- **Today:** settings are Android properties on the device. Linux keeps them in an emulated property store on the boot card's ext4 partition. Only the 12 scraper keys travel, through es_settings.xml.
+- **Recommended:** `Thimsy/settings.ini` beside the store's `ES-DE/` folder.
+  - A line-preserving INI dialect with commented templates for unset keys.
+  - A shared schema (`tools/nano-tree/prefs.json`) classifies every key as portable, per model (`[device.<model>]`), platform section (`[android]`/`[linux]`), ES-DE-owned, device-local, secret or runtime.
+  - The legacy properties (Android) and `ConfigStore` (Linux) stay as the device's working copy.
+  - The card is authoritative when present, merged three ways per key; device edits win a conflict.
+  - Format and merge are in shared code; the platforms keep the device store, the model id and applying settings, per OA-4. The `Prefs` facade sits in front of wave 6's `Settings`.
+- Phases 0-9 (plan §7.1), about 11 to 17 person-weeks *(guess)*, about half of it OA-4 migration step 8. Every step but the schema inventory is Android-surface. It ships off by default on Android until the AOSP smoke test, and on by default on Linux.
+- **(decide)** The plan's §8, 13 questions, among them: the location, the adoption policy (Always, Ask or Never), the conflict rule, theme travel (interop Q3), hotkeys per model, whether secrets ever go on the card, language and time zone, and the rollout floor.
+
 ## Scraping
 
 ### ScummVM scraping (scummvm_scraping_plan.md): listing done, scraping phases open
