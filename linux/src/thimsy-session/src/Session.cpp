@@ -50,6 +50,11 @@ constexpr const char* kPersistFile = "/storage/.config/thimsy/persist.props";
 constexpr const char* kStateDir = "/run/thimsy/session";
 // <dev>.pid of every running check, so a respawned session can stop what an earlier one left.
 constexpr const char* kFsckDir = "/run/thimsy/session/fsck";
+// The private staging point of ext2/3/4 mounts for Nano (OA-29, io/Idmap.h).
+constexpr const char* kStageDir = "/run/thimsy/session/stage";
+// Nano is still started as root. OA-27's switch (nonroot_nano_plan.md L3), which starts it as nano
+// (1000), turns this on, and with it the ext2/3/4 mounts for nano (PolicyConfig::nanoRunsAsNano).
+constexpr bool kNanoRunsAsNano = false;
 constexpr const char* kLogDir = "/run/thimsy/log";
 constexpr const char* kVolumesJson = "/run/thimsy/volumes.json";
 constexpr const char* kMediaRwDir = "/run/thimsy/media_rw";
@@ -86,12 +91,22 @@ std::string baseName(const std::string& p) {
     return s == std::string::npos ? p : p.substr(s + 1);
 }
 
+Ownership ownershipFor(NanoAccess a) {
+    switch (a) {
+        case NanoAccess::Owned: return Ownership::Nano;
+        case NanoAccess::Idmapped: return Ownership::Idmapped;
+        case NanoAccess::ReadOnly: return Ownership::NeedsDecision;
+    }
+    return Ownership::NeedsDecision;
+}
+
 class Session {
  public:
     explicit Session(const Options& o)
         : opts_(o), sysfs_(o.root), evdev_(sysfs_, o.fakeHw) {
         PolicyConfig pc;
         pc.mediaRwDir = "/mnt/media_rw";
+        pc.nanoRunsAsNano = kNanoRunsAsNano;
         vols_ = VolumeManager(pc);
     }
     ~Session();
@@ -406,12 +421,18 @@ void Session::adoptMounts() {
         size_t a = line.find(' ');
         if (a == std::string::npos) continue;
         size_t b = line.find(' ', a + 1);
+        size_t c = b == std::string::npos ? std::string::npos : line.find(' ', b + 1);
+        size_t d = c == std::string::npos ? std::string::npos : line.find(' ', c + 1);
         std::string dev = line.substr(0, a);
         std::string mnt = line.substr(a + 1, b == std::string::npos ? std::string::npos : b - a - 1);
+        std::string fsType = b == std::string::npos ? std::string()
+                                                    : line.substr(b + 1, c == std::string::npos ? std::string::npos : c - b - 1);
+        std::string mntOpts = c == std::string::npos ? std::string()
+                                                     : line.substr(c + 1, d == std::string::npos ? std::string::npos : d - c - 1);
         if (mnt.compare(0, 9, "/storage/") != 0 || dev.compare(0, 5, "/dev/") != 0) continue;
         std::string id = mnt.substr(9);
         if (id.empty() || id.find('/') != std::string::npos) continue;
-        vols_.adoptMounted(baseName(dev), id);
+        vols_.adoptMounted(baseName(dev), id, ownershipOfMount(fsType, mntOpts));
         log("found " + dev + " mounted at " + mnt);
     }
 }
@@ -466,7 +487,7 @@ bool Session::init() {
         if (mount(nullptr, "/", nullptr, MS_REC | MS_SHARED, nullptr) != 0) {
             log("making / shared failed: " + std::string(strerror(errno)));
         }
-        mounter_ = makeSyscallMounter();
+        mounter_ = makeSyscallMounter(P(kStageDir));
     } else {
         mounter_ = makeCommandMounter(tool("mount"), tool("umount"), P(std::string(kLogDir) + "/mount.log"), childEnv());
     }
@@ -683,7 +704,19 @@ void Session::runVol(const std::vector<VolAction>& acts) {
                 bool ok = makeDirs(mp);
                 if (ok && !opts_.fakeHw && !setImmutable(mp, &err)) log("immutable flag on " + a.mountPoint + ": " + err);
                 err.clear();
-                ok = ok && mounter_->mount(P("/dev/" + a.dev), mp, a.fs, a.options, &err);
+                Ownership own = Ownership::None;
+                if (ok && a.forNano) {
+                    NanoMountResult res;
+                    ok = mounter_->mountForNano(P("/dev/" + a.dev), mp, a.fs, a.options, &res, &err);
+                    if (ok) {
+                        own = ownershipFor(res.access);
+                        log(a.dev + "'s top folder is " + std::to_string(res.ownerUid) + ":" +
+                            std::to_string(res.ownerGid) + ", mounted for nano " + toString(res.access) +
+                            (res.idmapError.empty() ? "" : " (no idmapped mount: " + res.idmapError + ")"));
+                    }
+                } else {
+                    ok = ok && mounter_->mount(P("/dev/" + a.dev), mp, a.fs, a.options, &err);
+                }
                 if (ok) {
                     std::string link = P(std::string(kMediaRwDir) + "/" + a.id);
                     unlink(link.c_str());
@@ -693,7 +726,19 @@ void Session::runVol(const std::vector<VolAction>& acts) {
                     if (err.empty()) err = "cannot make " + a.mountPoint;
                     log("mounting " + a.dev + " failed: " + err);
                 }
-                runVol(vols_.onMountDone(a.dev, ok, err));
+                runVol(vols_.onMountDone(a.dev, ok, err, own));
+                break;
+            }
+            case VolActKind::TakeOwnership: {
+                std::string err;
+                bool stillMounted = true;
+                bool ok = mounter_->takeOwnership(P("/dev/" + a.dev), P(a.mountPoint), a.fs, a.options, &stillMounted,
+                                                  &err);
+                if (!stillMounted) unlink(P(std::string(kMediaRwDir) + "/" + a.id).c_str());
+                log(ok ? "took " + a.mountPoint + "'s top folder for nano; mounted writable (" + a.options + ")"
+                       : "taking " + a.mountPoint + "'s top folder failed: " + err +
+                             (stillMounted ? "" : "; the drive is no longer mounted"));
+                runVol(vols_.onTakeOwnershipDone(a.dev, ok, stillMounted, err));
                 break;
             }
             case VolActKind::Unmount: {
@@ -964,6 +1009,20 @@ void Session::handleRequest(const Request& r, bool answer) {
         case Verb::Scrape: runSup(sup_.scrapeRequested(monoNow())); break;
         case Verb::RestartNano: runSup(sup_.restartNano(monoNow())); break;
         case Verb::Brightness: result = setBrightness(std::stoi(r.arg)); break;
+        case Verb::TakeOwnership: {
+            std::vector<VolAction> acts;
+            std::string err;
+            if (!vols_.takeOwnership(r.arg, &acts, &err)) {
+                result = "error:" + err;
+            } else {
+                runVol(acts);
+                const Volume* v = vols_.byId(r.arg);
+                if (!v || v->ownership != Ownership::Nano) {
+                    result = "error:" + (v ? v->error : std::string("the drive went away"));
+                }
+            }
+            break;
+        }
     }
     if (answer) store_->set(kKeyDone, doneValue(r, result));
 }

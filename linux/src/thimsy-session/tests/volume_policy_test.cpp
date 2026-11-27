@@ -387,3 +387,176 @@ TEST(VolumeManager, ADriveReformattedWhileInIsRemountedUnderItsNewId) {
     ASSERT_EQ(count(a, VolActKind::Fsck), 1);
     EXPECT_EQ(m.byId("4321-DCBA")->dev, "mmcblk2p1");
 }
+
+// --- ext2/3/4 drives for Nano (OA-29) ----------------------------------------------------------
+
+namespace {
+
+const char kExtId[] = "0b1c2d3e-0000-4000-8000-00000000abcd";
+
+BlockDev extDrive(bool readOnly = false) {
+    BlockDev d = withFs(part("mmcblk2", 1, "", kTypeLinuxData), "ext4", kExtId);
+    d.readOnly = readOnly;
+    return d;
+}
+
+// The drive checked and its Mount action returned.
+VolAction checkedExt(VolumeManager* m, bool readOnly = false) {
+    std::vector<VolAction> a = m->onDevice(extDrive(readOnly), bootCard());
+    if (!readOnly) {
+        if (a.size() != 1 || a[0].kind != VolActKind::Fsck) return VolAction(VolActKind::Fsck);
+        a = m->onFsckDone(a[0].job, 0);
+    }
+    return a.size() == 1 ? a[0] : VolAction(VolActKind::Fsck);
+}
+
+const json::Value& firstVolume(const json::Value& j) { return j["volumes"][size_t{0}]; }
+
+}  // namespace
+
+TEST(VolumeManager, OnlyWritableExtDrivesAreMountedForNano) {
+    EXPECT_TRUE(mountsForNano("ext4", false));
+    EXPECT_FALSE(mountsForNano("ext4", true));
+    EXPECT_FALSE(mountsForNano("exfat", false));
+    EXPECT_FALSE(mountsForNano("vfat", false));
+
+    VolumeManager m;
+    VolAction a = checkedExt(&m);
+    ASSERT_EQ(a.kind, VolActKind::Mount);
+    EXPECT_TRUE(a.forNano);
+    EXPECT_EQ(a.options, "noatime,nodev,nosuid,noexec");
+    EXPECT_EQ(a.mountPoint, std::string("/storage/") + kExtId);
+
+    VolumeManager ro;
+    a = checkedExt(&ro, true);
+    ASSERT_EQ(a.kind, VolActKind::Mount);
+    EXPECT_FALSE(a.forNano);
+    EXPECT_EQ(a.options, "ro,noatime,nodev,nosuid,noexec");
+
+    // A root Nano: mounted as they are.
+    PolicyConfig rootNano;
+    rootNano.nanoRunsAsNano = false;
+    VolumeManager asRoot(rootNano);
+    a = checkedExt(&asRoot);
+    ASSERT_EQ(a.kind, VolActKind::Mount);
+    EXPECT_FALSE(a.forNano);
+    VolumeManager adopted(rootNano);
+    adopted.adoptMounted("mmcblk2p1", kExtId, Ownership::Idmapped);
+    EXPECT_TRUE(adopted.onDevice(extDrive(), bootCard()).empty());
+    EXPECT_EQ(adopted.byId(kExtId)->ownership, Ownership::None);
+
+    VolumeManager fat;
+    std::vector<VolAction> f = fat.onDevice(withFs(part("mmcblk2", 1, "", kTypeBasicData), "vfat", "1234-ABCD"),
+                                            bootCard());
+    ASSERT_EQ(f.size(), 1u);
+    EXPECT_FALSE(f[0].forNano);
+    fat.onMountDone("mmcblk2p1", true, "");
+    EXPECT_EQ(firstVolume(fat.toJson()).find("ownership"), nullptr);
+}
+
+TEST(VolumeManager, TheMountsOwnershipIsListed) {
+    VolumeManager m;
+    ASSERT_EQ(checkedExt(&m).kind, VolActKind::Mount);
+    EXPECT_TRUE(m.onMountDone("mmcblk2p1", true, "", Ownership::Idmapped).empty());
+    EXPECT_EQ(stateOf(m, "mmcblk2p1"), VolState::Mounted);
+    EXPECT_EQ(m.byId(kExtId)->ownership, Ownership::Idmapped);
+    EXPECT_EQ(firstVolume(m.toJson())["ownership"].asString(), "idmapped");
+    // Ejected: nothing to say about ownership any more.
+    std::vector<VolAction> a;
+    std::string err;
+    ASSERT_TRUE(m.eject(kExtId, &a, &err));
+    m.onUnmountDone("mmcblk2p1", true, "");
+    EXPECT_EQ(m.byId(kExtId)->ownership, Ownership::None);
+    EXPECT_EQ(firstVolume(m.toJson()).find("ownership"), nullptr);
+
+    VolumeManager failed;
+    checkedExt(&failed);
+    failed.onMountDone("mmcblk2p1", false, "Invalid argument", Ownership::Nano);
+    EXPECT_EQ(stateOf(failed, "mmcblk2p1"), VolState::MountFailed);
+    EXPECT_EQ(failed.byId(kExtId)->ownership, Ownership::None);
+
+    EXPECT_STREQ(toString(Ownership::Nano), "nano");
+    EXPECT_STREQ(toString(Ownership::NeedsDecision), "needs_decision");
+}
+
+TEST(VolumeManager, AReadOnlyFallbackWaitsForTheUsersDecision) {
+    VolumeManager m;
+    checkedExt(&m);
+    m.onMountDone("mmcblk2p1", true, "", Ownership::NeedsDecision);
+    EXPECT_EQ(firstVolume(m.toJson())["ownership"].asString(), "needs_decision");
+    m.takeChanged();
+
+    std::vector<VolAction> a;
+    std::string err;
+    ASSERT_TRUE(m.takeOwnership(kExtId, &a, &err)) << err;
+    ASSERT_EQ(a.size(), 1u);
+    EXPECT_EQ(a[0].kind, VolActKind::TakeOwnership);
+    EXPECT_EQ(a[0].dev, "mmcblk2p1");
+    EXPECT_EQ(a[0].fs, "ext4");
+    EXPECT_EQ(a[0].mountPoint, std::string("/storage/") + kExtId);
+    EXPECT_EQ(a[0].options, "noatime,nodev,nosuid,noexec");
+    EXPECT_TRUE(a[0].forNano);
+
+    EXPECT_TRUE(m.onTakeOwnershipDone("mmcblk2p1", true, true, "").empty());
+    EXPECT_TRUE(m.takeChanged());
+    EXPECT_EQ(m.byId(kExtId)->ownership, Ownership::Nano);
+    EXPECT_EQ(firstVolume(m.toJson())["ownership"].asString(), "nano");
+    // Asked again: nothing is pending now.
+    a.clear();
+    EXPECT_FALSE(m.takeOwnership(kExtId, &a, &err));
+    EXPECT_NE(err.find("no ownership decision pending"), std::string::npos);
+    EXPECT_TRUE(a.empty());
+}
+
+TEST(VolumeManager, TakeOwnershipIsRefusedForOtherDrives) {
+    VolumeManager m;
+    std::vector<VolAction> a;
+    std::string err;
+    EXPECT_FALSE(m.takeOwnership(kExtId, &a, &err));
+    EXPECT_EQ(err, std::string("no mounted drive ") + kExtId);
+    checkedExt(&m);  // being checked: not mounted yet
+    EXPECT_FALSE(m.takeOwnership(kExtId, &a, &err));
+    m.onMountDone("mmcblk2p1", true, "", Ownership::Idmapped);
+    EXPECT_FALSE(m.takeOwnership(kExtId, &a, &err));
+    EXPECT_NE(err.find("no ownership decision pending"), std::string::npos);
+    EXPECT_TRUE(a.empty());
+}
+
+TEST(VolumeManager, AFailedTakeOwnershipKeepsTheReadOnlyMountOrLosesIt) {
+    VolumeManager m;
+    checkedExt(&m);
+    m.onMountDone("mmcblk2p1", true, "", Ownership::NeedsDecision);
+    m.onTakeOwnershipDone("mmcblk2p1", false, true, "chown of the top folder: Read-only file system");
+    EXPECT_EQ(stateOf(m, "mmcblk2p1"), VolState::Mounted);
+    EXPECT_EQ(m.byId(kExtId)->ownership, Ownership::NeedsDecision);
+    EXPECT_EQ(m.byId(kExtId)->error, "taking ownership failed: chown of the top folder: Read-only file system");
+
+    m.onTakeOwnershipDone("mmcblk2p1", false, false, "moving the mount: Device or resource busy");
+    EXPECT_EQ(stateOf(m, "mmcblk2p1"), VolState::MountFailed);
+    EXPECT_EQ(m.byId(kExtId)->ownership, Ownership::None);
+    // Its mount is gone, so pulling the card unmounts nothing.
+    EXPECT_TRUE(m.onRemoved("mmcblk2p1").empty());
+}
+
+TEST(VolumeManager, ARespawnedSessionKeepsAnAdoptedMountsOwnership) {
+    EXPECT_EQ(ownershipOfMount("ext4", "rw,nosuid,nodev,noexec,noatime,idmapped"), Ownership::Idmapped);
+    EXPECT_EQ(ownershipOfMount("ext4", "ro,nosuid,nodev,noexec,noatime"), Ownership::NeedsDecision);
+    EXPECT_EQ(ownershipOfMount("ext4", "rw,nosuid,nodev,noexec,noatime"), Ownership::Nano);
+    EXPECT_EQ(ownershipOfMount("exfat", "ro,nosuid"), Ownership::None);
+    EXPECT_EQ(ownershipOfMount("ext4", "rw,errors=remount-ro"), Ownership::Nano);
+
+    VolumeManager m;
+    m.adoptMounted("mmcblk2p1", kExtId, Ownership::NeedsDecision);
+    EXPECT_TRUE(m.onDevice(extDrive(), bootCard()).empty());
+    EXPECT_EQ(stateOf(m, "mmcblk2p1"), VolState::Mounted);
+    EXPECT_EQ(m.byId(kExtId)->ownership, Ownership::NeedsDecision);
+    std::vector<VolAction> a;
+    std::string err;
+    EXPECT_TRUE(m.takeOwnership(kExtId, &a, &err)) << err;
+
+    // A read-only device's drive was mounted "ro" as it always is: no decision to make.
+    VolumeManager ro;
+    ro.adoptMounted("mmcblk2p1", kExtId, Ownership::NeedsDecision);
+    EXPECT_TRUE(ro.onDevice(extDrive(true), bootCard()).empty());
+    EXPECT_EQ(ro.byId(kExtId)->ownership, Ownership::None);
+}

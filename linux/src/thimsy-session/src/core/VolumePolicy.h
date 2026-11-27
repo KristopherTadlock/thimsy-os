@@ -21,6 +21,11 @@
 // A drive is checked first (vfat: fsck.fat -a when a dirty flag is set; exFAT: fsck.exfat -p
 // always, the plan's choice until Phase 0 times it; ext4: e2fsck -p), then mounted at
 // /storage/<id>. Removing a mounted drive detaches its mount; "eject" unmounts it fully.
+//
+// ext2/3/4 drives that are not read-only are mounted for Nano (OA-29, io/Idmap.h): as they are
+// when their top folder belongs to `nano` (1000), else through an idmapped mount that shows the
+// owner as `nano`, else read-only with an ownership decision pending; the "take-ownership" request
+// then chowns the top folder and mounts the drive writable (takeOwnership()).
 #pragma once
 
 #include <cstdint>
@@ -73,6 +78,10 @@ struct PolicyConfig {
     std::string storageDir = "/storage";       // mount points: <storageDir>/<id>
     std::string mediaRwDir = "/mnt/media_rw";  // the advertised alias directory
     uint64_t minSizeBytes = 1024 * 1024;
+    // Nano runs as `nano` (uid 1000, OA-27), so ext2/3/4 drives are mounted for it (mountsForNano,
+    // OA-29). False while Nano runs as root: root needs no mapping, and could not create files
+    // through one (uid 0 is not mapped in it), so the drives are mounted as they are.
+    bool nanoRunsAsNano = true;
 };
 
 enum class Disposition { Ignore, Drive };
@@ -89,9 +98,24 @@ std::string volumeIdFor(const FsInfo& fs);
 std::string mountOptions(const std::string& fsType, bool readOnly);
 // Whether a check runs before the mount.
 bool fsckNeeded(const FsInfo& fs, bool readOnly);
+// Whether the drive is mounted through the owner check (OA-29): ext2/3/4 (all probed as "ext4")
+// that is not read-only.
+bool mountsForNano(const std::string& fsType, bool readOnly);
 
 enum class VolState { Checking, Mounted, Ejected, CheckFailed, MountFailed, Unsupported, NoId, Duplicate };
 const char* toString(VolState s);
+
+// How Nano may use a mounted ext2/3/4 drive (OA-29). None: another filesystem, or not mounted.
+enum class Ownership {
+    None,
+    Nano,           // its top folder belongs to nano: as it was, or after take-ownership
+    Idmapped,       // the owner shows as nano through an idmapped mount
+    NeedsDecision,  // no idmapped mount: read-only for Nano until the user lets Thimsy take it
+};
+const char* toString(Ownership o);
+// The ownership of an ext4 mount a respawned session finds in /proc/mounts, from its type and
+// options as shown there: "idmapped" -> Idmapped; "ro" -> NeedsDecision; else Nano. Not ext4: None.
+Ownership ownershipOfMount(const std::string& fsType, const std::string& options);
 
 struct Volume {
     std::string dev;
@@ -107,9 +131,10 @@ struct Volume {
     VolState state = VolState::Checking;
     std::string error;
     int fsckJob = 0;  // the running check, while Checking
+    Ownership ownership = Ownership::None;  // while Mounted
 };
 
-enum class VolActKind { Fsck, KillFsck, Mount, Unmount };
+enum class VolActKind { Fsck, KillFsck, Mount, Unmount, TakeOwnership };
 struct VolAction {
     explicit VolAction(VolActKind k) : kind(k) {}
     VolActKind kind;
@@ -120,6 +145,7 @@ struct VolAction {
     std::string options;
     int job = 0;             // Fsck, KillFsck
     bool lazy = false;       // Unmount: the device is gone, detach
+    bool forNano = false;    // Mount: through the owner check (mountsForNano); TakeOwnership: true
 };
 
 class VolumeManager {
@@ -131,12 +157,21 @@ class VolumeManager {
     std::vector<VolAction> onRemoved(const std::string& dev);
     // exitCode: the check's exit status, or -1 when it was killed by a signal.
     std::vector<VolAction> onFsckDone(int job, int exitCode);
-    std::vector<VolAction> onMountDone(const std::string& dev, bool ok, const std::string& err);
+    // own: how the mount came out, for a Mount with forNano (else None).
+    std::vector<VolAction> onMountDone(const std::string& dev, bool ok, const std::string& err,
+                                       Ownership own = Ownership::None);
     std::vector<VolAction> onUnmountDone(const std::string& dev, bool ok, const std::string& err);
     // Unmounts a mounted drive by id. False (with *err) if there is no such mounted drive.
     bool eject(const std::string& id, std::vector<VolAction>* out, std::string* err);
-    // A mount found at start (a respawned session): <storageDir>/<id> from <dev> is mounted.
-    void adoptMounted(const std::string& dev, const std::string& id);
+    // The user agreed that Thimsy takes the drive's top folder (OA-29). False (with *err) if there
+    // is no such mounted drive or it has no ownership decision pending.
+    bool takeOwnership(const std::string& id, std::vector<VolAction>* out, std::string* err);
+    // stillMounted: false when the drive lost its mount on the way.
+    std::vector<VolAction> onTakeOwnershipDone(const std::string& dev, bool ok, bool stillMounted,
+                                               const std::string& err);
+    // A mount found at start (a respawned session): <storageDir>/<id> from <dev> is mounted, as own
+    // says (read from its mount options).
+    void adoptMounted(const std::string& dev, const std::string& id, Ownership own = Ownership::None);
 
     // True once since the last call if what toJson() returns has changed.
     bool takeChanged();
@@ -150,6 +185,7 @@ class VolumeManager {
     std::vector<VolAction> release(Volume* v, bool lazy);  // stop a check or unmount
     std::vector<VolAction> resolveDuplicates();
     std::string mountPointFor(const std::string& id) const;
+    VolAction mountAction(const Volume& v) const;
 
     // Bookkeeping per device that toJson() does not show.
     struct Extra {
@@ -161,7 +197,11 @@ class VolumeManager {
     PolicyConfig cfg_;
     std::map<std::string, Volume> vols_;  // by kernel name
     std::map<std::string, Extra> extra_;
-    std::map<std::string, std::string> adopted_;  // dev -> id
+    struct Adopted {
+        std::string id;
+        Ownership ownership = Ownership::None;
+    };
+    std::map<std::string, Adopted> adopted_;  // by dev
     int nextJob_ = 1;
     bool changed_ = true;
 };

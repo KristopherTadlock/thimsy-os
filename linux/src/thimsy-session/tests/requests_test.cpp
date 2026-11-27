@@ -25,6 +25,11 @@ TEST(Requests, PlainAndNumbered) {
     ASSERT_TRUE(parseRequest("scrape", &r));
     ASSERT_TRUE(parseRequest("poweroff", &r));
     ASSERT_TRUE(parseRequest("reboot", &r));
+    ASSERT_TRUE(parseRequest("21:take-ownership:0b1c2d3e-0000-4000-8000-00000000abcd", &r));
+    EXPECT_EQ(r.verb, Verb::TakeOwnership);
+    EXPECT_EQ(r.seq, "21");
+    EXPECT_EQ(r.arg, "0b1c2d3e-0000-4000-8000-00000000abcd");
+    EXPECT_STREQ(toString(r.verb), "take-ownership");
 }
 
 TEST(Requests, RefusesBadOnes) {
@@ -38,6 +43,10 @@ TEST(Requests, RefusesBadOnes) {
     EXPECT_FALSE(parseRequest("brightness:101", &r, &err));
     EXPECT_FALSE(parseRequest("brightness:-1", &r, &err));
     EXPECT_FALSE(parseRequest("eject:../../etc", &r, &err));
+    EXPECT_FALSE(parseRequest("take-ownership", &r, &err));
+    EXPECT_FALSE(parseRequest("take-ownership:", &r, &err));
+    EXPECT_FALSE(parseRequest("take-ownership:../../etc", &r, &err));
+    EXPECT_FALSE(parseRequest("take-ownership:a b", &r, &err));
     EXPECT_FALSE(parseRequest("", &r, &err));
 }
 

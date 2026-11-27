@@ -132,6 +132,8 @@ bool fsckNeeded(const FsInfo& fs, bool readOnly) {
     return fs.type == "exfat" || fs.type == "ext4";
 }
 
+bool mountsForNano(const std::string& fsType, bool readOnly) { return fsType == "ext4" && !readOnly; }
+
 const char* toString(VolState s) {
     switch (s) {
         case VolState::Checking: return "checking";
@@ -146,9 +148,47 @@ const char* toString(VolState s) {
     return "?";
 }
 
+const char* toString(Ownership o) {
+    switch (o) {
+        case Ownership::None: return "";
+        case Ownership::Nano: return "nano";
+        case Ownership::Idmapped: return "idmapped";
+        case Ownership::NeedsDecision: return "needs_decision";
+    }
+    return "?";
+}
+
+Ownership ownershipOfMount(const std::string& fsType, const std::string& options) {
+    if (fsType != "ext4") return Ownership::None;
+    bool ro = false;
+    bool idmapped = false;
+    size_t pos = 0;
+    while (pos <= options.size()) {
+        size_t comma = options.find(',', pos);
+        if (comma == std::string::npos) comma = options.size();
+        std::string o = options.substr(pos, comma - pos);
+        pos = comma + 1;
+        if (o == "ro") ro = true;
+        if (o == "idmapped") idmapped = true;
+    }
+    if (idmapped) return Ownership::Idmapped;
+    return ro ? Ownership::NeedsDecision : Ownership::Nano;
+}
+
 VolumeManager::VolumeManager(PolicyConfig cfg) : cfg_(std::move(cfg)) {}
 
 std::string VolumeManager::mountPointFor(const std::string& id) const { return cfg_.storageDir + "/" + id; }
+
+VolAction VolumeManager::mountAction(const Volume& v) const {
+    VolAction a(VolActKind::Mount);
+    a.dev = v.dev;
+    a.fs = v.fs;
+    a.id = v.id;
+    a.mountPoint = mountPointFor(v.id);
+    a.options = mountOptions(v.fs, v.readOnly);
+    a.forNano = cfg_.nanoRunsAsNano && mountsForNano(v.fs, v.readOnly);
+    return a;
+}
 
 const Volume* VolumeManager::byId(const std::string& id) const {
     for (const auto& kv : vols_) {
@@ -174,6 +214,7 @@ std::vector<VolAction> VolumeManager::start(Volume* v) {
         return out;
     }
     v->state = VolState::Checking;
+    v->ownership = Ownership::None;
     FsInfo fs;
     fs.type = v->fs;
     fs.dirty = x.dirty;
@@ -187,13 +228,7 @@ std::vector<VolAction> VolumeManager::start(Volume* v) {
         out.push_back(a);
         return out;
     }
-    VolAction a(VolActKind::Mount);
-    a.dev = v->dev;
-    a.fs = v->fs;
-    a.id = v->id;
-    a.mountPoint = mountPointFor(v->id);
-    a.options = mountOptions(v->fs, v->readOnly);
-    out.push_back(a);
+    out.push_back(mountAction(*v));
     return out;
 }
 
@@ -305,7 +340,12 @@ std::vector<VolAction> VolumeManager::onDevice(const BlockDev& dev, const BootDi
     x.dirty = dev.fs.dirty;
     auto ad = adopted_.find(dev.name);
     if (ad != adopted_.end()) {
-        if (ad->second == nv.id) x.mounted = true;
+        if (ad->second.id == nv.id) {
+            x.mounted = true;
+            // A read-only device's drive is never mounted for Nano, so its "ro" decides nothing.
+            nv.ownership = cfg_.nanoRunsAsNano && mountsForNano(nv.fs, nv.readOnly) ? ad->second.ownership
+                                                                                     : Ownership::None;
+        }
         adopted_.erase(ad);
     }
     vols_[dev.name] = nv;
@@ -344,19 +384,14 @@ std::vector<VolAction> VolumeManager::onFsckDone(int job, int exitCode) {
             changed_ = true;
             return out;
         }
-        VolAction a(VolActKind::Mount);
-        a.dev = v.dev;
-        a.fs = v.fs;
-        a.id = v.id;
-        a.mountPoint = mountPointFor(v.id);
-        a.options = mountOptions(v.fs, v.readOnly);
-        out.push_back(a);
+        out.push_back(mountAction(v));
         return out;
     }
     return out;  // a check whose drive went away meanwhile
 }
 
-std::vector<VolAction> VolumeManager::onMountDone(const std::string& dev, bool ok, const std::string& err) {
+std::vector<VolAction> VolumeManager::onMountDone(const std::string& dev, bool ok, const std::string& err,
+                                                  Ownership own) {
     auto it = vols_.find(dev);
     if (it == vols_.end()) return {};
     Volume& v = it->second;
@@ -364,9 +399,11 @@ std::vector<VolAction> VolumeManager::onMountDone(const std::string& dev, bool o
     if (ok) {
         extra_[dev].mounted = true;
         v.state = VolState::Mounted;
+        v.ownership = own;
         v.error.clear();
     } else {
         v.state = VolState::MountFailed;
+        v.ownership = Ownership::None;
         v.error = err.empty() ? "mount failed" : err;
     }
     changed_ = true;
@@ -380,6 +417,7 @@ std::vector<VolAction> VolumeManager::onUnmountDone(const std::string& dev, bool
     if (ok) {
         extra_[dev].mounted = false;
         if (v.state == VolState::Mounted) v.state = VolState::Ejected;
+        v.ownership = Ownership::None;
         v.error.clear();
     } else {
         v.error = "still mounted: " + (err.empty() ? std::string("busy") : err);
@@ -403,7 +441,55 @@ bool VolumeManager::eject(const std::string& id, std::vector<VolAction>* out, st
     return false;
 }
 
-void VolumeManager::adoptMounted(const std::string& dev, const std::string& id) { adopted_[dev] = id; }
+bool VolumeManager::takeOwnership(const std::string& id, std::vector<VolAction>* out, std::string* err) {
+    for (auto& kv : vols_) {
+        Volume& v = kv.second;
+        if (v.id != id || v.state != VolState::Mounted) continue;
+        if (v.ownership != Ownership::NeedsDecision) {
+            if (err) *err = "drive " + id + " has no ownership decision pending";
+            return false;
+        }
+        VolAction a(VolActKind::TakeOwnership);
+        a.dev = v.dev;
+        a.fs = v.fs;
+        a.id = v.id;
+        a.mountPoint = mountPointFor(v.id);
+        a.options = mountOptions(v.fs, false);
+        a.forNano = true;
+        out->push_back(a);
+        return true;
+    }
+    if (err) *err = "no mounted drive " + id;
+    return false;
+}
+
+std::vector<VolAction> VolumeManager::onTakeOwnershipDone(const std::string& dev, bool ok, bool stillMounted,
+                                                          const std::string& err) {
+    auto it = vols_.find(dev);
+    if (it == vols_.end()) return {};
+    Volume& v = it->second;
+    if (v.state != VolState::Mounted) return {};
+    if (ok) {
+        v.ownership = Ownership::Nano;
+        v.error.clear();
+    } else {
+        v.error = "taking ownership failed: " + (err.empty() ? std::string("unknown error") : err);
+        if (!stillMounted) {
+            extra_[dev].mounted = false;
+            v.state = VolState::MountFailed;
+            v.ownership = Ownership::None;
+        }
+    }
+    changed_ = true;
+    return {};
+}
+
+void VolumeManager::adoptMounted(const std::string& dev, const std::string& id, Ownership own) {
+    Adopted a;
+    a.id = id;
+    a.ownership = own;
+    adopted_[dev] = a;
+}
 
 json::Value VolumeManager::toJson() const {
     json::Value root = json::Value::object();
@@ -425,6 +511,7 @@ json::Value VolumeManager::toJson() const {
         o.set("boot_disk", v.bootDisk);
         o.set("read_only", v.readOnly);
         o.set("size_bytes", static_cast<int64_t>(v.sizeBytes));
+        if (v.ownership != Ownership::None) o.set("ownership", toString(v.ownership));
         if (!v.error.empty()) o.set("error", v.error);
         list.push(o);
     }
