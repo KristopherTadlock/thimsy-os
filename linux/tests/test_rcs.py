@@ -215,6 +215,12 @@ thimsy-prop)
 			printf '%s\n' "$THIMSY_FAKE_FAMILY" > "$R/run/thimsy/props/ro/ro.thimsy.family"
 		[ -n "${THIMSY_FAKE_MODULES:-}" ] &&
 			printf '%s\n' "$THIMSY_FAKE_MODULES" > "$R/run/thimsy/props/ro/ro.thimsy.modules"
+		# THIMSY_FAKE_FAIL=thimsy-prop: sealed, with warnings (exit 2);
+		# =thimsy-prop-io: it failed (exit 1).
+		case " ${THIMSY_FAKE_FAIL:-} " in
+		*" thimsy-prop "*) exit 2 ;;
+		*" thimsy-prop-io "*) exit 1 ;;
+		esac
 	fi
 	;;
 esac
@@ -804,13 +810,15 @@ class TestPropsAndFamily(WorldCase):
         self.assertEqual(len(calls), 1)
         args = calls[0]
         self.assertEqual(args[0], "boot")
-        self.assertEqual(len(args), 7)
+        self.assertEqual(len(args), 9)
         opts = dict(zip(args[1::2], args[2::2]))
-        self.assertEqual(sorted(opts), ["--build", "--device", "--install"])
+        self.assertEqual(sorted(opts), ["--build", "--defaults", "--device", "--install"])
         self.assertTrue(opts["--device"].endswith("/usr/share/thimsy/device.json"))
         self.assertTrue(opts["--build"].endswith("/usr/share/thimsy/build.props"))
         # G2e-14: the card's thimsy/ folder on the data partition, not /boot.
         self.assertTrue(opts["--install"].endswith("/storage/thimsy/install.json"))
+        # OA-35: thimsy-data's copy of mods/nano-theme.props (thimsy-data.mk installs it there).
+        self.assertTrue(opts["--defaults"].endswith("/usr/share/thimsy/persist-defaults.props"))
 
     def test_install_json_path_matches_thimsy_prop(self) -> None:
         # thimsy-prop's own default (for a shell user) is the path S01props passes.
@@ -822,25 +830,44 @@ class TestPropsAndFamily(WorldCase):
         self.assertIn('envOr("THIMSY_DEVICE_JSON", "/usr/share/thimsy/device.json")', src)
         self.assertIn('envOr("THIMSY_BUILD_PROPS", "/usr/share/thimsy/build.props")', src)
 
-    def test_persist_defaults(self) -> None:
-        """OA-1: Android's theme settings (persist-defaults.props, from mods/nano-theme.props)
-        are set for each key persist.props lacks, before Nano starts; a value there is kept."""
+    def test_defaults_are_seeded_by_thimsy_prop(self) -> None:
+        """OA-35, OA-36: Android's theme settings (persist-defaults.props, from mods/nano-theme.props)
+        are stored by thimsy-prop boot --defaults (libthimsy's C++, tested in thimsy_prop_test.cpp),
+        not by a loop in the script: with a defaults file and a persist.props that lacks its keys,
+        S01props makes one call, boot, and writes no setting itself."""
         self.w.write("usr/share/thimsy/persist-defaults.props",
-                     "# a comment\n\npersist.gammaos.nano.ndstheme=3\n"
-                     "persist.gammaos.nano.esde.themeset=colorful-simplified-es-de\n"
-                     "ro.not.persist=1\n"
-                     "persist.gammaos.nano.minima.bg=1a1a2e")   # no newline at the end
-        self.w.write("storage/.config/thimsy/persist.props",
-                     "persist.gammaos.nano.esde.themeset=slate-es-de\npersist.thimsy.wifi.enabled=1\n")
+                     "persist.gammaos.nano.ndstheme=3\npersist.gammaos.nano.nav_sounds=0\n")
+        self.w.write("storage/.config/thimsy/persist.props", "persist.thimsy.wifi.enabled=1\n")
         self.w.run(INITD + "/S01props", "start")
-        sets = [c["args"] for c in self.w.calls() if c["tool"] == "thimsy-prop" and c["args"][0] == "set"]
-        self.assertEqual(sets, [["set", "persist.gammaos.nano.ndstheme", "3"],
-                                ["set", "persist.gammaos.nano.minima.bg", "1a1a2e"]])
-        self.assertIn('"ro.not.persist=1" ignored', self.w.boot_log())
+        calls = [c["args"] for c in self.w.calls() if c["tool"] == "thimsy-prop"]
+        self.assertEqual([a[0] for a in calls], ["boot"])
+        self.assertIn("--defaults", calls[0])
+        self.assertEqual(self.w.read("storage/.config/thimsy/persist.props"), "persist.thimsy.wifi.enabled=1\n")
+        src = (OVERLAYS[0] / INITD / "S01props").read_text(encoding="utf-8")
+        for gone in ("persist_defaults", "thimsy_persist", '"$PROP" set', "prefs: keys from"):
+            self.assertNotIn(gone, src)
 
-    def test_no_persist_defaults_file(self) -> None:
+    def test_thimsy_prop_boot_warnings(self) -> None:
+        # W8-DEFAULTS-11: a defaults line thimsy-prop refuses makes it exit 2 (sealed, with
+        # warnings): S01props says so, not "failed", and goes on to the family.
+        self.w.run(INITD + "/S01props", "start", env={"THIMSY_FAKE_FAIL": "thimsy-prop"})
+        log = self.w.boot_log()
+        self.assertIn("thimsy-prop boot: sealed with warnings", log)
+        self.assertNotIn("boot failed", log)
+        self.assertEqual(self.w.read("run/thimsy/family"), "rk3566\n")
+
+    def test_thimsy_prop_boot_failure_is_a_warning(self) -> None:
+        # Any other non-zero exit (here 1) is a failure: S01props warns with the code and goes on
+        # to the family.
+        self.w.run(INITD + "/S01props", "start", env={"THIMSY_FAKE_FAIL": "thimsy-prop-io"})
+        log = self.w.boot_log()
+        self.assertIn("thimsy-prop boot failed (1)", log)
+        self.assertNotIn("sealed with warnings", log)
+        self.assertEqual(self.w.read("run/thimsy/family"), "rk3566\n")
+
+    def test_no_warning_when_thimsy_prop_boot_succeeds(self) -> None:
         self.w.run(INITD + "/S01props", "start")
-        self.assertEqual([c["args"][0] for c in self.w.calls() if c["tool"] == "thimsy-prop"], ["boot"])
+        self.assertNotIn("thimsy-prop boot", self.w.boot_log())
 
     def test_family_from_the_only_family_dir(self) -> None:
         self.w.run(INITD + "/S01props", "start")

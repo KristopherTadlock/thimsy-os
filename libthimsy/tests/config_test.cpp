@@ -395,6 +395,63 @@ TEST_F(StoreTest, ListIsSortedAndFiltered) {
     EXPECT_EQ(store->list("nothing.").size(), 0u);
 }
 
+// OA-35: the image's defaults are stored as a choice is, and never replace one.
+TEST_F(StoreTest, DefaultsNeverReplaceAStoredValue) {
+    ASSERT_TRUE(store->set("persist.thimsy.mine", "chosen"));
+    std::vector<std::string> seen;
+    store->addObserver("persist.", [&](std::string_view k, std::string_view v) {
+        seen.push_back(std::string(k) + "=" + std::string(v));
+    });
+    std::vector<std::string> added;
+    EXPECT_EQ(store->trySetDefaults({{"persist.thimsy.mine", "default"},
+                                     {"persist.thimsy.b", "2"},
+                                     {"persist.thimsy.a", "1"},
+                                     {"persist.thimsy.empty", ""}},
+                                    &added),
+              ConfigStore::SetResult::Ok);
+    EXPECT_EQ(added, (std::vector<std::string>{"persist.thimsy.a", "persist.thimsy.b"}));
+    EXPECT_EQ(seen, (std::vector<std::string>{"persist.thimsy.a=1", "persist.thimsy.b=2"}));
+    EXPECT_EQ(store->get("persist.thimsy.mine"), "chosen");
+    EXPECT_EQ(store->get("persist.thimsy.empty", "unset"), "unset");
+    // In persist.props itself, so another process (Nano) reads them as values set() stored.
+    const std::string text = thimsy_test::slurp(roots.persistFile);
+    EXPECT_NE(text.find("persist.thimsy.a=1\n"), std::string::npos) << text;
+    auto other = open();
+    ASSERT_TRUE(other != nullptr);
+    EXPECT_EQ(other->get("persist.thimsy.b"), "2");
+    EXPECT_EQ(other->list("persist.").size(), 3u);
+
+    // Every key has a value now: nothing changes and the file is not rewritten.
+    struct stat before, after;
+    ASSERT_EQ(stat(roots.persistFile.c_str(), &before), 0);
+    EXPECT_EQ(store->trySetDefaults({{"persist.thimsy.a", "9"}, {"persist.thimsy.mine", "9"}}, &added),
+              ConfigStore::SetResult::Ok);
+    EXPECT_TRUE(added.empty());
+    EXPECT_EQ(store->trySetDefaults({}), ConfigStore::SetResult::Ok);
+    ASSERT_EQ(stat(roots.persistFile.c_str(), &after), 0);
+    EXPECT_EQ(after.st_ino, before.st_ino);
+    EXPECT_EQ(store->get("persist.thimsy.a"), "1");
+    EXPECT_EQ(seen.size(), 2u);
+}
+
+TEST_F(StoreTest, DefaultsAreAllOrNothing) {
+    std::vector<std::string> added = {"stale"};
+    EXPECT_EQ(store->trySetDefaults({{"persist.thimsy.ok", "1"}, {"sys.thimsy.x", "1"}}, &added),
+              ConfigStore::SetResult::InvalidKey);
+    EXPECT_TRUE(added.empty());
+    EXPECT_EQ(store->trySetDefaults({{"persist.thimsy.ok", "1"}, {"ro.thimsy.x", "1"}}),
+              ConfigStore::SetResult::InvalidKey);
+    EXPECT_EQ(store->trySetDefaults({{"persist..bad", "1"}}), ConfigStore::SetResult::InvalidKey);
+    EXPECT_EQ(store->trySetDefaults({{"persist.thimsy.ok", "1"}, {"persist.thimsy.long", std::string(92, 'x')}}),
+              ConfigStore::SetResult::ValueTooLong);
+    EXPECT_EQ(store->trySetDefaults({{"persist.thimsy.nul", std::string("a\0b", 3)}}),
+              ConfigStore::SetResult::InvalidValue);
+    EXPECT_EQ(store->get("persist.thimsy.ok", "none"), "none");
+    EXPECT_EQ(store->get("ro.thimsy.x", "none"), "none");
+    struct stat st;
+    EXPECT_NE(stat(roots.persistFile.c_str(), &st), 0);  // nothing was written
+}
+
 TEST(Secrets, KeysThatLookSecretAreRedacted) {
     for (const char* k : {"persist.gammaos.scraper.ssdevid", "persist.gammaos.scraper.ssdevpw",
                           "persist.gammaos.scraper.sspassword", "persist.thimsy.share.smb_pw",

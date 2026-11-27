@@ -23,8 +23,9 @@
 # installed where Nano reads bundled themes, nano_esde_themes/ under the
 # directory below. build.sh also puts mods/nano-theme.props, the theme
 # settings Android's build.prop gets, into .thimsy-defaults/; it is installed
-# as /usr/share/thimsy/persist-defaults.props, which S01props applies to
-# settings the user has not chosen.
+# as /usr/share/thimsy/persist-defaults.props, which S01props passes to
+# "thimsy-prop boot --defaults": it stores each setting the user has not
+# chosen in persist.props (OA-35).
 #
 # Nano's two Akrobat files are denied (Fontfabric's EULA forbids redistribution)
 # but Nano opens them for theme text with no fontPath, so, as mods/50-nano.sh

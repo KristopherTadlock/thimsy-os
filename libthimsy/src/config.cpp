@@ -324,7 +324,11 @@ struct ConfigStore::Impl {
 
     bool sealed() const { return ::access(sealPath.c_str(), F_OK) == 0; }
 
-    SetResult writePersist(std::string_view key, std::string_view value, std::vector<Change>* changes) {
+    // One read-modify-write of the persist file, under persistWriteMu and the flock: edit(&map)
+    // changes the file's current content and returns false when there is nothing to write (then
+    // the file is left as it is).
+    template <class Edit>
+    SetResult updatePersist(Edit edit, std::vector<Change>* changes) {
         std::lock_guard<std::mutex> plock(persistWriteMu);
         const int lfd = ::open(lockPath.c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0600);
         if (lfd < 0) return SetResult::IoError;
@@ -343,11 +347,9 @@ struct ConfigStore::Impl {
             ::close(lfd);
             return SetResult::IoError;
         }
-        if (value.empty()) {
-            auto it = m.find(key);
-            if (it != m.end()) m.erase(it);
-        } else {
-            m[std::string(key)] = std::string(value);
+        if (!edit(&m)) {
+            ::close(lfd);  // releases the flock
+            return SetResult::Ok;
         }
         AtomicWriteOptions opts;
         opts.mode = 0600;
@@ -360,6 +362,20 @@ struct ConfigStore::Impl {
         }
         ::close(lfd);  // releases the flock
         return ok ? SetResult::Ok : SetResult::IoError;
+    }
+
+    SetResult writePersist(std::string_view key, std::string_view value, std::vector<Change>* changes) {
+        return updatePersist(
+            [&](Map* m) {
+                if (value.empty()) {
+                    auto it = m->find(key);
+                    if (it != m->end()) m->erase(it);
+                } else {
+                    (*m)[std::string(key)] = std::string(value);
+                }
+                return true;
+            },
+            changes);
     }
 
     void watchLoop() {
@@ -500,6 +516,32 @@ ConfigStore::SetResult ConfigStore::trySet(std::string_view key, std::string_vie
         std::unique_lock<std::shared_mutex> lock(impl_->mu);
         impl_->applyLocked(std::string(key), std::string(value), &changes);
     }
+    impl_->publish(changes);
+    return SetResult::Ok;
+}
+
+ConfigStore::SetResult ConfigStore::trySetDefaults(const std::map<std::string, std::string>& defaults,
+                                                   std::vector<std::string>* added) {
+    if (added) added->clear();
+    for (const auto& kv : defaults) {
+        if (!isValidKey(kv.first) || !isPersist(kv.first)) return SetResult::InvalidKey;
+        if (kv.second.find('\0') != std::string::npos) return SetResult::InvalidValue;
+        if (kv.second.size() > kMaxValueLength) return SetResult::ValueTooLong;
+    }
+    std::vector<std::string> stored;
+    std::vector<Change> changes;
+    const SetResult r = impl_->updatePersist(
+        [&](Map* m) {
+            for (const auto& kv : defaults) {
+                if (kv.second.empty() || m->find(kv.first) != m->end()) continue;  // a stored value stays
+                (*m)[kv.first] = kv.second;
+                stored.push_back(kv.first);
+            }
+            return !stored.empty();
+        },
+        &changes);
+    if (r != SetResult::Ok) return r;
+    if (added) *added = std::move(stored);
     impl_->publish(changes);
     return SetResult::Ok;
 }

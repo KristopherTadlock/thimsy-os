@@ -10,10 +10,13 @@
 //                                       print key=value for each change (PATTERN: a key, or a
 //                                       prefix ending in '.' or '*'); --timeout exits 1 if
 //                                       nothing changed in time
-//   thimsy-prop boot [--device FILE] [--install FILE] [--build FILE]
+//   thimsy-prop boot [--device FILE] [--install FILE] [--build FILE] [--defaults FILE]
 //                                       write ro.* from build.props, device.json and install.json,
-//                                       then seal ro.* (S01props). Exit 0, 2 when sealed with
-//                                       warnings, 1 when it failed or already ran this boot
+//                                       then seal ro.*; then store each persist.* default of
+//                                       --defaults that persist.props has no value for (S01props),
+//                                       also when ro.* can't be sealed or was already sealed.
+//                                       Exit 0, 2 when sealed with warnings, 1 when it failed or
+//                                       already ran this boot
 //
 // The store's roots come from THIMSY_PERSIST_FILE and THIMSY_RUN_DIR when set.
 #include <unistd.h>
@@ -24,6 +27,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -44,7 +48,7 @@ const char kUsage[] =
     "       thimsy-prop set KEY VALUE\n"
     "       thimsy-prop list [PREFIX]\n"
     "       thimsy-prop watch [--once] [--timeout MS] [PATTERN...]\n"
-    "       thimsy-prop boot [--device FILE] [--install FILE] [--build FILE]\n";
+    "       thimsy-prop boot [--device FILE] [--install FILE] [--build FILE] [--defaults FILE]\n";
 
 int usage() {
     fputs(kUsage, stderr);
@@ -282,8 +286,11 @@ Source installSource(const json::Value& d, const std::string& path) {
     return src;
 }
 
-// build.props: "ro.key=value" lines; '#' comments and blank lines ignored.
-Source buildSource(const std::string& text, const std::string& path, int* warnings) {
+// A key=value file: build.props (prefix "ro.") or the image's defaults for settings (prefix
+// "persist."). '#' comments and blank lines are ignored; any other line that is not a key=value line
+// with a key under prefix is a warning (what names the expected line in it, "an ro.*").
+Source propsSource(const std::string& text, const std::string& path, const char* prefix, const char* what,
+                   int* warnings) {
     Source src;
     src.name = path;
     size_t pos = 0;
@@ -300,9 +307,9 @@ Source buildSource(const std::string& text, const std::string& path, int* warnin
         const size_t eq = line.find('=');
         std::string key = eq == std::string::npos ? "" : line.substr(b, eq - b);
         while (!key.empty() && (key.back() == ' ' || key.back() == '\t')) key.pop_back();
-        if (key.compare(0, 3, "ro.") != 0 || !thimsy::isValidKey(key)) {
-            fprintf(stderr, "thimsy-prop boot: %s:%d: \"%s\" ignored (not an ro.* key=value line)\n", path.c_str(),
-                    lineNo, line.c_str());
+        if (key.compare(0, strlen(prefix), prefix) != 0 || !thimsy::isValidKey(key)) {
+            fprintf(stderr, "thimsy-prop boot: %s:%d: \"%s\" ignored (not %s key=value line)\n", path.c_str(),
+                    lineNo, line.c_str(), what);
             ++*warnings;
             continue;
         }
@@ -316,6 +323,41 @@ Source buildSource(const std::string& text, const std::string& path, int* warnin
     return src;
 }
 
+// The image's defaults for settings (OA-35; S01props passes thimsy-data's copy of
+// mods/nano-theme.props, the theme settings Android's build.prop gets): every persist.* key that
+// persist.props has no value for is stored there, as a choice made in Settings is; a stored value is
+// never changed, so a later choice sticks and a default changed by a later release reaches new
+// installs only. A line that is not a persist.* key=value line, or a value the store refuses, is a
+// warning. Returns false when the store could not be written.
+bool seedDefaults(ConfigStore* store, const std::string& path, int* warnings) {
+    std::string text;
+    if (!thimsy::readFile(path, &text)) {
+        fprintf(stderr, "thimsy-prop boot: %s: missing\n", path.c_str());
+        ++*warnings;
+        return true;
+    }
+    const Source src = propsSource(text, path, "persist.", "a persist.*", warnings);
+    // trySetDefaults refuses the whole map for one bad value, so a bad value is dropped here, alone.
+    std::map<std::string, std::string> defaults;
+    for (const auto& kv : src.props) {
+        ConfigStore::SetResult bad = ConfigStore::SetResult::Ok;
+        if (kv.second.find('\0') != std::string::npos) bad = ConfigStore::SetResult::InvalidValue;
+        else if (kv.second.size() > thimsy::kMaxValueLength) bad = ConfigStore::SetResult::ValueTooLong;
+        if (bad != ConfigStore::SetResult::Ok) {
+            fprintf(stderr, "thimsy-prop boot: %s: %s ignored: %s\n", path.c_str(), kv.first.c_str(),
+                    thimsy::toString(bad));
+            ++*warnings;
+            continue;
+        }
+        defaults.emplace(kv.first, kv.second);
+    }
+    const auto r = store->trySetDefaults(defaults);
+    if (r == ConfigStore::SetResult::Ok) return true;
+    fprintf(stderr, "thimsy-prop boot: %s: the defaults were not stored: %s\n", path.c_str(), thimsy::toString(r));
+    ++*warnings;
+    return r != ConfigStore::SetResult::IoError;
+}
+
 const char* envOr(const char* name, const char* def) {
     const char* v = getenv(name);
     return v && *v ? v : def;
@@ -325,27 +367,33 @@ int cmdBoot(int argc, char** argv) {
     std::string devicePath = envOr("THIMSY_DEVICE_JSON", "/usr/share/thimsy/device.json");
     std::string buildPath = envOr("THIMSY_BUILD_PROPS", "/usr/share/thimsy/build.props");
     // The card's thimsy/ folder on the data partition, which S00base has mounted at /storage before
-    // S01props runs (G2e-14, linux/docs/init.md); S01props passes all three paths itself.
+    // S01props runs (G2e-14, linux/docs/init.md); S01props passes all three paths itself, and
+    // --defaults (OA-35).
     std::string installPath = envOr("THIMSY_INSTALL_JSON", "/storage/thimsy/install.json");
+    std::string defaultsPath;  // no defaults unless given
     for (int i = 0; i < argc; ++i) {
         if (i + 1 >= argc) return usage();
         if (strcmp(argv[i], "--device") == 0) devicePath = argv[++i];
         else if (strcmp(argv[i], "--install") == 0) installPath = argv[++i];
         else if (strcmp(argv[i], "--build") == 0) buildPath = argv[++i];
+        else if (strcmp(argv[i], "--defaults") == 0) defaultsPath = argv[++i];
         else return usage();
     }
     auto store = openStore();
     if (!store) return 1;
+    int warnings = 0;
+    // The defaults are seeded whenever the store opens, as S01props' old loop did after a failed
+    // boot: also when ro.* was already sealed this boot or can't be sealed (W8-DEFAULTS-10).
     if (store->readOnlySealed()) {
         fprintf(stderr, "thimsy-prop boot: ro.* is already sealed for this boot\n");
+        if (!defaultsPath.empty()) seedDefaults(store.get(), defaultsPath, &warnings);
         return 1;
     }
-    int warnings = 0;
     std::vector<Source> sources;  // in precedence order: an earlier source's key wins
 
     std::string text;
     if (thimsy::readFile(buildPath, &text)) {
-        sources.push_back(buildSource(text, buildPath, &warnings));
+        sources.push_back(propsSource(text, buildPath, "ro.", "an ro.*", &warnings));
     } else {
         fprintf(stderr, "thimsy-prop boot: %s: missing\n", buildPath.c_str());
         ++warnings;
@@ -390,11 +438,10 @@ int cmdBoot(int argc, char** argv) {
         if (r == ConfigStore::SetResult::IoError) failed = true;
         ++warnings;
     }
-    if (!store->sealReadOnly()) {
-        fprintf(stderr, "thimsy-prop boot: can't seal ro.*\n");
-        return 1;
-    }
-    if (failed) return 1;
+    const bool sealed = store->sealReadOnly();
+    if (!sealed) fprintf(stderr, "thimsy-prop boot: can't seal ro.*\n");
+    if (!defaultsPath.empty() && !seedDefaults(store.get(), defaultsPath, &warnings)) failed = true;
+    if (failed || !sealed) return 1;
     return warnings ? 2 : 0;
 }
 

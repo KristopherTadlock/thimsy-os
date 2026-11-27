@@ -22,9 +22,9 @@ ROOT = os.path.dirname(os.path.dirname(TOOL_DIR))
 sys.path.insert(0, TOOL_DIR)
 
 from nanotree.config import Upstream  # noqa: E402
-from nanotree.prefs import (_WORTH, Context, Found, Use, check_table, covering_row, expand_runtime,  # noqa: E402
-                            glob_lines, linux_only, load_table, report, scan, scan_linux_script, scan_props_file,
-                            scan_script, scan_text)
+from nanotree.prefs import (_WORTH, KEY_FILES, Context, Found, Use, check_table, covering_row,  # noqa: E402
+                            expand_runtime, glob_lines, linux_only, load_table, report, scan, scan_linux_script,
+                            scan_props_file, scan_script, scan_text)
 from nanotree.ratchets import read_list, write_list  # noqa: E402
 
 NANO = os.path.join(ROOT, "nano")
@@ -99,6 +99,19 @@ class Prefs(unittest.TestCase):
         self.assertIn("linux/board/common/rootfs-overlay/etc/init.d/deferred/D30net",
                       f["persist.thimsy.wifi.enabled"].files)                     # Nano and init both
         self.assertFalse([x for u in f.values() for x in u.files if "/tests/" in x])  # tests are left out
+
+    def test_image_defaults(self):
+        # The image's default settings: thimsy-prop boot --defaults stores them (S01props passes
+        # thimsy-data's copy of mods/nano-theme.props, OA-35), and the scan reads KEY_FILES for them.
+        self.assertEqual(KEY_FILES, ("mods/nano-theme.props",))
+        u = self.found["persist.gammaos.nano.minima.bg"]
+        self.assertIn("mods/nano-theme.props", u.files)
+        self.assertIn("set", u.ops)
+        self.assertIn("1a1a2e", u.defaults)
+        self.assertIn("colorful-simplified-es-de", self.found["persist.gammaos.nano.esde.themeset"].defaults)
+        s01 = os.path.join(ROOT, "linux", "board", "common", "rootfs-overlay", "etc", "init.d", "S01props")
+        with open(s01, encoding="utf-8") as f:
+            self.assertIn('--defaults "$R/usr/share/thimsy/persist-defaults.props"', f.read())
 
     def test_runtime_families(self):
         f = self.found
@@ -353,26 +366,49 @@ class Unit(unittest.TestCase):
             self.assertIn(want, text)
         self.assertEqual(len(out.problems), 6, text)
 
-    def test_keys_from_marker(self):
-        # "# prefs: keys from FILE" covers the next variable key; FILE's keys are then scanned.
-        out = Found()
-        scan_linux_script("#!/bin/sh\n"
-                          "# prefs: keys from mods/x.props\n"
-                          'thimsy_persist "$_key" ""\n'
-                          'thimsy_persist "$other" ""\n', "linux/board/x/S01x", out)
-        self.assertEqual(out.key_sources, [("mods/x.props", "linux/board/x/S01x:3")])
-        self.assertEqual(len(out.problems), 1, out.problems)  # the second variable is not covered
-        self.assertIn("S01x:4", out.problems[0])
+    def test_key_files(self):
+        # A key file's persist.* keys are set, with their values as defaults; anything else is a problem.
         with tempfile.TemporaryDirectory() as tmp:
             os.makedirs(os.path.join(tmp, "mods"))
             with open(os.path.join(tmp, "mods", "x.props"), "w", encoding="utf-8") as f:
-                f.write("# c\npersist.gammaos.nano.a=1\nnot a line\n")
+                f.write("# c\n\npersist.gammaos.nano.a=1\nnot a line\nro.thimsy.x=2\n")
             found = Found()
-            scan_props_file(tmp, "mods/x.props", "linux/board/x/S01x:3", found)
-            scan_props_file(tmp, "mods/none.props", "linux/board/x/S01x:3", found)
+            scan_props_file(tmp, "mods/x.props", "thimsy-prop boot --defaults", found)
+            scan_props_file(tmp, "mods/none.props", "thimsy-prop boot --defaults", found)
         self.assertEqual(sorted(found), ["persist.gammaos.nano.a"])
         self.assertEqual(found["persist.gammaos.nano.a"].defaults, {"1"})
-        self.assertEqual(len(found.problems), 2, found.problems)
+        self.assertEqual(found["persist.gammaos.nano.a"].files, {"mods/x.props"})
+        text = "\n".join(found.problems)
+        self.assertIn("mods/x.props:4: not a KEY=VALUE line", text)
+        self.assertIn("mods/x.props:5: ro.thimsy.x is not a persist.* key, which thimsy-prop boot --defaults ignores",
+                      text)
+        self.assertIn("thimsy-prop boot --defaults: key file mods/none.props: no such file", text)
+        self.assertEqual(len(found.problems), 3, found.problems)
+
+    def test_scan_reads_the_key_files(self):
+        # scan() with linux_root reads KEY_FILES itself; a script names no key file, so a variable key
+        # in a script is a problem even under the old "# prefs: keys from FILE" comment.
+        with tempfile.TemporaryDirectory() as root:
+            files = {KEY_FILES[0]: "persist.gammaos.nano.ndstheme=3\n",
+                     "linux/board/common/rootfs-overlay/etc/init.d/S01x": "#!/bin/sh\n"
+                                                                           "# prefs: keys from mods/nano-theme.props\n"
+                                                                           'thimsy_persist "$_key" ""\n'}
+            for rel, body in files.items():
+                path = os.path.join(root, *rel.split("/"))
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "w", encoding="utf-8", newline="\n") as f:
+                    f.write(body)
+            found = scan(root, files=[], linux_root=root)
+            os.remove(os.path.join(root, *KEY_FILES[0].split("/")))
+            missing = scan(root, files=[], linux_root=root)
+        self.assertEqual(sorted(found), ["persist.gammaos.nano.ndstheme"])
+        self.assertEqual(found["persist.gammaos.nano.ndstheme"].defaults, {"3"})
+        self.assertEqual(found["persist.gammaos.nano.ndstheme"].files, {KEY_FILES[0]})
+        own = [p for p in found.problems if not p.startswith("runtime family")]  # nano/ is not scanned here
+        self.assertEqual(len(own), 1, own)
+        self.assertIn('S01x:3: thimsy_persist "$_key": the key is a variable', own[0])
+        self.assertIn("thimsy-prop boot --defaults: key file %s: no such file" % KEY_FILES[0],
+                      "\n".join(missing.problems))
 
     def test_owner(self):
         found = Found()
