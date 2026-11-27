@@ -85,7 +85,7 @@ Source: `docs/linux/DECISIONS.md`, "Wave 4: the G7 seam moves, gfix2, review" an
 
 - ~~Display EGL moves~~: decided 2026-11-26, NanoMenu.h unfrozen for seam work and the code moves (DECISIONS.md OA-11).
 - ~~Release-build SSH~~: decided 2026-11-26, root password `thimsy` by default, changeable in Nano, LAN-only by default (DECISIONS.md OA-3).
-- AAudio pointer lifetime: confirm in the AOSP review before cherry-picking G7-audio.
+- ~~AAudio pointer lifetime~~: decided 2026-11-26, the long-lived player is the user pointer again (DECISIONS.md OA-12).
 
 ## Wave 5
 
