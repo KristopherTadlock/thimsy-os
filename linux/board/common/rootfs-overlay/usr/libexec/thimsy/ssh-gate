@@ -5,7 +5,8 @@
 #
 # BusyBox tcpsvd runs this for each connection, with the connection on
 # stdin and stdout and the peer in TCPREMOTEADDR ("a.b.c.d:port", or
-# "[v6]:port" with a "%interface" on link-local addresses). Allowed (decision
+# "[v6]:port" with a "%interface" on link-local addresses; a bare a.b.c.d is
+# taken too, in case a BusyBox leaves the port off). Allowed (decision
 # OA-3): 10/8, 172.16/12, 192.168/16, 169.254/16, 127/8, fc00::/7,
 # fe80::/10, ::1, and IPv4 peers written as ::ffff:a.b.c.d. Anything else,
 # or no address at all, closes the connection without a word. D50ssh does
@@ -43,6 +44,7 @@ case $peer in
 	peer=${peer%%\]*}
 	;;
 *.*:*) peer=${peer%:*} ;;
+*.*) ;;
 *) peer= ;;
 esac
 peer=${peer%%\%*}

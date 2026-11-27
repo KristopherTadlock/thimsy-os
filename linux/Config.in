@@ -16,8 +16,9 @@ choice
 config BR2_THIMSY_FLAVOUR_RELEASE
 	bool "release"
 	help
-	  No adbd, no serial getty, SSH off until the user turns it
-	  on and then key-only, the root password locked.
+	  No adbd, no serial getty, the root password locked, SSH
+	  off until the user turns it on (then root's password is
+	  thimsy or the user's, local network only by default; OA-3).
 
 config BR2_THIMSY_FLAVOUR_DEV
 	bool "development"

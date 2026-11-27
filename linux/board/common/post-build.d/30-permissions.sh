@@ -34,7 +34,8 @@ cfg() {
 # Executable scripts.
 for f in "$target"/etc/init.d/rcS "$target"/etc/init.d/rcK "$target"/etc/init.d/rcD \
 	"$target"/etc/init.d/S[0-9][0-9]* "$target"/etc/init.d/deferred/D[0-9][0-9]* \
-	"$target"/usr/share/thimsy/family/*/hook 	"$target"/usr/libexec/thimsy/ssh-gate "$target"/usr/sbin/thimsy-ssh-passwd; do
+	"$target"/usr/share/thimsy/family/*/hook \
+	"$target"/usr/libexec/thimsy/ssh-gate "$target"/usr/sbin/thimsy-ssh-passwd; do
 	[ -f "$f" ] && chmod 0755 "$f"
 done
 for f in "$target"/usr/share/thimsy/init/lib.sh "$target"/etc/thimsy/init.conf; do

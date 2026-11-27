@@ -24,8 +24,9 @@ or is listed in targets.json's pending_paths; every override marker takes effect
 in some target; a hardware pack's external toolchain states the versions of its
 SDK tier's toolchain; and no target marked "publish": true, nor any named
 *_release, includes dev.fragment or lacks the release policy (decision I37:
-root login locked, no adbd, no serial getty; SSH off at boot and key-only
-follows, since D50ssh decides by ro.thimsy.build.type, which those make).
+root login locked, no adbd, no serial getty; SSH off until the user turns it
+on follows (OA-3), since D50ssh decides by ro.thimsy.build.type, which those
+make).
 With --buildroot DIR (a Buildroot tree at the pinned version), every other
 symbol must exist in that tree and not be a legacy one, and no package of this
 tree may share a name with one of Buildroot's.

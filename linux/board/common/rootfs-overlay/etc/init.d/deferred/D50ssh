@@ -25,6 +25,8 @@
 # /run/thimsy/ssh.lock (flock on fd 9, which tcpsvd is started without). A
 # pidfile is trusted only while its process runs and is tcpsvd
 # (/proc/PID/comm). Stopping ends the listener; sessions already open stay.
+# A tcpsvd that cannot listen (port 22 taken) exits at once: start then
+# undoes the shadow and fails.
 . "${THIMSY_ROOT:-}/usr/share/thimsy/init/lib.sh"
 
 TAG=D50ssh
@@ -195,6 +197,19 @@ apply_shadow() {
 	}
 }
 
+# unbind_shadow: /etc/shadow is the image's again and $SHADOW is gone. If
+# the unbind fails, $SHADOW stays: it is the file still bound, which a later
+# start or password action rewrites in place.
+unbind_shadow() {
+	if is_mounted /etc/shadow; then
+		"$UMOUNT" "$R/etc/shadow" 9>&- || {
+			thimsy_warn $TAG "could not unbind /etc/shadow"
+			return 1
+		}
+	fi
+	rm -f "$SHADOW"
+}
+
 # listen_addr: ADDR_OUT is "::" (IPv6 and IPv4) when the kernel has IPv6,
 # else 0.0.0.0.
 listen_addr() {
@@ -244,15 +259,26 @@ start)
 	svd=$!
 	printf '%s\n' "$svd" > "$PIDFILE"
 	wait_exec "$svd" "$TCPSVD_NAME"
+	# tcpsvd binds port 22 after it starts: a moment for a failed bind to show.
+	if pid_is "$svd" "$TCPSVD_NAME"; then
+		sleep 0.2 2>/dev/null || sleep 1
+	fi
+	if ! kill -0 "$svd" 2>/dev/null; then
+		wait "$svd"
+		rc=$?
+		if [ "$rc" != 0 ]; then
+			thimsy_warn $TAG "tcpsvd exited ($rc): SSH is off (is port 22 taken?)"
+			rm -f "$PIDFILE"
+			unbind_shadow || :
+			exit 1
+		fi
+	fi
 	thimsy_log $TAG "SSH on ($type, $reach network)"
 	;;
 stop)
 	take_lock
 	stop_pidfile "$PIDFILE" "$TCPSVD_NAME"
-	if is_mounted /etc/shadow; then
-		"$UMOUNT" "$R/etc/shadow" 9>&- || thimsy_warn $TAG "could not unbind /etc/shadow"
-	fi
-	rm -f "$SHADOW"
+	unbind_shadow || :
 	;;
 password)
 	take_lock

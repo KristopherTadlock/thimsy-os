@@ -11,8 +11,9 @@ config BR2_PACKAGE_THIMSY_SESSION
 
 	  SSH has no option here: D50ssh (board/common/rootfs-overlay)
 	  decides by ro.thimsy.build.type. Dev images start dropbear
-	  by default; release images only when the user turns SSH on,
-	  and then key-only (decision I37).
+	  by default; release images only when the user turns SSH on
+	  (decisions I37, OA-3). Root's password is thimsy or the
+	  user's, local network only by default.
 
 comment "thimsy-session needs a toolchain w/ C++, threads, gcc >= 7"
 	depends on !BR2_INSTALL_LIBSTDCPP || !BR2_TOOLCHAIN_HAS_THREADS || \

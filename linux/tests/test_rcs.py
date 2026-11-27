@@ -152,6 +152,12 @@ note=
   printf '\n'; } >> "$THIMSY_FAKE_LOG"
 [ -n "$note" ] && exit 1
 case $tool in
+tcpsvd | umount)
+	# THIMSY_FAKE_FAIL=tcpsvd: it cannot listen; =umount: the unbind fails.
+	case " ${THIMSY_FAKE_FAIL:-} " in
+	*" $tool "*) exit 1 ;;
+	esac
+	;;
 mount)
 	case " ${THIMSY_FAKE_FAIL:-} " in
 	*" mount-ext4 "*) [ "$1 $2" = "-t ext4" ] && exit 32 ;;
@@ -1155,6 +1161,37 @@ class TestD50Ssh(WorldCase):
                          [["/etc/shadow"]])
         self.assertFalse((self.w.root / SHADOW_REL).exists())
 
+    def test_tcpsvd_that_cannot_listen_fails_and_undoes_the_shadow(self) -> None:
+        self.build("release")
+        self.props(enabled="1")
+        self.w.write("proc/mounts", "/dev/root / erofs ro 0 0\n"
+                     "tmpfs /etc/shadow tmpfs rw 0 0\n")
+        self.w.clear_calls()
+        r = self.w.run(self.D50, "start", check=False, env={"THIMSY_FAKE_FAIL": "tcpsvd"})
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("tcpsvd exited (1)", self.w.read("dev/kmsg"))
+        self.assertNotIn("SSH on", self.w.boot_log())
+        self.assertEqual([c["args"] for c in self.w.calls() if c["tool"] == "umount"],
+                         [["/etc/shadow"]])
+        self.assertFalse((self.w.root / SHADOW_REL).exists())
+        self.assertFalse((self.w.root / "run/thimsy/ssh/tcpsvd.pid").exists())
+
+    def test_a_failed_unbind_keeps_the_bound_file_current(self) -> None:
+        """If stop cannot unbind, the bound file stays, so a later start's hash reaches the
+        live /etc/shadow."""
+        self.start("release", "1")
+        self.w.write("proc/mounts", "/dev/root / erofs ro 0 0\n"
+                     "tmpfs /etc/shadow tmpfs rw 0 0\n")
+        self.w.run(self.D50, "stop", env={"THIMSY_FAKE_FAIL": "umount"})
+        self.assertIn("could not unbind /etc/shadow", self.w.read("dev/kmsg"))
+        self.assertTrue((self.w.root / SHADOW_REL).exists())
+        h = sha512_crypt("later", "$6$s3")
+        self.w.write(HASH_REL, h + "\n")
+        self.start("release", "1")
+        self.assertEqual([c for c in self.w.calls() if c["tool"] == "mount"
+                          and "/etc/shadow" in c["args"]], [])
+        self.assertEqual(self.shadow().splitlines()[0], "root:%s:19000:0:99999:7:::" % h)
+
     def test_stop_without_a_start(self) -> None:
         self.w.run(self.D50, "stop")
         self.assertEqual([c for c in self.w.calls() if c["tool"] in ("umount", "tcpsvd")], [])
@@ -1208,13 +1245,14 @@ class TestSshGate(WorldCase):
         "[::1]:22", "[fd12:3456::1]:22", "[fc00::1]:22", "[fdff:ffff::9]:22",
         "[fe80::1%wlan0]:22", "[FE80::ABCD%wlan0]:22", "[febf::1]:22",
         "[::ffff:192.168.0.5]:22", "[::ffff:10.0.0.7]:22",
+        "10.0.0.1", "192.168.4.4",                  # no port
     ]
     REFUSED = [
         "8.8.8.8:53", "1.10.0.1:1", "100.64.0.1:1", "11.0.0.1:1", "172.15.255.255:1",
         "172.32.0.1:1", "192.169.0.1:1", "192.16.8.1:1", "169.255.0.1:1", "0.0.0.0:1",
         "[2001:db8::1]:22", "[2a00:1450::5]:22", "[fec0::1]:22", "[fe7f::1]:22", "[fb00::1]:22",
         "[fc::1]:22", "[fe8::1]:22", "[::]:22", "[::ffff:8.8.8.8]:22", "[::2]:22",
-        "10.0.0.1", "", "garbage", "[10.0.0.1]",
+        "8.8.8.8", "", "garbage", "[10.0.0.1]", "fe80::1",
     ]
 
     def gate(self, addr: Optional[str]) -> bool:
