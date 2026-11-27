@@ -142,6 +142,7 @@ class NetworkTest : public compat_test::StoreTest {
         props["ro.thimsy.device.bluetooth"] = "true";
         props["persist.thimsy.bluetooth.enabled"] = "1";
         put(root_ + "/run/dbus/system_bus_socket", "");
+        put(root_ + "/etc/init.d/deferred/D35bluetooth", "#!/bin/sh\n");   // run through o.run below
         o.prop = [this](const char* key) { return props[key]; };
         o.run = [this](const std::vector<std::string>& argv, int timeoutMs) {
             std::string key;
@@ -658,6 +659,14 @@ TEST_F(NetworkTest, SetBtRadioIsTheWholeSwitch) {
     n->setBtRadio(true);
     EXPECT_EQ(ran("power on"), 5);
     EXPECT_EQ(slept, 4 * 500);
+
+    // No D35bluetooth on this image: as no Bluetooth, nothing runs and the key goes back to 0.
+    runs.clear();
+    ASSERT_EQ(unlink(d35.c_str()), 0);
+    n->setBtRadio(true);
+    EXPECT_TRUE(runs.empty());
+    property_get("persist.thimsy.bluetooth.enabled", v, "");
+    EXPECT_STREQ(v, "0");
 }
 
 // The switch ends the back-off of a bluetoothd that did not answer: it was just started.

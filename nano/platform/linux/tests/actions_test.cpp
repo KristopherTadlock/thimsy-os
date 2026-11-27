@@ -155,6 +155,7 @@ class ActionsTest : public compat_test::StoreTest {
         mkdirs(dir_ / "root/tmp");
         mkdirs(dir_ / "root/storage/.config/thimsy");
         o.root = dir_ / "root";
+        put(o.root + o.btScript, "#!/bin/sh\n");  // run through o.run below; it only has to exist
         o.background = false;  // on this thread: the checks below follow each call
         o.run = [this](const std::vector<std::string>& argv, int timeoutMs) {
             runs.push_back(argv);
@@ -429,6 +430,21 @@ TEST_F(ActionsTest, ADeviceWithoutBluetoothTurnsTheSwitchBackOff) {
     next.status = 3;  // D35bluetooth: device.json, the kernel or the controller says there is none
     make()->setBluetoothEnabled(true);
     ASSERT_EQ(runs.size(), 1u);  // no bluetoothctl
+    EXPECT_EQ(prop("persist.thimsy.bluetooth.enabled"), "0");
+}
+
+TEST_F(ActionsTest, AnImageWithoutD35bluetoothTurnsTheSwitchBackOff) {
+    ASSERT_EQ(unlink((o.root + o.btScript).c_str()), 0);
+    auto a = make();
+    a->setBluetoothEnabled(true);
+    EXPECT_TRUE(runs.empty());  // no script to run, and no bluetoothctl
+    EXPECT_EQ(prop("persist.thimsy.bluetooth.enabled"), "0");
+    a->setBluetoothEnabled(false);  // the radio off; no script to stop
+    ASSERT_EQ(runs.size(), 1u);
+    EXPECT_EQ(runs[0], (std::vector<std::string>{"bluetoothctl", "power", "off"}));
+    runs.clear();
+    nanolinux::actions::switchBluetooth(true, o);
+    EXPECT_TRUE(runs.empty());
     EXPECT_EQ(prop("persist.thimsy.bluetooth.enabled"), "0");
 }
 

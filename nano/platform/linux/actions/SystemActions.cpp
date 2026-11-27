@@ -79,9 +79,16 @@ void defaultFollowZone(const std::string& zone) {
     tzset();
 }
 
-// D35bluetooth start|stop: its exit status (0: it succeeded; start: bluetoothd runs).
+// D35bluetooth start|stop: its exit status (0: it succeeded; start: bluetoothd runs). An image
+// without the script has no Bluetooth either: kBtNoneStatus, the script's own answer for that.
 int btScript(const Options& o, bool on) {
-    RunResult r = o.run({"/bin/sh", o.root + o.btScript, on ? "start" : "stop"}, kBtScriptMs);
+    const std::string script = o.root + o.btScript;
+    struct stat st;
+    if (stat(script.c_str(), &st) != 0) {
+        ALOGW("Bluetooth %s: no %s on this image", on ? "on" : "off", o.btScript.c_str());
+        return kBtNoneStatus;
+    }
+    RunResult r = o.run({"/bin/sh", script, on ? "start" : "stop"}, kBtScriptMs);
     if (r.status != 0)
         ALOGW("Bluetooth %s: %s exited %d%s", on ? "on" : "off", o.btScript.c_str(), r.status,
               r.timedOut ? " (timed out)" : "");
