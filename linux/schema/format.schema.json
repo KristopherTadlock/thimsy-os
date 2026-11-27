@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://thimsy.invalid/linux/schema/format.schema.json",
+  "title": "Thimsy ES-DE/nano/format.json",
+  "description": "The major version of the card contract (LIBRARY-FORMAT.md) the library needs a reader to understand. Absent means 1. A reader that meets a higher major uses the library read-only and says so. Builds already in users' hands never read it, so it guards only new builds against newer ones (INTEROP-AUDIT.md, backward-compatibility rules). Only the draft-07 keywords devicejson.py validates are used.",
+  "type": "object",
+  "required": ["version"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {"type": "integer", "minimum": 1, "maximum": 1, "description": "Contract major. 1 is today's layout plus this contract's additive files. A bump needs the owner and the Android compatibility floor (interop Q12); maximum rises with it."}
+  }
+}

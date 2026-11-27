@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://thimsy.invalid/linux/schema/index.schema.json",
+  "title": "Thimsy ES-DE/nano/index.json",
+  "description": "The scrape index, version 2, as Android writes it (scrapeIndexText, NanoMenuScraper.cpp). rom, box and fan are absolute paths. On a card, shipped builds clear box and fan unless they start with <store>/downloaded_media/ or the scrape cache, so until the Android compatibility floor (interop Q12) Linux never writes this file (LIBRARY-FORMAT.md 4.11). Android rebuilds it from structs: no field only one platform knows may live here. Only the draft-07 keywords devicejson.py validates are used.",
+  "type": "object",
+  "required": ["items"],
+  "properties": {
+    "version": {"const": 2},
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["rom"],
+        "properties": {
+          "rom": {"$ref": "#/definitions/legacy_path"},
+          "box": {"$ref": "#/definitions/legacy_path"},
+          "fan": {"$ref": "#/definitions/legacy_path"},
+          "title": {"type": "string"},
+          "scraper": {"type": "string"},
+          "desc": {"type": "string"},
+          "genre": {"type": "string"},
+          "players": {"type": "string"},
+          "rating": {"type": "string"},
+          "date": {"type": "string"},
+          "dev": {"type": "string"},
+          "pub": {"type": "string"},
+          "when": {"type": "integer", "minimum": 0, "maximum": 2147483647, "description": "Unix seconds; clamped to a 32-bit int on load."},
+          "kept": {"type": "integer", "minimum": 0},
+          "xmiss": {"type": "integer", "minimum": 0},
+          "xwhen": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "journal": {
+      "type": "object",
+      "properties": {
+        "run": {"type": "string"},
+        "offset": {"type": "integer", "minimum": 0}
+      }
+    }
+  },
+  "definitions": {
+    "legacy_path": {
+      "type": "string",
+      "pattern": "^(/storage/|/mnt/media_rw/|/mnt/shares/|/data/media/0/|/sdcard/|content://)"
+    }
+  }
+}

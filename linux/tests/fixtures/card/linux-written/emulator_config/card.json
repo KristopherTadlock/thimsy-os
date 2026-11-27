@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "aliases": [
+    {"id": "9602-C755", "kind": "serial", "platform": "linux", "source": "self", "first": "2026-11-22", "last": "2026-11-22"},
+    {"id": "00000000-0000-0000-0000-000000000001", "kind": "android-index", "platform": "android", "source": "found", "first": "2026-11-22", "last": "2026-11-22"}
+  ],
+  "writers": [
+    {"device": "anbernic-rg-arc-d", "platform": "linux", "thimsy": "0.1", "contract": 1, "last": "2026-11-22"}
+  ],
+  "emulators": {
+    "ppsspp": {"linux": "1.20.4"}
+  },
+  "copies": [
+    {"from": "flycast/data/dc_boot.bin", "to": "retroarch/system/dc/dc_boot.bin", "by": "linux", "when": "2026-11-22"}
+  ]
+}

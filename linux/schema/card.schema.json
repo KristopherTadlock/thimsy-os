@@ -1,0 +1,94 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://thimsy.invalid/linux/schema/card.schema.json",
+  "title": "Thimsy emulator_config/card.json",
+  "description": "A card's identity hints: every volume id each platform has seen for this card (OA-19, D20), who wrote the card last, the versions of shared emulators, and the BIOS copies Linux made. It is a hint, never a safety gate (linux_handheld_plan.md 7.7; LIBRARY-FORMAT.md 4.16). Thimsy-new file: this schema is what a writer of contract major 1 emits. Readers keep unknown fields and never refuse the file for them. No value is an absolute path, so Android's id-repair pass (emusync::repoint, which rewrites an id only when '/emulator_config' follows it) never edits it. Only the draft-07 keywords linux/tools/thimsy-import/thimsy_import/devicejson.py validates are used.",
+  "type": "object",
+  "required": ["version", "aliases"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {"const": 1, "description": "This file's own major version. Bumped only if a field changes meaning; adding fields never bumps it."},
+    "aliases": {
+      "type": "array",
+      "description": "Every id this card has been seen under. A reader treats a path under /storage/<any listed id>/ found in this card's own files as a path on this card. One entry per id.",
+      "items": {"$ref": "#/definitions/alias"}
+    },
+    "writers": {
+      "type": "array",
+      "description": "Who last wrote the card, one entry per device model and platform (the foreign-card dialog's 'last used in').",
+      "items": {"$ref": "#/definitions/writer"}
+    },
+    "emulators": {
+      "type": "object",
+      "description": "The version of each shared emulator that last wrote its shared data, per platform, keyed by the emulator_config folder name (ppsspp, scummvm, retroarch).",
+      "propertyNames": {"$ref": "#/definitions/slug"},
+      "additionalProperties": {
+        "type": "object", "additionalProperties": false,
+        "properties": {
+          "android": {"$ref": "#/definitions/version_text"},
+          "linux": {"$ref": "#/definitions/version_text"}
+        }
+      }
+    },
+    "copies": {
+      "type": "array",
+      "description": "Files one platform copied for its own emulator from another emulator's folder (Flycast data/ BIOS into retroarch/system/dc/, DraStic BIOS into the melonDS DS names). Paths are relative to emulator_config/.",
+      "items": {"$ref": "#/definitions/copy"}
+    }
+  },
+  "definitions": {
+    "slug": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+    "date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "description": "YYYY-MM-DD, informational only: handheld clocks are often wrong, so nothing orders by it."},
+    "platform": {"enum": ["android", "linux"]},
+    "version_text": {"type": "string", "pattern": "^[0-9A-Za-z][0-9A-Za-z.+~-]*$"},
+    "volume_id": {
+      "anyOf": [
+        {"type": "string", "pattern": "^[0-9A-F]{4}-[0-9A-F]{4}$", "description": "FAT or exFAT serial, upper case: the id Linux and stock Android use."},
+        {"type": "string", "pattern": "^00000000-0000-0000-0000-[0-9A-Fa-f]{12}$", "description": "The Thimsy Android build's mount-order index (GammaOS Next vold)."},
+        {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", "description": "ext4 UUID, lower case (not an interop card, listed for completeness)."}
+      ]
+    },
+    "alias": {
+      "type": "object",
+      "required": ["id", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/definitions/volume_id"},
+        "kind": {"enum": ["serial", "android-index", "uuid"]},
+        "platform": {"$ref": "#/definitions/platform", "description": "The platform that saw the card under this id."},
+        "source": {"enum": ["self", "found"], "description": "self: the writer's own id for the card when it wrote; found: read from a /storage/<id>/ prefix in the card's own files (D20(b))."},
+        "first": {"$ref": "#/definitions/date"},
+        "last": {"$ref": "#/definitions/date"}
+      }
+    },
+    "writer": {
+      "type": "object",
+      "required": ["device", "platform"],
+      "additionalProperties": false,
+      "properties": {
+        "device": {"$ref": "#/definitions/slug", "description": "multi_device_plan.md's descriptor id, the same on both builds for one model (anbernic-rg-arc-d)."},
+        "platform": {"$ref": "#/definitions/platform"},
+        "thimsy": {"$ref": "#/definitions/version_text", "description": "The Thimsy release that wrote."},
+        "contract": {"type": "integer", "minimum": 1, "description": "The LIBRARY-FORMAT.md major this writer implements."},
+        "last": {"$ref": "#/definitions/date"}
+      }
+    },
+    "copy": {
+      "type": "object",
+      "required": ["from", "to", "by"],
+      "additionalProperties": false,
+      "properties": {
+        "from": {"$ref": "#/definitions/relpath"},
+        "to": {"$ref": "#/definitions/relpath"},
+        "by": {"$ref": "#/definitions/platform"},
+        "when": {"$ref": "#/definitions/date"}
+      }
+    },
+    "relpath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(^|/)\\.\\.?(/|$))(?!.*%)[^\\\\:*?\"<>|]+$",
+      "description": "Relative, forward slashes, no '.' or '..' parts, no token, no character FAT forbids."
+    }
+  }
+}

@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<string name="ROMDirectory" value="/storage/00000000-0000-0000-0000-000000000001/ROMs" />
+<string name="CollectionSystemsCustom" value="road trip" />
+<string name="MediaDirectory" value="" />
+<string name="Scraper" value="screenscraper" />
+<string name="ScraperRegion" value="eu" />
+<bool name="ScrapeVideos" value="true" />
+<bool name="InputTouchOverlay" value="false" />

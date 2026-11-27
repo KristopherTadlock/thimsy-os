@@ -55,6 +55,8 @@ Shipped Android builds never check a `version` field, so any format change must 
 
 ## Proposed direction (to become the card contract)
 
+The contract is now written: [LIBRARY-FORMAT.md](../../LIBRARY-FORMAT.md), with schemas in `linux/schema/` and test vectors in `linux/tests/fixtures/card/`. Its section 9 maps each gap above to where its fix lands.
+
 - **Nothing new is written as an absolute path for the store's own volume.** Paths are relative, `%ROMPATH%`, folder-relative game keys or `%CARDID%`. Readers accept every legacy form. `emulator_config/card.json` lists every id each platform has seen for this card.
 - **Each platform keeps its own choices.** Linux uses `nano/systems.linux.json` and its own folders under `emulator_config/<emu>/linux/`. Shared emulator data (RetroArch BIOS and cheats, PPSSPP saves, ScummVM saves) lives in one place. Save states never cross platforms.
 - **Emulator choice uses a portable family key** (`core:pcsx_rearmed`, `emu:ppsspp`, `family:melonds`) from a shared table generated from ES-DE's `android` and `linuxarm` tables. Resolution order: this platform's choice, then the shared key, then the device default, then "unavailable on this device". A missing emulator never ends in a launch error.

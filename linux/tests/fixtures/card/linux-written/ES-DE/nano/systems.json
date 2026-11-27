@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "systems": [
+    {
+      "id": "nes",
+      "builtin": true,
+      "enabled": true,
+      "order": 0,
+      "displayName": "NES",
+      "shortname": "NES",
+      "romDir": "nes",
+      "launchType": "libretro-core",
+      "coreSo": "mesen_libretro_android.so",
+      "package": "",
+      "launchArgs": "",
+      "intentTemplate": "",
+      "scanSources": [
+        {"type": "rawpath", "value": "/storage/%CARDID%/ROMs/nes", "subfolders": true}
+      ],
+      "extensions": [".nes", ".fds", ".unf", ".unif"],
+      "icon": {"ref": "builtin:0", "tintR": 0.89, "tintG": 0, "tintB": 0.06}
+    },
+    {
+      "id": "psx",
+      "builtin": true,
+      "enabled": true,
+      "order": 10,
+      "displayName": "PlayStation",
+      "shortname": "PSX",
+      "romDir": "psx",
+      "launchType": "libretro-core",
+      "coreSo": "mednafen_psx_hw_libretro_android.so",
+      "package": "",
+      "launchArgs": "",
+      "intentTemplate": "",
+      "scanSources": [
+        {"type": "rawpath", "value": "/storage/%CARDID%/ROMs/psx", "subfolders": true}
+      ],
+      "extensions": [".cue", ".chd", ".m3u", ".pbp"],
+      "icon": {"ref": "builtin:10", "tintR": 0.5, "tintG": 0.5, "tintB": 0.5},
+      "scraper": {"platform": "psx"}
+    },
+    {
+      "id": "n64",
+      "builtin": true,
+      "enabled": true,
+      "order": 5,
+      "displayName": "Nintendo 64",
+      "shortname": "N64",
+      "romDir": "n64",
+      "launchType": "custom-package",
+      "coreSo": "",
+      "package": "org.mupen64plusae.v3.fzurita",
+      "launchArgs": "",
+      "intentTemplate": "-n org.mupen64plusae.v3.fzurita/paulscode.android.mupen64plusae.SplashActivity -a android.intent.action.VIEW -d {file.uri}",
+      "scanSources": [
+        {"type": "rawpath", "value": "/storage/%CARDID%/ROMs/n64", "subfolders": true}
+      ],
+      "extensions": [".bin", ".n64", ".ndd", ".u1", ".v64", ".z64"],
+      "icon": {"ref": "builtin:5", "tintR": 0, "tintG": 0.6, "tintB": 0}
+    }
+  ]
+}

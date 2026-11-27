@@ -1,0 +1,6 @@
+#EXTM3U
+#PLAYLIST:Road Trip
+#EXTINF:215,Artist One - First Song
+../../Music/Artist One/01 First Song.flac
+#EXTINF:187,Artist Two - Second Song
+../../Music/Artist Two/Album/02 Second Song.mp3

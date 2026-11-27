@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<alternativeEmulator>
+	<label>Beetle PSX HW</label>
+</alternativeEmulator>
+<gameList>
+	<game>
+		<path>./Crash Bandicoot (USA).chd</path>
+		<name>Crash Bandicoot</name>
+		<favorite>true</favorite>
+		<playcount>4</playcount>
+		<lastplayed>20261122T101500</lastplayed>
+		<altemulator>Beetle PSX HW</altemulator>
+		<mainlineOnlyTag>kept by every writer</mainlineOnlyTag>
+	</game>
+	<game>
+		<path>./Spyro the Dragon (USA).chd</path>
+		<name>Spyro the Dragon</name>
+		<hidden>true</hidden>
+		<favorite>true</favorite>
+	</game>
+</gameList>

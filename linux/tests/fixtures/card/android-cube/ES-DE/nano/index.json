@@ -1,0 +1,20 @@
+{
+  "version": 2,
+  "items": [
+    {
+      "rom": "/storage/00000000-0000-0000-0000-000000000001/ROMs/psx/Crash Bandicoot (USA).chd",
+      "box": "/storage/00000000-0000-0000-0000-000000000001/ES-DE/downloaded_media/psx/covers/Crash Bandicoot (USA).png",
+      "fan": "/storage/00000000-0000-0000-0000-000000000001/ES-DE/downloaded_media/psx/fanart/Crash Bandicoot (USA).jpg",
+      "title": "Crash Bandicoot",
+      "scraper": "screenscraper",
+      "desc": "A platform game.",
+      "genre": "Platform",
+      "players": "1",
+      "rating": "0.8",
+      "date": "19960909T000000",
+      "dev": "Naughty Dog",
+      "pub": "Sony",
+      "when": 1795000000
+    }
+  ]
+}
