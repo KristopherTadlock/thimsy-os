@@ -7,13 +7,15 @@
     "family's hardware pack, built against the SDK of the tier named by sdk_from). publish: true marks",
     "a target linux/build.sh --publish may build; such a target must be a release (decision I37).",
     "pending_paths: files the fragments name that later steps write; a missing one is reported, not",
-    "failed, and linux/build.sh refuses a target that needs one until it exists."
+    "failed, and linux/build.sh refuses a target that needs one until it exists. A tier lists",
+    "bluetooth exactly when a card built from it (or from its dev or release twin) is for a device",
+    "whose device.json says \"bluetooth\": true (decision OA-15; test_defconfig.py)."
   ],
   "targets": {
     "thimsy_v8_0": {
       "kind": "tier",
       "publish": false,
-      "fragments": ["common", "tier-v8_0", "userland", "gpu-panfrost", "gpu-swrast", "apps-alpha", "dev"]
+      "fragments": ["common", "tier-v8_0", "userland", "bluetooth", "gpu-panfrost", "gpu-swrast", "apps-alpha", "dev"]
     },
     "thimsy_v8_2": {
       "kind": "tier",
@@ -23,7 +25,7 @@
     "thimsy_v8_0_release": {
       "kind": "tier",
       "publish": true,
-      "fragments": ["common", "tier-v8_0", "userland", "gpu-panfrost", "gpu-swrast", "apps-alpha", "release"]
+      "fragments": ["common", "tier-v8_0", "userland", "bluetooth", "gpu-panfrost", "gpu-swrast", "apps-alpha", "release"]
     },
     "thimsy_v8_2_release": {
       "kind": "tier",

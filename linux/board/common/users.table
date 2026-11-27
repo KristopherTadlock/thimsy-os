@@ -12,7 +12,8 @@
 #
 # One package adds a user of its own: Buildroot's dbus recipe makes "dbus",
 # which dbus-daemon drops to after it has made its socket (D35bluetooth starts
-# it only when Bluetooth is on). Its one file not owned by root is the
+# it only when Bluetooth is on). The user is in every root's /etc/passwd;
+# dbus-daemon itself only in the roots of devices with Bluetooth (OA-15). Its one file not owned by root is the
 # activation helper (/usr/libexec/dbus-daemon-launch-helper, root:dbus 4750),
 # which --all-root turns into root:root, so the bus cannot start services on
 # demand. Thimsy needs none: D35bluetooth starts bluetoothd itself (guess at

@@ -1,5 +1,6 @@
-"""Tests of the package recipes, linux/tools/lint_packages.py, linux/tools/assets_allowlist.py
-and thimsy-gpu-pack's gpu_pack.py (IMPLEMENTATION.md D.4, test_packages; step G2d).
+"""Tests of the package recipes, linux/tools/lint_packages.py, linux/tools/assets_allowlist.py,
+thimsy-gpu-pack's gpu_pack.py and linux/tools/bt_pack.py with post-build.d/40-bt-pack.sh
+(IMPLEMENTATION.md D.4, test_packages; step G2d; decision OA-15).
 
 Nothing here runs Buildroot. THIMSY_BUILDROOT=<a Buildroot tree at the pinned version>
 adds Buildroot's own utils/check-package over every recipe.
@@ -13,6 +14,8 @@ import json
 import os
 import re
 import shutil
+import struct
+import subprocess
 import sys
 import tempfile
 import textwrap
@@ -24,6 +27,8 @@ REPO = LINUX.parent
 sys.path.insert(0, str(LINUX / "tools"))
 
 import assets_allowlist as aa  # noqa: E402
+import bt_pack  # noqa: E402
+import check_rcs  # noqa: E402
 import lint_packages as lp  # noqa: E402
 
 E3_PACKAGES = ["libthimsy", "thimsy-nano", "thimsy-data", "thimsy-session", "thimsy-padd",
@@ -767,6 +772,218 @@ class GpuPack(unittest.TestCase):
         for f in sorted(initd.rglob("*")):
             if f.is_file():
                 self.assertNotIn("gpu-", f.read_text(encoding="utf-8", errors="replace"), f)
+
+
+def elf64(needed):
+    """A minimal little-endian ELF64 shared object whose dynamic section lists NEEDED."""
+    strtab = b"\0"
+    offs = []
+    for n in needed:
+        offs.append(len(strtab))
+        strtab += n.encode() + b"\0"
+    str_off = 64 + 2 * 56
+    dyn_off = (str_off + len(strtab) + 7) & ~7
+    dyn = b"".join(struct.pack("<qQ", 1, o) for o in offs) + struct.pack("<qQ", 5, str_off) \
+        + struct.pack("<qQ", 0, 0)
+    total = dyn_off + len(dyn)
+    ehdr = struct.pack("<16sHHIQQQIHHHHHH", b"\x7fELF\x02\x01\x01" + b"\0" * 9, 3, 183, 1, 0, 64, 0, 0,
+                       64, 56, 2, 0, 0, 0)
+    load = struct.pack("<IIQQQQQQ", 1, 5, 0, 0, 0, total, total, 0x1000)
+    dynamic = struct.pack("<IIQQQQQQ", 2, 6, dyn_off, dyn_off, dyn_off, len(dyn), len(dyn), 8)
+    body = ehdr + load + dynamic + strtab
+    return body + b"\0" * (dyn_off - len(body)) + dyn
+
+
+SHELLS = check_rcs.find_shells()
+SH = SHELLS[0] if SHELLS else None
+
+# A tier root as Buildroot leaves it, by package (packages-file-list.txt's "pkg,./path").
+BT_TREE = {
+    "dbus": {"usr/bin/dbus-daemon": None, "usr/bin/dbus-uuidgen": None, "usr/bin/dbus-send": None,
+             "usr/lib/libdbus-1.so.3": None, "etc/dbus-1/system.conf": "conf",
+             "usr/share/dbus-1/system.conf": "conf"},
+    "bluez5_utils": {"usr/libexec/bluetooth/bluetoothd": None, "usr/bin/bluetoothctl": None,
+                     "usr/lib/libbluetooth.so.3": None, "etc/dbus-1/system.d/bluetooth.conf": "conf",
+                     "etc/bluetooth/main.conf": "conf"},
+    "libglib2": {"usr/lib/libglib-2.0.so.0": None},
+    "thimsy-nano": {"usr/bin/thimsy-nano": None},
+}
+NEEDS = {"usr/bin/dbus-daemon": ["libdbus-1.so.3", "libc.so.6"],
+         "usr/libexec/bluetooth/bluetoothd": ["libdbus-1.so.3", "libglib-2.0.so.0"],
+         "usr/bin/bluetoothctl": ["libglib-2.0.so.0", "libreadline.so.8"],
+         "usr/bin/thimsy-nano": ["libdrm.so.2", "libc.so.6"]}
+OTHER = ("etc/init.d/deferred/D35bluetooth", "etc/init.d/deferred/D30net", "var/lib/bluetooth")
+
+
+class BtPack(unittest.TestCase):
+    """tools/bt_pack.py on a fake tier root (decision OA-15)."""
+
+    def setUp(self):
+        self.dir = Path(tempfile.mkdtemp(prefix="thimsy-bt-"))
+        self.addCleanup(shutil.rmtree, str(self.dir), True)
+        self.target = self.dir / "target"
+        self.work = self.dir / "work"
+        lines = []
+        for pkg, files in BT_TREE.items():
+            for rel, text in files.items():
+                self.put(rel, text)
+                lines.append("%s,./%s" % (pkg, rel))
+        for rel in OTHER:
+            self.put(rel, "sh\n")
+        self.list = self.dir / "packages-file-list.txt"
+        self.list.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    def put(self, rel, text=None):
+        p = self.target / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        if text is None:
+            p.write_bytes(elf64(NEEDS.get(rel, ["libc.so.6"])))
+        else:
+            p.write_text(text, encoding="utf-8")
+
+    def run_pack(self, *args):
+        return quiet(bt_pack.main, ["--target", str(self.target), "--work", str(self.work),
+                                    "--file-list", str(self.list)] + list(args))
+
+    def test_elf_needed(self):
+        self.assertEqual(bt_pack.elf_needed(str(self.target / "usr/libexec/bluetooth/bluetoothd")),
+                         ["libdbus-1.so.3", "libglib-2.0.so.0"])
+        self.assertEqual(bt_pack.elf_needed(str(self.target / "etc/bluetooth/main.conf")), [])
+
+    def test_moves_bluez_dbus_and_d35(self):
+        code, out, err = self.run_pack()
+        self.assertEqual(code, 0, err)
+        tree = self.work / "bluetooth"
+        m = json.loads((tree / "usr/share/thimsy/bluetooth.json").read_text(encoding="utf-8"))
+        self.assertEqual(m["packages"], ["dbus", "bluez5_utils"])
+        moved = sorted(list(BT_TREE["dbus"]) + list(BT_TREE["bluez5_utils"])
+                       + ["etc/init.d/deferred/D35bluetooth", "var/lib/bluetooth"])
+        self.assertEqual(m["files"], moved)
+        for rel in moved:
+            self.assertTrue((tree / rel).is_file(), rel)
+            self.assertFalse(os.path.lexists(str(self.target / rel)), rel)
+        # The folders that only held them go; the shared ones and the rest stay.
+        for d in ("usr/libexec/bluetooth", "etc/dbus-1", "etc/bluetooth", "usr/share/dbus-1"):
+            self.assertFalse((self.target / d).exists(), d)
+        for d in ("usr/libexec", "usr/share", "var/lib", "etc/init.d/deferred"):
+            self.assertTrue((self.target / d).is_dir(), d)
+        for rel in ("usr/lib/libglib-2.0.so.0", "usr/bin/thimsy-nano", "etc/init.d/deferred/D30net"):
+            self.assertTrue((self.target / rel).is_file(), rel)
+
+    def test_rebuild_takes_moved_files_from_the_earlier_pack(self):
+        self.assertEqual(self.run_pack()[0], 0)
+        # Without per-package directories only the rebuilt package installs again.
+        for rel, text in BT_TREE["bluez5_utils"].items():
+            self.put(rel, text)
+        self.put("etc/init.d/deferred/D35bluetooth", "sh\n")
+        code, _, err = self.run_pack()
+        self.assertEqual(code, 0, err)
+        for rel in list(BT_TREE["dbus"]) + list(BT_TREE["bluez5_utils"]):
+            self.assertTrue((self.work / "bluetooth" / rel).is_file(), rel)
+            self.assertFalse((self.target / rel).exists(), rel)
+
+    def test_a_missing_program_fails(self):
+        (self.target / "usr/bin/bluetoothctl").unlink()
+        code, _, err = self.run_pack()
+        self.assertEqual(code, 1)
+        self.assertIn("would lack bluetoothctl", err)
+        self.assertTrue((self.target / "usr/bin/dbus-daemon").is_file())  # nothing moved
+
+    def test_a_program_left_needing_a_moved_library_fails(self):
+        p = self.target / "usr/bin/retroarch"
+        p.write_bytes(elf64(["libdbus-1.so.3", "libc.so.6"]))
+        code, _, err = self.run_pack()
+        self.assertEqual(code, 1)
+        self.assertIn("/usr/bin/retroarch needs libdbus-1.so.3, which only the Bluetooth pack has", err)
+        self.assertTrue((self.target / "usr/lib/libdbus-1.so.3").is_file())
+        # Another copy of the library left in the root is enough.
+        self.put("usr/lib/other/libdbus-1.so.3")
+        self.assertEqual(self.run_pack()[0], 0)
+
+    def test_none_removes_d35_and_an_old_pack(self):
+        out = self.dir / "images"
+        out.mkdir()
+        (out / "bluetooth.erofs").write_bytes(b"old")
+        code, _, err = quiet(bt_pack.main, ["--target", str(self.target), "--none", "--out", str(out)])
+        self.assertEqual(code, 0, err)
+        self.assertFalse((self.target / "etc/init.d/deferred/D35bluetooth").exists())
+        self.assertFalse(os.path.lexists(str(self.target / "var/lib/bluetooth")))
+        self.assertTrue((self.target / "etc/init.d/deferred/D30net").is_file())
+        self.assertFalse((out / "bluetooth.erofs").exists())
+
+    def test_usage(self):
+        self.assertEqual(quiet(bt_pack.main, ["--target", str(self.target)])[0], 2)
+        self.assertEqual(self.run_pack("--mkfs", "mkfs.erofs")[0], 2)
+        self.assertEqual(quiet(bt_pack.main, ["--target", str(self.dir / "nope"), "--none"])[0], 1)
+
+    def test_mkfs_is_called_reproducibly(self):
+        calls = []
+
+        def fake_run(cmd, check):
+            calls.append(cmd)
+            Path(cmd[-2]).write_text("img", encoding="utf-8")
+        orig = bt_pack.subprocess.run
+        bt_pack.subprocess.run = fake_run
+        try:
+            code, _, err = self.run_pack("--out", str(self.dir / "images"), "--mkfs", "mkfs.erofs",
+                                         "--epoch", "1700000000")
+        finally:
+            bt_pack.subprocess.run = orig
+        self.assertEqual(code, 0, err)
+        self.assertEqual(len(calls), 1)
+        self.assertIn("-T1700000000", calls[0])
+        self.assertIn("--all-root", calls[0])
+        self.assertTrue((self.dir / "images/bluetooth.erofs").is_file())
+
+    @unittest.skipIf(SH is None, "no POSIX shell found")
+    def test_post_build_part(self):
+        """post-build.d/40-bt-pack.sh: in a tier tree with BlueZ, the pack; without, --none; in
+        a hardware pack's tree, nothing."""
+        script = (LINUX / "board/common/post-build.d/40-bt-pack.sh").as_posix()
+        build = self.dir / "build"
+        build.mkdir()
+        shutil.copy(str(self.list), str(build / "packages-file-list.txt"))
+        fakebin = self.dir / "fakebin"
+        fakebin.mkdir()
+        mkfs = fakebin / "mkfs.erofs"
+        with open(str(mkfs), "w", encoding="utf-8", newline="\n") as f:
+            f.write('#!/bin/sh\nfor a; do out=$prev; prev=$a; done\necho fake > "$out"\n')
+        os.chmod(str(mkfs), 0o755)
+        fake_mkfs = {}
+        if os.name == "nt":
+            # bt_pack.py runs mkfs.erofs itself, and Windows runs no sh script: a batch file.
+            writer = self.dir / "fake_mkfs.py"
+            writer.write_text("import sys\nopen(sys.argv[-2], 'w').write('fake')\n", encoding="utf-8")
+            bat = fakebin / "mkfs-erofs.bat"
+            bat.write_text('@"%s" "%s" %%*\r\n' % (sys.executable, writer), encoding="utf-8")
+            fake_mkfs = {"THIMSY_MKFS_EROFS": str(bat)}
+        config = self.dir / ".config"
+        env = dict(os.environ, BR2_CONFIG=config.as_posix(), BUILD_DIR=build.as_posix(),
+                   BINARIES_DIR=(self.dir / "images").as_posix(), THIMSY_PYTHON=Path(sys.executable).as_posix(),
+                   BR2_EXTERNAL_THIMSY_PATH=LINUX.as_posix(),
+                   PATH=str(fakebin) + os.pathsep + os.environ.get("PATH", ""), **fake_mkfs)
+        env.pop("SOURCE_DATE_EPOCH", None)
+
+        def run(*args):
+            return subprocess.run(SH + [script, self.target.as_posix()] + list(args), env=env,
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                  universal_newlines=True, timeout=120)
+        config.write_text("BR2_PACKAGE_BLUEZ5_UTILS=y\n", encoding="utf-8")
+        r = run("hw", "rk3566", "--family=rk3566")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertTrue((self.target / "usr/bin/dbus-daemon").is_file())
+        r = run("tier", "v8_0")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("wrote", r.stdout)
+        self.assertTrue((self.dir / "images/bluetooth.erofs").is_file())
+        self.assertFalse((self.target / "usr/bin/dbus-daemon").exists())
+        self.assertFalse((self.target / "etc/init.d/deferred/D35bluetooth").exists())
+        self.put("etc/init.d/deferred/D35bluetooth", "sh\n")
+        config.write_text("# BR2_PACKAGE_BLUEZ5_UTILS is not set\n", encoding="utf-8")
+        r = run("tier", "v8_2")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertFalse((self.target / "etc/init.d/deferred/D35bluetooth").exists())
+        self.assertFalse((self.dir / "images/bluetooth.erofs").exists())
 
 
 class Fragments(unittest.TestCase):

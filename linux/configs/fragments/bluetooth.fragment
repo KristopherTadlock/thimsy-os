@@ -1,0 +1,23 @@
+# Bluetooth (plan 5.2; decision OA-15): BlueZ with bluetoothctl, which Nano's
+# system actions run, and the D-Bus system bus it needs. The HID and HoG
+# plugins pair game pads.
+#
+# Only devices whose device.json says "bluetooth": true get them. A tier lists
+# this fragment when a card built from it (its hardware packs' sdk_from, or
+# its dev or release twin's) is for such a device; test_defconfig.py keeps
+# that in step. The tier's root does not keep the files:
+# post-build.d/40-bt-pack.sh (tools/bt_pack.py) moves BlueZ's and D-Bus's
+# files, with D35bluetooth and the /var/lib/bluetooth link, into
+# bluetooth.erofs, and card assembly (post-image.d/10-erofs.sh) unpacks it
+# only into the roots of devices with Bluetooth. Their libraries (GLib,
+# expat, readline) stay in the tier root.
+#
+# Licences (Buildroot's legal-info lists them from the recipes): BlueZ
+# GPL-2.0+ (daemon, tools) and LGPL-2.1+ (library); D-Bus AFL-2.1 or
+# GPL-2.0+; GLib LGPL-2.1+; readline GPL-3.0+ (bluetoothctl). Symbol names
+# (guess) for 2026.08, as Buildroot 2025.02 has them.
+BR2_PACKAGE_DBUS=y
+BR2_PACKAGE_BLUEZ5_UTILS=y
+BR2_PACKAGE_BLUEZ5_UTILS_CLIENT=y
+BR2_PACKAGE_BLUEZ5_UTILS_PLUGINS_HID=y
+BR2_PACKAGE_BLUEZ5_UTILS_PLUGINS_HOG=y

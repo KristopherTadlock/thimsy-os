@@ -48,9 +48,13 @@ RUNNER = LINUX / "board" / "common" / "post-image.sh"
 ARC = ["anbernic-rg-arc-d", "anbernic-rg-arc-s"]
 EPOCH = "1700000000"
 PAD = 16320 * 512  # u-boot.itb's offset in u-boot-rockchip.bin
-TOOLS_ORDER_RK3566 = ["fsck.erofs", "fsck.erofs", "mkfs.erofs", "mkfs.erofs", "mkfs.ext4",
-                      "mkfs.ext4", "fit.py", "fit.py", "genimage", "genimage",
+# The ARC-S (no Bluetooth) is made before the Bluetooth pack is unpacked for the ARC-D (OA-15).
+TOOLS_ORDER_RK3566 = ["fsck.erofs", "fsck.erofs", "mkfs.erofs", "fsck.erofs", "mkfs.erofs",
+                      "mkfs.ext4", "mkfs.ext4", "fit.py", "fit.py", "genimage", "genimage",
                       "gpt_check.py", "gpt_check.py"]
+BT_FILES = {"usr/libexec/bluetooth/bluetoothd": "btd\n", "usr/bin/dbus-daemon": "bus\n",
+            "etc/init.d/deferred/D35bluetooth": "d35\n",
+            "usr/share/thimsy/bluetooth.json": "{}\n"}
 
 
 def posix(p: Path) -> str:
@@ -104,6 +108,7 @@ class Rig:
             "usr/share/thimsy/build.props": "ro.thimsy.build.type=dev\n"})
         fake_erofs(self.tier / "images" / "gpu-panfrost.erofs", {
             "usr/lib/dri/panfrost_dri.so": "panfrost\n"})
+        fake_erofs(self.tier / "images" / "bluetooth.erofs", BT_FILES)
         # The hardware pack's target: modules and firmware.
         write_lf(self.target / "usr/lib/modules/6.12.0/kernel/x.ko", "ko\n")
         write_lf(self.target / "usr/lib/firmware/rtw88/fw.bin", "fw\n")
@@ -210,7 +215,8 @@ class Rk3566CardTest(unittest.TestCase):
     def test_tier_root_unpacked_with_gpu_pack(self) -> None:
         fsck = [c for c in self.rig.calls() if c["tool"] == "fsck.erofs"]
         stage = self.rig.bin / "cards" / ".root-stage"
-        for c, img in zip(fsck, ("rootfs.erofs", "gpu-panfrost.erofs")):
+        self.assertEqual(len(fsck), 3)
+        for c, img in zip(fsck, ("rootfs.erofs", "gpu-panfrost.erofs", "bluetooth.erofs")):
             self.assertEqual(len(c["argv"]), 3, c)
             self.assertTrue(c["argv"][0].startswith("--extract="))
             self.assertTrue(same(c["argv"][0].split("=", 1)[1], stage))
@@ -219,7 +225,7 @@ class Rk3566CardTest(unittest.TestCase):
 
     def test_root_per_device(self) -> None:
         mk = [c for c in self.rig.calls() if c["tool"] == "mkfs.erofs"]
-        for c, dev in zip(mk, ARC):
+        for c, dev in zip(mk, list(reversed(ARC))):
             u = str(uuid.uuid5(uuid.NAMESPACE_URL, "thimsy:%s:root:%s" % (dev, EPOCH)))
             self.assertEqual(c["argv"][:5], ["-zlz4hc,9", "-C65536", "-T" + EPOCH, "-U" + u,
                                              "--all-root"])
@@ -232,6 +238,16 @@ class Rk3566CardTest(unittest.TestCase):
             self.assertIn("usr/lib/firmware/rtw88/fw.bin", files)
             self.assertNotIn("usr/bin/busybox", files)               # only modules and firmware
             self.assertIn("usr/share/thimsy/family/rk3566/hook", files)
+
+    def test_bluetooth_only_where_the_device_has_it(self) -> None:
+        """OA-15: the ARC-D (bluetooth: true) gets the tier's Bluetooth pack, the ARC-S none."""
+        self.assertIn("Bluetooth pack", self.result.stdout)
+        with_bt = card_files(self.rig.bin / "cards" / "anbernic-rg-arc-d" / "rootfs.erofs")
+        without = card_files(self.rig.bin / "cards" / "anbernic-rg-arc-s" / "rootfs.erofs")
+        for f in BT_FILES:
+            self.assertIn(f, with_bt)
+            self.assertNotIn(f, without)
+        self.assertIn("usr/bin/thimsy-nano", without)
 
     def test_data_partition(self) -> None:
         mk = [c for c in self.rig.calls() if c["tool"] == "mkfs.ext4"]
@@ -332,8 +348,9 @@ class Rk3566OtherRunsTest(unittest.TestCase):
         shutil.copytree(str(self.rig.tier), str(other))
         shutil.rmtree(str(self.rig.tier))
         self.run_ok("hw", "rk3566", "--family=rk3566", "--tier-dir=" + posix(other))
-        # One device: root and GPU pack unpacked, then one call of each other tool.
-        self.assertEqual(len(self.rig.calls()), 7)
+        # One device (the ARC-D): root, GPU and Bluetooth packs unpacked, then one call of
+        # each other tool.
+        self.assertEqual(len(self.rig.calls()), 8)
 
     def test_device_filter(self) -> None:
         self.run_ok("hw", "--family=rk3566", THIMSY_DEVICES="anbernic-rg-arc-s")
@@ -343,6 +360,33 @@ class Rk3566OtherRunsTest(unittest.TestCase):
         r = self.run1("hw", "--family=rk3566", THIMSY_DEVICES="no-such-device")
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("no-such-device", r.stdout)
+
+    def test_no_bluetooth_pack_for_a_device_with_bluetooth(self) -> None:
+        (self.rig.tier / "images" / "bluetooth.erofs").unlink()
+        r = self.run1("hw", "--family=rk3566")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("anbernic-rg-arc-d has Bluetooth", r.stdout)
+        self.assertNotIn("mkfs.erofs", [c["tool"] for c in self.rig.calls()])
+        # A device without Bluetooth needs no pack.
+        self.run_ok("hw", "--family=rk3566", THIMSY_DEVICES="anbernic-rg-arc-s")
+
+    def test_bluetooth_not_a_boolean(self) -> None:
+        board = self.rig.tmp / "linux"
+        shutil.copytree(str(LINUX / "board"), str(board / "board"))
+        shutil.copytree(str(LINUX / "configs"), str(board / "configs"))
+        shutil.copytree(str(LINUX / "tools"), str(board / "tools"))
+        js = board / "board/rk3566/devices/anbernic-rg-arc-d.json"
+        d = json.loads(js.read_text(encoding="utf-8"))
+        d["bluetooth"] = "yes"
+        write_lf(js, json.dumps(d))
+        r = subprocess.run(SH + [posix(board / "board/common/post-image.sh"), posix(self.rig.bin),
+                                 "hw", "--family=rk3566"],
+                           env=dict(self.rig.env, BR2_EXTERNAL_THIMSY_PATH=posix(board),
+                                    THIMSY_DEVICES="anbernic-rg-arc-d"),
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                           universal_newlines=True, timeout=600)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("bluetooth is not true or false", r.stdout)
 
     def test_gpt_check_failure_fails_the_build(self) -> None:
         r = self.run1("hw", "--family=rk3566", FAKE_GPT_RC="1")
@@ -444,6 +488,8 @@ class QemuCardTest(unittest.TestCase):
                                    "--layout", "thimsy"])
         root = card_files(self.rig.bin / "cards" / "qemu-virt" / "rootfs.erofs")
         self.assertEqual(json.loads(root["usr/share/thimsy/device.json"])["id"], "qemu-virt")
+        for f in BT_FILES:  # the virt machine has no Bluetooth (OA-15)
+            self.assertNotIn(f, root)
 
     def test_explicit_tier_dir(self) -> None:
         moved = self.rig.tmp / "tier-elsewhere"

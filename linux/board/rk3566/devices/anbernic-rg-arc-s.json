@@ -242,7 +242,7 @@
     "/pad/labels": "printed labels from the dtsi's gpio-keys labels; the home key's 'F' follows InputPlumber's 'F Button' (guess)",
     "/pad/hotkey": "guess: the home key (BTN_MODE) as hotkey; the quit combo is a placeholder for Nano's setting",
     "/audio": "card name from the dtsi (simple-audio-card,name); index and paths from ROCKNIX's RK3566 050-audio_path (ALSA_PRIMARY_CARD=1). Index 1, not 0: the dtsi includes rk3566-anbernic-rgxx3.dtsi, which turns on hdmi_sound, and the HDMI card usually registers first (board/rk3566/common/README.md). Phase 0 check: /proc/asound/cards on the unit (D20sound warns when card 1 is not rk817ext); unverified on mainline (plan open question 25)",
-    "/bluetooth": "guess, from Anbernic's specification: the ARC-S has neither Wi-Fi nor Bluetooth, so D35bluetooth never starts D-Bus or bluetoothd on it",
+    "/bluetooth": "guess, from Anbernic's specification: the ARC-S has neither Wi-Fi nor Bluetooth, so its card gets no BlueZ, D-Bus or D35bluetooth (decision OA-15)",
     "/power": "guess: the rk817 power key registers as 'rk805 pwrkey' (rk805-pwrkey driver); the volume keys are the dtsi's gpio-keys-vol node",
     "/profile_default": "plan 5.4: profiles recommended small"
   }

@@ -11,6 +11,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _common as c  # noqa: E402
 
 
+# The idmapped-mount options (decision OA-29), which the fixture's ROCKNIX configs leave unset.
+USER_NS = "CONFIG_NAMESPACES=y\nCONFIG_USER_NS=y\n"
+
+
 class ConformanceTest(unittest.TestCase):
     def test_good_fragment_passes(self):
         with c.TempDir() as tmp:
@@ -33,11 +37,34 @@ class ConformanceTest(unittest.TestCase):
             self.assertEqual(code, 4)
             self.assertIn("CONFIG_EROFS_FS want y, base n (not-covered)", out)
 
+    def test_idmapped_mount_options_are_critical(self):
+        """OA-29: ext4 drives from a PC are mounted idmapped, which needs user namespaces;
+        a fragment that leaves them out (the base has neither) fails every family."""
+        crit = c.cli.kconfig.read_critical(c.cli.CRITICAL, "RK3566")
+        self.assertEqual(crit["CONFIG_NAMESPACES"][0], "y")
+        self.assertEqual(crit["CONFIG_USER_NS"][0], "y")
+        self.assertIn("user namespaces", crit["CONFIG_USER_NS"][1])
+        with c.TempDir() as tmp:
+            frag = tmp / "f.fragment"
+            frag.write_text('CONFIG_INITRAMFS_SOURCE=""\nCONFIG_EROFS_FS=y\nCONFIG_DRM_PANFROST=y\n',
+                            encoding="utf-8")
+            for fam in c.FAMILIES:
+                code, out, _e = c.run(tmp / fam, fam, None, "--fragment", str(frag))
+                self.assertEqual(code, 4, fam)
+                self.assertIn("CONFIG_NAMESPACES want y, base n (not-covered)", out)
+                self.assertIn("CONFIG_USER_NS want y, base n (not-covered)", out)
+            frag.write_text('CONFIG_INITRAMFS_SOURCE=""\nCONFIG_EROFS_FS=y\nCONFIG_DRM_PANFROST=y\n'
+                            '# CONFIG_USER_NS is not set\nCONFIG_NAMESPACES=y\n', encoding="utf-8")
+            code, out, _e = c.run(tmp / "flip", "RK3566", None, "--fragment", str(frag))
+            self.assertEqual(code, 4)
+            self.assertIn("CONFIG_USER_NS want y, base n, fragment n (flipped)", out)
+            self.assertNotIn("CONFIG_NAMESPACES want", out)
+
     def test_family_section_applies(self):
         """RK3566 needs Panfrost built in; ROCKNIX has it as a module."""
         with c.TempDir() as tmp:
             frag = tmp / "f.fragment"
-            frag.write_text('CONFIG_INITRAMFS_SOURCE=""\nCONFIG_EROFS_FS=y\n', encoding="utf-8")
+            frag.write_text('CONFIG_INITRAMFS_SOURCE=""\nCONFIG_EROFS_FS=y\n' + USER_NS, encoding="utf-8")
             code, out, _e = c.run(tmp / "o", "RK3566", None, "--fragment", str(frag))
             self.assertEqual(code, 4)
             self.assertIn("CONFIG_DRM_PANFROST want y, base m (not-covered)", out)

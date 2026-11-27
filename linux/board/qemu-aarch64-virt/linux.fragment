@@ -37,6 +37,15 @@ CONFIG_EXFAT_FS=y
 CONFIG_DEVTMPFS=y
 CONFIG_TMPFS=y
 
+# Idmapped mounts of ext4 drives made on a PC (decision OA-29): the mapping
+# is a user namespace. USER_NS is off by default.
+CONFIG_NAMESPACES=y
+CONFIG_USER_NS=y
+
+# Sleep and wake (thimsy-session's SleepPlan), as kernel-critical.conf
+# asks of every family.
+CONFIG_PM_SLEEP=y
+
 # Input: evdev for padd, uinput for the virtual pad it creates.
 CONFIG_INPUT_EVDEV=y
 CONFIG_INPUT_UINPUT=y

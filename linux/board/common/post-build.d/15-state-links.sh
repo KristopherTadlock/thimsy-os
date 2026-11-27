@@ -7,8 +7,9 @@
 #                         (bluetoothd's pairings and adapter settings;
 #                         D35bluetooth makes the directory, 0700)
 #
-# Made whether or not BlueZ is in the root: the link costs nothing, and a
-# dangling one is never followed. Re-runnable (Buildroot runs post-build
+# Made whether or not BlueZ is in the tier: 40-bt-pack.sh then moves the
+# link into the Bluetooth pack with BlueZ, or removes it when the tier has
+# no BlueZ (decision OA-15). Re-runnable (Buildroot runs post-build
 # again on every "make"): a path that is already the right link is kept;
 # an empty directory in its place (BlueZ's install makes one) is replaced;
 # anything else there fails the build, since the link would hide it.

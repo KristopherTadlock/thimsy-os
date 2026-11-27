@@ -119,6 +119,7 @@
       ]
     }
   },
+  "bluetooth": false,
   "power": {
     "key": {
       "match": {
@@ -135,6 +136,7 @@
     "/dtb": "QEMU passes its own device tree; no DTB is built",
     "/panel": "guess: virtio-gpu's default 1280x800 scan-out",
     "/pad/sources": "guess: virtio-input names the keyboard 'QEMU Virtio Keyboard'",
+    "/bluetooth": "the virt machine has no Bluetooth controller, so its disk gets no BlueZ, D-Bus or D35bluetooth (decision OA-15)",
     "/power": "guess: virt's power button is a gpio-keys node sending KEY_POWER (system_powerdown)"
   }
 }
