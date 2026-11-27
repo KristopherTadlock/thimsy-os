@@ -21,8 +21,9 @@ ROOT = os.path.dirname(os.path.dirname(TOOL_DIR))
 sys.path.insert(0, TOOL_DIR)
 
 from nanotree.config import Upstream  # noqa: E402
-from nanotree.prefs import (Context, Found, Use, check_table, covering_row, expand_runtime,  # noqa: E402
-                            glob_lines, linux_only, load_table, report, scan, scan_script, scan_text)
+from nanotree.prefs import (_WORTH, Context, Found, Use, check_table, covering_row, expand_runtime,  # noqa: E402
+                            glob_lines, linux_only, load_table, report, scan, scan_linux_script, scan_script,
+                            scan_text)
 from nanotree.ratchets import read_list, write_list  # noqa: E402
 
 NANO = os.path.join(ROOT, "nano")
@@ -44,7 +45,7 @@ class Prefs(unittest.TestCase):
     def setUpClass(cls):
         cls.table = load_table(TABLE)
         cls.rows = cls.table["rows"]
-        cls.found = scan(NANO)
+        cls.found = scan(NANO, linux_root=ROOT)
 
     def cls_of(self, key):
         r = covering_row(key, self.rows)
@@ -80,6 +81,23 @@ class Prefs(unittest.TestCase):
         self.assertNotIn("sys.x", f)                                              # tests are left out
         self.assertIn("gammaos-nano.rc", f["persist.gammaos.nano.overlay"].files)  # an init script
         self.assertIn("persist.thimsy.dexopt_done", f)                            # a shell script
+        # A chooser spec, "key|options|title" (NanoMenuPS3Menu.cpp, QA_SHADER_OPT_MENU).
+        self.assertEqual(f["persist.gammaos.shader.custom.scanline_density"].ops, {"spec"})
+        self.assertIn("1/8", f["persist.gammaos.shader.custom.res_scale"].options[0])
+        self.assertIn("persist.gammaos.shader.blurfill.orientation", f)
+
+    def test_linux_components_outside_nano(self):
+        f = self.found
+        for key, owner, where in (("persist.thimsy.audio.volume", "thimsy-session", "linux/src/thimsy-session/"),
+                                  ("persist.thimsy.time.ntp", "D40time", "linux/board/"),
+                                  ("persist.thimsy.ssh.enabled", "D50ssh", "linux/board/")):
+            self.assertTrue(all(x.startswith(where) for x in f[key].files), key)
+            self.assertIn(owner, self.row(key)["owner"])
+            self.assertEqual(self.row(key)["class"], "D")
+        self.assertEqual(f["persist.thimsy.time.ntp"].defaults, {"1"})
+        self.assertIn("linux/board/common/rootfs-overlay/etc/init.d/deferred/D30net",
+                      f["persist.thimsy.wifi.enabled"].files)                     # Nano and init both
+        self.assertFalse([x for u in f.values() for x in u.files if "/tests/" in x])  # tests are left out
 
     def test_runtime_families(self):
         f = self.found
@@ -196,6 +214,84 @@ class Unit(unittest.TestCase):
         self.assertEqual(f["secure:ui_night_mode"].ops, {"set"})
         self.assertIn("persist.gammaos.gamepad.pa%d_pkg", f)
 
+    def test_packed_spec(self):
+        out = Found()
+        scan_text('''
+            act("Scanline Density", QA_SHADER_OPT_MENU,
+                std::string("persist.gammaos.shader.custom.scanline_density|auto:Auto,fine:Fine,off:Off|Density"), 22);
+            it.value = "@type|crt-simple:CRT|Type";
+            LOGI("ro.gammaos.device is not set");
+            ask("persist.gammaos.nano.packed=1,other");
+        ''', "x.cpp", out)
+        u = out["persist.gammaos.shader.custom.scanline_density"]
+        self.assertEqual(u.ops, {"spec"})
+        self.assertEqual(u.options, ["auto:Auto,fine:Fine,off:Off"])
+        self.assertNotIn("@type", out)
+        self.assertNotIn("ro.gammaos.device", out)
+        text = "\n".join(out.problems)
+        self.assertIn("packs key persist.gammaos.nano.packed into", text)
+        self.assertEqual(len(out.problems), 1)
+        # The ratchet: a spec key with no row fails, and so does an enum row missing a value the spec offers.
+        rows = [{"match": "persist.gammaos.shader.custom.scanline_density", "class": "A",
+                 "ini": "android.shader.custom.scanline_density", "type": "enum", "default": "",
+                 "values": ["auto", "fine"], "note": "n"}]
+        found = Found({"persist.gammaos.shader.custom.scanline_density": u})
+        text = "\n".join(check_table({"rows": [], "unclassified": []}, found))
+        self.assertIn("no row for persist.gammaos.shader.custom.scanline_density", text)
+        text = "\n".join(check_table({"rows": rows, "unclassified": []}, found))
+        self.assertIn("persist.gammaos.shader.custom.scanline_density: the code offers off (a settings row or a chooser "
+                      "spec), which \"values\" lacks", text)
+
+    def test_template_in_a_file_with_no_key(self):
+        # A helper that builds keys from a prefix another file passes names no key itself, so _WORTH alone
+        # would skip it; the template check reads it anyway, joined literals included.
+        for body in ('snprintf(k, sizeof k, "%s_%d", base, i);', 'snprintf(k, sizeof k, "%s" "_%d", base, i);',
+                     'snprintf(k, sizeof k, R"(%s_%d)", base, i);'):
+            text = "void chunk(const char* base, int i) { char k[92]; %s }" % body
+            self.assertIsNone(_WORTH.search(text))
+            ctx, out = Context(), Found()
+            scan_text(text, "helper.cpp", out, ctx)
+            expand_runtime(out, ctx, ())
+            self.assertIn("helper.cpp:1 builds keys from '%s_%d'", "\n".join(out.problems), body)
+        ctx, out = Context(), Found()
+        scan_text('void f() { printf("%s: %d", a, b); }', "log.cpp", out, ctx)
+        expand_runtime(out, ctx, ())
+        self.assertEqual(out.problems, [])
+
+    def test_linux_scripts(self):
+        out = {}
+        scan_linux_script("#!/bin/sh\n"
+                          "# thimsy_persist persist.thimsy.c 1\n"
+                          "\tthimsy_persist persist.thimsy.time.ntp 1\n"
+                          "\tthimsy_ro ro.thimsy.device.audio.card ''\n"
+                          "\tthimsy_build_prop ro.thimsy.build.type release\n"
+                          "\tsetprop sys.thimsy.x 1\n", "linux/board/x/D40time", out)
+        self.assertEqual(sorted(out), ["persist.thimsy.time.ntp", "ro.thimsy.build.type", "ro.thimsy.device.audio.card",
+                                       "sys.thimsy.x"])
+        self.assertEqual(out["persist.thimsy.time.ntp"].defaults, {"1"})
+        self.assertEqual(out["ro.thimsy.device.audio.card"].defaults, {""})
+        self.assertEqual(out["persist.thimsy.time.ntp"].calls, {"thimsy_persist"})
+
+    def test_owner(self):
+        found = Found()
+        for k, f in (("persist.thimsy.a", "linux/board/x/D40time"), ("persist.thimsy.b", "linux/src/s/S.cpp"),
+                     ("persist.gammaos.c", "NanoMenu.cpp"), ("sys.thimsy.d", "linux/src/s/S.cpp"),
+                     ("persist.thimsy.e", "linux/src/s/S.cpp")):
+            u = Use()
+            u.files.add(f)
+            found[k] = u
+        rows = [{"match": "persist.thimsy.a", "class": "D", "note": "n"},
+                {"match": "persist.thimsy.b", "class": "D", "owner": "thimsy-session", "note": "n"},
+                {"match": "persist.gammaos.c", "class": "D", "owner": "init", "note": "n"},
+                {"match": "sys.*", "class": "R", "note": "n"},
+                {"match": "persist.thimsy.*", "class": "D", "note": "n"}]
+        text = "\n".join(check_table({"rows": rows, "unclassified": []}, found))
+        self.assertIn("persist.thimsy.a: only linux/board/x/D40time name it", text)
+        self.assertNotIn("persist.thimsy.b:", text)
+        self.assertIn("persist.gammaos.c: \"owner\" init, but nothing outside nano/ names it", text)
+        self.assertNotIn("sys.thimsy.d", text)
+        self.assertIn("persist.thimsy.e: only", text)                             # a glob row is not enough
+
     def test_check_table(self):
         found = {}
         for k, d in (("persist.a.x", "1"), ("persist.a.y", ""), ("sys.z", ""), ("persist.b", "on")):
@@ -307,13 +403,13 @@ class Unit(unittest.TestCase):
 
 
 def _list() -> int:
-    for line in report(scan(NANO), load_table(TABLE)["rows"]):
+    for line in report(scan(NANO, linux_root=ROOT), load_table(TABLE)["rows"]):
         print(line)
     return 0
 
 
 def _update_globs() -> int:
-    lines = glob_lines(scan(NANO), load_table(TABLE)["rows"])
+    lines = glob_lines(scan(NANO, linux_root=ROOT), load_table(TABLE)["rows"])
     write_list(GLOBS, GLOBS_HEADER, lines)
     print("prefs-globs.txt: %d keys" % len(lines))
     return 0
