@@ -763,13 +763,21 @@ void NanoMenu::buildSettingsTree() {
 // ---------------------------------------------------------------------------
 
 // What the platform offers (W6-caps; docs/linux/ARCHITECTURE-AUDIT.md R4). An action row whose
-// capability the platform lacks, a row bound to a setting it does not support, and a category with
-// nothing left to show are hidden; the tree itself is built the same on every platform.
+// capability the platform lacks, a hint row about a feature it lacks, a row bound to a setting it
+// does not support, and a category with nothing left to show are hidden; the tree itself is built
+// the same on every platform.
 static bool settingsActionAvailable(const std::string& id) {
     const nanoplat::Platform& platform = nanoplat::get();
     if (id == "reset_wifi_bt") return platform.has(nanoplat::Cap::ResetRadios);
     if (id == "factory_reset") return platform.has(nanoplat::Cap::FactoryReset);
     if (id == "usb_mtp" || id == "usb_charge") return platform.has(nanoplat::Cap::Mtp);
+    return true;
+}
+
+// A row bound to no setting (kNone: a hint or a screen) that names a feature of its own.
+static bool settingsHintAvailable(const std::string& id) {
+    // Apps > "Manage apps from full Android Settings": only where that settings app exists.
+    if (id == "apps_info") return nanoplat::get().has(nanoplat::Cap::SystemSettingsApp);
     return true;
 }
 
@@ -781,7 +789,8 @@ static bool settingsNodeShown(const std::vector<SettingNode>& nodes, int idx) {
         return false;
     }
     if (n.type == SettingNodeType::kAction) return settingsActionAvailable(n.id);
-    return n.source == SettingSource::kNone || settingSupported(n.source, n.key);
+    if (n.source == SettingSource::kNone) return settingsHintAvailable(n.id);
+    return settingSupported(n.source, n.key);
 }
 
 void NanoMenu::settingsTreeGetChildren(int parentIdx,

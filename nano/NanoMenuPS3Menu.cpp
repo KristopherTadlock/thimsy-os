@@ -874,6 +874,37 @@ bool NanoMenu::themeSettingRowVisible(const char* name) const {
     return true;
 }
 
+// Whether the DATA submenu `d` would open with no row on this platform: it has children, and every
+// one is bound to a setting the platform does not support or is itself such a submenu (W6-caps). `id`
+// is the row's compound id (Ps3Item::payloadStr, maybe empty), from which its children's path-scoped
+// bindings resolve as buildDataSubmenu resolves them. Only the platform counts here: a row the theme
+// or the user hides still lists its submenu, as before. The submenus whose dispatch builds or adds
+// rows of its own (the PS3_DATA_SUBMENU case: Gamepad Settings, External Display, Game Settings,
+// Theme Settings) are never empty by this test. On a platform that supports every setting nothing is.
+static bool ps3DataSubmenuEmpty(const Ps3DataItem* d, const std::string& id) {
+    if (!d || !d->children || d->childCount <= 0 || !d->name) return false;
+    for (const char* own : {"Gamepad Settings", "External Display", "Game Settings", "Theme Settings"})
+        if (!strcmp(d->name, own)) return false;
+    for (int i = 0; i < d->childCount; i++) {
+        const Ps3DataItem& c = d->children[i];
+        const std::string name = c.name ? c.name : "";
+        const std::string childId = id.empty() ? std::string() : id + "/" + name;
+        if (c.children && c.childCount > 0) {
+            if (!ps3DataSubmenuEmpty(&c, childId)) return false;
+        } else if (ps3BindingSupported(ps3BindingForItem(name, childId))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Whether a DATA row naming a platform feature has it here (W6-caps): System Settings > Android
+// Settings opens the platform's own settings app (launchAndroidSettings).
+static bool ps3DataRowAvailable(const char* name) {
+    if (name && !strcmp(name, "Android Settings")) return nanoplat::get().has(nanoplat::Cap::SystemSettingsApp);
+    return true;
+}
+
 // Build a submenu level from a static DATA node's children. hidePrefix is the compound-id path of
 // `node` ("<catId>/<parentPath>/") so each child's own id ("<hidePrefix><name>") can be checked
 // against the hidden set (Theme Settings > Home Categories item show/hide) and stashed for a deeper
@@ -892,11 +923,13 @@ void NanoMenu::buildDataSubmenu(const Ps3DataItem* node, Ps3Level& out, const st
     for (int i = 0; i < node->childCount; i++) {
         const char* childName = node->children[i].name;
         if (!themeSettingRowVisible(childName)) continue;
+        if (!ps3DataRowAvailable(childName)) continue;   // a feature this platform lacks (W6-caps)
         // Skip a child the user has hidden (Theme Settings > Home Categories item show/hide). The
         // compound id is "<hidePrefix><name>"; when no prefix was threaded in the check is inert.
         if (!hidePrefix.empty() && childName && isItemHidden(hidePrefix + childName)) continue;
         Ps3Item item = makeDataItem(&node->children[i], hidePrefix);
         if (!ps3BindingSupported(item.binding)) continue;   // a setting this platform lacks (W6-caps)
+        if (ps3DataSubmenuEmpty(item.data, item.payloadStr)) continue;   // nothing in it here (W6-caps)
         out.items.push_back(std::move(item));
     }
 }
@@ -1640,6 +1673,7 @@ void NanoMenu::buildPs3Cats() {
             if (!themeSettingRowVisible(dc.items[ii].name)) continue;   // e.g. Slide Behaviour, no slide
             Ps3Item item = makeDataItem(&dc.items[ii], catHidePrefix);
             if (!ps3BindingSupported(item.binding)) continue;   // a setting this platform lacks (W6-caps)
+            if (ps3DataSubmenuEmpty(item.data, item.payloadStr)) continue;   // nothing in it here (W6-caps)
             c.items.push_back(std::move(item));
         }
         if (strcmp(dc.id, "game") == 0)     gameCatRuntimeIdx     = (int)mPs3Cats.size();
@@ -2723,12 +2757,15 @@ static bool qsTileHidden(const char* spec) {
 // stay reachable as action rows. Built lazily on open, discarded on pop (zero idle cost).
 // Shared row helpers for the Gamepad Settings sections. A leaf is a bound value
 // row (A opens its side-panel chooser); an act row dispatches a QA_ code.
-void NanoMenu::gpLeaf(Ps3Level& out, const char* label, const char* bindLabel, int icon) {
+// gpLeaf says whether it added the row: a caller that then sets out.items.back() must check, or it
+// would change the row before, or an empty list's back() (W6-caps).
+bool NanoMenu::gpLeaf(Ps3Level& out, const char* label, const char* bindLabel, int icon) {
     Ps3Item it; it.label = label; it.kind = PS3_DATA_LEAF; it.action = 1;
     it.binding = ps3BindingFor(bindLabel ? bindLabel : label);
-    if (!ps3BindingSupported(it.binding)) return;   // a setting this platform lacks (W6-caps)
+    if (!ps3BindingSupported(it.binding)) return false;   // a setting this platform lacks (W6-caps)
     it.iconTex = iconTexForIcon(icon); it.nmapTex = nmapForIcon(icon); it.iconR = it.iconG = it.iconB = 1.0f;
     out.items.push_back(it);
+    return true;
 }
 void NanoMenu::gpAct(Ps3Level& out, const char* label, int qa, int icon, const char* val) {
     Ps3Item it; it.label = label; it.kind = PS3_QUICK; it.a = qa;
@@ -2745,14 +2782,23 @@ void NanoMenu::buildGamepadSubmenu(Ps3Level& out) {
     // props with the QS tiles + the power-menu Controller dialog (external changers). Drop the cache
     // on entry so every gamepad/mouse bound row - reached only through this menu - re-reads live.
     mPs3BindCache.clear();
-    gpAct(out, "Controllers",      QA_GP_CONTROLLERS, 5,  nullptr);
-    gpAct(out, "Sticks & D-Pad",   QA_GP_STICKS,      5,  nullptr);
-    gpAct(out, "Buttons",          QA_GP_BUTTONS,     5,  nullptr);
-    gpAct(out, "Calibrate & Test", QA_GP_CALTEST,     74, nullptr);
-    gpAct(out, "Vibration",        QA_GP_RUMBLE,      74, nullptr);
-    gpAct(out, "Button Mapping",   QA_GP_MAPPING,     74, nullptr);
-    gpAct(out, "Touch & Mouse",    QA_GP_TOUCH,       53, nullptr);
-    gpAct(out, "Hotkeys",          QA_GP_HOTKEYS,     5,  nullptr);
+    // A section whose rows all hide on this platform (each bound to a setting it lacks) is left
+    // out rather than opening empty (W6-caps): its builder is run once here and only its row count
+    // read. The section builders only add rows (no reads of the values, no state), and on a
+    // platform that supports every setting no section is ever empty.
+    auto section = [&](const char* label, int qa, int icon, void (NanoMenu::*build)(Ps3Level&)) {
+        Ps3Level probe;
+        (this->*build)(probe);
+        if (!probe.items.empty()) gpAct(out, label, qa, icon, nullptr);
+    };
+    section("Controllers",      QA_GP_CONTROLLERS, 5,  &NanoMenu::buildGpControllers);
+    section("Sticks & D-Pad",   QA_GP_STICKS,      5,  &NanoMenu::buildGpSticks);
+    section("Buttons",          QA_GP_BUTTONS,     5,  &NanoMenu::buildGpButtons);
+    section("Calibrate & Test", QA_GP_CALTEST,     74, &NanoMenu::buildGpCalTest);
+    section("Vibration",        QA_GP_RUMBLE,      74, &NanoMenu::buildGpRumble);
+    section("Button Mapping",   QA_GP_MAPPING,     74, &NanoMenu::buildGpMapping);
+    section("Touch & Mouse",    QA_GP_TOUCH,       53, &NanoMenu::buildGpTouch);
+    section("Hotkeys",          QA_GP_HOTKEYS,     5,  &NanoMenu::buildGpHotkeys);
 }
 
 void NanoMenu::buildGpControllers(Ps3Level& out) {
@@ -2775,8 +2821,7 @@ void NanoMenu::buildGpSticks(Ps3Level& out) {
 }
 void NanoMenu::buildGpButtons(Ps3Level& out) {
     out.items.clear(); out.sel = 0; out.title = "Buttons"; out.screenKind = 0;
-    gpLeaf(out, "ABXY Swap", nullptr, 5);
-    out.items.back().desc = kAbxySwapDesc;
+    if (gpLeaf(out, "ABXY Swap", nullptr, 5)) out.items.back().desc = kAbxySwapDesc;
     // On-screen prompt theme (letters vs PlayStation glyphs, and which button is OK).
     gpLeaf(out, "Button Prompts", nullptr, 5);
     gpLeaf(out, "OK Button", nullptr, 5);
@@ -2805,39 +2850,42 @@ void NanoMenu::buildGpMapping(Ps3Level& out) {
 }
 void NanoMenu::buildGpTouch(Ps3Level& out) {
     out.items.clear(); out.sel = 0; out.title = "Touch & Mouse"; out.screenKind = 0;
-    gpLeaf(out, "Touch Input", nullptr, 53);
-    out.items.back().desc = "Off: Nano ignores the touchscreen and takes only controller (and mouse) input. Games and apps still get touch.";
+    if (gpLeaf(out, "Touch Input", nullptr, 53))
+        out.items.back().desc = "Off: Nano ignores the touchscreen and takes only controller (and mouse) input. Games and apps still get touch.";
     gpLeaf(out, "Screen Map", nullptr, 53);
-    gpAct (out, "Mouse Mode", QA_MOUSE_MENU, 53, nullptr);
+    // Mouse Mode only with a row to show (W6-caps; as Gamepad Settings' sections).
+    Ps3Level mouse;
+    buildMouseSubmenu(mouse);
+    if (!mouse.items.empty()) gpAct(out, "Mouse Mode", QA_MOUSE_MENU, 53, nullptr);
 }
 
 // Hotkeys: hold the Anbernic button, or Start + Select, and press another button in a game
 // (HOTKEYS.md).
 void NanoMenu::buildGpHotkeys(Ps3Level& out) {
     out.items.clear(); out.sel = 0; out.title = "Hotkeys"; out.screenKind = 0;
-    gpLeaf(out, "Universal Hotkeys", nullptr, 5);
     // Where Back doubles as the function button a tap is still Back (devkeys::backRelease).
-    out.items.back().desc = devkeys::current().sharedBack
-        ? fnText("In a game, hold the %s button and press another button to save, load, fast forward or rewind. On its own, a tap is still Back, holding it for a second opens the Quick Menu, and holding it for 3 seconds closes the game.")
-        : fnText("In a game, hold the %1$s button and press another button to save, load, fast forward or rewind. Pressing the %1$s button on its own still opens the Quick Menu. Holding it on its own for 3 seconds closes the game.");
-    gpLeaf(out, "Start + Select Hotkeys", nullptr, 5);
-    out.items.back().desc = fnText("On: in a game, Start + Select works like the %s button for hotkeys (Start + Select + R1 saves), and holding Start + Select for 3 seconds closes the game. The game still sees Start and Select. In the menus, Start + Select always opens the Quick Menu.");
-    gpLeaf(out, "Save State Button", nullptr, 5);
-    out.items.back().desc = fnText("%s + this button saves the game's state.");
-    gpLeaf(out, "Load State Button", nullptr, 5);
-    out.items.back().desc = fnText("%s + this button loads the saved state.");
-    gpLeaf(out, "Fast Forward Button", nullptr, 5);
-    out.items.back().desc = fnText("%s + this button turns fast forward on or off.");
-    gpLeaf(out, "Rewind Button", nullptr, 5);
-    out.items.back().desc = fnText("%s + this button turns rewind on or off. Works where the emulator can rewind and rewind is turned on in its settings.");
-    gpLeaf(out, "Quit Game Button", nullptr, 5);
-    out.items.back().desc = fnText("%1$s + this button closes the game and returns to the menu, as holding the %1$s button or Start + Select for 3 seconds does. The emulator saves first where it can. Off by default.");
-    gpLeaf(out, "Hold to Quit", nullptr, 5);
-    out.items.back().desc = "On: the quit button must be held for a second, so a slip cannot close the game.";
-    gpLeaf(out, "Button Map Button", nullptr, 5);
-    out.items.back().desc = fnText("%s + this button shows how the controller maps to the game's controller. Works in games and in the menus, with Universal Hotkeys on or off.");
-    gpLeaf(out, "Switch Screen Button", nullptr, 5);
-    out.items.back().desc = fnText("In Dual Screen, %s + this button moves the controller between the monitor and the built-in screen. Works with Universal Hotkeys on or off.");
+    if (gpLeaf(out, "Universal Hotkeys", nullptr, 5))
+        out.items.back().desc = devkeys::current().sharedBack
+            ? fnText("In a game, hold the %s button and press another button to save, load, fast forward or rewind. On its own, a tap is still Back, holding it for a second opens the Quick Menu, and holding it for 3 seconds closes the game.")
+            : fnText("In a game, hold the %1$s button and press another button to save, load, fast forward or rewind. Pressing the %1$s button on its own still opens the Quick Menu. Holding it on its own for 3 seconds closes the game.");
+    if (gpLeaf(out, "Start + Select Hotkeys", nullptr, 5))
+        out.items.back().desc = fnText("On: in a game, Start + Select works like the %s button for hotkeys (Start + Select + R1 saves), and holding Start + Select for 3 seconds closes the game. The game still sees Start and Select. In the menus, Start + Select always opens the Quick Menu.");
+    if (gpLeaf(out, "Save State Button", nullptr, 5))
+        out.items.back().desc = fnText("%s + this button saves the game's state.");
+    if (gpLeaf(out, "Load State Button", nullptr, 5))
+        out.items.back().desc = fnText("%s + this button loads the saved state.");
+    if (gpLeaf(out, "Fast Forward Button", nullptr, 5))
+        out.items.back().desc = fnText("%s + this button turns fast forward on or off.");
+    if (gpLeaf(out, "Rewind Button", nullptr, 5))
+        out.items.back().desc = fnText("%s + this button turns rewind on or off. Works where the emulator can rewind and rewind is turned on in its settings.");
+    if (gpLeaf(out, "Quit Game Button", nullptr, 5))
+        out.items.back().desc = fnText("%1$s + this button closes the game and returns to the menu, as holding the %1$s button or Start + Select for 3 seconds does. The emulator saves first where it can. Off by default.");
+    if (gpLeaf(out, "Hold to Quit", nullptr, 5))
+        out.items.back().desc = "On: the quit button must be held for a second, so a slip cannot close the game.";
+    if (gpLeaf(out, "Button Map Button", nullptr, 5))
+        out.items.back().desc = fnText("%s + this button shows how the controller maps to the game's controller. Works in games and in the menus, with Universal Hotkeys on or off.");
+    if (gpLeaf(out, "Switch Screen Button", nullptr, 5))
+        out.items.back().desc = fnText("In Dual Screen, %s + this button moves the controller between the monitor and the built-in screen. Works with Universal Hotkeys on or off.");
     gpAct(out, "Emulator Support", QA_GP_HOTKEY_SUPPORT, 74, nullptr);
     out.items.back().desc = "Which hotkeys each emulator supports.";
 }
@@ -11762,8 +11810,8 @@ void NanoMenu::buildExternalDisplaySubmenu(Ps3Level& out) {
         out.items.push_back(it);
     }
     monitorModeRows(out, QA_MONITOR_MODE, false);
-    gpLeaf(out, "Controller Screen", nullptr, 5);
-    out.items.back().desc = fnText("In Dual Screen: Monitor keeps the controller on the monitor. Built-in Screen gives it to an app you open or touch on the built-in screen. Last Touched gives it to the built-in screen's app when you touch it. %s + the Switch Screen Button moves it at any time.");
+    if (gpLeaf(out, "Controller Screen", nullptr, 5))
+        out.items.back().desc = fnText("In Dual Screen: Monitor keeps the controller on the monitor. Built-in Screen gives it to an app you open or touch on the built-in screen. Last Touched gives it to the built-in screen's app when you touch it. %s + the Switch Screen Button moves it at any time.");
     monitorModeRows(out, QA_MONITOR_MODE, true);
 }
 

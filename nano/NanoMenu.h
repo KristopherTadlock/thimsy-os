@@ -3378,7 +3378,7 @@ private:
     void btWizPairReply(const std::string& reply);
     void buildGamepadSubmenu(Ps3Level& out);         // top-level Gamepad Settings section list
     // Gamepad Settings sub-sections (grouped for readability) + shared row helpers.
-    void gpLeaf(Ps3Level& out, const char* label, const char* bindLabel, int icon);
+    bool gpLeaf(Ps3Level& out, const char* label, const char* bindLabel, int icon);   // false: not added
     void gpAct (Ps3Level& out, const char* label, int qa, int icon, const char* val);
     void buildGpControllers(Ps3Level& out);
     void buildGpSticks(Ps3Level& out);
