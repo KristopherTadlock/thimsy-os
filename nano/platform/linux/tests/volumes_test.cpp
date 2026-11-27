@@ -24,6 +24,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <set>
 #include <string>
 #include <vector>
@@ -55,6 +56,15 @@ std::string entry(const std::string& id, const std::string& state, const std::st
            "      \"disk\": \"mmcblk1\",\n      \"partition\": 1,\n      \"fs\": \"vfat\",\n      \"label\": \"L\",\n" +
            "      \"kind\": \"" + kind + "\",\n      \"boot_disk\": " + (bootDisk ? "true" : "false") +
            ",\n      \"read_only\": " + (readOnly ? "true" : "false") + ",\n      \"size_bytes\": 1024\n    }";
+}
+
+// The same entry with an ext4 drive's "ownership" member, which the session writes after size_bytes.
+std::string withOwnership(std::string e, const std::string& ownership) {
+    const std::string tail = "\"size_bytes\": 1024\n    }";
+    const size_t at = e.find(tail);
+    if (at != std::string::npos)
+        e.replace(at, tail.size(), "\"size_bytes\": 1024,\n      \"ownership\": \"" + ownership + "\"\n    }");
+    return e;
 }
 
 std::string doc(const std::vector<std::string>& entries) {
@@ -361,4 +371,73 @@ TEST_F(VolumesTest, TheObserverGoesWithTheObject) {
     publish({});   // the destroyed object's observer is gone: nothing to crash on
     auto v = make();
     EXPECT_FALSE(v->present("AAAA-0001"));
+}
+
+// --- ext2/3/4 drives and the take-ownership request (OA-29) -------------------------------------
+
+TEST(VolumesJson, TheOwnershipMember) {
+    std::vector<VolumeEntry> v;
+    std::string err;
+    ASSERT_TRUE(nanolinux::parseVolumesJson(
+            doc({withOwnership(entry("0b1c2d3e-0000-4000-8000-00000000abcd", "mounted",
+                                     "/storage/0b1c2d3e-0000-4000-8000-00000000abcd", "usb"),
+                               "needs_decision"),
+                 entry("1234-ABCD", "mounted", "/storage/1234-ABCD", "sd")}),
+            &v, &err)) << err;
+    ASSERT_EQ(v.size(), 2u);
+    EXPECT_EQ(v[0].ownership, "needs_decision");
+    EXPECT_TRUE(nanolinux::needsOwnershipDecision(v[0]));
+    EXPECT_EQ(v[1].ownership, "");
+    EXPECT_FALSE(nanolinux::needsOwnershipDecision(v[1]));
+    v[0].state = "ejected";
+    EXPECT_FALSE(nanolinux::needsOwnershipDecision(v[0]));
+    v[0].state = "mounted";
+    v[0].ownership = "idmapped";
+    EXPECT_FALSE(nanolinux::needsOwnershipDecision(v[0]));
+    std::vector<VolumeEntry> keep(1);
+    EXPECT_FALSE(nanolinux::parseVolumesJson(R"({"version": 1, "volumes": [{"ownership": 1}]})", &keep, &err));
+}
+
+TEST(VolumesJson, TheTakeOwnershipRequest) {
+    EXPECT_EQ(nanolinux::takeOwnershipVerb("0b1c2d3e-0000-4000-8000-00000000abcd"),
+              "take-ownership:0b1c2d3e-0000-4000-8000-00000000abcd");
+    EXPECT_EQ(nanolinux::takeOwnershipVerb("1234-ABCD"), "take-ownership:1234-ABCD");
+    EXPECT_EQ(nanolinux::takeOwnershipVerb("../etc"), "");
+    EXPECT_EQ(nanolinux::takeOwnershipVerb(""), "");
+    std::vector<std::string> sent;
+    auto send = [&sent](const std::string& verb) { sent.push_back(verb); };
+    EXPECT_TRUE(nanolinux::requestTakeOwnership("0b1c2d3e-0000-4000-8000-00000000abcd", send));
+    EXPECT_FALSE(nanolinux::requestTakeOwnership("thimsy", send));
+    ASSERT_EQ(sent.size(), 1u);
+    EXPECT_EQ(sent[0], "take-ownership:0b1c2d3e-0000-4000-8000-00000000abcd");
+}
+
+TEST_F(VolumesTest, TheDefaultRequestUsesNanosSequence) {
+    property_set("sys.thimsy.session.request", "41:sleep");
+    EXPECT_TRUE(nanolinux::requestTakeOwnership("1234-ABCD"));
+    char value[PROPERTY_VALUE_MAX] = {};
+    property_get("sys.thimsy.session.request", value, "");
+    EXPECT_STREQ(value, "42:take-ownership:1234-ABCD");
+}
+
+TEST_F(VolumesTest, ADriveAwaitingTheDecisionIsNotWritable) {
+    const std::string ext = drive("0b1c2d3e-0000-4000-8000-00000000abcd"), fat = drive("AAAA-0001");
+    ASSERT_EQ(mkdir((ext + "/ES-DE").c_str(), 0755), 0);
+    ASSERT_EQ(mkdir((fat + "/ES-DE").c_str(), 0755), 0);
+    auto v = make();
+    publish({withOwnership(entry("0b1c2d3e-0000-4000-8000-00000000abcd", "mounted", ext, "sd"), "needs_decision"),
+             entry("AAAA-0001", "mounted", fat, "usb")});
+    EXPECT_EQ(v->cardRoot(), fat);   // the slot's drive is read-only for now
+    EXPECT_TRUE(v->present("0b1c2d3e-0000-4000-8000-00000000abcd"));   // in, readable
+    std::vector<std::string> want = {fat + "/ES-DE"};
+    EXPECT_EQ(v->writableFolders("", "/ES-DE"), want);
+    // Taken: the session lists it as nano's.
+    publish({withOwnership(entry("0b1c2d3e-0000-4000-8000-00000000abcd", "mounted", ext, "sd"), "nano"),
+             entry("AAAA-0001", "mounted", fat, "usb")});
+    EXPECT_EQ(v->cardRoot(), ext);
+    want = {ext + "/ES-DE", fat + "/ES-DE"};
+    std::vector<std::string> got = v->writableFolders("", "/ES-DE");
+    std::sort(got.begin(), got.end());
+    std::sort(want.begin(), want.end());
+    EXPECT_EQ(got, want);
 }

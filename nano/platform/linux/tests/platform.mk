@@ -57,7 +57,8 @@ PLAT_SRCS_controlkeys_test := ControlKeys.cpp
 PLAT_SRCS_linuxplatform_test := LinuxPlatform.cpp display/Display.cpp display/PanelOrientation.cpp Launcher.cpp ShellGate.cpp AudioPull.cpp Volumes.cpp
 PLAT_SRCS_display_test := display/Display.cpp display/PanelOrientation.cpp
 PLAT_SRCS_audiopull_test := AudioPull.cpp
-PLAT_SRCS_volumes_test := Volumes.cpp
+# The take-ownership request (OA-29) goes through the control keys' request sequence.
+PLAT_SRCS_volumes_test := Volumes.cpp ControlKeys.cpp
 # The launcher (G7-launch-b) runs children: it links the shell gate for its execve (--wrap), and
 # commitLaunch (NanoLaunchCommit.cpp) and the control keys for the path from a commit to a child.
 PLAT_SRCS_launcher_test := Launcher.cpp ControlKeys.cpp ShellGate.cpp

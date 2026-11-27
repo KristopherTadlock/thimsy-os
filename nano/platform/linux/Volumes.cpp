@@ -36,6 +36,8 @@
 #include <nanocompat/nanocompat.h>
 #include <thimsy/json.h>
 
+#include "ControlKeys.h"
+
 namespace nanolinux {
 
 namespace {
@@ -105,7 +107,8 @@ class LinuxVolumes : public nanoplat::Volumes {
     std::string cardRoot() override {
         std::vector<VolumeEntry> found;
         for (const VolumeEntry& v : snapshot())
-            if (inUse(v) && !v.readOnly && access(v.path.c_str(), W_OK) == 0) found.push_back(v);
+            if (inUse(v) && !v.readOnly && !needsOwnershipDecision(v) && access(v.path.c_str(), W_OK) == 0)
+                found.push_back(v);
         std::stable_sort(found.begin(), found.end(), [](const VolumeEntry& a, const VolumeEntry& b) {
             const bool sa = a.kind == "sd", sb = b.kind == "sd";
             if (sa != sb) return sa;
@@ -144,7 +147,7 @@ class LinuxVolumes : public nanoplat::Volumes {
     std::vector<std::string> writableFolders(const std::string& vol, const std::string& rel) override {
         std::vector<std::string> found;
         for (const VolumeEntry& v : snapshot()) {
-            if (v.id == vol || !inUse(v)) continue;
+            if (v.id == vol || !inUse(v) || needsOwnershipDecision(v)) continue;
             const std::string cand = v.path + rel;
             if (writableDir(cand)) found.push_back(cand);
         }
@@ -253,7 +256,8 @@ bool parseVolumesJson(std::string_view text, std::vector<VolumeEntry>* out, std:
                        memberString(o, "fs", where, &v.fs, &e) && memberString(o, "label", where, &v.label, &e) &&
                        memberString(o, "kind", where, &v.kind, &e) &&
                        memberBool(o, "boot_disk", where, &v.bootDisk, &e) &&
-                       memberBool(o, "read_only", where, &v.readOnly, &e)) {
+                       memberBool(o, "read_only", where, &v.readOnly, &e) &&
+                       memberString(o, "ownership", where, &v.ownership, &e)) {
                 list.push_back(std::move(v));
             }
         }
@@ -263,6 +267,26 @@ bool parseVolumesJson(std::string_view text, std::vector<VolumeEntry>* out, std:
         return false;
     }
     *out = std::move(list);
+    return true;
+}
+
+bool needsOwnershipDecision(const VolumeEntry& v) { return v.state == "mounted" && v.ownership == "needs_decision"; }
+
+std::string takeOwnershipVerb(const std::string& id) {
+    return looksLikeVolumeId(id) ? "take-ownership:" + id : std::string();
+}
+
+bool requestTakeOwnership(const std::string& id, const std::function<void(const std::string& verb)>& sessionRequest) {
+    const std::string verb = takeOwnershipVerb(id);
+    if (verb.empty()) {
+        ALOGW("volumes: not asking to take '%s': not a volume id", id.c_str());
+        return false;
+    }
+    if (sessionRequest) {
+        sessionRequest(verb);
+    } else {
+        controlkeys::sessionRequest(verb);
+    }
     return true;
 }
 
