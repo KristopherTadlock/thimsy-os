@@ -42,12 +42,18 @@
 //                "bt_on": true, "bt_devices": [{"address": "AA:BB:CC:DD:EE:FF", "name": "Pad",
 //                              "bonded": false, "connected": false, "cod": 0, "in_range": true}]}}
 //                                                        the Wi-Fi and Bluetooth (FakeNetwork.h)
+//    "emulators": {"cores": ["snes9x_libretro_android.so"], "apps": ["org.ppsspp.ppsspp"],
+//                  "defaults": [{"system": "snes", "core": "snes9x_libretro_android.so",
+//                                "package": "", "intent": ""}]}
+//                                                        which emulators run, the image's defaults
+//                                                        (FakeEmulators.h, W8-EMU)
 #pragma once
 
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "FakeEmulators.h"
 #include "FakeEvdev.h"
 #include "FakeNetwork.h"
 #include "FakeVolumes.h"
@@ -70,6 +76,7 @@ struct HostConfig {
     std::vector<std::string> recordProps = {""};
     std::vector<FakeVolume> volumes;
     FakeNetConfig network;
+    FakeEmulatorsConfig emulators;   // W8-EMU
 };
 
 // Parses `text` over the defaults in *out. false, with *err naming the member, on a syntax error,

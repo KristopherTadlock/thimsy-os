@@ -125,7 +125,8 @@ TEST(HostPlatform, CreateWiresTheChannel) {
                          "\", \"display\": {\"width\": 320, \"height\": 240, \"pace\": false},"
                          " \"record_props\": [\"sys.gammaos.\", \"persist.\"],"
                          " \"volumes\": [{\"id\": \"9602-C755\", \"boot_disk\": true}],"
-                         " \"network\": {\"connected\": \"Home\", \"networks\": [{\"ssid\": \"Home\", \"saved_id\": 0}]}}"));
+                         " \"network\": {\"connected\": \"Home\", \"networks\": [{\"ssid\": \"Home\", \"saved_id\": 0}]},"
+                         " \"emulators\": {\"cores\": [\"snes9x_libretro_android.so\"]}}"));
     char prog[] = "nano-headless";
     char flag[] = "--host-config";
     std::vector<char> path(cfg.begin(), cfg.end());
@@ -153,6 +154,9 @@ TEST(HostPlatform, CreateWiresTheChannel) {
     ASSERT_TRUE(p->net != nullptr);  // G7-net: the config's scripted networks
     EXPECT_EQ(p->net->wifiListRadio().connectedSsid, "Home");
     p->net->startWifiScan();
+    ASSERT_TRUE(p->emulators != nullptr);  // W8-EMU: the config's scripted emulators
+    EXPECT_TRUE(p->emulators->coreInstalled("snes9x_libretro_android.so"));
+    EXPECT_FALSE(p->emulators->appInstalled("org.ppsspp.ppsspp"));
     EXPECT_EQ(property_set("sys.gammaos.nano.launch_app", "com.example"), 0);
     EXPECT_EQ(property_set("persist.gammaos.nano.theme", "xmb"), 0);
     EXPECT_EQ(property_set("debug.unrecorded", "1"), 0);

@@ -2466,10 +2466,10 @@ index 2ff1dad7970..89bb33a9256 100644
                      } else { close(fd); unlink(tmp.c_str()); }
                  }
 diff --git a/frameworks/base/cmds/gammaos-nano/Android.bp b/frameworks/base/cmds/gammaos-nano/Android.bp
-index 0f747c9a45c..f6f484118f3 100644
+index 0f747c9a45c..60f4f3e6eeb 100644
 --- a/frameworks/base/cmds/gammaos-nano/Android.bp
 +++ b/frameworks/base/cmds/gammaos-nano/Android.bp
-@@ -45,8 +45,21 @@ cc_binary {
+@@ -45,8 +45,22 @@ cc_binary {
  
      srcs: [
          "main.cpp",
@@ -2484,6 +2484,7 @@ index 0f747c9a45c..f6f484118f3 100644
 +        "platform/firmware/SystemActions.cpp", // the firmware platform's SystemActions (G7-power)
 +        "platform/firmware/InputPolicy.cpp", // the firmware platform's InputPolicy (G7-input)
 +        "platform/firmware/Network.cpp",   // the firmware platform's Network (G7-net)
++        "platform/firmware/Emulators.cpp", // the firmware platform's Emulators (W8-EMU)
          "NanoMenu.cpp",
 +        "NanoLaunchCommit.cpp",            // the launch handshake's writes (G7-launch-a)
          "NanoMenuDrm.cpp",
@@ -2491,7 +2492,7 @@ index 0f747c9a45c..f6f484118f3 100644
          "NanoMenuRgbFollow.cpp",
          "NanoMenuXmb.cpp",
          "NanoMenuShaders.cpp",
-@@ -69,23 +82,31 @@ cc_binary {
+@@ -69,23 +83,31 @@ cc_binary {
          "NanoMenuPS3EmuCatalog.cpp",
          "NanoMenuPS3Folder.cpp",
          "NanoMenuFileExplorer.cpp",
@@ -2524,7 +2525,7 @@ index 0f747c9a45c..f6f484118f3 100644
          "NanoMenuSetupWizard.cpp",
          "NanoMenuStrings.cpp",
          "NanoBtStable.cpp",
-@@ -111,13 +132,40 @@ cc_binary {
+@@ -111,13 +133,40 @@ cc_binary {
          "NanoAacDec.cpp",
          "NanoCea608.cpp",
          "NanoScraper.cpp",
@@ -2565,7 +2566,7 @@ index 0f747c9a45c..f6f484118f3 100644
          "LibretroRunner.cpp",
          "FakeJNI.cpp",
          "DrasticRunner.cpp",
-@@ -133,6 +181,7 @@ cc_binary {
+@@ -133,6 +182,7 @@ cc_binary {
          "liba52_nano",   // AC-3 decoder (no AC-3 codec on the device)
          "libtinyxml2",   // XML DOM parser for the ES-DE theme engine (NanoEsdeTheme)
          "libnanosvg_nano",   // SVG rasterizer for ES-DE theme logos (NanoThemeEngine)
@@ -2573,7 +2574,7 @@ index 0f747c9a45c..f6f484118f3 100644
          // Share storage + credential encoding, shared with the gammaos-sharefs daemon so a share
          // added in the menu is written exactly as the daemon expects to read it.
          "libgammaos_sharecfg",
-@@ -143,14 +192,13 @@ cc_binary {
+@@ -143,14 +193,13 @@ cc_binary {
          "jni_headers",
          "native_headers",   // <android/imagedecoder.h> + <android/bitmap.h> (photo viewer decode)
          "libgammargb_process_headers",   // shared GammaRGB colour pipeline (parity with SF sampler)
@@ -2589,7 +2590,7 @@ index 0f747c9a45c..f6f484118f3 100644
          "libbinder_ndk",
          "libcutils",
          "liblog",
-@@ -172,21 +220,28 @@ cc_binary {
+@@ -172,21 +221,28 @@ cc_binary {
          "libandroid",   // APerformanceHint (ADPF render-thread hint session)
          "libaaudio",    // GammaEQ audio preview + music player output (AAudio)
          "libmediandk",  // music player decode: AMediaExtractor + AMediaCodec -> PCM
@@ -2622,7 +2623,7 @@ index 0f747c9a45c..f6f484118f3 100644
          "nano_xmb_icons",
          "nano_xmb_normalmaps",
          "nano_xmb_glass",
-@@ -204,13 +259,64 @@ cc_binary {
+@@ -204,13 +260,64 @@ cc_binary {
          "nano_xmb_photoviewer",
          "nano_xmb_backgrounds",
          "nano_xmb_systemstatus",
@@ -2688,7 +2689,7 @@ index 0f747c9a45c..f6f484118f3 100644
  // Vendored liba52 (a52dec 0.7.4, GPL-2) - AC-3 decoder. The device has no hardware
  // or software AC-3 codec, so NanoAc3 uses this to decode AC-3 audio in .ts / MKV / VOB.
  // Pure-C generic path (no SIMD / djbfft / memalign); -w because the 2002-era source
-@@ -249,6 +355,7 @@ cc_library_static {
+@@ -249,6 +356,7 @@ cc_library_static {
  // source is not clean under Soong's warning set (same treatment as liba52_nano).
  cc_library_static {
      name: "libnanosvg_nano",
@@ -2696,7 +2697,7 @@ index 0f747c9a45c..f6f484118f3 100644
      srcs: ["nanosvg/nanosvg_impl.c"],
      local_include_dirs: ["nanosvg"],
      export_include_dirs: ["nanosvg"],
-@@ -323,14 +430,40 @@ sh_binary {
+@@ -323,14 +431,40 @@ sh_binary {
      src: "nano-pmdown.sh",
  }
  
@@ -2738,7 +2739,7 @@ index 0f747c9a45c..f6f484118f3 100644
  // /system/etc/nano_xmb/<sub_dir>/; the renderer also checks
  // /data/system/nano_xmb/ first so assets can be pushed during development
  // without rebuilding the system image.
-@@ -340,18 +473,6 @@ prebuilt_etc {
+@@ -340,18 +474,6 @@ prebuilt_etc {
      sub_dir: "nano_xmb/fonts",
  }
  
@@ -2757,7 +2758,7 @@ index 0f747c9a45c..f6f484118f3 100644
  // ES-DE built-in asset SVGs the theme engine falls back to when a theme does not
  // ship its own: the helpsystem button glyphs (the legend icons at the bottom of
  // every view), the per-controller badge icons, and the metadata badge icons.
-@@ -388,12 +509,6 @@ prebuilt_etc {
+@@ -388,12 +510,6 @@ prebuilt_etc {
      sub_dir: "nano_xmb/gradients",
  }
  
@@ -2770,7 +2771,7 @@ index 0f747c9a45c..f6f484118f3 100644
  prebuilt_etc {
      name: "nano_xmb_icons",
      srcs: ["ps3xmb/icons/*.png"],
-@@ -423,7 +538,27 @@ prebuilt_etc {
+@@ -423,7 +539,27 @@ prebuilt_etc {
  // /data/system/nano_xmb/audio/ first (dev override), else this install path.
  prebuilt_etc {
      name: "nano_xmb_audio",
@@ -2799,7 +2800,7 @@ index 0f747c9a45c..f6f484118f3 100644
      sub_dir: "nano_xmb/audio",
  }
  
-@@ -510,6 +645,13 @@ prebuilt_etc {
+@@ -510,6 +646,13 @@ prebuilt_etc {
          "ps3xmb/i18n/ar.json",
          "ps3xmb/i18n/tr.json",
          "ps3xmb/i18n/pl.json",
@@ -2813,7 +2814,7 @@ index 0f747c9a45c..f6f484118f3 100644
      ],
      sub_dir: "gammaos-nano/i18n",
  }
-@@ -543,7 +685,12 @@ prebuilt_etc {
+@@ -543,7 +686,12 @@ prebuilt_etc {
  // first, this is the bundled fallback).
  prebuilt_etc {
      name: "nano_xmb_nds",
@@ -2827,7 +2828,7 @@ index 0f747c9a45c..f6f484118f3 100644
      sub_dir: "nano_xmb/nds",
  }
  
-@@ -558,6 +705,32 @@ prebuilt_etc {
+@@ -558,6 +706,32 @@ prebuilt_etc {
      sub_dir: "nano_xmb/daijishou",
  }
  
@@ -2860,7 +2861,7 @@ index 0f747c9a45c..f6f484118f3 100644
  // Source files shared with the drastic-nano binary. drastic-nano
  // reuses the DRM rendering stack, DrasticRunner lifecycle, and
  // FakeJNI shim from gammaos-nano; wrapping them in a filegroup lets
-@@ -567,11 +740,386 @@ filegroup {
+@@ -567,11 +741,386 @@ filegroup {
      name: "drastic_nano_shared_srcs",
      srcs: [
          "NanoMenuDrm.cpp",
@@ -26700,7 +26701,7 @@ index dcd7bbaf475..4cc1c35f703 100644
 +
  } // namespace android
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoMenu.h b/frameworks/base/cmds/gammaos-nano/NanoMenu.h
-index 88e7cae6699..2262a051f78 100644
+index 88e7cae6699..5876fd1f881 100644
 --- a/frameworks/base/cmds/gammaos-nano/NanoMenu.h
 +++ b/frameworks/base/cmds/gammaos-nano/NanoMenu.h
 @@ -38,6 +38,8 @@
@@ -26870,18 +26871,26 @@ index 88e7cae6699..2262a051f78 100644
      void loadXmbRecent();
      void saveXmbRecent();
      void addXmbRecent(int sysIdx, int gameIdx);
-@@ -499,6 +555,11 @@ private:
+@@ -499,10 +555,15 @@ private:
      bool romParentDirReachable(const std::string& romPath);  // true if the file's folder is stat-able
      void recentRemoveAt(int idx);     // drop one Recently Played row (a live stat proved it is gone)
      void showRomMissingMsg(const std::string& displayName);
+-    // Pre-launch emulator guard (ES-DE style, checked lazily at launch). coreSoExists stats the
+-    // RetroArch core .so; packageInstalled scans /data/system/packages.list for a standalone package.
+-    // Both fail OPEN (return true) if the check itself cannot be performed, so a transient FS state
+-    // never blocks a valid launch. showEmuMissingMsg surfaces a theme-agnostic toast and we do not launch.
 +    void showUnlaunchableNameMsg(const std::string& displayName);   // tab / line break in the file name
 +    // {file.content} for a launch: the ID in the game file when the template uses it ("" when it
 +    // does not). False, with a message shown, when it is used and the file holds no valid ID.
 +    bool launchFileIdFor(const std::string& tmpl, const std::string& args, const std::string& romPath,
 +                         const std::string& displayName, std::string& id);
-     // Pre-launch emulator guard (ES-DE style, checked lazily at launch). coreSoExists stats the
-     // RetroArch core .so; packageInstalled scans /data/system/packages.list for a standalone package.
-     // Both fail OPEN (return true) if the check itself cannot be performed, so a transient FS state
++    // Pre-launch emulator guard (ES-DE style, checked lazily at launch). coreSoExists and
++    // packageInstalled ask the platform (NanoPlatform.h's Emulators): the firmware stats the
++    // RetroArch core .so and scans /data/system/packages.list, failing OPEN when it cannot check;
++    // Linux fails closed. showEmuMissingMsg surfaces a theme-agnostic toast and we do not launch.
+     bool coreSoExists(const std::string& coreSo);
+     bool packageInstalled(const std::string& pkg);
+     void showEmuMissingMsg(const std::string& displayName, bool standalone);
 @@ -531,44 +592,51 @@ private:
      void oskSetLanguage(const char* code, const char* region); // layout + IME
      void oskMoveCursor(NavDir dir); // geometric nearest-in-direction focus move
@@ -60776,7 +60785,7 @@ index 0fa4e98c671..ec8fdd431f0 100644
  
  }  // namespace android
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoMenuXmb.cpp b/frameworks/base/cmds/gammaos-nano/NanoMenuXmb.cpp
-index a0824b29e6e..3ba55cb830c 100644
+index a0824b29e6e..cb1366b176e 100644
 --- a/frameworks/base/cmds/gammaos-nano/NanoMenuXmb.cpp
 +++ b/frameworks/base/cmds/gammaos-nano/NanoMenuXmb.cpp
 @@ -27,6 +27,7 @@
@@ -60787,12 +60796,13 @@ index a0824b29e6e..3ba55cb830c 100644
  #include <math.h>
  #include <strings.h>
  #include <inttypes.h>
-@@ -46,8 +47,25 @@
+@@ -46,8 +47,26 @@
  #include "NanoI18n.h"      // trDyn() runtime translation of hardcoded UI strings
  #include "NanoMenuShaders.h"
  #include "NanoJson.h"
 +#include "NanoLaunch.h"
 +#include "NanoLaunchCommit.h"   // commitLaunch: the launch handshake's writes
++#include "NanoPlatform.h"       // Emulators: which cores and apps can run here (W8-EMU)
 +#include "NanoSystemsHeal.h"
 +#include "NanoBiosUtil.h"
 +#include "NanoScummvmList.h"
@@ -60813,7 +60823,7 @@ index a0824b29e6e..3ba55cb830c 100644
  
  // ---------------------------------------------------------------------------
  // Mupen64Plus AE direct launch. The stock VIEW intent goes SplashActivity ->
-@@ -61,12 +79,6 @@
+@@ -61,12 +80,6 @@
  // instead of 35 to 45 s. Zips and 7z archives keep the stock path (the gallery extracts
  // them); any read failure also falls back to the stock intent.
  // ---------------------------------------------------------------------------
@@ -60826,7 +60836,7 @@ index a0824b29e6e..3ba55cb830c 100644
  static bool mupenRomMeta(const std::string& romPath, std::string& md5Hex, std::string& crc,
                           std::string& headerName) {
      int fd = open(romPath.c_str(), O_RDONLY | O_CLOEXEC);
-@@ -177,36 +189,23 @@ bool android::NanoMenu::mupenDirectIntent(const std::string& pkg, const std::str
+@@ -177,36 +190,23 @@ bool android::NanoMenu::mupenDirectIntent(const std::string& pkg, const std::str
      std::string appPath = romPath;
      if (appPath.rfind("/data/media/0/", 0) == 0) appPath = "/storage/emulated/0/" + appPath.substr(14);
      else if (appPath.rfind("/mnt/media_rw/", 0) == 0) appPath = "/storage/" + appPath.substr(14);
@@ -60877,7 +60887,7 @@ index a0824b29e6e..3ba55cb830c 100644
      ALOGI("NanoMenu: mupen direct launch md5=%s crc=%s name='%s' good='%s'", md5.c_str(), crc.c_str(),
            hname.c_str(), good.c_str());
      return true;
-@@ -262,7 +261,7 @@ static const SystemDef kXmbSystemDefs[] = {
+@@ -262,7 +262,7 @@ static const SystemDef kXmbSystemDefs[] = {
      {"PSP",             "PSP",  "psp",          "",
       "org.ppsspp.ppsspp",
       "-n org.ppsspp.ppsspp/.PpssppActivity -a android.intent.action.VIEW -d {file.uri} -t application/octet-stream --activity-clear-task --activity-clear-top",
@@ -60886,7 +60896,7 @@ index a0824b29e6e..3ba55cb830c 100644
      {"Dreamcast",       "DC",   "dreamcast",    "",
       "com.flycast.emulator",
       "-n com.flycast.emulator/com.flycast.emulator.MainActivity -a android.intent.action.VIEW -d {file.uri}",
-@@ -291,8 +290,14 @@ static void sortRomEntriesByDisplayName(std::vector<std::string>& roms,
+@@ -291,8 +291,14 @@ static void sortRomEntriesByDisplayName(std::vector<std::string>& roms,
  // ---------------------------------------------------------------------------
  
  void NanoMenu::initXmbSystems() {
@@ -60901,7 +60911,7 @@ index a0824b29e6e..3ba55cb830c 100644
  
      // Migrate any legacy cache dir ownership: older nano builds ran as
      // uid graphics and left /data/system/nano_xmb_cache/ as 0700
-@@ -352,7 +357,8 @@ void NanoMenu::initXmbSystems() {
+@@ -352,7 +358,8 @@ void NanoMenu::initXmbSystems() {
              property_get(propKey, propBuf, "");
              if (propBuf[0]) sys.coreSo = propBuf;
          }
@@ -60911,7 +60921,7 @@ index a0824b29e6e..3ba55cb830c 100644
          // Disabled systems are never scanned and never appear in Game; they
          // hold no ROM cache in memory.
          if (!sys.enabled) continue;
-@@ -360,6 +366,13 @@ void NanoMenu::initXmbSystems() {
+@@ -360,6 +367,13 @@ void NanoMenu::initXmbSystems() {
          // Load this system's cached ROM list (DE storage, keyed on stable id).
          loadRomCacheForSystem(sys);
      }
@@ -60925,7 +60935,7 @@ index a0824b29e6e..3ba55cb830c 100644
  
      int enabledCount = 0;
      for (const auto& s : mXmbSystems) if (s.enabled) enabledCount++;
-@@ -469,6 +482,7 @@ void NanoMenu::applyRomNameOverrides(std::vector<std::string>& roms,
+@@ -469,6 +483,7 @@ void NanoMenu::applyRomNameOverrides(std::vector<std::string>& roms,
      if (!mShowDisplayNames) {
          buildRomDisplayNames(roms, displayNames);
          sortRomEntriesByDisplayName(roms, displayNames);
@@ -60933,7 +60943,7 @@ index a0824b29e6e..3ba55cb830c 100644
          return;
      }
      if (displayNames.empty()) buildRomDisplayNames(roms, displayNames);
-@@ -479,6 +493,10 @@ void NanoMenu::applyRomNameOverrides(std::vector<std::string>& roms,
+@@ -479,6 +494,10 @@ void NanoMenu::applyRomNameOverrides(std::vector<std::string>& roms,
          // no Display Name therefore keep the file name and sort alongside the named ones below.
          const std::string* ov = romNameOverrideFor(roms[i]);
          if (ov && !ov->empty()) { displayNames[i] = *ov; continue; }
@@ -60944,7 +60954,7 @@ index a0824b29e6e..3ba55cb830c 100644
          const ScrapeEntry* se = scrapeEntryFor(roms[i]);
          if (se && !se->title.empty()) { displayNames[i] = se->title; continue; }
          // DSi theme: the title from the DS cartridge's own banner, when the user has not
-@@ -489,6 +507,105 @@ void NanoMenu::applyRomNameOverrides(std::vector<std::string>& roms,
+@@ -489,6 +508,105 @@ void NanoMenu::applyRomNameOverrides(std::vector<std::string>& roms,
          }
      }
      sortRomEntriesByDisplayName(roms, displayNames);
@@ -61050,7 +61060,7 @@ index a0824b29e6e..3ba55cb830c 100644
  }
  
  void NanoMenu::applyRomNameOverrides(XmbSystem& sys) {
-@@ -511,6 +628,10 @@ void NanoMenu::applyRomNameOverridesToRecents() {
+@@ -511,6 +629,10 @@ void NanoMenu::applyRomNameOverridesToRecents() {
          if (!mShowDisplayNames) { e.displayName = romDisplayName(e.romPath); continue; }
          const std::string* ov = romNameOverrideFor(e.romPath);
          if (ov && !ov->empty()) { e.displayName = *ov; continue; }
@@ -61061,7 +61071,7 @@ index a0824b29e6e..3ba55cb830c 100644
          const ScrapeEntry* se = scrapeEntryFor(e.romPath);
          if (se && !se->title.empty()) { e.displayName = se->title; continue; }
          if (mNdsTheme && ndsRomTitleEnabled() && e.systemName == "NDS") {
-@@ -589,6 +710,7 @@ static njson::Value systemToJson(const NanoMenu::XmbSystem& sys) {
+@@ -589,6 +711,7 @@ static njson::Value systemToJson(const NanoMenu::XmbSystem& sys) {
          sv.set("type") = njson::Value::makeString(s.type == 1 ? "safuri" : "rawpath");
          sv.set("value") = njson::Value::makeString(s.value);
          if (!s.rawHint.empty()) sv.set("rawHint") = njson::Value::makeString(s.rawHint);
@@ -61069,7 +61079,7 @@ index a0824b29e6e..3ba55cb830c 100644
          srcs.arr.push_back(std::move(sv));
      }
      o.set("scanSources") = std::move(srcs);
-@@ -643,6 +765,7 @@ static NanoMenu::XmbSystem jsonToSystem(const njson::Value& o) {
+@@ -643,6 +766,7 @@ static NanoMenu::XmbSystem jsonToSystem(const njson::Value& o) {
                  s.type = (sv.getString("type") == "safuri") ? 1 : 0;
                  s.value = sv.getString("value");
                  s.rawHint = sv.getString("rawHint");
@@ -61077,7 +61087,7 @@ index a0824b29e6e..3ba55cb830c 100644
                  if (!s.value.empty()) sys.scanSources.push_back(std::move(s));
              }
          }
-@@ -681,6 +804,45 @@ static NanoMenu::XmbSystem jsonToSystem(const njson::Value& o) {
+@@ -681,6 +805,45 @@ static NanoMenu::XmbSystem jsonToSystem(const njson::Value& o) {
      return sys;
  }
  
@@ -61123,7 +61133,7 @@ index a0824b29e6e..3ba55cb830c 100644
  // Nanosecond mtime stamp of nano_systems.json, or -1 when absent. The resident
  // overlay and the DRM home are separate processes sharing the file; each tracks
  // the stamp of its own last load/save (mSystemsCfgStamp) and reloads when an
-@@ -710,34 +872,27 @@ bool NanoMenu::loadSystemsConfig() {
+@@ -710,34 +873,27 @@ bool NanoMenu::loadSystemsConfig() {
          ALOGW("NanoMenu: nano_systems.json parse failed; reseeding from defaults");
          return false;
      }
@@ -61173,7 +61183,7 @@ index a0824b29e6e..3ba55cb830c 100644
      mXmbSystems.clear();
      mXmbSystems.reserve(kNumXmbSystemDefs);
      for (int i = 0; i < kNumXmbSystemDefs; i++) {
-@@ -769,23 +924,41 @@ void NanoMenu::seedSystemsConfig() {
+@@ -769,23 +925,41 @@ void NanoMenu::seedSystemsConfig() {
      saveSystemsConfig();
  }
  
@@ -61221,7 +61231,7 @@ index a0824b29e6e..3ba55cb830c 100644
      }
      size_t off = 0;
      bool ok = true;
-@@ -796,29 +969,553 @@ void NanoMenu::saveSystemsConfig() {
+@@ -796,29 +970,553 @@ void NanoMenu::saveSystemsConfig() {
      }
      fsync(fd);
      close(fd);
@@ -61281,12 +61291,8 @@ index a0824b29e6e..3ba55cb830c 100644
 +    for (char c : so)
 +        if (!isalnum((unsigned char)c) && !strchr("_.+-", c)) return false;
 +    return so.find("..") == std::string::npos;
- }
- 
--// Restore a built-in system's config to its factory defaults (from
--// kXmbSystemDefs, matched by id), keeping its enabled/order/id. Reloads the ROM
--// cache so the system reflects the restored extensions/core. Returns false for
--// custom systems or unknown ids. Caller persists + rebuilds.
++}
++
 +static std::string esdeCardId(const std::string& esdeDir) {
 +    if (esdeDir.compare(0, 9, "/storage/") != 0) return std::string();
 +    const std::string id = esdeDir.substr(9, esdeDir.find('/', 9) == std::string::npos ? std::string::npos
@@ -61639,8 +61645,12 @@ index a0824b29e6e..3ba55cb830c 100644
 +    if (recentsChanged) saveXmbRecent();
 +    if (rescan) forceRescanAllSystems();
 +    mPs3CatsStale = true;
-+}
-+
+ }
+ 
+-// Restore a built-in system's config to its factory defaults (from
+-// kXmbSystemDefs, matched by id), keeping its enabled/order/id. Reloads the ROM
+-// cache so the system reflects the restored extensions/core. Returns false for
+-// custom systems or unknown ids. Caller persists + rebuilds.
 +static std::string autoAddLower(const std::string& in);
 +int nano_makeUniqueSystem(std::vector<NanoMenu::XmbSystem>& systems, const std::string& name,
 +                          const std::string& preferredId);
@@ -61786,7 +61796,7 @@ index a0824b29e6e..3ba55cb830c 100644
      int idx = -1;
      for (int i = 0; i < kNumXmbSystemDefs; i++) {
          if (sys.id == kXmbSystemDefs[i].romDir) { idx = i; break; }
-@@ -839,89 +1536,15 @@ bool NanoMenu::resetSystemToBuiltinDefaults(int sysIdx) {
+@@ -839,89 +1537,15 @@ bool NanoMenu::resetSystemToBuiltinDefaults(int sysIdx) {
      sys.scanSources.clear();
      sys.disabledDefaultFolders.clear();
      char ref[24]; snprintf(ref, sizeof(ref), "builtin:%d", idx); sys.iconRef = ref;
@@ -61880,7 +61890,7 @@ index a0824b29e6e..3ba55cb830c 100644
  }
  
  // ---- ES-DE-style bulk auto-add (scan a ROMs root, add every recognised system folder) ----
-@@ -935,57 +1558,6 @@ static std::string autoAddLower(const std::string& in) {
+@@ -935,57 +1559,6 @@ static std::string autoAddLower(const std::string& in) {
      return o;
  }
  
@@ -61938,7 +61948,7 @@ index a0824b29e6e..3ba55cb830c 100644
  // Broad ROM-extension set used only for the bulk-add "does this folder hold ROMs" gate on the worker
  // thread (where the specific system's exts are not yet known). Deliberately lenient: the alias match
  // already excludes non-system folders, so this only needs to reject a matched-but-empty folder.
-@@ -993,22 +1565,33 @@ static const char* kBulkAddGenericExts =
+@@ -993,22 +1566,33 @@ static const char* kBulkAddGenericExts =
      ".nes,.fds,.unf,.unif,.sfc,.smc,.fig,.swc,.bs,.gb,.gbc,.gba,.agb,.n64,.z64,.v64,.ndd,.nds,.dsi,"
      ".md,.gen,.smd,.bin,.sms,.sg,.gg,.pce,.sgx,.cue,.ccd,.chd,.iso,.cdi,.gdi,.mdf,.mds,.img,.pbp,"
      ".cso,.m3u,.a26,.a78,.lnx,.ws,.wsc,.ngp,.ngc,.npc,.col,.int,.vec,.d64,.t64,.prg,.crt,.adf,.dsk,"
@@ -61976,7 +61986,7 @@ index a0824b29e6e..3ba55cb830c 100644
  
      // Snapshot the catalog's (platformId -> first index) so the worker never races a catalog reload.
      std::vector<std::pair<std::string,int>> catIds;
-@@ -1019,6 +1602,8 @@ void NanoMenu::gsAutoAddFromRoot(const std::string& root) {
+@@ -1019,6 +1603,8 @@ void NanoMenu::gsAutoAddFromRoot(const std::string& root) {
  
      std::thread([this, root, catIds]() {
          std::vector<BulkAddCand> cands;
@@ -61985,7 +61995,7 @@ index a0824b29e6e..3ba55cb830c 100644
          DIR* d = opendir(root.c_str());
          if (d) {
              struct dirent* de;
-@@ -1031,19 +1616,11 @@ void NanoMenu::gsAutoAddFromRoot(const std::string& root) {
+@@ -1031,19 +1617,11 @@ void NanoMenu::gsAutoAddFromRoot(const std::string& root) {
                  struct stat st;
                  if (stat(full.c_str(), &st) != 0 || !S_ISDIR(st.st_mode)) continue;
  
@@ -62009,7 +62019,7 @@ index a0824b29e6e..3ba55cb830c 100644
  
                  BulkAddCand c; c.folder = full; c.catIdx = ci; cands.push_back(std::move(c));
              }
-@@ -1054,19 +1631,28 @@ void NanoMenu::gsAutoAddFromRoot(const std::string& root) {
+@@ -1054,19 +1632,28 @@ void NanoMenu::gsAutoAddFromRoot(const std::string& root) {
              mBulkAddResults = std::move(cands);
          }
          mBulkAddDone.store(true, std::memory_order_release);
@@ -62038,7 +62048,7 @@ index a0824b29e6e..3ba55cb830c 100644
  
      // Find an existing system that already represents a platform/folder (attach rather than duplicate).
      auto findExisting = [&](const std::string& folderLower, const std::string& platformIdLower) -> int {
-@@ -1090,22 +1676,54 @@ void NanoMenu::gsAutoAddTick() {
+@@ -1090,22 +1677,54 @@ void NanoMenu::gsAutoAddTick() {
          std::string platformId = mEmuCatalog[c.catIdx].platformId;
          std::string platformIdLower = autoAddLower(platformId);
          int ex = findExisting(nameLower, platformIdLower);
@@ -62098,7 +62108,7 @@ index a0824b29e6e..3ba55cb830c 100644
              added++;
              if (mXmbSystems[idx].isStandalone() ? !packageInstalled(mXmbSystems[idx].launchPkg)
                                                  : !coreSoExists(mXmbSystems[idx].coreSo)) needEmu++;
-@@ -1113,32 +1731,39 @@ void NanoMenu::gsAutoAddTick() {
+@@ -1113,32 +1732,39 @@ void NanoMenu::gsAutoAddTick() {
      }
  
      if (added > 0 || linked > 0) {
@@ -62150,7 +62160,7 @@ index a0824b29e6e..3ba55cb830c 100644
  }
  
  // Build the ordered, de-duplicated list of directories to scan for a system's
-@@ -1148,6 +1773,8 @@ void NanoMenu::gsAutoAddTick() {
+@@ -1148,6 +1774,8 @@ void NanoMenu::gsAutoAddTick() {
  // libretro folder-name aliases minus any the user removed (disabledDefaultFolders).
  // A persist.gammaos.nano.xmb.<id>.path override is always prepended at the front.
  std::vector<std::string> NanoMenu::buildScanCandidates(const XmbSystem& sys) {
@@ -62159,7 +62169,7 @@ index a0824b29e6e..3ba55cb830c 100644
      std::vector<std::string> scanPaths;
  
      // 0. User-chosen scan sources (highest priority). safuri sources scan via
-@@ -1493,102 +2120,55 @@ static int romScanMaxDepth() {
+@@ -1493,102 +2121,55 @@ static int romScanMaxDepth() {
      bool on = (buf[0] == '1' || strcasecmp(buf, "true") == 0);
      return on ? kRomScanMaxDepth : 0;
  }
@@ -62298,7 +62308,7 @@ index a0824b29e6e..3ba55cb830c 100644
  
          // Build extension set from comma-separated list
          std::set<std::string> exts;
-@@ -1626,7 +2206,9 @@ void NanoMenu::scanRomPaths() {
+@@ -1626,7 +2207,9 @@ void NanoMenu::scanRomPaths() {
          // Scan ALL candidate paths and merge results
          for (const auto& candidatePath : scanPaths) {
              int pathRomCount = 0;
@@ -62309,7 +62319,7 @@ index a0824b29e6e..3ba55cb830c 100644
                            sys.roms, m3uPaths, pathRomCount);
  
              if (pathRomCount > 0) {
-@@ -1691,7 +2273,9 @@ bool NanoMenu::scanOneSystemAsync(int sysIdx) {
+@@ -1691,7 +2274,9 @@ bool NanoMenu::scanOneSystemAsync(int sysIdx) {
      auto& sys = mXmbSystems[sysIdx];
      if (!sys.enabled) return false;   // disabled systems are never scanned
  
@@ -62319,7 +62329,7 @@ index a0824b29e6e..3ba55cb830c 100644
  
      // Build extension set
      std::set<std::string> exts;
-@@ -1723,7 +2307,9 @@ bool NanoMenu::scanOneSystemAsync(int sysIdx) {
+@@ -1723,7 +2308,9 @@ bool NanoMenu::scanOneSystemAsync(int sysIdx) {
  
      for (const auto& candidatePath : scanPaths) {
          int pathRomCount = 0;
@@ -62330,7 +62340,7 @@ index a0824b29e6e..3ba55cb830c 100644
                        newRoms, m3uPaths, pathRomCount);
  
          if (pathRomCount > 0) {
-@@ -1808,10 +2394,20 @@ bool NanoMenu::scanOneSystemAsync(int sysIdx) {
+@@ -1808,10 +2395,20 @@ bool NanoMenu::scanOneSystemAsync(int sysIdx) {
      return changed;
  }
  
@@ -62352,7 +62362,7 @@ index a0824b29e6e..3ba55cb830c 100644
      mBgScanThreadRunning = true;
      ALOGI("NanoMenu: launching background scan thread");
      std::thread(&NanoMenu::bgScanThreadFunc, this).detach();
-@@ -1824,10 +2420,7 @@ void NanoMenu::forceRescanAllSystems() {
+@@ -1824,10 +2421,7 @@ void NanoMenu::forceRescanAllSystems() {
  // the scanned flags so the fresh bg scan re-derives the library with the new
  // settings and republishes it to the render thread.
  void NanoMenu::romRescanFromSettings() {
@@ -62364,7 +62374,7 @@ index a0824b29e6e..3ba55cb830c 100644
      mXmbRomScanDone = false;
      forceRescanAllSystems();
  }
-@@ -1843,9 +2436,13 @@ void NanoMenu::bgScanThreadFunc() {
+@@ -1843,9 +2437,13 @@ void NanoMenu::bgScanThreadFunc() {
          const auto& sys = mXmbSystems[si];
          auto& res = results[si];
          res.valid = false;
@@ -62378,7 +62388,7 @@ index a0824b29e6e..3ba55cb830c 100644
  
          // Build extension set
          std::set<std::string> exts;
-@@ -1874,7 +2471,9 @@ void NanoMenu::bgScanThreadFunc() {
+@@ -1874,7 +2472,9 @@ void NanoMenu::bgScanThreadFunc() {
  
          for (const auto& cp : scanPaths) {
              int cnt = 0;
@@ -62389,7 +62399,7 @@ index a0824b29e6e..3ba55cb830c 100644
              if (cnt > 0) {
                  res.activePaths.push_back(cp);
                  res.valid = true;
-@@ -1921,30 +2520,16 @@ void NanoMenu::loadXmbRecent() {
+@@ -1921,30 +2521,16 @@ void NanoMenu::loadXmbRecent() {
      if (rd <= 0) return;
      content.resize(rd);
  
@@ -62428,7 +62438,7 @@ index a0824b29e6e..3ba55cb830c 100644
          mXmbRecent.push_back(std::move(e));
      }
      if (dropHiddenRecents()) saveXmbRecent();   // a game hidden by the other nano process
-@@ -1952,23 +2537,33 @@ void NanoMenu::loadXmbRecent() {
+@@ -1952,23 +2538,33 @@ void NanoMenu::loadXmbRecent() {
      ALOGD("NanoMenu: loaded %zu recent XMB entries", mXmbRecent.size());
  }
  
@@ -62470,7 +62480,7 @@ index a0824b29e6e..3ba55cb830c 100644
      mXmbCollections.clear();
      FILE* f = fopen(kCollectionsFile, "r");
      if (!f) return;
-@@ -1990,6 +2585,7 @@ void NanoMenu::loadCollections() {
+@@ -1990,6 +2586,7 @@ void NanoMenu::loadCollections() {
  }
  
  void NanoMenu::saveCollections() {
@@ -62478,7 +62488,7 @@ index a0824b29e6e..3ba55cb830c 100644
      int fd = open(kCollectionsFile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
      if (fd < 0) return;
      chmod(kCollectionsFile, 0644);
-@@ -2005,6 +2601,8 @@ void NanoMenu::saveCollections() {
+@@ -2005,6 +2602,8 @@ void NanoMenu::saveCollections() {
  // Resolve a stored ROM path to a live (system, rom) index so a collection game reuses the normal
  // PS3_ROM launch/boxart/option-menu path. Returns false if the game's system is gone or disabled.
  bool NanoMenu::collectionResolveRom(const std::string& romPath, int* sysIdx, int* romIdx) {
@@ -62487,7 +62497,7 @@ index a0824b29e6e..3ba55cb830c 100644
      for (size_t s = 0; s < mXmbSystems.size(); s++) {
          const XmbSystem& sys = mXmbSystems[s];
          for (size_t r = 0; r < sys.roms.size(); r++) {
-@@ -2013,9 +2611,13 @@ bool NanoMenu::collectionResolveRom(const std::string& romPath, int* sysIdx, int
+@@ -2013,9 +2612,13 @@ bool NanoMenu::collectionResolveRom(const std::string& romPath, int* sysIdx, int
                  if (romIdx) *romIdx = (int)r;
                  return true;
              }
@@ -62502,7 +62512,7 @@ index a0824b29e6e..3ba55cb830c 100644
  }
  
  void NanoMenu::buildCollectionsSubmenu(Ps3Level& out) {
-@@ -2065,7 +2667,9 @@ void NanoMenu::buildCollectionSubmenu(int colIdx, Ps3Level& out) {
+@@ -2065,7 +2668,9 @@ void NanoMenu::buildCollectionSubmenu(int colIdx, Ps3Level& out) {
  int NanoMenu::collectionCreate(const std::string& name) {
      if (name.empty()) return -1;
      for (size_t i = 0; i < mXmbCollections.size(); i++)
@@ -62513,7 +62523,7 @@ index a0824b29e6e..3ba55cb830c 100644
      XmbCollection c; c.name = name;
      mXmbCollections.push_back(c);
      saveCollections();
-@@ -2075,7 +2679,8 @@ int NanoMenu::collectionCreate(const std::string& name) {
+@@ -2075,7 +2680,8 @@ int NanoMenu::collectionCreate(const std::string& name) {
  void NanoMenu::collectionAddRom(int colIdx, const std::string& romPath) {
      if (colIdx < 0 || colIdx >= (int)mXmbCollections.size() || romPath.empty()) return;
      auto& roms = mXmbCollections[colIdx].roms;
@@ -62523,7 +62533,7 @@ index a0824b29e6e..3ba55cb830c 100644
      roms.push_back(romPath);
      saveCollections();
  }
-@@ -2083,50 +2688,101 @@ void NanoMenu::collectionAddRom(int colIdx, const std::string& romPath) {
+@@ -2083,50 +2689,101 @@ void NanoMenu::collectionAddRom(int colIdx, const std::string& romPath) {
  void NanoMenu::collectionRemoveRom(int colIdx, const std::string& romPath) {
      if (colIdx < 0 || colIdx >= (int)mXmbCollections.size()) return;
      auto& roms = mXmbCollections[colIdx].roms;
@@ -62641,7 +62651,7 @@ index a0824b29e6e..3ba55cb830c 100644
      saveFavorites();
  }
  
-@@ -2160,27 +2816,55 @@ static const char* kHiddenGamesFile = "/data/system/nano_hidden_games.txt";
+@@ -2160,27 +2817,55 @@ static const char* kHiddenGamesFile = "/data/system/nano_hidden_games.txt";
  // One key per game whichever mount path it was reached through: the primary storage is seen as
  // /data/media/0, /storage/emulated/0 and /sdcard, and a card as /mnt/media_rw/X or /storage/X
  // (Recently Played stores the app-visible form, the scan the raw one).
@@ -62705,7 +62715,7 @@ index a0824b29e6e..3ba55cb830c 100644
          char line[4096];
          while (fgets(line, sizeof(line), f)) {
              size_t n = strlen(line);
-@@ -2196,6 +2880,10 @@ bool NanoMenu::loadHiddenGames() {
+@@ -2196,6 +2881,10 @@ bool NanoMenu::loadHiddenGames() {
  }
  
  void NanoMenu::saveHiddenGames() {
@@ -62716,7 +62726,7 @@ index a0824b29e6e..3ba55cb830c 100644
      // Written beside the real file and renamed over it, so a power cut mid-write can never leave
      // a truncated list that brings every hidden game back (or a half path that hides nothing).
      const std::string tmp = std::string(kHiddenGamesFile) + ".tmp";
-@@ -2260,6 +2948,245 @@ void NanoMenu::hideGame(const std::string& romPath) {
+@@ -2260,6 +2949,245 @@ void NanoMenu::hideGame(const std::string& romPath) {
      refreshListsAfterHide();
  }
  
@@ -62962,7 +62972,7 @@ index a0824b29e6e..3ba55cb830c 100644
  void NanoMenu::unhideGame(const std::string& key) {
      if (!mHiddenGames.erase(key)) return;
      saveHiddenGames();
-@@ -2297,7 +3224,8 @@ void NanoMenu::buildHiddenGamesSubmenu(Ps3Level& out) {
+@@ -2297,7 +3225,8 @@ void NanoMenu::buildHiddenGamesSubmenu(Ps3Level& out) {
              }
              if (!mine) continue;
              it.value = sys.shortname;
@@ -62972,7 +62982,7 @@ index a0824b29e6e..3ba55cb830c 100644
              GLuint tex = 0, nmap = 0; resolveSystemIcon(sys.iconRef, &tex, &nmap);
              if (tex) { it.iconTex = tex; it.nmapTex = nmap; it.iconR = sys.iconR; it.iconG = sys.iconG; it.iconB = sys.iconB; }
              break;
-@@ -2382,11 +3310,33 @@ void NanoMenu::recentRemoveAt(int idx) {
+@@ -2382,54 +3311,42 @@ void NanoMenu::recentRemoveAt(int idx) {
  }
  
  // Tell the user why nothing launched. Kept in one place so every launch path says the same thing.
@@ -63008,8 +63018,54 @@ index a0824b29e6e..3ba55cb830c 100644
 +                   trDyn("It may have been deleted, or its storage is not connected."), 260);
  }
  
- // True when the RetroArch libretro core .so for a system is present on disk. RetroArch keeps its
-@@ -2437,10 +3387,10 @@ bool NanoMenu::packageInstalled(const std::string& pkg) {
+-// True when the RetroArch libretro core .so for a system is present on disk. RetroArch keeps its
+-// cores under its own data dir; this is the exact path every launch branch feeds RetroArch. Fails
+-// OPEN (returns true) for an empty coreSo so a non-core launch type is never blocked here.
++// Whether a game's core or app can run here: the platform's answer (NanoPlatform.h's Emulators).
+ bool NanoMenu::coreSoExists(const std::string& coreSo) {
+-    if (coreSo.empty()) return true;   // not a libretro-core launch; nothing to check
+-    std::string corePath = "/data/data/com.retroarch.aarch64/cores/" + coreSo;
+-    struct stat st;
+-    if (stat(corePath.c_str(), &st) != 0) return false;
+-    return S_ISREG(st.st_mode) && st.st_size > 0;
++    return nanoplat::get().emulators->coreInstalled(coreSo);
+ }
+ 
+-// True when a standalone emulator package is installed. Reads /data/system/packages.list directly
+-// (the authoritative DB; the package name is the first space-delimited token of each line) rather
+-// than mAppEntries, which drops system/com.android.*/com.gammaos.* packages an emulator may live in.
+-// Fails OPEN (returns true) if the list is unreadable, so a transient state never blocks a launch.
+ bool NanoMenu::packageInstalled(const std::string& pkg) {
+-    if (pkg.empty()) return true;
+-    // DS games route to drastic-nano, which runs libdrastic from /system and no
+-    // longer needs the DraStic APK: the system copy counts as "installed".
+-    if (pkg == "com.dsemu.drastic" &&
+-        property_get_bool("persist.gammaos.nano.drastic_nano", false) &&
+-        access("/system/lib64/libdrastic_arm64.so", R_OK) == 0)
+-        return true;
+-    int fd = open("/data/system/packages.list", O_RDONLY);
+-    if (fd < 0) return true;   // fail-open: never block a launch if the DB cannot be read
+-    std::string content;
+-    char b[4096];
+-    ssize_t n;
+-    while ((n = read(fd, b, sizeof(b))) > 0) content.append(b, (size_t)n);
+-    close(fd);
+-    size_t pos = 0;
+-    while (pos < content.size()) {
+-        size_t eol = content.find('\n', pos);
+-        if (eol == std::string::npos) eol = content.size();
+-        size_t sp = content.find(' ', pos);
+-        if (sp != std::string::npos && sp <= eol &&
+-            content.compare(pos, sp - pos, pkg) == 0)
+-            return true;
+-        pos = eol + 1;
+-    }
+-    return false;
++    return nanoplat::get().emulators->appInstalled(pkg);
+ }
+ 
+ // Tell the user a game's emulator/core is not on the device, instead of launching into a black
+@@ -2437,10 +3354,10 @@ bool NanoMenu::packageInstalled(const std::string& pkg) {
  void NanoMenu::showEmuMissingMsg(const std::string& displayName, bool standalone) {
      ALOGW("NanoMenu: refusing to launch, emulator missing (%s, standalone=%d)",
            displayName.c_str(), standalone ? 1 : 0);
@@ -63024,7 +63080,7 @@ index a0824b29e6e..3ba55cb830c 100644
  }
  
  // Drop Recently Played entries whose ROM file is gone, so a rescan (or a deleted game) does not
-@@ -2472,13 +3422,13 @@ void NanoMenu::gamesRefresh() {
+@@ -2472,13 +3389,13 @@ void NanoMenu::gamesRefresh() {
      // "had to refresh twice" report). The running scan's results then prune without the guard.
      mRecentPrunePending = true;
      if (mBgScanThreadRunning) {
@@ -63040,7 +63096,7 @@ index a0824b29e6e..3ba55cb830c 100644
      mDisplayDirty = true;
  }
  
-@@ -2486,7 +3436,28 @@ void NanoMenu::addXmbRecent(int sysIdx, int gameIdx) {
+@@ -2486,7 +3403,28 @@ void NanoMenu::addXmbRecent(int sysIdx, int gameIdx) {
      if (sysIdx < 0 || sysIdx >= (int)mXmbSystems.size()) return;
      const auto& sys = mXmbSystems[sysIdx];
      if (gameIdx < 0 || gameIdx >= (int)sys.roms.size()) return;
@@ -63069,7 +63125,7 @@ index a0824b29e6e..3ba55cb830c 100644
      XmbRecentEntry e;
      // roms[] contains full paths -- use directly, convert for app access
      e.romPath = sys.roms[gameIdx];
-@@ -2500,25 +3471,17 @@ void NanoMenu::addXmbRecent(int sysIdx, int gameIdx) {
+@@ -2500,25 +3438,17 @@ void NanoMenu::addXmbRecent(int sysIdx, int gameIdx) {
      e.coreSo = sys.coreSo;
      e.launchPkg = sys.launchPkg;
      e.launchIntent = sys.launchIntent;
@@ -63103,7 +63159,7 @@ index a0824b29e6e..3ba55cb830c 100644
  }
  
  // ---------------------------------------------------------------------------
-@@ -2526,11 +3489,21 @@ void NanoMenu::addXmbRecent(int sysIdx, int gameIdx) {
+@@ -2526,11 +3456,21 @@ void NanoMenu::addXmbRecent(int sysIdx, int gameIdx) {
  // ---------------------------------------------------------------------------
  
  void NanoMenu::handleLeft() {
@@ -63127,7 +63183,7 @@ index a0824b29e6e..3ba55cb830c 100644
          return;
      }
      if (mMenuState == MENU_WIFI || mMenuState == MENU_BT) return;
-@@ -2542,6 +3515,7 @@ void NanoMenu::handleLeft() {
+@@ -2542,6 +3482,7 @@ void NanoMenu::handleLeft() {
          // the root, else the category/submenu cards). A modal (chooser/dialog) keeps XMB nav.
          // A settings LIST level: LEFT walks up to the parent (a vertical list has no horizontal move).
          if (mNdsTheme && mPs3Xmb && !ndsInModal()) { if (ndsCurLevelIsList()) ndsNavBack(); else ndsNavHoriz(-1); }
@@ -63135,7 +63191,7 @@ index a0824b29e6e..3ba55cb830c 100644
          else if (mMinimaTheme && mPs3Xmb && !ndsInModal()) ndsNavHoriz(-6);   // Minima: LEFT jumps up a page (clamped)
          else if (mEsdeTheme && (mEsdeMenuActive || mEsdeMenuClosing)) esdeMenuCycle(-1);  // ES-DE menu: cycle value / row
          else if (mEsdeTheme && mPs3Xmb && !ndsInModal() && mPs3Stack.empty()) esdeNav(-1, 0);       // ES-DE: previous system
-@@ -2564,11 +3538,21 @@ void NanoMenu::handleLeft() {
+@@ -2564,11 +3505,21 @@ void NanoMenu::handleLeft() {
  }
  
  void NanoMenu::handleRight() {
@@ -63159,7 +63215,7 @@ index a0824b29e6e..3ba55cb830c 100644
          return;
      }
      if (mMenuState == MENU_WIFI || mMenuState == MENU_BT) return;
-@@ -2581,6 +3565,7 @@ void NanoMenu::handleRight() {
+@@ -2581,6 +3532,7 @@ void NanoMenu::handleRight() {
          // (the ">" chevron rows); on a leaf (toggle / action) RIGHT does NOTHING, so a
          // drifting stick / temperamental d-pad diagonal cannot confirm it (confirm is X/A).
          if (mNdsTheme && mPs3Xmb && !ndsInModal()) { if (ndsCurLevelIsList()) { if (ps3FocusOpensSubmenu()) ndsNavSelect(false); } else ndsNavHoriz(+1); }
@@ -63167,7 +63223,7 @@ index a0824b29e6e..3ba55cb830c 100644
          else if (mMinimaTheme && mPs3Xmb && !ndsInModal()) ndsNavHoriz(+6);   // Minima: RIGHT jumps down a page (clamped)
          else if (mEsdeTheme && (mEsdeMenuActive || mEsdeMenuClosing)) esdeMenuCycle(+1);  // ES-DE menu: cycle value / row
          else if (mEsdeTheme && mPs3Xmb && !ndsInModal() && mPs3Stack.empty()) esdeNav(+1, 0);       // ES-DE: next system
-@@ -2602,6 +3587,194 @@ void NanoMenu::handleRight() {
+@@ -2602,6 +3554,194 @@ void NanoMenu::handleRight() {
      }
  }
  
@@ -63362,7 +63418,7 @@ index a0824b29e6e..3ba55cb830c 100644
  void NanoMenu::launchXmbGame() {
      // Overlay: the home exit-to-launch handshake (set launch_* props + exit so the framework starts
      // the app) does not apply to the resident overlay - running it would make the overlay
-@@ -2613,6 +3786,7 @@ void NanoMenu::launchXmbGame() {
+@@ -2613,6 +3753,7 @@ void NanoMenu::launchXmbGame() {
      // first was a dead no-op: once an app is behind it the home runs as the resident overlay, so
      // launching from the overlay or after returning to the theme did nothing.
      if (mOverlayMode) { overlayLaunchGame(); return; }
@@ -63370,7 +63426,7 @@ index a0824b29e6e..3ba55cb830c 100644
      int sysIdx, gameIdx;
  
      // GammaOS Nano: gate the entire XMB launch path until the system
-@@ -2635,6 +3809,14 @@ void NanoMenu::launchXmbGame() {
+@@ -2635,6 +3776,14 @@ void NanoMenu::launchXmbGame() {
          if (mXmbGameIndex < 0 || mXmbGameIndex >= (int)mXmbRecent.size()) return;
          // Take a copy -- the vector reorder below invalidates references.
          XmbRecentEntry re = mXmbRecent[mXmbGameIndex];
@@ -63385,7 +63441,7 @@ index a0824b29e6e..3ba55cb830c 100644
  
          // A recent entry outlives the file it points at (game deleted, card removed). Refuse the
          // launch and drop the dead row rather than starting an emulator that cannot open it.
-@@ -2654,6 +3836,37 @@ void NanoMenu::launchXmbGame() {
+@@ -2654,6 +3803,37 @@ void NanoMenu::launchXmbGame() {
              showEmuMissingMsg(re.displayName, false); return;
          }
  
@@ -63423,7 +63479,7 @@ index a0824b29e6e..3ba55cb830c 100644
          // Move to front of recent list -- only on disk, not in-memory.
          // Modifying the vector causes a visible shuffle during the
          // transition frames before NanoMenu exits.
-@@ -2667,35 +3880,18 @@ void NanoMenu::launchXmbGame() {
+@@ -2667,35 +3847,18 @@ void NanoMenu::launchXmbGame() {
          }
  
          if (re.standalone) {
@@ -63466,7 +63522,7 @@ index a0824b29e6e..3ba55cb830c 100644
                  if (mQuickResumeEnabled) {
                      setQrRomPath(re.romPath);
                      android::base::SetProperty(
-@@ -2746,10 +3942,14 @@ void NanoMenu::launchXmbGame() {
+@@ -2746,10 +3909,14 @@ void NanoMenu::launchXmbGame() {
              }
          } else {
              std::string corePath = "/data/data/com.retroarch.aarch64/cores/" + re.coreSo;
@@ -63485,7 +63541,7 @@ index a0824b29e6e..3ba55cb830c 100644
              property_set("sys.gammaos.nano.cache_ready", "0");
              property_set("sys.gammaos.nano.cache_op", "populate");
              if (mQuickResumeEnabled) {
-@@ -2776,10 +3976,10 @@ void NanoMenu::launchXmbGame() {
+@@ -2776,10 +3943,10 @@ void NanoMenu::launchXmbGame() {
          mSearchActive = false; mOskActive = false;
          property_set("sys.gammaos.nano.xmb_return_sys", "-1");
          property_set("sys.gammaos.nano.xmb_return_game", "0");
@@ -63498,7 +63554,7 @@ index a0824b29e6e..3ba55cb830c 100644
          struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
          int64_t fenceNs = (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec;
          char buf[32]; snprintf(buf, sizeof(buf), "%" PRId64, fenceNs);
-@@ -2789,9 +3989,10 @@ void NanoMenu::launchXmbGame() {
+@@ -2789,9 +3956,10 @@ void NanoMenu::launchXmbGame() {
      }
  
      if (mSearchActive) {
@@ -63511,7 +63567,7 @@ index a0824b29e6e..3ba55cb830c 100644
          sysIdx = mSearchResults[mSearchSelectedIndex].sysIdx;
          gameIdx = mSearchResults[mSearchSelectedIndex].gameIdx;
      } else {
-@@ -2800,8 +4001,17 @@ void NanoMenu::launchXmbGame() {
+@@ -2800,8 +3968,17 @@ void NanoMenu::launchXmbGame() {
      }
  
      if (sysIdx < 0 || sysIdx >= (int)mXmbSystems.size()) return;
@@ -63531,7 +63587,7 @@ index a0824b29e6e..3ba55cb830c 100644
  
      std::string romPath = sys.roms[gameIdx];
      if (romPath.find("/data/media/0/") == 0) {
-@@ -2831,45 +4041,30 @@ void NanoMenu::launchXmbGame() {
+@@ -2831,45 +4008,30 @@ void NanoMenu::launchXmbGame() {
          std::string filename;
          { size_t ls = fullRomPath.rfind('/');
            filename = (ls != std::string::npos) ? fullRomPath.substr(ls + 1) : fullRomPath; }
@@ -63594,7 +63650,7 @@ index a0824b29e6e..3ba55cb830c 100644
          {
              const char* intentFile = "/data/system/nano_launch_intent.txt";
              int ifd = open(intentFile, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-@@ -2877,16 +4072,18 @@ void NanoMenu::launchXmbGame() {
+@@ -2877,16 +4039,18 @@ void NanoMenu::launchXmbGame() {
                  write(ifd, tabIntent.c_str(), tabIntent.size());
                  close(ifd);
                  chmod(intentFile, 0644);
@@ -63618,7 +63674,7 @@ index a0824b29e6e..3ba55cb830c 100644
              if (mQuickResumeEnabled) {
                  setQrRomPath(romPath);
                  android::base::SetProperty(
-@@ -2944,10 +4141,13 @@ void NanoMenu::launchXmbGame() {
+@@ -2944,10 +4108,13 @@ void NanoMenu::launchXmbGame() {
          // RetroArch core
          std::string corePath = "/data/data/com.retroarch.aarch64/cores/" + sys.coreSo;
          ALOGI("NanoMenu XMB: launching %s core=%s", romPath.c_str(), corePath.c_str());
@@ -63636,7 +63692,7 @@ index a0824b29e6e..3ba55cb830c 100644
          property_set("sys.gammaos.nano.cache_ready", "0");
          property_set("sys.gammaos.nano.cache_op", "populate");
  
-@@ -2995,10 +4195,10 @@ void NanoMenu::launchXmbGame() {
+@@ -2995,10 +4162,10 @@ void NanoMenu::launchXmbGame() {
          }
      }
  
@@ -63649,7 +63705,7 @@ index a0824b29e6e..3ba55cb830c 100644
  
      struct timespec ts;
      clock_gettime(CLOCK_MONOTONIC, &ts);
-@@ -3110,8 +4310,8 @@ void NanoMenu::renderXmb() {
+@@ -3110,8 +4277,8 @@ void NanoMenu::renderXmb() {
          float cb = isSel ? iconB : dimIconB;
          drawIcon(iconId, ix, iy, sz, cr, cg, cb, alpha);
          if (isSel) {
@@ -63660,7 +63716,7 @@ index a0824b29e6e..3ba55cb830c 100644
                               : (idx >= 0 && idx < numSys) ? mXmbSystems[idx].name.c_str()
                               : "";
              float nameY = iy + sz + 6.0f * sf;
-@@ -3244,10 +4444,10 @@ void NanoMenu::renderXmb() {
+@@ -3244,10 +4411,10 @@ void NanoMenu::renderXmb() {
          }
          glDisable(GL_SCISSOR_TEST);
      } else if (!mSearchActive) {
@@ -63673,7 +63729,7 @@ index a0824b29e6e..3ba55cb830c 100644
          float msgW = measureText(msg, textScale);
          drawText(msg, (mWidth - msgW) / 2.0f, iconBarY + 40.0f * sf,
                   textScale, 0.5f, 0.5f, 0.5f, 0.7f);
-@@ -3257,16 +4457,16 @@ void NanoMenu::renderXmb() {
+@@ -3257,16 +4424,16 @@ void NanoMenu::renderXmb() {
      float footH = FONT_CHAR_H * footScale;
      float footY = mHeight - footH - 8.0f * sf;
      const char* footer = mSearchActive
@@ -65353,10 +65409,10 @@ index 00000000000..1cf7b6955b2
 +}  // namespace nanoplat
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoPlatform.h b/frameworks/base/cmds/gammaos-nano/NanoPlatform.h
 new file mode 100644
-index 00000000000..97e562556aa
+index 00000000000..de31b7ce599
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/NanoPlatform.h
-@@ -0,0 +1,460 @@
+@@ -0,0 +1,494 @@
 +/*
 + * Copyright (C) 2026 The Thimsy OS Project
 + *
@@ -65378,7 +65434,7 @@ index 00000000000..97e562556aa
 +//
 +// Declared when used, not ahead: this header holds only the platform object and how it is made,
 +// installed and reached. Each interface (Display, Launcher, Audio, Volumes, Power, SystemActions,
-+// InputPolicy, Network, and the Cap set) is declared by the step that moves the code behind it, in
++// InputPolicy, Network, Emulators, and the Cap set) is declared by the step that moves the code behind it, in
 +// the same commit as the move, sized to that code.
 +//
 +// Who may use it. drastic-nano, gammaos-nano-scrape, the host tests and the other binaries built
@@ -65785,6 +65841,39 @@ index 00000000000..97e562556aa
 +};
 +// --- end InputPolicy -----------------------------------------------------------------------------
 +
++// --- Emulators (W8-EMU) --------------------------------------------------------------------------
++// Which emulators this platform can run, and the image's own default emulator per system (OA-38: a
++// pick this platform cannot run starts with that default instead). Nano names an emulator the same
++// way on every platform, as its launch fields do: a libretro core by its Android file name
++// (<core>_libretro_android.so) and a standalone emulator by its Android package. The firmware's
++// answers are NanoMenu::coreSoExists and packageInstalled, moved (platform/firmware/Emulators.cpp);
++// Linux's come from the image's core folder and fail closed for every app, since it starts none yet
++// (platform/linux/Emulators.cpp); the host's from the config's scripted lists
++// (platform/host/FakeEmulators.cpp). Any thread; each call may touch the filesystem.
++
++// One system's emulator in the launch fields' terms (NanoMenu::XmbSystem's): a core, or an app.
++struct SystemEmulator {
++    std::string system;   // the system's id, which is its ROM folder for the built-in systems ("psx")
++    std::string coreSo;   // a libretro core, "<core>_libretro_android.so"; "" for an app
++    std::string package;  // a standalone emulator's package; "" for a core
++    std::string intent;   // the app's am start template ({file.uri} and the rest); "" for a core
++};
++
++class Emulators {
++ public:
++    virtual ~Emulators() = default;
++    // The libretro core `coreSo` (Nano's name for it) can run here. True for "": no core to check.
++    virtual bool coreInstalled(const std::string& coreSo) = 0;
++    // The standalone emulator `package` can run here. True for "": no app to check.
++    virtual bool appInstalled(const std::string& package) = 0;
++    // The image's default emulator for each system it ships one for, which Nano writes into the
++    // device's store of defaults on its first run (OA-38). Empty when the image's defaults are the
++    // systems shared code already reads: the firmware's are the build's nano_systems.json, else
++    // Nano's built-in table.
++    virtual std::vector<SystemEmulator> imageDefaults() = 0;
++};
++// --- end Emulators -------------------------------------------------------------------------------
++
 +// The platform's services, one member per G7 area. Each platform library derives from it to keep
 +// its own state, and its createPlatform() sets every member, so call sites use them untested.
 +struct Platform {
@@ -65797,6 +65886,7 @@ index 00000000000..97e562556aa
 +    std::unique_ptr<SystemActions> actions;  // G7-power: never null once createPlatform() returns
 +    std::unique_ptr<InputPolicy> input;  // G7-input: never null once createPlatform() returns
 +    std::unique_ptr<Network> net;  // G7-net: never null once createPlatform() returns
++    std::unique_ptr<Emulators> emulators;  // W8-EMU: never null once createPlatform() returns
 +};
 +
 +struct PlatformArgs {
@@ -83477,6 +83567,146 @@ index 00000000000..4b2f2dbe02c
 +std::unique_ptr<nanoplat::Display> createDisplay();
 +
 +}  // namespace nanofirmware
+diff --git a/frameworks/base/cmds/gammaos-nano/platform/firmware/Emulators.cpp b/frameworks/base/cmds/gammaos-nano/platform/firmware/Emulators.cpp
+new file mode 100644
+index 00000000000..fc8bb814ac8
+--- /dev/null
++++ b/frameworks/base/cmds/gammaos-nano/platform/firmware/Emulators.cpp
+@@ -0,0 +1,98 @@
++/*
++ * Copyright (C) 2026 The Thimsy OS Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++// The firmware Emulators (docs/linux/IMPLEMENTATION.md B.6, W8-EMU): NanoMenuXmb.cpp's pre-launch
++// checks (NanoMenu::coreSoExists, NanoMenu::packageInstalled), moved here verbatim. The image's
++// default emulators are the systems shared code reads already (the build's nano_systems.json, else
++// Nano's built-in table), so imageDefaults() has none of its own.
++
++#include "Emulators.h"
++
++#include <fcntl.h>
++#include <sys/stat.h>
++#include <unistd.h>
++
++#include <memory>
++#include <string>
++#include <vector>
++
++#include <cutils/properties.h>
++
++#include "NanoPlatform.h"
++
++namespace nanoplat {
++namespace firmware {
++
++namespace {
++
++class FirmwareEmulators : public Emulators {
++ public:
++    bool coreInstalled(const std::string& coreSo) override;
++    bool appInstalled(const std::string& pkg) override;
++    std::vector<SystemEmulator> imageDefaults() override { return {}; }
++};
++
++// True when the RetroArch libretro core .so for a system is present on disk. RetroArch keeps its
++// cores under its own data dir; this is the exact path every launch branch feeds RetroArch. Fails
++// OPEN (returns true) for an empty coreSo so a non-core launch type is never blocked here.
++bool FirmwareEmulators::coreInstalled(const std::string& coreSo) {
++    if (coreSo.empty()) return true;   // not a libretro-core launch; nothing to check
++    std::string corePath = "/data/data/com.retroarch.aarch64/cores/" + coreSo;
++    struct stat st;
++    if (stat(corePath.c_str(), &st) != 0) return false;
++    return S_ISREG(st.st_mode) && st.st_size > 0;
++}
++
++// True when a standalone emulator package is installed. Reads /data/system/packages.list directly
++// (the authoritative DB; the package name is the first space-delimited token of each line) rather
++// than mAppEntries, which drops system/com.android.*/com.gammaos.* packages an emulator may live in.
++// Fails OPEN (returns true) if the list is unreadable, so a transient state never blocks a launch.
++bool FirmwareEmulators::appInstalled(const std::string& pkg) {
++    if (pkg.empty()) return true;
++    // DS games route to drastic-nano, which runs libdrastic from /system and no
++    // longer needs the DraStic APK: the system copy counts as "installed".
++    if (pkg == "com.dsemu.drastic" &&
++        property_get_bool("persist.gammaos.nano.drastic_nano", false) &&
++        access("/system/lib64/libdrastic_arm64.so", R_OK) == 0)
++        return true;
++    int fd = open("/data/system/packages.list", O_RDONLY);
++    if (fd < 0) return true;   // fail-open: never block a launch if the DB cannot be read
++    std::string content;
++    char b[4096];
++    ssize_t n;
++    while ((n = read(fd, b, sizeof(b))) > 0) content.append(b, (size_t)n);
++    close(fd);
++    size_t pos = 0;
++    while (pos < content.size()) {
++        size_t eol = content.find('\n', pos);
++        if (eol == std::string::npos) eol = content.size();
++        size_t sp = content.find(' ', pos);
++        if (sp != std::string::npos && sp <= eol &&
++            content.compare(pos, sp - pos, pkg) == 0)
++            return true;
++        pos = eol + 1;
++    }
++    return false;
++}
++
++}  // namespace
++
++std::unique_ptr<Emulators> makeEmulators() {
++    return std::unique_ptr<Emulators>(new FirmwareEmulators());
++}
++
++}  // namespace firmware
++}  // namespace nanoplat
+diff --git a/frameworks/base/cmds/gammaos-nano/platform/firmware/Emulators.h b/frameworks/base/cmds/gammaos-nano/platform/firmware/Emulators.h
+new file mode 100644
+index 00000000000..ebcefc933e5
+--- /dev/null
++++ b/frameworks/base/cmds/gammaos-nano/platform/firmware/Emulators.h
+@@ -0,0 +1,30 @@
++/*
++ * Copyright (C) 2026 The Thimsy OS Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++// The firmware platform's Emulators (Emulators.cpp, W8-EMU), for createPlatform() in Platform.cpp.
++#pragma once
++
++#include <memory>
++
++#include "NanoPlatform.h"
++
++namespace nanoplat {
++namespace firmware {
++
++std::unique_ptr<Emulators> makeEmulators();
++
++}  // namespace firmware
++}  // namespace nanoplat
 diff --git a/frameworks/base/cmds/gammaos-nano/platform/firmware/InputPolicy.cpp b/frameworks/base/cmds/gammaos-nano/platform/firmware/InputPolicy.cpp
 new file mode 100644
 index 00000000000..060013906d9
@@ -84678,10 +84908,10 @@ index 00000000000..8e83c66bb65
 +}  // namespace nanofirmware
 diff --git a/frameworks/base/cmds/gammaos-nano/platform/firmware/Platform.cpp b/frameworks/base/cmds/gammaos-nano/platform/firmware/Platform.cpp
 new file mode 100644
-index 00000000000..04ffa85fa03
+index 00000000000..6bc53bcc3f9
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/platform/firmware/Platform.cpp
-@@ -0,0 +1,48 @@
+@@ -0,0 +1,50 @@
 +/*
 + * Copyright (C) 2026 The Thimsy OS Project
 + *
@@ -84712,6 +84942,7 @@ index 00000000000..04ffa85fa03
 +#include "SystemActions.h"  // G7-power
 +#include "InputPolicy.h"  // G7-input
 +#include "Network.h"  // G7-net
++#include "Emulators.h"  // W8-EMU
 +
 +namespace nanofirmware {
 +std::unique_ptr<nanoplat::Audio> makeAudio();  // platform/firmware/Audio.cpp (G7-audio)
@@ -84728,6 +84959,7 @@ index 00000000000..04ffa85fa03
 +    platform->actions = nanofirmware::createSystemActions();  // G7-power
 +    platform->input = nanofirmware::createInputPolicy();  // G7-input
 +    platform->net = nanofirmware::createNetwork();  // G7-net
++    platform->emulators = firmware::makeEmulators();  // W8-EMU
 +    return platform;
 +}
 diff --git a/frameworks/base/cmds/gammaos-nano/platform/firmware/Power.cpp b/frameworks/base/cmds/gammaos-nano/platform/firmware/Power.cpp

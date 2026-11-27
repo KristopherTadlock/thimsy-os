@@ -338,6 +338,9 @@ HL_PLATFORM_SRCS += platform/host/FakeVolumes.cpp
 # The fake Wi-Fi and Bluetooth (G7-net).
 HL_TESTS += fake_network_test
 HL_PLATFORM_SRCS += platform/host/FakeNetwork.cpp
+# The fake emulators (W8-EMU).
+HL_TESTS += fake_emulators_test
+HL_PLATFORM_SRCS += platform/host/FakeEmulators.cpp
 HL_PLATFORM_OBJS := $(patsubst %.cpp,$(HL_O)/obj/%.o,$(HL_PLATFORM_SRCS))
 HL_CPPFLAGS := $(NANOCOMPAT_CPPFLAGS) -I$(LIBTHIMSY)/include -I$(NANO) -I$(LIBTHIMSY)/testing -I$(HL_TEST_DIR)
 HL_WARN := -Wall -Wextra -Werror

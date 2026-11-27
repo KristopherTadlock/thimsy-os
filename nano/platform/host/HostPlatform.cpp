@@ -23,8 +23,9 @@
 // with the host's fakes: the display (FakeDisplay.h, over DrmHost.cpp), the launcher
 // (FakeLauncher.h: records each launch with a {"ev":"launch"} event), the Volumes (the
 // config's scripted list of drives, FakeVolumes.h), the power and the system actions
-// (FakePower.h, G7-power), and the Wi-Fi and Bluetooth (the config's scripted networks and
-// devices, FakeNetwork.h, G7-net).
+// (FakePower.h, G7-power), the Wi-Fi and Bluetooth (the config's scripted networks and
+// devices, FakeNetwork.h, G7-net), and the emulators (the config's scripted cores, apps and image
+// defaults, FakeEmulators.h, W8-EMU).
 
 #define LOG_TAG "NanoHost"
 
@@ -45,6 +46,7 @@
 #include "FakePower.h"  // G7-power
 #include "FakeInput.h"  // G7-input
 #include "FakeNetwork.h"  // G7-net
+#include "FakeEmulators.h"  // W8-EMU
 #include "HostConfig.h"
 #include "NanoPlatform.h"
 #include "FakeAudio.h"  // G7-audio
@@ -146,6 +148,7 @@ std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs&
           cfg.display.width, cfg.display.height, cfg.display.refreshHz, cfg.devices.size(), cfg.shellRules.size());
     std::unique_ptr<nanoplat::Volumes> volumes = makeFakeVolumes(cfg.volumes);   // G7-volumes
     std::unique_ptr<nanoplat::Network> net = createFakeNetwork(cfg.network);   // G7-net
+    std::unique_ptr<nanoplat::Emulators> emulators = makeFakeEmulators(cfg.emulators);   // W8-EMU
     std::unique_ptr<nanoplat::Platform> platform(new HostPlatform(std::move(cfg)));
     // The services, one line each (G7 steps).
     platform->display = createFakeDisplay(createHostDrm());  // G7-display
@@ -156,5 +159,6 @@ std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs&
     platform->actions = createFakeActions();  // G7-power
     platform->input = createFakeInput();  // G7-input
     platform->net = std::move(net);   // G7-net: the config's scripted networks and devices
+    platform->emulators = std::move(emulators);   // W8-EMU: the config's scripted emulators
     return platform;
 }

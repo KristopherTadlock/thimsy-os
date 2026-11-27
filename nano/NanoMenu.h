@@ -560,10 +560,10 @@ private:
     // does not). False, with a message shown, when it is used and the file holds no valid ID.
     bool launchFileIdFor(const std::string& tmpl, const std::string& args, const std::string& romPath,
                          const std::string& displayName, std::string& id);
-    // Pre-launch emulator guard (ES-DE style, checked lazily at launch). coreSoExists stats the
-    // RetroArch core .so; packageInstalled scans /data/system/packages.list for a standalone package.
-    // Both fail OPEN (return true) if the check itself cannot be performed, so a transient FS state
-    // never blocks a valid launch. showEmuMissingMsg surfaces a theme-agnostic toast and we do not launch.
+    // Pre-launch emulator guard (ES-DE style, checked lazily at launch). coreSoExists and
+    // packageInstalled ask the platform (NanoPlatform.h's Emulators): the firmware stats the
+    // RetroArch core .so and scans /data/system/packages.list, failing OPEN when it cannot check;
+    // Linux fails closed. showEmuMissingMsg surfaces a theme-agnostic toast and we do not launch.
     bool coreSoExists(const std::string& coreSo);
     bool packageInstalled(const std::string& pkg);
     void showEmuMissingMsg(const std::string& displayName, bool standalone);

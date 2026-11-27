@@ -174,6 +174,42 @@ bool parseNetwork(Reader& r, const Value& v, const std::string& where, FakeNetCo
     return true;
 }
 
+// "emulators" (FakeEmulators.h, W8-EMU).
+bool parseEmulators(Reader& r, const Value& v, const std::string& where, FakeEmulatorsConfig* e) {
+    if (!r.object(v, where, {"cores", "apps", "defaults"})) return false;
+    for (const char* key : {"cores", "apps"}) {
+        const Value* list = v.find(key);
+        if (!list) continue;
+        const std::string w = where + "." + key;
+        if (!list->isArray()) return r.fail(w, "not an array");
+        std::vector<std::string>& out = std::string(key) == "cores" ? e->cores : e->apps;
+        out.clear();
+        for (size_t i = 0; i < list->size(); ++i) {
+            const Value& n = (*list)[i];
+            if (!n.isString() || n.asString().empty())
+                return r.fail(w + "[" + std::to_string(i) + "]", "not a name");
+            out.push_back(n.asString());
+        }
+    }
+    if (const Value* defs = v.find("defaults")) {
+        if (!defs->isArray()) return r.fail(where + ".defaults", "not an array");
+        e->defaults.clear();
+        for (size_t i = 0; i < defs->size(); ++i) {
+            const std::string w = where + ".defaults[" + std::to_string(i) + "]";
+            const Value& d = (*defs)[i];
+            nanoplat::SystemEmulator se;
+            if (!r.object(d, w, {"system", "core", "package", "intent"}) || !r.str(d, "system", w, &se.system) ||
+                !r.str(d, "core", w, &se.coreSo) || !r.str(d, "package", w, &se.package) ||
+                !r.str(d, "intent", w, &se.intent))
+                return false;
+            if (se.system.empty()) return r.fail(w + ".system", "missing");
+            if (se.coreSo.empty() == se.package.empty()) return r.fail(w, "needs a core or a package, not both");
+            e->defaults.push_back(std::move(se));
+        }
+    }
+    return true;
+}
+
 }  // namespace
 
 bool parseHostConfig(std::string_view text, HostConfig* out, std::string* err) {
@@ -186,7 +222,7 @@ bool parseHostConfig(std::string_view text, HostConfig* out, std::string* err) {
     Reader r(err);
     const std::string top = "host config";
     if (!r.object(root, top, {"events", "control", "persist_file", "run_dir", "log_file", "display", "barrier",
-                              "devices", "shell", "record_props", "volumes", "network"}))
+                              "devices", "shell", "record_props", "volumes", "network", "emulators"}))
         return false;
     HostConfig c = *out;
     if (!r.str(root, "events", top, &c.events) || !r.str(root, "control", top, &c.control) ||
@@ -261,6 +297,9 @@ bool parseHostConfig(std::string_view text, HostConfig* out, std::string* err) {
     }
     if (const Value* n = root.find("network")) {
         if (!parseNetwork(r, *n, top + ".network", &c.network)) return false;
+    }
+    if (const Value* e = root.find("emulators")) {
+        if (!parseEmulators(r, *e, top + ".emulators", &c.emulators)) return false;
     }
     *out = std::move(c);
     return true;

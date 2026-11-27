@@ -49,6 +49,7 @@
 #include "NanoJson.h"
 #include "NanoLaunch.h"
 #include "NanoLaunchCommit.h"   // commitLaunch: the launch handshake's writes
+#include "NanoPlatform.h"       // Emulators: which cores and apps can run here (W8-EMU)
 #include "NanoSystemsHeal.h"
 #include "NanoBiosUtil.h"
 #include "NanoScummvmList.h"
@@ -3339,47 +3340,13 @@ void NanoMenu::showRomMissingMsg(const std::string& displayName) {
                    trDyn("It may have been deleted, or its storage is not connected."), 260);
 }
 
-// True when the RetroArch libretro core .so for a system is present on disk. RetroArch keeps its
-// cores under its own data dir; this is the exact path every launch branch feeds RetroArch. Fails
-// OPEN (returns true) for an empty coreSo so a non-core launch type is never blocked here.
+// Whether a game's core or app can run here: the platform's answer (NanoPlatform.h's Emulators).
 bool NanoMenu::coreSoExists(const std::string& coreSo) {
-    if (coreSo.empty()) return true;   // not a libretro-core launch; nothing to check
-    std::string corePath = "/data/data/com.retroarch.aarch64/cores/" + coreSo;
-    struct stat st;
-    if (stat(corePath.c_str(), &st) != 0) return false;
-    return S_ISREG(st.st_mode) && st.st_size > 0;
+    return nanoplat::get().emulators->coreInstalled(coreSo);
 }
 
-// True when a standalone emulator package is installed. Reads /data/system/packages.list directly
-// (the authoritative DB; the package name is the first space-delimited token of each line) rather
-// than mAppEntries, which drops system/com.android.*/com.gammaos.* packages an emulator may live in.
-// Fails OPEN (returns true) if the list is unreadable, so a transient state never blocks a launch.
 bool NanoMenu::packageInstalled(const std::string& pkg) {
-    if (pkg.empty()) return true;
-    // DS games route to drastic-nano, which runs libdrastic from /system and no
-    // longer needs the DraStic APK: the system copy counts as "installed".
-    if (pkg == "com.dsemu.drastic" &&
-        property_get_bool("persist.gammaos.nano.drastic_nano", false) &&
-        access("/system/lib64/libdrastic_arm64.so", R_OK) == 0)
-        return true;
-    int fd = open("/data/system/packages.list", O_RDONLY);
-    if (fd < 0) return true;   // fail-open: never block a launch if the DB cannot be read
-    std::string content;
-    char b[4096];
-    ssize_t n;
-    while ((n = read(fd, b, sizeof(b))) > 0) content.append(b, (size_t)n);
-    close(fd);
-    size_t pos = 0;
-    while (pos < content.size()) {
-        size_t eol = content.find('\n', pos);
-        if (eol == std::string::npos) eol = content.size();
-        size_t sp = content.find(' ', pos);
-        if (sp != std::string::npos && sp <= eol &&
-            content.compare(pos, sp - pos, pkg) == 0)
-            return true;
-        pos = eol + 1;
-    }
-    return false;
+    return nanoplat::get().emulators->appInstalled(pkg);
 }
 
 // Tell the user a game's emulator/core is not on the device, instead of launching into a black

@@ -116,6 +116,8 @@ TEST(LinuxPlatform, HasEveryService) {
     EXPECT_TRUE(p->input != nullptr);  // G7-input
     ASSERT_TRUE(p->net != nullptr);  // G7-net
     p->net->autoEnableWifi();         // D30net remembers the radio: nothing to do
+    ASSERT_TRUE(p->emulators != nullptr);  // W8-EMU: no Android app is ever installed here
+    EXPECT_FALSE(p->emulators->appInstalled("com.retroarch.aarch64"));
 }
 
 }  // namespace
