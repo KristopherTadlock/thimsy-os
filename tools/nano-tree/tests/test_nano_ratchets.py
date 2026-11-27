@@ -22,8 +22,9 @@ from nanotree.ratchets import (platform_conditionals, property_keys, read_list, 
 
 NANO = os.path.join(ROOT, "nano")
 PROPS = os.path.join(TOOL_DIR, "props.txt")
-# __ANDROID__ and NANO_PLATFORM_* in shared files: none today, and none may be added in passes
-# P0 to P3 (the seam is cut with shims, stubs and link-time substitution, not #ifdefs).
+# __ANDROID__, __linux__, __BIONIC__, __GLIBC__ and NANO_PLATFORM_* in shared files (platform/** and
+# compat/ are not shared): none today, and none may be added (the seam is cut with nanoplat, shims,
+# stubs and link-time substitution, not #ifdefs). The Linux ratchets are in test_linux_ratchets.py.
 PLATFORM_CONDITIONAL_BUDGET = 0
 PROPS_HEADER = """Property key literals in nano/'s shared C and C++ files (tools/nano-tree/nanotree/ratchets.py).
 The Linux config store serves these names (IMPLEMENTATION.md B.3); test_nano_ratchets.py fails
@@ -64,9 +65,13 @@ class Ratchets(unittest.TestCase):
                          "tools/nano-tree/tests/test_nano_ratchets.py --update-props:\n  " + "\n  ".join(msg[:40]))
 
     def test_no_new_platform_conditionals(self):
-        hits = list(platform_conditionals(NANO, self.files))
+        # compat/ is the Linux and host shim layer: its nanocompat/bionic.h tests __BIONIC__ and
+        # __GLIBC__ by design. Everything else shared has none.
+        files = [f for f in self.files if not f.startswith("compat/")]
+        hits = list(platform_conditionals(NANO, files))
         self.assertLessEqual(len(hits), PLATFORM_CONDITIONAL_BUDGET,
-                             "__ANDROID__ / NANO_PLATFORM_* in shared files (budget %d):\n  %s" % (
+                             "__ANDROID__ / __linux__ / __BIONIC__ / __GLIBC__ / NANO_PLATFORM_* in shared "
+                             "files (budget %d):\n  %s" % (
                                  PLATFORM_CONDITIONAL_BUDGET,
                                  "\n  ".join("%s:%d %s" % h for h in hits[:40])))
 

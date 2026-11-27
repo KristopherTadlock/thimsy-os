@@ -654,7 +654,6 @@ sys.gammaos.bt.pair_reply
 sys.gammaos.bt.pair_request
 sys.gammaos.bt.passkey
 sys.gammaos.bt.pk_variant
-sys.gammaos.bt_autopair
 sys.gammaos.display.monitor_mode
 sys.gammaos.drastic_nano.afbc_both_top
 sys.gammaos.drastic_nano.afbc_in_fence
