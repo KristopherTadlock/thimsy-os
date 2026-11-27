@@ -543,11 +543,15 @@ void Session::runSup(const std::vector<SupAction>& acts) {
                 s.logFile = P(std::string(kLogDir) + "/nano.log");
                 std::vector<std::string> plan = jailPlan();
                 if (opts_.fakeHw) {
-                    std::string text;
+                    std::string text, dirs;
                     for (const std::string& p : plan) text += p + "\n";
+                    for (const std::string& d : jailDirMasks()) dirs += d + "\n";
+                    // jail.dirs first: the E2E waits for jail.plan, then reads both.
+                    writeFileAtomic(P(std::string(kStateDir) + "/jail.dirs"), dirs, {0644, false});
                     writeFileAtomic(P(std::string(kStateDir) + "/jail.plan"), text, {0644, false});
-                } else if (!plan.empty()) {
-                    s.preExec = [plan](std::string* err) { return applyJail(plan, err); };
+                } else {
+                    // Always a namespace: /sys/class/typec is hidden even with no eMMC (NanoJail.h).
+                    s.preExec = [plan](std::string* err) { return applyJail(plan, jailDirMasks(), err); };
                 }
                 pid_t pid = spawnChild(s, Role::Nano);
                 nanoJail_ = plan;
@@ -555,7 +559,7 @@ void Session::runSup(const std::vector<SupAction>& acts) {
                 if (pid > 0) {
                     writeFileAtomic(P("/run/thimsy/nano.pid"), std::to_string(pid) + "\n", {0644, false});
                     kmsg("nano started (" + std::to_string(pid) + ", " + std::to_string(plan.size()) +
-                         " eMMC nodes masked)");
+                         " eMMC nodes masked, " + std::to_string(jailDirMasks().size()) + " directories hidden)");
                 }
                 runSup(sup_.nanoStarted(now, pid));
                 break;

@@ -389,6 +389,8 @@ class BootDrivesKeysAndRequests(SessionCase):
         wait_for(lambda: self.ran("thimsy-padd"), what="padd")
         self.assertEqual(self.r.read("/run/thimsy/session/jail.plan").split(),
                          ["/dev/mmcblk0", "/dev/mmcblk0boot0", "/dev/mmcblk0p1"])
+        # Android's USB-C role flipper must not find a port (NanoJail.h, audit defect 4).
+        self.assertEqual(self.r.read("/run/thimsy/session/jail.dirs").split(), ["/sys/class/typec"])
         self.assertIn("thimsy-session: nano started", self.r.read("/dev/kmsg"))
         v = self.volumes()
         self.assertEqual(v, {"version": 1, "volumes": []})
@@ -573,6 +575,7 @@ class LateEmmc(SessionCase):
         wait_for(lambda: self.ran("thimsy-nano"), what="Nano")
         wait_for(lambda: os.path.exists(self.r.p("/run/thimsy/session/jail.plan")), what="the first plan")
         self.assertEqual(self.r.read("/run/thimsy/session/jail.plan").split(), [])
+        self.assertEqual(self.r.read("/run/thimsy/session/jail.dirs").split(), ["/sys/class/typec"])
         time.sleep(0.3)
         self.assertEqual(len(self.ran("thimsy-nano")), 1)
         for n, data in self.saved.items():
