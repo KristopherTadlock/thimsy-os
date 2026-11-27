@@ -17,7 +17,9 @@ can be followed end to end without Buildroot:
     writes the image the cfg names: JSON of the inputs' sizes and digests,
     or, with FAKE_GENIMAGE_GPT=good|basic, a real GPT image in the E.6
     layout shrunk (test_gpt_check.write_image), the idbloader input at
-    sector 64; "basic" adds a Microsoft basic data entry (a vold breach);
+    sector 64, the cfg's disk-uuid and partition-uuid values, and the start
+    of info.vfat at info's place; "basic" adds a second Microsoft basic data
+    entry (a vold breach);
   * fit.py build writes cards/<id>/fit/boot.img with the THIMSFIT header;
   * gpt_check.py exits with $FAKE_GPT_RC (default 0).
 
@@ -185,15 +187,28 @@ def genimage(args: List[str]) -> int:
     if mode:
         sys.path.insert(0, HERE)
         import test_gpt_check as g  # the test's own GPT writer
+        sys.path.insert(0, os.path.join(os.path.dirname(HERE), "tools"))
+        import gpt_check
         parts = list(g.GOOD)
         if mode == "basic":
-            parts.append(("games", g.BASIC, g.DATA_END, g.MIB_S))
+            parts.append(("games", g.BASIC, g.IMAGE_END, g.MIB_S // 2))
         idb = b""
         p = os.path.join(opts["--inputpath"], "idbloader.img")
         if os.path.isfile(p):
             with open(p, "rb") as f:
                 idb = f.read()
-        g.write_image(out, parts, idbloader=idb)
+        # The cfg's GUIDs (30-genimage.sh pins them, OA-9) and info's FAT (OA-2).
+        with open(opts["--config"], encoding="utf-8") as f:
+            images, _ = gpt_check.genimage_layout(f.read())
+        im = images[0]
+        guids = {e["name"]: e["uuid"] for e in im["partitions"] if e["uuid"]}
+        disk = im["hdimage"].get("disk-uuid") or g.DISK
+        fs = {}
+        p = os.path.join(opts["--inputpath"], "info.vfat")
+        if os.path.isfile(p):
+            with open(p, "rb") as f:
+                fs[g.DATA_END] = f.read(4096)
+        g.write_image(out, parts, idbloader=idb, fs=fs, guids=guids, disk=disk)
     else:
         with open(out, "w", encoding="utf-8") as f:
             json.dump({"inputs": inputs}, f, sort_keys=True)

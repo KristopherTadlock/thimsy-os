@@ -9,8 +9,9 @@ rcs_fake_tool.py), unprivileged:
   * S00base picks the boot disk (mounted root, root=PARTUUID=, root=/dev/)
     and mounts only its data partition, never a second card's or the eMMC's,
     and makes the first-boot tree;
-  * D60firstboot makes the games partition on the boot disk only, and
-    reaches the same end state after a power cut at any step;
+  * D60firstboot makes the image's GPT GUIDs random, makes the games
+    partition and retires info on the boot disk only, and reaches the same
+    end state after a power cut at any step;
   * S01props, S03modules and D05family (the family hook), D10cards;
   * the post-build runner and its two parts.
 
@@ -32,6 +33,7 @@ import sys
 import tempfile
 import time
 import unittest
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -109,25 +111,33 @@ def _template() -> Path:
     return _TEMPLATE[0]
 
 
-def image_parts(uuid_prefix: str) -> Dict[str, Dict[str, Any]]:
-    """Entries 1 to 4 of the written image (IMPLEMENTATION E.6), with spares."""
+INFO_FS = {"type": "vfat", "label": "THIMSY-INFO", "complete": True}
+
+
+def image_parts(uuid_prefix: str, pinned: bool = False) -> Dict[str, Dict[str, Any]]:
+    """Entries 1 to 5 of the written image (IMPLEMENTATION E.6), with spares; info (entry 5,
+    OA-2) is basic data with its FAT. The GUIDs are version 4 (random, as the installer or
+    D60 leaves them), or with pinned=True version 5, as the image carries them (OA-9)."""
     layout = [("uboot", 16 * MIB, 8 * MIB, RESERVED), ("boot", 0, 40 * MIB, RESERVED),
-              ("root", 0, 1024 * MIB, LINUX_ROOT), ("data", 0, 256 * MIB, LINUX_HOME)]
+              ("root", 0, 1024 * MIB, LINUX_ROOT), ("data", 0, 256 * MIB, LINUX_HOME),
+              ("info", 0, 1 * MIB, BASICDATA)]
     parts = {}
     pos = 0
-    spare = {"uboot": 8 * MIB, "boot": 40 * MIB, "root": 1024 * MIB, "data": 0}
+    spare = {"uboot": 8 * MIB, "boot": 40 * MIB, "root": 1024 * MIB, "data": 0, "info": 0}
     for n, (name, first, size, typ) in enumerate(layout, 1):
         pos = max(pos, first)
         parts[str(n)] = {"start": pos, "size": size, "type": typ,
-                         "uuid": "%s-0000-4000-8000-00000000000%d" % (uuid_prefix, n),
-                         "name": name, "fs": None}
+                         "uuid": "%s-0000-%d000-8000-00000000000%d" % (
+                             uuid_prefix, 5 if pinned else 4, n),
+                         "name": name, "fs": dict(INFO_FS) if name == "info" else None}
         pos += size + spare[name]
     return parts
 
 
-IMAGE_END = 16 * MIB + 8 * MIB + 8 * MIB + 40 * MIB + 40 * MIB + 1024 * MIB * 2 + 256 * MIB
-# The written image ends 1 MiB after data (genimage.cfg's size: 2409 MiB, its
-# backup GPT in the last 33 sectors) and games starts 2 MiB after data.
+DATA_END = 16 * MIB + 8 * MIB + 8 * MIB + 40 * MIB + 40 * MIB + 1024 * MIB * 2 + 256 * MIB
+IMAGE_END = DATA_END + MIB   # the end of info, the image's last entry
+# The written image ends 1 MiB after info (genimage.cfg's size: 2410 MiB, its
+# backup GPT in the last 33 sectors) and games starts 2 MiB after info.
 IMAGE_SECTORS = IMAGE_END + MIB
 GAMES_START = IMAGE_END + 2 * MIB
 
@@ -216,6 +226,8 @@ exit 0
         self.write("proc/mounts", "/dev/root / erofs ro,relatime 0 0\n")
         self.write("dev/null", "")
         self.write("dev/kmsg", "")
+        # The kernel's random GUIDs (the fake sfdisk writes a new one after each GUID write).
+        self.write("proc/sys/kernel/random/uuid", str(uuid.uuid4()) + "\n")
         self.bin.mkdir()
         py = posix(Path(sys.executable))
         # A local copy, run isolated (-I -S): starting Python with its script
@@ -1296,6 +1308,19 @@ class D60Case(WorldCase):
                 if c["tool"] in ("sfdisk", "mkfs.exfat") and c["args"][:1] != ["--dump"]
                 and c.get("note") != "no power"]
 
+    def steps(self) -> List[str]:
+        """The writes by kind: guid, relocate, create, mkfs, retype (games), retire (info)."""
+        out = []
+        for args in self.writes():
+            if "--disk-id" in args or "--part-uuid" in args:
+                out.append("guid")
+            elif "--part-type" in args:
+                out.append("retire" if args[args.index("--part-type") + 2] == "5" else "retype")
+            else:
+                kinds = {"--relocate": "relocate", "-N": "create", "-L": "mkfs"}
+                out.append(next(kinds[a] for a in args if a in kinds))
+        return out
+
     def assert_others_untouched(self) -> None:
         for n, data in self.others.items():
             self.assertEqual(self.w.disk_bytes(n), data, "%s changed" % n)
@@ -1311,20 +1336,23 @@ class D60Case(WorldCase):
 
     def assert_done(self) -> None:
         d = self.w.disk("mmcblk1")
-        self.assertEqual(sorted(d["parts"], key=int), ["1", "2", "3", "4", "5"])
-        p5 = d["parts"]["5"]
-        data = d["parts"]["4"]
-        self.assertEqual(p5["type"], BASICDATA)
-        self.assertEqual(p5["name"], "games")
-        self.assertEqual(p5["fs"], {"type": "exfat", "label": "THIMSY", "complete": True})
-        self.assertGreaterEqual(p5["start"], data["start"] + data["size"])
-        self.assertEqual(p5["start"] % MIB, 0)
-        # GAP_MIB after data: the image ends 1 MiB after data (device-safety-2).
-        self.assertEqual(p5["start"], GAMES_START)
+        self.assertEqual(sorted(d["parts"], key=int), ["1", "2", "3", "4", "5", "6"])
+        p6 = d["parts"]["6"]
+        info = d["parts"]["5"]
+        self.assertEqual(p6["type"], BASICDATA)
+        self.assertEqual(p6["name"], "games")
+        self.assertEqual(p6["fs"], {"type": "exfat", "label": "THIMSY", "complete": True})
+        self.assertGreaterEqual(p6["start"], info["start"] + info["size"])
+        self.assertEqual(p6["start"] % MIB, 0)
+        # GAP_MIB after info: the image ends 1 MiB after info (device-safety-2).
+        self.assertEqual(p6["start"], GAMES_START)
         self.assertEqual(d["last_lba"], d["size_sectors"] - 34)
         card_end = (d["size_sectors"] - 34 + 1) // MIB * MIB
-        self.assertEqual(p5["start"] + p5["size"], card_end)  # the rest of the card
-        self.assertLessEqual(p5["start"] + p5["size"] - 1, d["last_lba"])
+        self.assertEqual(p6["start"] + p6["size"], card_end)  # the rest of the card
+        self.assertLessEqual(p6["start"] + p6["size"] - 1, d["last_lba"])
+        # info (OA-2) is retired: games is the one entry vold mounts; its FAT stays.
+        self.assertEqual((info["name"], info["type"], info["fs"]), ("info", RESERVED, INFO_FS))
+        self.assertEqual([k for k, p in d["parts"].items() if p["type"] == BASICDATA], ["6"])
         for k in "1234":
             self.assertIsNone(d["parts"][k]["fs"])
         self.assert_others_untouched()
@@ -1335,14 +1363,13 @@ class TestD60FirstBoot(D60Case):
     def test_first_boot(self) -> None:
         self.w.run(self.D60, "start")
         self.assert_done()
-        kinds = {"--relocate": "relocate", "-N": "create", "-L": "mkfs",
-                 "--part-type": "retype"}
-        steps = [next(kinds[a] for a in args if a in kinds) for args in self.writes()]
-        self.assertEqual(steps, ["relocate", "create", "mkfs", "retype"])
-        self.assertEqual(self.writes()[1], ["--force", "-N", "5", "/dev/mmcblk1"])
-        self.assertEqual(self.writes()[2], ["-L", "THIMSY", "/dev/mmcblk1p5"])
-        self.assertEqual(self.w.read("sys/class/block/mmcblk1p5/uevent"), "change\n")
-        self.assertIn("games partition mmcblk1p5 ready", self.w.read("dev/kmsg"))
+        self.assertEqual(self.steps(), ["relocate", "create", "mkfs", "retype", "retire"])
+        self.assertEqual(self.writes()[1], ["--force", "-N", "6", "/dev/mmcblk1"])
+        self.assertEqual(self.writes()[2], ["-L", "THIMSY", "/dev/mmcblk1p6"])
+        self.assertEqual(self.writes()[3][:3], ["--part-type", "/dev/mmcblk1", "6"])
+        self.assertEqual(self.writes()[4], ["--part-type", "/dev/mmcblk1", "5", RESERVED.lower()])
+        self.assertEqual(self.w.read("sys/class/block/mmcblk1p6/uevent"), "change\n")
+        self.assertIn("games partition mmcblk1p6 ready", self.w.read("dev/kmsg"))
 
     def test_second_run_changes_nothing(self) -> None:
         self.w.run(self.D60, "start")
@@ -1362,7 +1389,7 @@ class TestD60FirstBoot(D60Case):
         self.assert_done()
 
     def test_power_cut_at_every_step(self) -> None:
-        cases = [(s, m) for s in ("relocate", "create", "mkfs", "retype")
+        cases = [(s, m) for s in ("relocate", "create", "mkfs", "retype", "retire")
                  for m in ("before", "after")] + [("mkfs", "torn")]
         for step, mode in cases:
             with self.subTest(step=step, mode=mode):
@@ -1402,13 +1429,14 @@ class TestD60FirstBoot(D60Case):
         self.assertEqual(self.writes(), [])
         self.assert_others_untouched()
 
-    def test_entry5_not_ours_is_left_alone(self) -> None:
+    def test_entry6_not_ours_is_left_alone(self) -> None:
+        """...and info stays as it is (basic data), since games is not Thimsy's."""
         for typ, name in ((BASICDATA, "mystuff"), (LINUX_DATA, "games"), (RESERVED, "other")):
             with self.subTest(typ=typ, name=name):
                 d = self.w.disk("mmcblk1")
-                d["parts"]["5"] = {"start": IMAGE_END, "size": 512 * MIB, "type": typ,
-                                   "uuid": "55555555-0000-4000-8000-000000000005", "name": name,
-                                   "fs": None}
+                d["parts"]["6"] = {"start": IMAGE_END, "size": 512 * MIB, "type": typ,
+                                   "uuid": "66666666-0000-4000-8000-000000000006", "name": name,
+                                   "fs": {"type": "exfat", "label": "X", "complete": True}}
                 fake.save_disk(self.w.root, d)
                 before = self.w.disk_bytes("mmcblk1")
                 self.w.clear_calls()
@@ -1447,9 +1475,10 @@ class TestD60FirstBoot(D60Case):
         self.others = {}
         w.run(self.D60, "start")
         d = w.disk("sda")
-        self.assertEqual(d["parts"]["5"]["type"], BASICDATA)
-        self.assertEqual(d["parts"]["5"]["start"] % 256, 0)  # 1 MiB in 4 KiB sectors
-        self.assertIn(["-L", "THIMSY", "/dev/sda5"], self.writes())
+        self.assertEqual(d["parts"]["6"]["type"], BASICDATA)
+        self.assertEqual(d["parts"]["6"]["start"] % 256, 0)  # 1 MiB in 4 KiB sectors
+        self.assertEqual(d["parts"]["5"]["type"], RESERVED)
+        self.assertIn(["-L", "THIMSY", "/dev/sda6"], self.writes())
 
 
 @needs_sh
@@ -1470,13 +1499,9 @@ class TestD60Readopt(D60Case):
             self.skipTest("this filesystem cannot make sparse files")
         return img
 
-    def steps(self) -> List[str]:
-        kinds = {"--relocate": "relocate", "-N": "create", "-L": "mkfs", "--part-type": "retype"}
-        return [next(kinds[a] for a in args if a in kinds) for args in self.writes()]
-
     def rewrite_image(self, w: Optional["World"] = None) -> None:
-        """Write the image again: entries 1 to 4 and the backup GPT at the image's end, in
-        its last 33 sectors; every byte after the image stays as it was."""
+        """Write the image again: entries 1 to 5 (info basic data again) and the backup GPT
+        at the image's end, in its last 33 sectors; every byte after the image stays."""
         w = w or self.w
         d = w.disk("mmcblk1")
         d["parts"] = image_parts("11111111")
@@ -1491,20 +1516,20 @@ class TestD60Readopt(D60Case):
         """A first boot that makes the library, and a saved game in it."""
         w = w or self.w
         w.run(self.D60, "start")
-        p5 = w.disk("mmcblk1")["parts"]["5"]
+        p6 = w.disk("mmcblk1")["parts"]["6"]
         fake.patch_bytes(fake.image_path(w.root, "mmcblk1"),
-                         (p5["start"] + 300 * MIB) * 512, self.MARK)
-        return p5
+                         (p6["start"] + 300 * MIB) * 512, self.MARK)
+        return p6
 
-    def assert_kept(self, p5: Dict[str, Any], w: Optional["World"] = None) -> None:
+    def assert_kept(self, lib: Dict[str, Any], w: Optional["World"] = None) -> None:
         w = w or self.w
         img = fake.image_path(w.root, "mmcblk1")
-        now = w.disk("mmcblk1")["parts"]["5"]
+        now = w.disk("mmcblk1")["parts"]["6"]
         self.assertEqual((now["start"], now["size"], now["type"], now["name"]),
-                         (p5["start"], p5["size"], BASICDATA, "games"))
-        self.assertEqual(fake.read_bytes(img, (p5["start"] + 300 * MIB) * 512, len(self.MARK)),
+                         (lib["start"], lib["size"], BASICDATA, "games"))
+        self.assertEqual(fake.read_bytes(img, (lib["start"] + 300 * MIB) * 512, len(self.MARK)),
                          self.MARK)
-        self.assertEqual(fake.sniff_exfat(img, p5["start"] * 512),
+        self.assertEqual(fake.sniff_exfat(img, lib["start"] * 512),
                          {"type": "exfat", "label": "THIMSY", "complete": True})
 
     def test_layout_leaves_the_boot_region(self) -> None:
@@ -1512,26 +1537,27 @@ class TestD60Readopt(D60Case):
         main and backup boot regions (sectors 0 to 23)."""
         self.assertEqual(IMAGE_SECTORS, IMAGE_END + MIB)
         self.assertLessEqual(IMAGE_SECTORS + MIB, GAMES_START)
-        p5 = self.library()
-        boot = fake.read_bytes(self.img, p5["start"] * 512, 24 * 512)
+        lib = self.library()
+        boot = fake.read_bytes(self.img, lib["start"] * 512, 24 * 512)
         self.rewrite_image()
-        self.assertEqual(fake.read_bytes(self.img, p5["start"] * 512, 24 * 512), boot)
+        self.assertEqual(fake.read_bytes(self.img, lib["start"] * 512, 24 * 512), boot)
 
     def test_rewritten_card_keeps_its_library(self) -> None:
-        p5 = self.library()
-        self.assertEqual(self.steps(), ["relocate", "create", "mkfs", "retype"])
+        lib = self.library()
+        self.assertEqual(self.steps(), ["relocate", "create", "mkfs", "retype", "retire"])
         self.rewrite_image()
-        self.assertNotIn("5", self.w.disk("mmcblk1")["parts"])
+        self.assertNotIn("6", self.w.disk("mmcblk1")["parts"])
+        self.assertEqual(self.w.disk("mmcblk1")["parts"]["5"]["type"], BASICDATA)
         self.w.run(self.D60, "start")
-        self.assertEqual(self.steps(), ["relocate", "create"])  # no mkfs, no retype
+        self.assertEqual(self.steps(), ["relocate", "create", "retire"])  # no mkfs, no retype
         create = [c for c in self.w.calls() if c["tool"] == "sfdisk" and "-N" in c["args"]]
         self.assertEqual(len(create), 1)
-        self.assert_kept(p5)
+        self.assert_kept(lib)
         self.assert_done()
         self.assert_invariant()
         self.assertIn("re-adopting", self.w.boot_log())
-        self.assertIn("mmcblk1p5 re-adopted", self.w.read("dev/kmsg"))
-        self.assertEqual(self.w.read("sys/class/block/mmcblk1p5/uevent"), "change\n")
+        self.assertIn("mmcblk1p6 re-adopted", self.w.read("dev/kmsg"))
+        self.assertEqual(self.w.read("sys/class/block/mmcblk1p6/uevent"), "change\n")
         self.assertFalse((self.w.root / "run/thimsy/firstboot.probe").exists())
         # and nothing more at the next boot
         self.w.clear_calls()
@@ -1540,15 +1566,16 @@ class TestD60Readopt(D60Case):
         self.assertEqual(self.writes(), [])
 
     def test_rewritten_twice(self) -> None:
-        p5 = self.library()
+        lib = self.library()
         for _ in range(2):
             self.rewrite_image()
             self.w.run(self.D60, "start")
             self.assertNotIn("mkfs", self.steps())
-            self.assert_kept(p5)
+            self.assert_kept(lib)
 
     def test_power_cut_while_adopting(self) -> None:
-        for step, mode in [(s, m) for s in ("relocate", "create") for m in ("before", "after")]:
+        for step, mode in [(s, m) for s in ("relocate", "create", "retire")
+                           for m in ("before", "after")]:
             with self.subTest(step=step, mode=mode):
                 w = World(Path(tempfile.mkdtemp(prefix="test-rcs-adopt-")))
                 self.addCleanup(shutil.rmtree, str(w.tmp), True)
@@ -1558,7 +1585,7 @@ class TestD60Readopt(D60Case):
                 w.mounted_root("179:19")
                 self.others = {n: w.disk_bytes(n) for n in ("mmcblk0", "mmcblk2")}
                 self.with_bytes(w)
-                p5 = self.library(w)
+                lib = self.library(w)
                 self.rewrite_image(w)
                 w.run(self.D60, "start", env={"THIMSY_FAKE_POWERCUT": "%s:%s" % (step, mode)},
                       check=False)
@@ -1567,7 +1594,7 @@ class TestD60Readopt(D60Case):
                 w.reboot()
                 w.run(self.D60, "start")
                 self.assertNotIn("mkfs", self.steps())
-                self.assert_kept(p5, w)
+                self.assert_kept(lib, w)
                 self.assert_done()
                 self.assert_invariant()
 
@@ -1594,7 +1621,7 @@ class TestD60Readopt(D60Case):
                 elif case == "ntfs":
                     fake.patch_bytes(img, off + 3, b"NTFS    ")
                 self.w.run(self.D60, "start")
-                self.assertEqual(self.steps(), ["relocate", "create", "mkfs", "retype"])
+                self.assertEqual(self.steps(), ["relocate", "create", "mkfs", "retype", "retire"])
                 self.assert_done()
                 self.assertEqual(fake.sniff_exfat(img, off),
                                  {"type": "exfat", "label": "THIMSY", "complete": True})
@@ -1612,9 +1639,9 @@ class TestD60Readopt(D60Case):
                 fake.write_exfat(img, off, mib * MIB * 512, label)
                 fake.patch_bytes(img, off + 20 * MIB * 512, self.MARK)
                 self.w.run(self.D60, "start")
-                self.assertEqual(self.steps(), ["relocate", "create"])  # no mkfs, no retype
-                p5 = self.w.disk("mmcblk1")["parts"]["5"]
-                self.assertEqual((p5["start"], p5["size"], p5["type"], p5["name"]),
+                self.assertEqual(self.steps(), ["relocate", "create", "retire"])  # no mkfs
+                p6 = self.w.disk("mmcblk1")["parts"]["6"]
+                self.assertEqual((p6["start"], p6["size"], p6["type"], p6["name"]),
                                  (GAMES_START, mib * MIB, BASICDATA, "games"))
                 self.assertEqual(fake.read_bytes(img, off + 20 * MIB * 512, len(self.MARK)), self.MARK)
                 self.assertEqual(fake.sniff_exfat(img, off), {"type": "exfat", "label": label, "complete": True})
@@ -1627,40 +1654,153 @@ class TestD60Readopt(D60Case):
     def test_a_read_error_formats_nothing(self) -> None:
         """REV4 (linux-host-impls-4): when the games start can't be read, no entry is made and
         nothing is formatted; the next boot reads it and adopts the library."""
-        p5 = self.library()
+        lib = self.library()
         self.rewrite_image()
         r = self.w.run(self.D60, "start", env={"THIMSY_FAKE_FAIL": "dd"}, check=False)
         self.assertNotEqual(r.returncode, 0)
-        self.assertEqual(self.steps(), ["relocate"])  # no create, no mkfs
-        self.assertNotIn("5", self.w.disk("mmcblk1")["parts"])
+        self.assertEqual(self.steps(), ["relocate"])  # no create, no mkfs, info kept
+        self.assertNotIn("6", self.w.disk("mmcblk1")["parts"])
+        self.assertEqual(self.w.disk("mmcblk1")["parts"]["5"]["type"], BASICDATA)
         self.assertIn("could not read mmcblk1 at sector %d" % GAMES_START, self.w.boot_log())
-        self.assertNotIn("creating entry 5 failed", self.w.boot_log())
+        self.assertNotIn("creating entry 6 failed", self.w.boot_log())
         self.w.clear_calls()
         self.w.reboot()
         self.w.run(self.D60, "start")
-        self.assertEqual(self.steps(), ["create"])
-        self.assert_kept(p5)
+        self.assertEqual(self.steps(), ["create", "retire"])
+        self.assert_kept(lib)
         self.assert_done()
 
     def test_library_longer_than_the_card_is_clamped(self) -> None:
         fake.write_exfat(self.img, GAMES_START * 512, 64 * 1024 * MIB * 512, "THIMSY")
         self.w.run(self.D60, "start")
-        self.assertEqual(self.steps(), ["relocate", "create"])
+        self.assertEqual(self.steps(), ["relocate", "create", "retire"])
         d = self.w.disk("mmcblk1")
-        p5 = d["parts"]["5"]
-        self.assertEqual(p5["start"], GAMES_START)
-        self.assertEqual(p5["start"] + p5["size"], d["last_lba"] + 1)
-        self.assertEqual(p5["type"], BASICDATA)
+        p6 = d["parts"]["6"]
+        self.assertEqual(p6["start"], GAMES_START)
+        self.assertEqual(p6["start"] + p6["size"], d["last_lba"] + 1)
+        self.assertEqual(p6["type"], BASICDATA)
         self.assertIn("runs past the card", self.w.boot_log())
 
     def test_library_extent_is_its_volume_length(self) -> None:
         """A library smaller than the free space keeps its own size."""
         fake.write_exfat(self.img, GAMES_START * 512, 4 * 1024 * MIB * 512, "THIMSY")
         self.w.run(self.D60, "start")
-        self.assertEqual(self.steps(), ["relocate", "create"])
-        p5 = self.w.disk("mmcblk1")["parts"]["5"]
-        self.assertEqual((p5["start"], p5["size"]), (GAMES_START, 4 * 1024 * MIB))
+        self.assertEqual(self.steps(), ["relocate", "create", "retire"])
+        p6 = self.w.disk("mmcblk1")["parts"]["6"]
+        self.assertEqual((p6["start"], p6["size"]), (GAMES_START, 4 * 1024 * MIB))
         self.assert_invariant()
+
+
+@needs_sh
+class TestD60Guids(D60Case):
+    """OA-9: a card written from the image (Etcher, dd) carries the image's pinned, name-based
+    GPT GUIDs, the same on every card written from it. D60 replaces them with the kernel's
+    random ones on the boot disk only, before anything else is written; a second card written
+    from the same image keeps its own until it boots."""
+
+    PINNED_DISK = "5eed0000-0000-5000-8000-000000000000"
+
+    def pin(self, w: "World") -> None:
+        for name in ("mmcblk1", "mmcblk2"):
+            d = w.disk(name)
+            d["parts"] = image_parts("11111111", pinned=True)
+            d["disk_id"] = self.PINNED_DISK
+            fake.save_disk(w.root, d)
+        w.reboot()
+        w.cmdline("root=PARTUUID=11111111-0000-5000-8000-000000000003")
+        self.others = {n: w.disk_bytes(n) for n in ("mmcblk0", "mmcblk2")}
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.pin(self.w)
+
+    def guids(self) -> List[str]:
+        d = self.w.disk("mmcblk1")
+        return [d["disk_id"]] + [d["parts"][k]["uuid"] for k in "12345"]
+
+    def assert_random(self) -> None:
+        got = self.guids()
+        for g in got:
+            self.assertEqual(uuid.UUID(g).version, 4, got)
+        self.assertEqual(len(set(got)), len(got), "a GUID is used twice: %r" % got)
+        self.assertNotIn(self.PINNED_DISK, got)
+
+    def test_pinned_guids_made_random_first(self) -> None:
+        self.w.run(self.D60, "start")
+        self.assertEqual(self.steps(), ["guid"] * 6 + ["relocate", "create", "mkfs", "retype",
+                                                        "retire"])
+        self.assertEqual(self.writes()[0][:2], ["--disk-id", "/dev/mmcblk1"])
+        self.assertEqual([a[2] for a in self.writes()[1:6]], ["1", "2", "3", "4", "5"])
+        self.assert_random()
+        self.assert_done()
+        self.assert_others_untouched()   # the clone in slot 2 keeps the image's GUIDs
+        self.assertIn("GPT GUIDs of mmcblk1 are random now", self.w.read("dev/kmsg"))
+        # The kernel lists the new PARTUUIDs from the next boot; U-Boot reads entry 3's
+        # GUID on every boot, so root=PARTUUID= follows it.
+        ue = self.w.read("sys/class/block/mmcblk1p3/uevent")
+        self.assertIn("PARTUUID=11111111-0000-5000-8000-000000000003", ue)
+        self.w.clear_calls()
+        self.w.reboot()
+        self.assertIn("PARTUUID=%s" % self.w.disk("mmcblk1")["parts"]["3"]["uuid"].lower(),
+                      self.w.read("sys/class/block/mmcblk1p3/uevent"))
+        self.w.run(self.D60, "start")
+        self.assertEqual(self.writes(), [])   # never again, updates included
+
+    def test_power_cut_while_making_them_random(self) -> None:
+        for mode in ("before", "after"):
+            with self.subTest(mode=mode):
+                w = World(Path(tempfile.mkdtemp(prefix="test-rcs-guid-")))
+                self.addCleanup(shutil.rmtree, str(w.tmp), True)
+                self.w = w
+                w.standard()
+                w.mounted_root("179:19")
+                self.pin(w)
+                w.run(self.D60, "start", env={"THIMSY_FAKE_POWERCUT": "guid:" + mode},
+                      check=False)
+                self.assertTrue((w.root / ".powercut").exists(), "the cut did not happen")
+                self.assertNotIn("6", w.disk("mmcblk1")["parts"])   # nothing else written
+                w.reboot()
+                w.run(self.D60, "start")
+                self.assert_random()
+                self.assert_done()
+                self.assert_invariant()
+
+    def test_no_random_source_still_makes_games(self) -> None:
+        """A bad or repeating random source: nothing is half-written, the games steps still
+        run, and the next boot finishes."""
+        used = self.w.disk("mmcblk1")["parts"]["4"]
+        used["uuid"] = "44444444-0000-4000-8000-000000000004"   # random already, not pinned
+        d = self.w.disk("mmcblk1")
+        d["parts"]["4"] = used
+        fake.save_disk(self.w.root, d)
+        for source, warning in (("not a guid", "no random GUID"),
+                                ("44444444-0000-4000-8000-000000000004", "already on mmcblk1")):
+            with self.subTest(source=source):
+                self.w.write("proc/sys/kernel/random/uuid", source + "\n")
+                self.w.clear_calls()
+                self.w.run(self.D60, "start")
+                self.assertNotIn("guid", self.steps())
+                self.assertIn(warning, self.w.boot_log())
+                self.assertIn("trying again at the next boot", self.w.boot_log())
+                self.assertEqual(uuid.UUID(self.w.disk("mmcblk1")["disk_id"]).version, 5)
+                self.w.reboot()
+        self.assertEqual(self.w.disk("mmcblk1")["parts"]["6"]["type"], BASICDATA)
+        self.w.write("proc/sys/kernel/random/uuid", str(uuid.uuid4()) + "\n")
+        self.w.clear_calls()
+        self.w.run(self.D60, "start")
+        self.assertEqual(self.steps(), ["guid"] * 5)   # the disk and entries 1, 2, 3, 5
+        self.assert_random()
+        self.assert_done()
+
+    def test_emmc_boot_disk_keeps_its_guids(self) -> None:
+        d = self.w.disk("mmcblk0")
+        d["disk_id"] = self.PINNED_DISK
+        fake.save_disk(self.w.root, d)
+        self.others["mmcblk0"] = self.w.disk_bytes("mmcblk0")
+        self.w.mounted_root("179:4")
+        self.w.run(self.D60, "start")
+        self.assertEqual(self.writes(), [])
+        self.assert_others_untouched()
 
 
 # --- post-build -------------------------------------------------------------------

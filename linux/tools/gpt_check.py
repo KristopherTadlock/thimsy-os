@@ -15,17 +15,26 @@ What it checks in an image:
     the usable area, no overlaps, 1 MiB alignment;
   - the raw idbloader region (RK3566: sector 64) after the primary entry array
     and ending before the first partition;
-  - the Thimsy layout (E.6): entries 1 to 4 named uboot, boot, root, data with
-    their types, tiled from LBA 16384 with a spare as large as each region;
+  - the Thimsy layout (E.6): entries 1 to 5 named uboot, boot, root, data,
+    info with their types, uboot to root tiled from LBA 16384 with a spare as
+    large as each region, data right behind root's spare and info (1 MiB)
+    right behind data; on a card that has booted, games is entry 6;
   - the tail (E.6, device-safety-2): a written image ends IMAGE_TAIL_MIB after
     the 1 MiB boundary that ends its last entry, and games starts
     GAMES_GAP_MIB after that boundary, so the image's backup GPT ends at least
     1 MiB before games and writing the image again over a used card leaves
     the old library's boot region (its first 24 sectors) intact;
   - the vold rule: Android's vold makes a public volume of every entry typed
-    Microsoft basic data or Linux filesystem data. A written image has none
-    (the games entry is made at first boot, I39); a card that has booted has
-    at most one, at entry 7 or lower, and it carries a filesystem.
+    Microsoft basic data or Linux filesystem data. A card has exactly one, at
+    entry 7 or lower, and it carries a filesystem. In a written image it is
+    info, entry 5, a small FAT, so Android mounts something and never offers
+    to set up (format) the card before its first boot (OA-2); on a card that
+    has booted it is games, and info is retyped Linux reserved;
+  - the GUIDs (OA-9): the disk GUID and every entry's unique GUID are set and
+    unique. With --release and --device, a written image's GUIDs are the ones
+    pinned for that release and device (pinned_guid(), name-based, so a
+    rebuild is byte-identical); a card that has booted carries none of the
+    image's name-based GUIDs any more (D60firstboot makes them random).
 
 Exit codes: 0 every check passed; 1 a check failed; 2 usage error or the input
 could not be read. --json prints the findings and the parsed table as JSON.
@@ -64,15 +73,32 @@ VOLD_PRIVATE_TYPES = {GUID_ANDROID_META: "Android meta",
                       GUID_ANDROID_EXPAND: "Android expand"}
 VOLD_MAX_ENTRY = 7  # vold's minor-number arithmetic: MMC has 8 minors a disk
 
-# E.6: the written image's entries, in order. games (entry 5) is created on
-# the device at first boot and is never in a written image (I39).
+# E.6: the written image's entries, in order. info (entry 5, OA-2) is a FAT of
+# INFO_MIB with a README: the one entry vold mounts before the first boot.
+# games (entry 6) is created on the device at first boot and is never in a
+# written image (I39); once it is ready, D60firstboot retypes info Linux
+# reserved, so a card always has exactly one vold-mounted entry.
+THIMSY_INFO = ("info", GUID_BASIC_DATA)
 THIMSY_LAYOUT: List[Tuple[str, str]] = [
     ("uboot", GUID_LINUX_RESERVED),
     ("boot", GUID_LINUX_RESERVED),
     ("root", GUID_ROOT_ARM64),
     ("data", GUID_LINUX_HOME),
+    THIMSY_INFO,
 ]
+INFO_INDEX = 5
+INFO_MIB = 1
+INFO_RETIRED_TYPE = GUID_LINUX_RESERVED
 THIMSY_GAMES = ("games", GUID_BASIC_DATA)
+GAMES_INDEX = 6
+assert THIMSY_LAYOUT[INFO_INDEX - 1] == THIMSY_INFO and GAMES_INDEX == len(THIMSY_LAYOUT) + 1
+
+# OA-9: a written image's GPT GUIDs, pinned per release and device. Name-based
+# (version 5) under a fixed namespace, so a rebuild gives the same bytes; a
+# random GUID (the kernel's, sfdisk's, the installer's) is version 4, so a
+# card still carrying the image's GUIDs can be told by their version.
+GPT_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "thimsy:gpt")
+PINNED_VERSION = 5
 LAYOUT_BASE_LBA = 16384      # the SPL finds uboot by name; FlipBase pins 16384
 # device-safety-2: the written image ends IMAGE_TAIL_MIB after its last entry
 # (genimage.cfg's image size; the backup GPT is its last 33 sectors), and
@@ -176,6 +202,29 @@ def crc32(data: bytes) -> int:
     return binascii.crc32(data) & 0xFFFFFFFF
 
 
+def pinned_guid(release: str, device: str, what: str) -> str:
+    """The GUID a written image carries (OA-9): what is "disk" for the disk
+    GUID, else "part:<name>" for the entry of that name. Upper case."""
+    if not release or not device or not what:
+        raise ValueError("a pinned GUID needs a release, a device and a name")
+    return str(uuid.uuid5(GPT_NAMESPACE, "%s:%s:%s" % (release, device, what))).upper()
+
+
+def pinned_guids(release: str, device: str, names: List[str]) -> Dict[str, str]:
+    """{"disk": GUID, name: GUID, ...} for a device's image of a release."""
+    out = {"disk": pinned_guid(release, device, "disk")}
+    for n in names:
+        out[n] = pinned_guid(release, device, "part:" + n)
+    return out
+
+
+def guid_version(text: str) -> Optional[int]:
+    try:
+        return uuid.UUID(text).version
+    except ValueError:
+        return None
+
+
 # --------------------------------------------------------------------------
 # Rules shared by images and genimage.cfg files
 
@@ -184,8 +233,10 @@ def check_layout(parts: List[Part], ss: int, rep: Report, *, mode: str,
                  family: Optional[str], thimsy: bool,
                  last_usable: Optional[int] = None,
                  entries_end_lba: Optional[int] = None,
-                 idbloader: Optional[Part] = None) -> None:
-    """parts: the GPT entries in table order. idbloader: the raw region."""
+                 idbloader: Optional[Part] = None, sniffed: bool = True) -> None:
+    """parts: the GPT entries in table order. idbloader: the raw region.
+    sniffed: each vold-mounted entry's filesystem was read (an image), not
+    unknown (a genimage.cfg)."""
     # Names: unique, non-empty.
     seen: Dict[str, int] = {}
     for p in parts:
@@ -245,7 +296,7 @@ def check_layout(parts: List[Part], ss: int, rep: Report, *, mode: str,
 
     if thimsy:
         check_thimsy_layout(parts, ss, rep, mode=mode)
-    check_vold(parts, rep, mode=mode)
+    check_vold(parts, rep, mode=mode, thimsy=thimsy, sniffed=sniffed)
 
 
 def align_up(lba: int, ss: int) -> int:
@@ -285,12 +336,18 @@ def check_thimsy_layout(parts: List[Part], ss: int, rep: Report, *, mode: str) -
         rep.error("the table has %d entries %s; a %s has %d: %s"
                   % (len(parts), names, "written image" if mode == "image" else "card",
                      len(want), [n for n, _ in want]))
-    for p, (name, guid) in zip(parts, want):
+    for i, (p, (name, guid)) in enumerate(zip(parts, want), 1):
         if p.name != name:
             rep.error("entry %d is named %r, expected %r" % (p.index or 0, p.name, name))
-        if p.type_guid != guid:
-            rep.error("%s is typed %s (%s), expected %s (%s)"
-                      % (p.label(), p.type_guid, type_name(p.type_guid), guid, type_name(guid)))
+        elif p.index is not None and p.index != i:
+            rep.error("%s is in table slot %d; E.6 puts it at entry %d" % (p.label(), p.index, i))
+        ok = [guid]
+        if mode == "card" and name == THIMSY_INFO[0]:
+            ok.append(INFO_RETIRED_TYPE)   # retired by D60firstboot once games is ready
+        if p.type_guid not in ok:
+            rep.error("%s is typed %s (%s), expected %s"
+                      % (p.label(), p.type_guid, type_name(p.type_guid),
+                         " or ".join("%s (%s)" % (g, type_name(g)) for g in ok)))
     # Tiling: uboot at LBA 16384, each updatable region followed by a spare of
     # its own size, data right behind root's spare (FlipBase's gptslot rule).
     by = {p.name: p for p in parts}
@@ -305,30 +362,86 @@ def check_thimsy_layout(parts: List[Part], ss: int, rep: Report, *, mode: str) -
             if by[b].first_lba != want_start:
                 rep.error("%s starts at LBA %d; behind %s and its equal spare it must "
                           "start at LBA %d" % (b, by[b].first_lba, a, want_start))
+    # info (OA-2): INFO_MIB right behind data, so the tail rules count from it.
+    info = by.get(THIMSY_INFO[0])
+    if info is not None and "data" in by:
+        want_start = by["data"].last_lba + 1
+        if info.first_lba != want_start:
+            rep.error("info starts at LBA %d; it must start right behind data, at LBA %d "
+                      "(OA-2)" % (info.first_lba, want_start))
+        if info.sectors * ss != INFO_MIB * MIB:
+            rep.error("info is %d bytes; it must be %d MiB (OA-2)"
+                      % (info.sectors * ss, INFO_MIB))
 
 
-def check_vold(parts: List[Part], rep: Report, *, mode: str) -> None:
+def check_vold(parts: List[Part], rep: Report, *, mode: str, thimsy: bool = True,
+               sniffed: bool = True) -> None:
     public = [p for p in parts if p.type_guid in VOLD_PUBLIC_TYPES]
     for p in parts:
         if p.type_guid in VOLD_PRIVATE_TYPES:
             rep.error("%s is typed %s: vold offers to adopt it as internal storage"
                       % (p.label(), VOLD_PRIVATE_TYPES[p.type_guid]))
     if mode == "image":
+        info = None
         for p in public:
-            rep.error("%s is typed %s, which vold mounts; a written image has no such "
-                      "entry (games is made at first boot, decision I39)"
-                      % (p.label(), VOLD_PUBLIC_TYPES[p.type_guid]))
-        return
-    if len(public) > 1:
+            if thimsy and p.name == THIMSY_INFO[0] and p.index == INFO_INDEX:
+                info = p
+                continue
+            rep.error("%s is typed %s, which vold mounts; a written image has one such "
+                      "entry, entry %d %r (OA-2; games is made at first boot, decision I39)"
+                      % (p.label(), VOLD_PUBLIC_TYPES[p.type_guid], INFO_INDEX,
+                         THIMSY_INFO[0]))
+        if thimsy and info is None:
+            rep.error("the written image has no entry %d %r typed Microsoft basic data: with "
+                      "no volume vold can mount, Android offers to set up (format) the card "
+                      "before its first boot (OA-2, device-safety-3)"
+                      % (INFO_INDEX, THIMSY_INFO[0]))
+        if info is not None and sniffed and info.filesystem not in (None, "vfat"):
+            rep.error("%s carries %s; it must be FAT (OA-2)" % (info.label(), info.filesystem))
+    elif len(public) > 1:
         rep.error("%d entries have a type vold mounts (%s); a card has exactly one"
                   % (len(public), ", ".join(p.label() for p in public)))
     for p in public:
         if p.index is not None and p.index > VOLD_MAX_ENTRY:
             rep.error("%s: vold only sees entries 1 to %d" % (p.label(), VOLD_MAX_ENTRY))
-        if p.filesystem is None:
+        if sniffed and p.filesystem is None:
             rep.error("%s is typed %s but carries no filesystem: vold reports it "
                       "unmountable and its format wizard repartitions the card (risk 13)"
                       % (p.label(), VOLD_PUBLIC_TYPES[p.type_guid]))
+
+
+def check_guids(parts: List[Part], disk_guid: str, rep: Report, *, mode: str,
+                thimsy: bool, release: Optional[str] = None,
+                device: Optional[str] = None) -> None:
+    """OA-9: set and unique; pinned in a written image, random on a booted card."""
+    zero = "00000000-0000-0000-0000-000000000000"
+    seen: Dict[str, str] = {}
+    for label, g in [("the disk GUID", disk_guid)] + [
+            ("%s's unique GUID" % p.label(), p.part_guid) for p in parts if p.index]:
+        if not g or g == zero:
+            rep.error("%s is zero" % label)
+        elif g in seen:
+            rep.error("%s %s repeats %s" % (label, g, seen[g]))
+        else:
+            seen[g] = label
+    image_names = [n for n, _ in THIMSY_LAYOUT]
+    if mode == "image" and release and device:
+        want = pinned_guids(release, device, [p.name for p in parts if p.index])
+        if disk_guid != want["disk"]:
+            rep.error("the disk GUID is %s; the image of %r for %r pins %s (OA-9)"
+                      % (disk_guid, release, device, want["disk"]))
+        for p in parts:
+            if p.index and p.part_guid != want[p.name]:
+                rep.error("%s's unique GUID is %s; the image of %r for %r pins %s (OA-9)"
+                          % (p.label(), p.part_guid, release, device, want[p.name]))
+    if mode == "card" and thimsy:
+        pinned = [label for label, g in [("the disk GUID", disk_guid)] + [
+            ("%s's unique GUID" % p.label(), p.part_guid) for p in parts
+            if p.index and p.name in image_names] if guid_version(g) == PINNED_VERSION]
+        for label in pinned:
+            rep.error("%s is still name-based, the image's pinned value: every card written "
+                      "from the image shares it until D60firstboot (or the installer) makes "
+                      "it random (OA-9)" % label)
 
 
 # --------------------------------------------------------------------------
@@ -485,19 +598,21 @@ def find_idbloader(img: Image, start_lba: int, limit_lba: int,
 
 def check_image(path: str, *, mode: str = "image", family: Optional[str] = None,
                 thimsy: bool = True, ss: int = 512,
-                idbloader_size: Optional[int] = None) -> Report:
+                idbloader_size: Optional[int] = None, release: Optional[str] = None,
+                device: Optional[str] = None) -> Report:
     rep = Report()
     img = Image(path, ss)
     try:
         _check_image(img, rep, mode=mode, family=family, thimsy=thimsy,
-                     idbloader_size=idbloader_size)
+                     idbloader_size=idbloader_size, release=release, device=device)
     finally:
         img.close()
     return rep
 
 
 def _check_image(img: Image, rep: Report, *, mode: str, family: Optional[str],
-                 thimsy: bool, idbloader_size: Optional[int]) -> None:
+                 thimsy: bool, idbloader_size: Optional[int], release: Optional[str],
+                 device: Optional[str]) -> None:
     ss = img.ss
     if img.size % ss:
         rep.error("image size %d is not a multiple of the %d-byte sector" % (img.size, ss))
@@ -584,6 +699,8 @@ def _check_image(img: Image, rep: Report, *, mode: str, family: Optional[str],
     check_layout(parts, ss, rep, mode=mode, family=family, thimsy=thimsy,
                  last_usable=prim["last_usable_lba"], entries_end_lba=entries_end,
                  idbloader=idb)
+    check_guids(parts, prim["disk_guid"], rep, mode=mode, thimsy=thimsy, release=release,
+                device=device)
     if thimsy:
         check_tail(parts, ss, rep, mode=mode, image_sectors=n_sectors)
 
@@ -710,6 +827,7 @@ def genimage_layout(text: str, ss: int = 512) -> Tuple[List[Dict[str, Any]], Lis
             entry["in_table"] = _truth(p.get("in-partition-table", "true"))
             entry["type"] = p.get("partition-type-uuid", "").upper()
             entry["image"] = p.get("image")
+            entry["uuid"] = p.get("partition-uuid", "").upper()
             parts.append(entry)
         images.append({"name": title, "hdimage": opts, "partitions": parts,
                        "size": parse_size(image_opts["size"]) if "size" in image_opts else None})
@@ -717,7 +835,11 @@ def genimage_layout(text: str, ss: int = 512) -> Tuple[List[Dict[str, Any]], Lis
 
 
 def check_genimage(path: str, *, family: Optional[str] = None, thimsy: bool = True,
-                   ss: int = 512) -> Report:
+                   ss: int = 512, release: Optional[str] = None,
+                   device: Optional[str] = None) -> Report:
+    """A board's genimage.cfg, or with release and device the cfg
+    tools/card_image.py wrote for that device: a board's has no GUIDs (they
+    are pinned per device, OA-9), a device's has exactly the pinned ones."""
     rep = Report()
     with open(path, "r", encoding="utf-8") as f:
         text = f.read()
@@ -756,7 +878,11 @@ def check_genimage(path: str, *, family: Optional[str] = None, thimsy: bool = Tr
                                   e["type"]):
                     rep.error("image %s: partition %r: %r is not a GUID"
                               % (im["name"], e["name"], e["type"]))
-                parts.append(Part(idx, e["name"], e["type"], first, last))
+                parts.append(Part(idx, e["name"], e["type"], first, last,
+                                  part_guid=e["uuid"]))
+                if thimsy and e["name"] == THIMSY_INFO[0] and not e["image"]:
+                    rep.error("image %s: partition %r names no image: a basic-data entry "
+                              "without a filesystem (OA-2, risk 13)" % (im["name"], e["name"]))
             else:
                 raw.append(Part(None, e["name"], "", first, last))
         idb = None
@@ -770,7 +896,19 @@ def check_genimage(path: str, *, family: Optional[str] = None, thimsy: bool = Tr
                 rep.error("image %s: unexpected raw region %r" % (im["name"], r.name))
         # The primary GPT of 128 entries ends at LBA 33 (genimage's layout).
         check_layout(parts, ss, rep, mode="image", family=family, thimsy=thimsy,
-                     entries_end_lba=33, idbloader=idb)
+                     entries_end_lba=33, idbloader=idb, sniffed=False)
+        disk_guid = opts.get("disk-uuid", "").upper()
+        if release and device:
+            check_guids(parts, disk_guid, rep, mode="image", thimsy=thimsy,
+                        release=release, device=device)
+        else:
+            if disk_guid:
+                rep.error("image %s: disk-uuid is set by hand; 30-genimage.sh pins it per "
+                          "device (OA-9)" % im["name"])
+            for p in parts:
+                if p.part_guid:
+                    rep.error("image %s: partition %r: partition-uuid is set by hand; "
+                              "30-genimage.sh pins it per device (OA-9)" % (im["name"], p.name))
         if thimsy:
             if im["size"] is None:
                 rep.error("image %s has no explicit size: it must end %d MiB after its last "
@@ -802,17 +940,23 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--genimage", action="store_true",
                     help="read PATH as a genimage.cfg instead of an image")
     ap.add_argument("--mode", choices=("image", "card"), default="image",
-                    help="image: a written image, no vold-mounted entry (default); "
-                         "card: a card that has booted, games allowed once formatted")
+                    help="image: a written image, info the only vold-mounted entry "
+                         "(default); card: a card that has booted, games instead once "
+                         "formatted")
     ap.add_argument("--family", choices=sorted(FAMILIES) + ["none"],
                     help="the SoC family (idbloader rules); from the path if omitted")
     ap.add_argument("--layout", choices=("thimsy", "none"), default="thimsy",
                     help="check E.6's names, types and tiling (default) or only GPT rules")
+    ap.add_argument("--release", metavar="VERSION",
+                    help="with --device: the image's GUIDs must be the ones pinned for them")
+    ap.add_argument("--device", metavar="ID", help="the device id (with --release)")
     ap.add_argument("--idbloader-size", type=int, metavar="BYTES",
                     help="the idbloader's size; otherwise its last non-zero sector ends it")
     ap.add_argument("--sector-size", type=int, default=512, choices=(512, 4096))
     ap.add_argument("--json", action="store_true", help="print the result as JSON")
     args = ap.parse_args(argv)
+    if bool(args.release) != bool(args.device):
+        ap.error("--release and --device go together")
 
     family = args.family
     if family is None:
@@ -822,11 +966,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         if args.genimage:
             rep = check_genimage(args.path, family=family, thimsy=args.layout == "thimsy",
-                                 ss=args.sector_size)
+                                 ss=args.sector_size, release=args.release,
+                                 device=args.device)
         else:
             rep = check_image(args.path, mode=args.mode, family=family,
                               thimsy=args.layout == "thimsy", ss=args.sector_size,
-                              idbloader_size=args.idbloader_size)
+                              idbloader_size=args.idbloader_size, release=args.release,
+                              device=args.device)
     except OSError as exc:
         print("gpt_check: %s" % exc, file=sys.stderr)
         return 2

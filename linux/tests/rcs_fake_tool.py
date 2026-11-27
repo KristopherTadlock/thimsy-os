@@ -13,7 +13,8 @@ per call is slow on Windows).
 Disks. ``$THIMSY_ROOT/dev/<disk>`` is a JSON file holding a GPT:
     {"kind": "disk", "name", "sector_size", "size_sectors", "first_lba",
      "last_lba", "removable_type": "SD"|"MMC"|null, "major", "minor",
-     "parts": {"<n>": {"start", "size", "type", "uuid", "name", "fs"}}}
+     "disk_id" (optional), "parts": {"<n>": {"start", "size", "type", "uuid",
+     "name", "fs"}}}
 and ``$THIMSY_ROOT/dev/<partition>`` is {"kind": "part", "disk", "n"}.
 ``sync_kernel_view`` writes the matching /sys/class/block tree, as the
 kernel does at boot and, through BLKPG, when sfdisk adds an entry.
@@ -26,8 +27,16 @@ sfdisk, when it creates an entry, records the exFAT it finds at the start
 in the entry's "fs" (what the kernel would see there). D60firstboot's
 re-adoption of an old library is tested this way (device-safety-2).
 
+GUIDs (OA-9). sfdisk --disk-id and --part-uuid change the table only, not
+the kernel's view (PARTUUID= in uevents), as on a device until the next
+boot. ``$THIMSY_ROOT/proc/sys/kernel/random/uuid`` is the kernel's random
+source: after each GUID write the fake writes a fresh version 4 GUID there,
+since a real read gives a new one every time.
+
 Power cuts. THIMSY_FAKE_POWERCUT="STEP:MODE" cuts the power at the first
-call of STEP (relocate, create, mkfs, retype): MODE "before" drops the
+call of STEP (guid: --disk-id or --part-uuid; relocate, create, mkfs;
+retype: --part-type of any entry but info; retire: --part-type of the entry
+named info): MODE "before" drops the
 call's effect, "after" keeps it, "torn" (mkfs only) leaves a filesystem
 that was started and not finished. The cut writes $THIMSY_ROOT/.powercut;
 while it exists every fake tool fails without an effect, so nothing after
@@ -41,11 +50,13 @@ import json
 import os
 import struct
 import sys
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 RESERVED = "8DA63339-0007-60C0-C436-083AC8230908"
 BASICDATA = "EBD0A0A2-B9E5-4433-87C0-68B6B72699C7"
+DISK_ID = "00000000-1111-2222-3333-444444444444"
 
 
 def write_lf(path: Path, text: str) -> None:
@@ -87,14 +98,22 @@ def save_disk(root: Path, d: Dict[str, Any]) -> None:
     os.replace(tmp, path)
 
 
-def sync_kernel_view(root: Path, disk: str) -> None:
-    """Make /sys/class/block and /dev match the disk's GPT."""
+def sync_kernel_view(root: Path, disk: str, blkpg: bool = False) -> None:
+    """Make /sys/class/block and /dev match the disk's GPT, as a boot does. With
+    blkpg=True (sfdisk adding an entry): entries the kernel already knew keep the
+    PARTUUID it read at boot, since BLKPG only adds the new one (OA-9)."""
     d = load_disk(root, disk)
     cls = root / "sys" / "class" / "block"
     ddir = cls / disk
     ssz = d["sector_size"]
+    known: Dict[str, str] = {}
     for child in list(ddir.iterdir()) if ddir.exists() else []:
         if child.is_dir() and child.name.startswith(disk) and child.name != disk:
+            ue = child / "uevent"
+            if blkpg and ue.exists():
+                for line in ue.read_text(encoding="utf-8").splitlines():
+                    if line.startswith("PARTUUID="):
+                        known[child.name] = line[len("PARTUUID="):]
             _rmtree(child)
             _rmtree(cls / child.name)
             node = root / "dev" / child.name
@@ -115,7 +134,7 @@ def sync_kernel_view(root: Path, disk: str) -> None:
               f"DISKSEQ=1\nPARTN={n}\n")
         if p.get("name"):
             ue += f"PARTNAME={p['name']}\n"
-        ue += f"PARTUUID={p['uuid'].lower()}\n"
+        ue += f"PARTUUID={known.get(name, p['uuid'].lower())}\n"
         for base in (ddir / name, cls / name):
             _write(base / "partition", f"{n}\n")
             _write(base / "dev", f"{d['major']}:{minor}\n")
@@ -284,7 +303,7 @@ def sfdisk(args: List[str]) -> int:
     args = [a for a in args if a != "--force"]
     if args[:1] == ["--dump"] and len(args) == 2:
         d = load_disk(root, dev_name(args[1]))
-        out = ["label: gpt", "label-id: 00000000-1111-2222-3333-444444444444",
+        out = ["label: gpt", "label-id: %s" % d.get("disk_id", DISK_ID).upper(),
                f"device: {args[1]}", "unit: sectors", f"first-lba: {d['first_lba']}",
                f"last-lba: {d['last_lba']}", f"sector-size: {d['sector_size']}", ""]
         for key in sorted(d["parts"], key=int):
@@ -308,13 +327,39 @@ def sfdisk(args: List[str]) -> int:
         if mode:
             power_cut()
         return 0
+    if (args[:1] == ["--disk-id"] and len(args) == 3
+            or args[:1] == ["--part-uuid"] and len(args) == 4):
+        disk = dev_name(args[1])
+        d = load_disk(root, disk)
+        if args[0] == "--part-uuid" and args[2] not in d["parts"]:
+            sys.stderr.write("sfdisk: no such partition\n")
+            return 1
+        try:
+            new = str(uuid.UUID(args[-1]))
+        except ValueError:
+            sys.stderr.write("sfdisk: failed to parse UUID\n")
+            return 1
+        mode = cut_point("guid")
+        if mode != "before":
+            if args[0] == "--disk-id":
+                d["disk_id"] = new
+            else:
+                d["parts"][args[2]]["uuid"] = new
+            save_disk(root, d)
+        # The kernel's random source gives a new GUID on every read.
+        src = root / "proc" / "sys" / "kernel" / "random" / "uuid"
+        if src.exists():
+            write_lf(src, str(uuid.uuid4()) + "\n")
+        if mode:
+            power_cut()
+        return 0
     if args[:1] == ["--part-type"] and len(args) == 4:
         disk = dev_name(args[1])
         d = load_disk(root, disk)
         if args[2] not in d["parts"]:
             sys.stderr.write("sfdisk: no such partition\n")
             return 1
-        mode = cut_point("retype")
+        mode = cut_point("retire" if d["parts"][args[2]].get("name") == "info" else "retype")
         if mode != "before":
             d["parts"][args[2]]["type"] = args[3].upper()
             save_disk(root, d)
@@ -353,7 +398,8 @@ def sfdisk(args: List[str]) -> int:
                              "uuid": "c0ffee00-0000-4000-8000-%012d" % int(n),
                              "name": fields.get("name", ""), "fs": fs}
             save_disk(root, d)
-            sync_kernel_view(root, disk)  # BLKPG: the kernel learns the entry
+            # BLKPG: the kernel learns the new entry; the others keep what it knew.
+            sync_kernel_view(root, disk, blkpg=True)
         if mode:
             power_cut()
         return 0

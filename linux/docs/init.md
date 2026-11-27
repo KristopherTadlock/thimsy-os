@@ -94,7 +94,9 @@ The disk is the `/sys/class/block/<disk>` directory that holds the
 partition's directory. The design put `root=PARTUUID=` first; the mounted
 root is first here because two cards written from the same image have the
 same PARTUUIDs (the ARC has two slots), and the kernel's choice is the
-truth. The tests cover both cards being clones.
+truth. The tests cover both cards being clones. Such clones last only until
+a card's first boot: `D60firstboot` then gives the card random GPT GUIDs
+(OA-9, below).
 
 Then, **on that disk only**: the partition whose GPT name is `data`
 (`PARTNAME=` in its uevent) is mounted at `/storage` (ext4,
@@ -198,17 +200,26 @@ from `device.json`'s `family` and `modules` (the latter space-separated;
 | `D50ssh` | `dropbear -r <host key on /storage>`; dev images by default; release images only when turned on, and then `-s` (no passwords) | `persist.thimsy.ssh.enabled` |
 | `D60firstboot` | the games partition, below | |
 
-## The games partition (E.6, decisions I39 and I44)
+## The games partition (E.6, decisions I39, I44, OA-2 and OA-9)
 
-The written image has GPT entries 1 to 4 (`uboot`, `boot`, `root`, `data`)
-and leaves the rest of the card unallocated. `D60firstboot`, on the boot
-disk only and never on an eMMC:
+The written image has GPT entries 1 to 5 (`uboot`, `boot`, `root`, `data`,
+`info`) and leaves the rest of the card unallocated. `info` is a 1 MiB FAT
+with a README, the one entry Android's vold mounts on a fresh card (E.6,
+OA-2). `D60firstboot`, on the boot disk only and never on an eMMC:
 
+R. if the disk GUID or the unique GUID of an image entry (`uboot`, `boot`,
+   `root`, `data`, `info`) is still name-based (version 5, the value the
+   image pins for its release and device), replaces each with a random
+   one from `/proc/sys/kernel/random/uuid` (`sfdisk --disk-id`, `sfdisk
+   --part-uuid`), one write per GUID, before any other write. A GUID the
+   kernel gives that is not version 4, or that the disk already has, is
+   refused with a warning; whatever is left is tried again at the next
+   boot, and the other steps still run;
 0. if the backup GPT sits at the image's end rather than the card's (more
    than 1 MiB short), `sfdisk --relocate gpt-bak-std`;
-1. if there is no entry 5: creates it with `sfdisk --force -N 5`, starting
+1. if there is no entry 6: creates it with `sfdisk --force -N 6`, starting
    2 MiB (`GAP_MIB`) after the first 1 MiB boundary after the end of the last
-   entry (so a spare area between entries is never used; 2410 MiB on the
+   entry (so a spare area between entries is never used; 2411 MiB on the
    cards), and running to the end of the card, typed **Linux reserved**,
    named `games`; not if less than 64 MiB is free. Unless the old library is
    there (re-adoption, below);
@@ -216,39 +227,71 @@ disk only and never on an eMMC:
    sfdisk refuses otherwise, and with `--force` it still adds the entry to
    the kernel's table (BLKPG);
 2. `mkfs.exfat -L THIMSY` on it, then `sync`;
-3. `sfdisk --part-type <disk> 5 EBD0A0A2-B9E5-4433-87C0-68B6B72699C7` (basic
+3. `sfdisk --part-type <disk> 6 EBD0A0A2-B9E5-4433-87C0-68B6B72699C7` (basic
    data), `sync`, and `change` into the partition's `uevent` so the session
-   looks at it again.
+   looks at it again;
+4. once entry 6 is basic data and named `games`, retypes entry 5 **Linux
+   reserved** if it is still basic data and named `info`. Its FAT stays as
+   it is under the new type. From then on `games` is the card's one entry
+   vold mounts, so Android shows one volume, not two.
 
 The state is read from the GPT (`sfdisk --dump`) on every run:
 
-| Entry 5 | Action |
+| Entry 6 | Action |
 |---|---|
-| missing, a THIMSY exFAT at the start | step 0, then re-adoption (below) |
-| missing | steps 0 to 3 |
-| Linux reserved, named `games` | ours, not finished: steps 2 and 3 (formatting again is safe: nothing can be on it) |
-| basic data | done |
-| anything else | the user's: left alone |
+| missing, a THIMSY exFAT at the start | step 0, then re-adoption (below), then step 4 |
+| missing | steps 0 to 4 |
+| Linux reserved, named `games` | ours, not finished: steps 2 to 4 (formatting again is safe: nothing can be on it) |
+| basic data, named `games` | step 4 if entry 5 is still `info` and basic data, else done |
+| anything else | the user's: left alone, and `info` too |
 
 So at no moment is there a basic-data entry without a complete filesystem,
 and a power cut at any step leaves a state the next boot finishes. The
-tests cut the power before and after each of the four steps, and in the
-middle of the format, and check both. A cut inside one sfdisk write can
-tear the primary GPT (libfdisk writes the backup first, then the primary
-entries, then the primary header); U-Boot then reads the backup, and the
-kernel does too because the command line has `gpt` (tools/fit.py,
-run-qemu.sh). D60 ignores TERM while it holds `/run/thimsy/firstboot.lock`,
+tests cut the power before and after the first GUID write and each of the
+five other steps, and in the middle of the format, and check both. A cut
+inside one sfdisk write can tear the primary GPT (libfdisk writes the
+backup first, then the primary entries, then the primary header); U-Boot
+then reads the backup, and the kernel does too because the command line has
+`gpt` (tools/fit.py, run-qemu.sh). D60 ignores TERM while it holds `/run/thimsy/firstboot.lock`,
 and rcK waits up to 10 s for the lock before it signals everyone, so a
 shutdown never cuts the write (review finding device-safety-1).
 
+### The GPT GUIDs (OA-9)
+
+Each device's image for a release carries fixed GUIDs (the disk's and each
+entry's), name-based from the release, the device id and the entry's name
+(`tools/gpt_check.py`'s `pinned_guid()`, set by `post-image.d/30-genimage.sh`
+through `tools/card_image.py cfg`), so a rebuild is byte-identical. Every
+card written from that image with Etcher or `dd` then has the same GUIDs,
+and two such cards in the ARC's two slots share `root=PARTUUID=`. Step R
+gives the boot card its own at its first boot; they never change after
+that, updates included. A card the installer wrote already has random
+(version 4) ones and is left as it is.
+
+Nothing that already ran needs the old values. U-Boot reads entry 3's
+GUID for `root=PARTUUID=` afresh on every boot (`board/rk3566/uboot/boot.cmd`),
+QEMU boots `root=/dev/vda3`, there is no fstab, and S00base has recorded
+the boot disk in `/run/thimsy/bootdisk` before D60 runs. sfdisk changes the
+table on the card, not the kernel's list: `PARTUUID=` in the uevents keeps
+the old value until the next boot, which matches the command line of this
+boot, and the next boot's command line carries the new one.
+
+Left open (OA-9): two never-booted cards from the same image in both slots
+on the very first boot. The kernel mounts one of them, S00base takes that
+one, and only it gets new GUIDs; the other keeps the image's until it boots
+alone. The user docs say to boot a new card alone first, or to use the
+installer.
+
 ### Re-adoption (review finding device-safety-2)
 
-An entry 5 that is `missing` is also what a card looks like when an image is
+An entry 6 that is `missing` is also what a card looks like when an image is
 written again over a used Thimsy card (a repair, or an update before there
-is an updater). The written image ends 1 MiB after `data` (genimage.cfg's
-`size = 2409M`; its backup GPT is its last 33 sectors) and games starts
+is an updater). The written image ends 1 MiB after `info` (genimage.cfg's
+`size = 2410M`; its backup GPT is its last 33 sectors) and games starts
 1 MiB after that, so a re-write leaves the old library's exFAT whole, boot
-region (sectors 0 to 23: main and backup boot regions) and all.
+region (sectors 0 to 23: main and backup boot regions) and all. The
+re-written image brings back `info` as basic data and the image's pinned
+GUIDs, so steps R and 4 run again too.
 `tools/gpt_check.py` holds both sides: a written image must end exactly
 1 MiB after its last entry, and a booted card's games entry may not start
 before 2 MiB after it.
@@ -256,14 +299,14 @@ before 2 MiB after it.
 Before step 1, D60 reads the boot sector at the computed start (`dd`, `od`).
 If it says `EXFAT   ` at byte 3, ends in 55 AA, has sane shifts and lengths,
 and the first cluster of the root directory has the allocation-bitmap (0x81)
-and up-case-table (0x82) entries (a complete exFAT), D60 creates entry 5
+and up-case-table (0x82) entries (a complete exFAT), D60 creates entry 6
 over the filesystem's extent (`VolumeLength` shifted by
 `BytesPerSectorShift`, clamped to the card's last usable sector), typed
 **basic data** at once and named `games`, logs it with the volume's label,
 and runs no `mkfs`. The label does not matter (review finding
 linux-host-impls-4): a library the user renamed or cleared on a PC, or one
 under 64 MiB, is adopted as it is. That is one sfdisk write: a power cut
-leaves either no entry 5 (adopted at the next boot) or the adopted entry,
+leaves either no entry 6 (adopted at the next boot) or the adopted entry,
 and the filesystem was complete before the entry existed, so a basic-data
 entry still never lacks one. When `dd` or `od` fails, D60 creates nothing,
 warns (`could not read ...: trying again at the next boot`) and exits with
@@ -276,7 +319,9 @@ session's fsck then sees it).
 
 The partition is the alpha's library drive by default (I44): the
 session's volume policy accepts the boot disk's `games` partition and no
-other boot-disk partition (F.1); Nano chooses it.
+other boot-disk partition (F.1); Nano chooses it. `info` is never a drive
+on the boot disk, whatever its type: the policy takes only the basic-data
+partition named `games` there.
 
 ## Shutdown
 
@@ -325,8 +370,10 @@ on Ubuntu), or `THIMSY_SH`. On Windows they run under Git for Windows'
 ## Not verified
 
 Nothing here has run on a device or in QEMU. In particular: that `sfdisk
---force -N 5` on the mounted boot card adds the entry through BLKPG on the
-pinned util-linux; that `PARTUUID=` appears in partition uevents on the
+--force -N 6` on the mounted boot card adds the entry through BLKPG on the
+pinned util-linux; that `sfdisk --disk-id` and `--part-uuid` write the
+mounted boot card's table without a re-read and leave the kernel's
+`PARTUUID=` as it was until the next boot (step R); that `PARTUUID=` appears in partition uevents on the
 pinned kernel (only the fallback after the mounted root needs it); the
 RK817 control names; the time `rcS` takes. The QEMU boot test (E.9) is the
 first check.
