@@ -54,9 +54,10 @@ ARC = ["anbernic-rg-arc-d", "anbernic-rg-arc-s"]
 EPOCH = "1700000000"
 RELEASE = "1.2.0-test"
 PAD = 16320 * 512  # u-boot.itb's offset in u-boot-rockchip.bin
-# The ARC-S (no Bluetooth) is made before the Bluetooth pack is unpacked for the ARC-D (OA-15);
+# The Bluetooth pack is unpacked on its own before any root is made (checked against the family's
+# overlay), and the ARC-S (no Bluetooth) is made before it is copied in for the ARC-D (OA-15);
 # card_image.py: info per device (28-info.sh), then cfg before each genimage (30-genimage.sh).
-TOOLS_ORDER_RK3566 = ["fsck.erofs", "fsck.erofs", "mkfs.erofs", "fsck.erofs", "mkfs.erofs",
+TOOLS_ORDER_RK3566 = ["fsck.erofs", "fsck.erofs", "fsck.erofs", "mkfs.erofs", "mkfs.erofs",
                       "mkfs.ext4", "mkfs.ext4", "fit.py", "fit.py", "card_image.py", "card_image.py",
                       "card_image.py", "genimage", "card_image.py", "genimage",
                       "gpt_check.py", "gpt_check.py"]
@@ -226,17 +227,20 @@ class Rk3566CardTest(unittest.TestCase):
                       "info.vfat", "genimage.cfg"):
                 self.assertTrue((cards / dev / f).is_file(), f)
         self.assertFalse((cards / ".root-stage").exists())
+        self.assertFalse((cards / ".bt-pack").exists())
         self.assertFalse((cards / ARC[0] / "data-stage").exists())
         self.assertFalse((cards / ARC[0] / "genimage").exists())
 
     def test_tier_root_unpacked_with_gpu_pack(self) -> None:
         fsck = [c for c in self.rig.calls() if c["tool"] == "fsck.erofs"]
         stage = self.rig.bin / "cards" / ".root-stage"
+        bt_tree = self.rig.bin / "cards" / ".bt-pack"   # on its own, then copied over the stage
         self.assertEqual(len(fsck), 3)
-        for c, img in zip(fsck, ("rootfs.erofs", "gpu-panfrost.erofs", "bluetooth.erofs")):
+        for c, img, dest in zip(fsck, ("rootfs.erofs", "gpu-panfrost.erofs", "bluetooth.erofs"),
+                                (stage, stage, bt_tree)):
             self.assertEqual(len(c["argv"]), 3, c)
             self.assertTrue(c["argv"][0].startswith("--extract="))
-            self.assertTrue(same(c["argv"][0].split("=", 1)[1], stage))
+            self.assertTrue(same(c["argv"][0].split("=", 1)[1], dest))
             self.assertEqual(c["argv"][1], "--overwrite")
             self.assertTrue(same(c["argv"][2], self.rig.tier / "images" / img))
 
@@ -454,6 +458,33 @@ class Rk3566OtherRunsTest(unittest.TestCase):
                            universal_newlines=True, timeout=600)
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("bluetooth is not true or false", r.stdout)
+
+    def test_bluetooth_pack_and_family_overlay_share_a_file(self) -> None:
+        """A path both the Bluetooth pack and the family's overlay have fails the build before any
+        root is made, instead of the pack silently winning; usr/share/thimsy, a directory both have,
+        does not count (the common run passes with it)."""
+        board = self.rig.tmp / "linux"
+        shutil.copytree(str(LINUX / "board"), str(board / "board"))
+        shutil.copytree(str(LINUX / "configs"), str(board / "configs"))
+        shutil.copytree(str(LINUX / "tools"), str(board / "tools"))
+        write_lf(board / "board/rk3566/common/rootfs-overlay/etc/init.d/deferred/D35bluetooth", "family\n")
+
+        def run(device: str) -> "subprocess.CompletedProcess[str]":
+            return subprocess.run(SH + [posix(board / "board/common/post-image.sh"), posix(self.rig.bin),
+                                        "hw", "--family=rk3566"],
+                                  env=dict(self.rig.env, BR2_EXTERNAL_THIMSY_PATH=posix(board),
+                                           THIMSY_DEVICES=device),
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                  universal_newlines=True, timeout=600)
+
+        r = run("anbernic-rg-arc-d")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("board/rk3566/common/rootfs-overlay and the Bluetooth pack both have: "
+                      "/etc/init.d/deferred/D35bluetooth\n", r.stdout)
+        self.assertNotIn("mkfs.erofs", [c["tool"] for c in self.rig.calls()])
+        # A device without Bluetooth never takes the pack, so nothing clashes.
+        r = run("anbernic-rg-arc-s")
+        self.assertEqual(r.returncode, 0, r.stdout)
 
     def test_gpt_check_failure_fails_the_build(self) -> None:
         r = self.run1("hw", "--family=rk3566", FAKE_GPT_RC="1")

@@ -755,7 +755,7 @@ Buildroot reads one defconfig per tree. Thimsy keeps fragments as the source and
 |---|---|
 | `common.fragment` | aarch64, glibc toolchain (Buildroot's own, built once and reused as the shared SDK), BusyBox init, libudev-zero, `BR2_PER_PACKAGE_DIRECTORIES`, ccache, `BR2_GLOBAL_PATCH_DIR` to `gpl/patches`, no initramfs, EROFS host tools, `BR2_ROOTFS_OVERLAY`, post-build and post-image scripts |
 | `tier-v8_0.fragment`, `tier-v8_2.fragment` | the CPU tuning (`BR2_cortex_a53`, `BR2_cortex_a55`) and the userland: `thimsy-nano`, `libthimsy`, `thimsy-session`, `thimsy-padd`, `thimsy-fonts`, `thimsy-data`, alsa-utils, wpa_supplicant, dropbear, exfatprogs, e2fsprogs |
-| `bluetooth.fragment` | BlueZ with `bluetoothctl` and D-Bus, in a tier whose cards include a device with `"bluetooth": true`; `post-build.d/40-bt-pack.sh` moves them, with `D35bluetooth`, into `bluetooth.erofs`, which card assembly unpacks only into those devices' roots (decision OA-15) |
+| `bluetooth.fragment` | BlueZ with `bluetoothctl` and D-Bus, in a tier whose cards include a device with `"bluetooth": true`; `post-build.d/40-bt-pack.sh` moves them, with `D35bluetooth`, into `bluetooth.erofs`, which card assembly unpacks only into those devices' roots (decision OA-15); a path the pack shares with the family's overlay, other than a directory both have, fails the card assembly |
 | `gpu-panfrost.fragment`, `gpu-swrast.fragment` | Mesa with the driver set, host LLVM only for Panfrost's shader compiler |
 | `apps-alpha.fragment`, `apps-v1.fragment` | RetroArch and the cores (E.3), PPSSPP and ScummVM in v1 |
 | `hw-common.fragment` | kernel and U-Boot pinning style, `linux-firmware` selection rules (decision 24) |

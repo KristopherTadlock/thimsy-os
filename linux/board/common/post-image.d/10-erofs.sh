@@ -19,9 +19,12 @@
 #
 # Bluetooth (decision OA-15): only a device whose JSON says "bluetooth": true
 # gets the tier's bluetooth.erofs (BlueZ, D-Bus and D35bluetooth, from
-# post-build.d/40-bt-pack.sh). The devices without it are made first; the
-# pack is then unpacked over the stage once, before the first device with
-# it. A device with Bluetooth on a tier with no pack fails the build.
+# post-build.d/40-bt-pack.sh). The pack is unpacked on its own before any
+# root is made, and a path it shares with the family's overlay (other than a
+# directory both have) fails the build: neither silently replaces the other.
+# The devices without it are made first; the pack is then copied over the
+# stage once, before the first device with it. A device with Bluetooth on a
+# tier with no pack fails the build.
 #
 # (guess) fsck.erofs of the pinned erofs-utils (1.7 or later) has --extract
 # and --overwrite; unpacking as root keeps owners and modes.
@@ -29,6 +32,22 @@ set -eu
 CARD_PART=10-erofs
 . "$(dirname "$0")/lib/card.sh"
 card_init "$@"
+
+# overlay_clashes OVERLAY PACK REL: the paths under OVERLAY/REL that the
+# unpacked tree PACK also has, each printed as " /path". A directory both
+# have (not a link to one) is looked into instead of counted.
+overlay_clashes() {
+	for _e in "$1/$3"* "$1/$3".[!.]* "$1/$3"..?*; do
+		[ -e "$_e" ] || [ -L "$_e" ] || continue
+		_p=$3${_e##*/}
+		[ -e "$2/$_p" ] || [ -L "$2/$_p" ] || continue
+		if [ -d "$_e" ] && [ ! -L "$_e" ] && [ -d "$2/$_p" ] && [ ! -L "$2/$_p" ]; then
+			overlay_clashes "$1" "$2" "$_p/"
+		else
+			printf ' /%s' "$_p"
+		fi
+	done
+}
 
 if [ "$ROLE" != hw ]; then
 	root=$BIN/rootfs.erofs
@@ -131,16 +150,26 @@ for id in $DEVICES; do
 	fi
 done
 bt_pack=$TIER_IMAGES/bluetooth.erofs
+bt_tree=$CARDS/.bt-pack
+rm -rf "$bt_tree"
 if [ -n "$with_bt" ]; then
 	card_is_erofs "$bt_pack" ||
 		card_die "$bt_pack is missing or not an EROFS image, and${with_bt} has Bluetooth: list bluetooth in the tier's fragments"
+	mkdir -p "$bt_tree"
+	card_say "unpacking $bt_pack"
+	fsck.erofs --extract="$bt_tree" --overwrite "$bt_pack" ||
+		card_die "fsck.erofs could not unpack $bt_pack"
+	if [ -d "$overlay" ]; then
+		clashes=$(overlay_clashes "$overlay" "$bt_tree" "")
+		[ -z "$clashes" ] ||
+			card_die "board/$FAMILY/common/rootfs-overlay and the Bluetooth pack both have:$clashes"
+	fi
 fi
 
 for id in $plain ${with_bt:+--bluetooth} $with_bt; do
 	if [ "$id" = --bluetooth ]; then
 		card_say "Bluetooth pack"
-		fsck.erofs --extract="$stage" --overwrite "$bt_pack" ||
-			card_die "fsck.erofs could not unpack $bt_pack"
+		cp -a "$bt_tree/." "$stage/"
 		continue
 	fi
 	json=$BOARD/devices/$id.json
@@ -158,4 +187,4 @@ for id in $plain ${with_bt:+--bluetooth} $with_bt; do
 		card_die "$id: rootfs.erofs is $size bytes; the root partition holds $slot"
 	card_say "$id: rootfs.erofs, $size bytes (slot $slot)"
 done
-rm -rf "$stage"
+rm -rf "$stage" "$bt_tree"
