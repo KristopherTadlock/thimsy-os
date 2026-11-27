@@ -1161,3 +1161,88 @@ The owner went through AUDIT.md and the Deferred table one item at a time. Each 
   - *Q5, hotkey buttons, RGB light settings and slide actions:* device only, never on the card.
   - *Q6, scraper account and API keys:* never on the card.
 - **Decided autonomously within OA-32, for owner audit (plan section 8 Q7 and Q9 to Q13):** the `[android]` and `[linux]` platform sections travel between devices of the same platform; language travels, while time zone and automatic time stay on the device; unset keys are written as commented templates showing the default and allowed values; the feature ships off by default in the first Android build that carries it, until the AOSP smoke test, and on by default on Linux; `[device.<model>]` sections (now only screen-dependent keys such as aspect ratio) use multi_device_plan.md's descriptor ids, identical on both builds; Kiosk Mode and the device's system name stay on the device.
+
+## Wave 7 (2026-11-27): non-build work while the AOSP build runs
+
+Made by the implementing agents, verified adversarially, merged into `linux` by the coordinator. Nothing here was compiled or built; each step lists its build and device checks as deferred. All are for owner audit.
+
+### Card layout: the info FAT (OA-2) and pinned, then random GPT GUIDs (OA-9) (step/w7-card)
+
+- **W7-CARD-1:** info is GPT entry 5 (1 MiB, 2408 MiB, right behind data, basic data); games moves to entry 6 at 2411 MiB and the image grows to 2410M. Reason: table order stays disk order, the rk3566/qemu offsets before it are untouched, and the tail and games-gap rules still count from the last image entry.
+- **W7-CARD-2:** The stub is FAT12, label THIMSY-INFO, holding README.TXT only, written byte by byte by tools/card_image.py. Reason: every Android, Windows and macOS mounts FAT12 with no prompt, and this needs no host dosfstools or mtools and gives byte-identical rebuilds.
+- **W7-CARD-3:** D60firstboot retypes info as Linux reserved once games is basic data and named games; its FAT stays under it. Reason: plan 8.2 and gpt_check want exactly one vold volume on a booted card, so Android does not show two volumes and the ES-DE card path cannot land on the stub.
+- **W7-CARD-4:** README text says what the card is, that the games drive appears after the first start and this drive then hides, not to format or Android-'set up' the card, and how to start again. It is per device (model, release, id), ASCII with CRLF. Reason: it is the only thing a PC or phone user sees on a fresh card.
+- **W7-CARD-5:** GUID scheme: uuid5(uuid5(NAMESPACE_URL, 'thimsy:gpt'), '<release>:<device>:disk' or '<release>:<device>:part:<name>'); the FAT serial comes from '...:fat:info'. Reason: deterministic per release and device, and version 5 lets D60 tell pinned GUIDs from random version-4 ones.
+- **W7-CARD-6:** The GUIDs are added at build time into cards/<id>/genimage.cfg; board genimage.cfg files must not set disk-uuid or partition-uuid (gpt_check and test_layout refuse them). Reason: the values belong to a release and a device, not to a board.
+- **W7-CARD-7:** The release for pinning is THIMSY_VERSION (build.sh exports it), else ro.thimsy.build.version from TARGET_DIR's build.props, else 0.0.0-dev, the same last resort as 20-build-props.sh. Release strings with spaces or colons are refused.
+- **W7-CARD-8:** Randomisation is implemented in the shell init (D60firstboot step R), not in thimsy-session. It runs on every boot until no pinned GUID is left (only the disk GUID and the five image entries, by name and version 5), on the boot card only, before any other D60 write, and never touches the games entry or an eMMC. Reason: D60 already owns boot-card GPT writes and power-cut safety, and no C++ is needed.
+- **W7-CARD-9:** No boot-argument change is needed: boot.cmd reads entry 3's PARTUUID on every boot, QEMU uses root=/dev/vda3, there is no fstab, and S00base has already recorded the boot disk before D60 runs. The test fake now models BLKPG as not refreshing existing PARTUUIDs.
+- **W7-CARD-10:** No migration path for cards from pre-OA-2 builds (games at entry 5, 2410 MiB). Reason: no Linux card has shipped and Phase 0 has not run on hardware. Writing the new image over such a card would not re-adopt its library: D60 probes at 2411 MiB and formats there.
+
+### SSH (OA-3) (step/w7-ssh)
+
+- **W7-SSH-1:** LAN-only check: BusyBox tcpsvd runs dropbear -i once per connection behind a small sh gate that reads TCPREMOTEADDR, instead of netfilter. Why: the RK3566 kernel config is generated from ROCKNIX and not in the repo, nft and iptables are not in the image, the gate fails closed, and it is testable in the fake root with no kernel option. No kernel fragment change was needed.
+- **W7-SSH-2:** /etc/shadow on the read-only root stays Buildroot's (locked on release). D50ssh binds a generated copy from /run over it only while SSH runs, rather than baking the thimsy hash into the image. Why: no root password exists while SSH is off, build-type detection and the release-policy checks are untouched, and the user's hash applies with no rebuild.
+- **W7-SSH-3:** The default hash is a fixed SHA-512 crypt of "thimsy" with salt "ThimsyDefault", stored as a constant in D50ssh and checked by a test. Why: reproducible builds; the password is public anyway; no plaintext is on disk.
+- **W7-SSH-4:** Settings: persist.thimsy.ssh.enabled (unset means 1 on dev, 0 on release) and persist.thimsy.ssh.any_network (unset means 0), both in persist.props. Root's password hash is one line in /storage/.config/thimsy/ssh/root.hash (mode 0600); a missing file means the default. Why: follows the existing persist-key style, and OA-3 asks for a 0600 hash file under ssh/.
+- **W7-SSH-5:** A root.hash that is a link, is empty, or is not a crypt hash (`$id$...` in [A-Za-z0-9./$=]) locks the password instead of falling back to the default. Why: fail closed; key logins still work.
+- **W7-SSH-6:** authorized_keys stays at /storage/.config/thimsy/home/root/.ssh/authorized_keys, bound on /root. When SSH is turned on after boot, D50ssh calls a new `S00base home` action to do that bind. Why: dropbear reads ~/.ssh, and S00base's symlink and mode checks are reused.
+- **W7-SSH-7:** Stopping SSH ends the tcpsvd listener but leaves open sessions running, same as before. tcpsvd is capped at 10 concurrent connections (-c 10). Why: matches the old dropbear behaviour, and limits memory on 1 GB devices.
+- **W7-SSH-8:** The SSH tests went into test_rcs.py next to the existing TestD50Ssh, plus a new helper sha_crypt.py. Why: they reuse World's fake root and tools, and Python's crypt module is Unix-only and removed in 3.13.
+- **W7-SSH-9:** Start counts as failed only when tcpsvd has exited with a non-zero status within the start window (exec wait up to 1 s, then 0.2 s for the bind). Then it warns, removes the pidfile, unbinds the shadow and exits 1. Why: a real tcpsvd that cannot bind exits non-zero at once and never exits 0 by itself, while the test fake exits 0 at once. Checking the exit status keeps the fake usable without leaving background processes in tests.
+- **W7-SSH-10:** unbind_shadow deletes /run/thimsy/ssh/shadow only after umount succeeds. Why: a bind that stays still points at that inode. Leaving the file lets the next start or password action rewrite it in place (write_shadow truncates; it does not rename), so the live /etc/shadow always has the current hash.
+- **W7-SSH-11:** ssh-gate also accepts a bare IPv4 address in TCPREMOTEADDR, with no port. A bare IPv6 address is not handled, because it cannot be told apart from addr:port without brackets. Why: cheap insurance in case the pinned BusyBox leaves the port off. It still fails closed.
+- **W7-SSH-12:** Commit 4444bbb was made from the index rather than with explicit paths. Why: with core.fileMode=false, `git commit <paths>` takes the mode from HEAD and records nothing. The index held only the two mode changes, and git status was otherwise clean.
+
+### Bluetooth per device (OA-15) and user namespaces for idmapped mounts (OA-29) (step/w7-bt)
+
+- **W7-BT-1:** One tier image serves devices with and without Bluetooth: the tier builds BlueZ and D-Bus, a post-build part moves them into bluetooth.erofs, and card assembly unpacks it only for devices whose JSON says "bluetooth": true. Reason: OA-15 says per device, and every card's root is already assembled per device.
+- **W7-BT-2:** A tier lists bluetooth.fragment exactly when a card built from it, or from its dev or release twin, has a device with Bluetooth; test_defconfig enforces this. So v8_0 has it and v8_2 does not.
+- **W7-BT-3:** Every board device JSON must state "bluetooth" explicitly, and qemu-virt says false. Reason: the value decides what goes into the root, so it is not left to the schema's default.
+- **W7-BT-4:** ARC-D is true and ARC-S is false, taken from what the descriptors already record (a guess from Anbernic's specification; mainline has no Bluetooth node for the ARC-D). If Phase 0 (b) finds no working controller, D35bluetooth exits 3 and Nano turns its switch back off, so true is safe.
+- **W7-BT-5:** bt_pack.py fails the build if any program left in the root has DT_NEEDED for a library only the pack has. The kept launch helper and the dropped boot scripts are exempt. Libraries loaded with dlopen are not seen.
+- **W7-BT-6:** The dbus user stays in every root's /etc/passwd (users.table); only the binaries move into the pack. Reason: the user costs nothing, and one passwd per tier avoids per-device user tables.
+- **W7-BT-7:** OA-29 adds CONFIG_NAMESPACES=y and CONFIG_USER_NS=y to the [all] section of kernel-critical.conf, with no ext4 or VFS option. Reason: ext4 has FS_ALLOW_IDMAP from 5.12 (read in v6.12), and idmapped mounts have no config option of their own.
+- **W7-BT-8:** The QEMU kernel fragment sets every [all] critical option itself, and a test enforces it. PM_SLEEP is derived in Kconfig, so the fragment also sets CONFIG_SUSPEND=y, which turns it on. The real value is checked only at boot (/proc/config.gz).
+- **W7-BT-9:** The D-Bus activation helper (usr/libexec/dbus-daemon-launch-helper) stays in every tier root, not in the pack (bt_pack.py KEEP). Reason: Buildroot's dbus permissions line names it as an 'f' file, and makedevs fails the rootfs stage if it is missing. Without dbus-daemon nothing runs it, and --all-root makes it root:root 4750.
+- **W7-BT-10:** The dbus and bluez5_utils recipes' BusyBox boot scripts (etc/init.d/S??* in their file lists) are deleted from the tier root and kept out of the pack. Reason: rcS runs every S??*, and plan 5.2 says no D-Bus at boot; D35bluetooth starts D-Bus and bluetoothd only when Bluetooth is on.
+- **W7-BT-11:** Every directory in the Bluetooth pack tree is 0755, so unpacking it with fsck.erofs --overwrite changes no shared directory's mode. Not done: unpacking it before the family overlay; today no path overlaps.
+- **W7-BT-12:** OA-15's 'Nano reports Bluetooth unsupported on images without BlueZ' is met through ro.thimsy.device.bluetooth, which comes from the device JSON that also decides whether the pack is unpacked. No Nano change was made in this wave.
+
+### Android's Colorful theme on Linux (OA-1) (step/w7-theme)
+
+- **W7-THEME-1:** The shared script is scripts/colorful_theme.sh, next to modlib.sh. Android sources it and Linux runs it as a command, so the pins and logic exist once and mods/50-nano.sh keeps its interface.
+- **W7-THEME-2:** linux/build.sh prepares the theme on the host into the asset export before the assets.list filter, not a Buildroot download in thimsy-data.mk. The recipe builds from a git-archived tarball (E.1), so legal-info saves the prepared theme and assets.list still decides each file.
+- **W7-THEME-3:** The script and console pictures come from HEAD via git archive, not the working tree, the same rule build.sh uses for everything else so nothing untracked reaches an image.
+- **W7-THEME-4:** This project's quake.webp is allowed with a keep-sha256 line (exact bytes) and the deny on the theme's quake.webp stays. The file name is the same, so a pattern rule could not tell the free picture from the id Software render.
+- **W7-THEME-5:** ASSETS.md's Colorful per-system art row and the artist-credited pictures row are marked KEEP, citing OA-1, because OA-1 settled that ASK the way Android ships them and ASSETS.md is the source of truth for assets.list.
+- **W7-THEME-6:** The theme settings live once in mods/nano-theme.props. Android writes its persist.* lines into build.prop (byte-identical result), so the Linux defaults come from the same list, not a copy, as OA-1 asks.
+- **W7-THEME-7:** The Linux defaults are applied by S01props with `thimsy-prop set` for keys missing from persist.props, not by 20-build-props.sh. thimsy-prop boot accepts only ro.* from build.props, and C++ may not change in this wave.
+- **W7-THEME-8:** check_system_art.py stays in 50-nano.sh and is not run by the Linux build. It needs nano_systems.json, which only the Android build makes, and the two theme trees are now the same, so Android's check covers the theme.
+- **W7-THEME-9:** Slate is removed twice on Linux: build.sh deletes slate-es-de.zip from the export, and assets.list's deny line stays as a second guard.
+
+### The card contract, LIBRARY-FORMAT.md (OA-8 and related) (step/w7-interop)
+
+- **W7-INTEROP-1:** LIBRARY-FORMAT.md is at the repository root: android_launcher_plan.md and the linux_handheld_plan.md tree list it as a top-level doc shared by both builds.
+- **W7-INTEROP-2:** Linux's per-game emulator choices go in systems.linux.json 'games', and Linux never writes emulators.json: Android rebuilds or deletes a game's item when the user re-picks it, which would erase a Linux field there (this departs from contract.md C5 and plan 7.6).
+- **W7-INTEROP-3:** Linux never writes, changes or deletes <altemulator> or <alternativeEmulator>: each platform keeps its own choices (the Q4 principle), and the labels stay valid for older builds and the ES-DE app.
+- **W7-INTEROP-4:** Linux does not write systems.json until its writer keeps every system's launch fields byte-identical: Android rebuilds the file from structs and Linux tuples would ping-pong (check.md C-5).
+- **W7-INTEROP-5:** format.json stays at major 1 (today's layout plus additive files), with a schema maximum of 1; major 2 (relative names.json and index.json) waits for the Android floor, because shipped builds read no version.
+- **W7-INTEROP-6:** card.json aliases are objects {id, kind, platform, source, first, last}, so a reader knows each id's kind; a writer's 'contract' field is how a reader learns the floor has written the card.
+- **W7-INTEROP-7:** In compatibility mode Linux's scrape index stays on internal storage; titles go to gamelist <name> and art to downloaded_media by name: names.json and index.json can't be written safely before the floor.
+- **W7-INTEROP-8:** card.json is written only where emulator_config/ already exists or Linux creates it for its own data, so an ES-DE-only card gains no emulator_config folder that Android's foreign-card check might react to.
+- **W7-INTEROP-9:** Nano never writes ES-DE's ThemeAspectRatio: OA-32 Q4 keeps aspect ratio per device model.
+- **W7-INTEROP-10:** Linux RetroArch screenshots stay on internal storage, keeping ROMs/ clean (plan interop row 14).
+- **W7-INTEROP-11:** PPSSPP's Linux override layer is ppsspp/linux/PSP/SYSTEM/<same ini names>, applied at launch as shared file, then override, then device keys. Changes are split back afterwards by line edits, so Android's per-platform values in the shared file are never touched (OA-26).
+- **W7-INTEROP-12:** ScummVM's shared settings get a new shared file emulator_config/scummvm/scummvm.ini, plus scummvm/linux/scummvm.ini for per-platform keys: the card's only Android copy is the app/ mirror, which Linux never reads.
+- **W7-INTEROP-13:** User music playlists go to <card>/Thimsy/playlists/<name>.m3u8, beside settings.ini (OA-32's top-level Thimsy folder), with entries relative to the playlist file.
+- **W7-INTEROP-14:** Path form (d) is written /storage/%CARDID%/<rel>, as systems.json already writes it; %CARDID%/<rel> (the settings plan's and contract.md's spelling) is also read.
+- **W7-INTEROP-15:** OA-21's linux/saves/<system>/ replaces plan 6.2's sort_savefiles_enable per-core folder beside the ROM for saves of differing cores, because OA-21 is the newer owner decision.
+- **W7-INTEROP-16:** Schemas of Thimsy-new files are strict (additionalProperties false: what a writer of this major emits); schemas of Android files already in the field allow unknown fields. In code, readers never refuse a file for an unknown field.
+
+### Coordinator notes for owner audit
+
+- **W7-C-1:** OA-29 makes `CONFIG_USER_NS=y` critical on every family (W7-BT-7). In mainline that also lets every uid, `nano` and the emulators included, create user namespaces, a known kernel attack surface with no root-only switch. Needed for idmapped mounts; flagged as an owner question.
+- **W7-C-2:** W7-THEME-5 changes two ASSETS.md rows (Colorful per-system art, and the artist-credited console pictures) from ASK to KEEP, citing OA-1, because Android already ships them. The files are fetched at build time, not stored in the repository.
+- **W7-C-3:** W7-SSH-2 departs from OA-3's work text (the thimsy hash baked into the read-only `/etc/shadow`): the image keeps Buildroot's shadow and D50ssh binds a generated copy only while SSH runs, so dev images' serial-console root password stays empty.
+- **W7-C-4:** step/w7-prefs and the three research notes were sent back for a repair round and are not merged yet. step/w6-ab passed a no-compile check (wave 6) and waits for the C++ suites.
