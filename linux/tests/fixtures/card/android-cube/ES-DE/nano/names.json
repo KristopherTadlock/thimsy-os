@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "items": [
+    {"rom": "/storage/00000000-0000-0000-0000-000000000001/ROMs/psx/Crash Bandicoot (USA).chd", "name": "Crash Bandicoot"},
+    {"rom": "/data/media/0/ROMs/nes/Thimsy Pack-in.nes", "name": "Pack-in Game"}
+  ]
+}

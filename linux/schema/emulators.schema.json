@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://thimsy.invalid/linux/schema/emulators.schema.json",
+  "title": "Thimsy ES-DE/nano/emulators.json",
+  "description": "Android's per-game emulator choices that ES-DE has no label for (esdeStoreSaveGameEmu, NanoEsdeStore.cpp). Android-owned; written in place, so unknown top-level keys and other games' items survive, and the re-picked game's item is rebuilt as {game, label, am}. The 'key' field is this contract's addition (written by Android from the compatibility floor on). Linux reads this file and never writes it (proposed, W7-INTEROP; Linux's own per-game choices are in systems.linux.json). Unknown fields are allowed here because the file is already in the field. Only the draft-07 keywords devicejson.py validates are used.",
+  "type": "object",
+  "required": ["items"],
+  "properties": {
+    "version": {"const": 1, "description": "Android forces it to 1 on every write; never relied on."},
+    "items": {"type": "array", "items": {"$ref": "#/definitions/item"}}
+  },
+  "definitions": {
+    "game": {"type": "string", "pattern": "^(?!\\.{1,2}/)[^/]+/(?!/)(?!\\.{1,2}/)(?!.*/\\.{1,2}/).+$", "description": "ES-DE folder, '/', the path relative to it, case kept, no './'."},
+    "emu_key": {
+      "type": "string",
+      "pattern": "^(core:[a-z0-9_]+|emu:[a-z0-9][a-z0-9-]*|family:[a-z0-9][a-z0-9.-]*)$"
+    },
+    "item": {
+      "type": "object",
+      "required": ["game"],
+      "properties": {
+        "game": {"$ref": "#/definitions/game"},
+        "label": {"type": "string", "description": "Nano's display label of the emulator."},
+        "am": {"type": "string", "minLength": 1, "description": "Android am start arguments; Android loads an item only when it matches its catalogue."},
+        "key": {"$ref": "#/definitions/emu_key", "description": "The portable key of the same choice that 'am' describes."}
+      }
+    }
+  }
+}

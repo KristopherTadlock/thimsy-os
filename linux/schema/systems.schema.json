@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://thimsy.invalid/linux/schema/systems.schema.json",
+  "title": "Thimsy ES-DE/nano/systems.json",
+  "description": "Nano's systems on the card (esdeSystemsJson, NanoMenuXmb.cpp). Android owns the launch fields (launchType, coreSo, package, launchArgs, intentTemplate): Linux reads them and never changes them (interop Q4). Both platforms may write the other fields. The scraper accounts are never on the card: the scraper object allows only override and platform (OA-32 Q6). Unknown fields are allowed because the file is already in the field; Android rebuilds it from structs, so a field only Linux knows does not survive an Android save. Only the draft-07 keywords devicejson.py validates are used.",
+  "type": "object",
+  "required": ["systems"],
+  "properties": {
+    "version": {"const": 1},
+    "systems": {"type": "array", "items": {"$ref": "#/definitions/system"}}
+  },
+  "definitions": {
+    "system": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"},
+        "builtin": {"type": "boolean"},
+        "enabled": {"type": "boolean"},
+        "order": {"type": "number"},
+        "displayName": {"type": "string"},
+        "shortname": {"type": "string"},
+        "romDir": {"type": "string"},
+        "launchType": {"enum": ["libretro-core", "custom-package", "retroarch-intent"], "description": "Launch field (Android-owned)."},
+        "coreSo": {"type": "string", "description": "Launch field (Android-owned): <core>_libretro_android.so, or empty."},
+        "package": {"type": "string", "description": "Launch field (Android-owned)."},
+        "launchArgs": {"type": "string", "description": "Launch field (Android-owned)."},
+        "intentTemplate": {"type": "string", "description": "Launch field (Android-owned): am start arguments with {file.uri} and the other tokens."},
+        "scanSources": {"type": "array", "items": {"$ref": "#/definitions/scan_source"}},
+        "disabledDefaultFolders": {"type": "array", "items": {"type": "string"}},
+        "extensions": {"type": "array", "items": {"type": "string"}},
+        "icon": {
+          "type": "object",
+          "properties": {
+            "ref": {"type": "string"},
+            "tintR": {"type": "number"}, "tintG": {"type": "number"}, "tintB": {"type": "number"}
+          }
+        },
+        "scraper": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Only the per-system scraper choice; user, pass and key are device-only and never written here.",
+          "properties": {
+            "override": {"type": "string"},
+            "platform": {"type": "string"}
+          }
+        }
+      }
+    },
+    "scan_source": {
+      "type": "object",
+      "required": ["type", "value"],
+      "properties": {
+        "type": {"enum": ["safuri", "rawpath"]},
+        "value": {"type": "string", "description": "The card's own volume is written as %CARDID%."},
+        "rawHint": {"type": "string"},
+        "subfolders": {"type": "boolean"}
+      }
+    }
+  }
+}
