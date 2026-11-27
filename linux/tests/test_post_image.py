@@ -486,6 +486,23 @@ class Rk3566OtherRunsTest(unittest.TestCase):
         r = run("anbernic-rg-arc-s")
         self.assertEqual(r.returncode, 0, r.stdout)
 
+    def test_bluetooth_pack_copy_failure_fails_the_build(self) -> None:
+        """W8-SMALL-11: a cp of the unpacked Bluetooth pack into the stage that fails stops the build
+        with the card assembly's own message, before the device with Bluetooth gets a root."""
+        # A cp first on PATH that fails only for the pack's tree and is the real cp otherwise.
+        cp = self.rig.fakebin / "cp"
+        write_lf(cp, '#!/bin/sh\nfor a in "$@"; do\n\tcase $a in\n'
+                     '\t*/.bt-pack/.) echo "cp: fake failure" >&2; exit 1 ;;\n\tesac\ndone\n'
+                     'exec /bin/cp "$@"\n')
+        os.chmod(str(cp), 0o755)
+        r = self.run1("hw", "--family=rk3566")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("cp: fake failure\n", r.stdout)
+        self.assertIn("10-erofs: could not copy the Bluetooth pack into the stage\n", r.stdout)
+        self.assertNotIn("mkfs.erofs", [c["tool"] for c in self.rig.calls()])
+        # A device without Bluetooth never copies the pack.
+        self.run_ok("hw", "--family=rk3566", THIMSY_DEVICES="anbernic-rg-arc-s")
+
     def test_gpt_check_failure_fails_the_build(self) -> None:
         r = self.run1("hw", "--family=rk3566", FAKE_GPT_RC="1")
         self.assertNotEqual(r.returncode, 0)

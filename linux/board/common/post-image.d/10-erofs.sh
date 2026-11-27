@@ -22,9 +22,10 @@
 # post-build.d/40-bt-pack.sh). The pack is unpacked on its own before any
 # root is made, and a path it shares with the family's overlay (other than a
 # directory both have) fails the build: neither silently replaces the other.
-# The devices without it are made first; the pack is then copied over the
-# stage once, before the first device with it. A device with Bluetooth on a
-# tier with no pack fails the build.
+# The devices without it are made first; the unpacked pack (CARDS/.bt-pack)
+# is then copied over the stage once with cp -a, before the first device with
+# it (owners do not matter: mkfs.erofs runs with --all-root). A device with
+# Bluetooth on a tier with no pack fails the build.
 #
 # (guess) fsck.erofs of the pinned erofs-utils (1.7 or later) has --extract
 # and --overwrite; unpacking as root keeps owners and modes.
@@ -169,7 +170,8 @@ fi
 for id in $plain ${with_bt:+--bluetooth} $with_bt; do
 	if [ "$id" = --bluetooth ]; then
 		card_say "Bluetooth pack"
-		cp -a "$bt_tree/." "$stage/"
+		cp -a "$bt_tree/." "$stage/" ||
+			card_die "could not copy the Bluetooth pack into the stage"
 		continue
 	fi
 	json=$BOARD/devices/$id.json
