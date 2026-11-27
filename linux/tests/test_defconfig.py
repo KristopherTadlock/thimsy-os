@@ -72,7 +72,8 @@ class CommittedTree(unittest.TestCase):
     def test_targets_of_section_e4(self):
         t = self.tree.targets
         want = {
-            "thimsy_v8_0": ["common", "tier-v8_0", "userland", "gpu-panfrost", "gpu-swrast", "apps-alpha", "dev"],
+            "thimsy_v8_0": ["common", "tier-v8_0", "userland", "bluetooth", "gpu-panfrost", "gpu-swrast",
+                            "apps-alpha", "dev"],
             "thimsy_v8_2": ["common", "tier-v8_2", "userland", "gpu-panfrost", "apps-alpha", "dev"],
             "thimsy_qemu_aarch64_hw": ["common", "hw-common", "hw-qemu-aarch64"],
         }
@@ -81,24 +82,85 @@ class CommittedTree(unittest.TestCase):
         self.assertEqual(t["thimsy_rk3566_hw"].fragments[:3], ["common", "hw-common", "hw-rk3566"])
         self.assertIn("generated/rk3566/defconfig.fragment", t["thimsy_rk3566_hw"].fragments)
 
-    def test_bluetooth_userland_follows_the_devices(self):
-        # BlueZ and D-Bus are in the userland every tier carries exactly when some device.json
-        # says "bluetooth": true (D35bluetooth starts them only on such a device).
-        devices = sorted((LINUX / "board").glob("*/devices/*.json"))
-        self.assertTrue(devices)
-        with_bt = []
-        for p in devices:
+    def board_devices(self):
+        """board/<family>/devices/<id>.json, as {family: [(id, document)]}."""
+        out = {}
+        for p in sorted((LINUX / "board").glob("*/devices/*.json")):
             with open(str(p), encoding="utf-8") as f:
-                if json.load(f).get("bluetooth") is True:
-                    with_bt.append(p.stem)
+                out.setdefault(p.parent.parent.name, []).append((p.stem, json.load(f)))
+        return out
+
+    def test_every_board_device_states_bluetooth(self):
+        # OA-15: "bluetooth" decides what goes into a device's root, so no descriptor leaves it
+        # to the schema's default.
+        devices = self.board_devices()
+        self.assertTrue(devices)
+        for fam, docs in devices.items():
+            for dev, d in docs:
+                with self.subTest(device=dev):
+                    self.assertIsInstance(d.get("bluetooth"), bool, "%s/%s" % (fam, dev))
+
+    def test_bluetooth_fragment_follows_the_cards(self):
+        # OA-15: a tier lists bluetooth.fragment exactly when a card built from it, or from its
+        # dev or release twin, is for a device whose device.json says "bluetooth": true. The
+        # userland and the hardware packs carry no BlueZ or D-Bus.
+        devices = self.board_devices()
+        targets = self.tree.targets
+        served = {n: set() for n, t in targets.items() if t.kind == "tier"}
+        for t in targets.values():
+            if t.kind != "hw":
+                continue
+            args = self.merges[t.name].value("BR2_ROOTFS_POST_SCRIPT_ARGS") or ""
+            fams = re.findall(r"--family=([A-Za-z0-9_-]+)", args)
+            self.assertEqual(len(fams), 1, t.name)
+            self.assertIn(fams[0], devices, t.name)
+            twin = t.sdk_from[:-len("_release")] if t.sdk_from.endswith("_release") else t.sdk_from + "_release"
+            for tier in (t.sdk_from, twin):
+                if tier in served:
+                    served[tier].update(dev for dev, d in devices[fams[0]] if d.get("bluetooth") is True)
+        self.assertTrue(any(served.values()), "no card has a device with Bluetooth: the test checks nothing")
         bt = ("BR2_PACKAGE_DBUS", "BR2_PACKAGE_BLUEZ5_UTILS", "BR2_PACKAGE_BLUEZ5_UTILS_CLIENT")
-        for t in self.tree.targets.values():
-            m = self.merges[t.name]
-            with self.subTest(target=t.name):
+        for name, t in targets.items():
+            m = self.merges[name]
+            with self.subTest(target=name):
+                want = bool(served.get(name))
+                if t.kind == "tier":
+                    self.assertEqual("bluetooth" in t.fragments, want, "devices with Bluetooth: %s"
+                                     % sorted(served[name]))
                 for sym in bt:
-                    # Hardware packs build no userland: their root is their tier's.
-                    want = bool(with_bt) and t.kind == "tier"
-                    self.assertEqual(m.is_y(sym), want, "%s (devices with Bluetooth: %s)" % (sym, with_bt))
+                    self.assertEqual(m.is_y(sym), want, sym)
+        userland = {s.symbol for s in self.tree.parse("userland")}
+        for sym in bt:
+            self.assertNotIn(sym, userland)
+
+    def test_qemu_kernel_fragment_meets_kernel_critical(self):
+        # The QEMU kernel is mainline's arm64 defconfig plus board/qemu-aarch64-virt/linux.fragment,
+        # which thimsy-import's conformance check never sees: it states every [all] option of
+        # kernel-critical.conf itself (OA-29's user namespaces among them).
+        crit = LINUX / "tools" / "thimsy-import" / "kernel-critical.conf"
+        want, section = {}, None
+        for line in crit.read_text(encoding="utf-8").splitlines():
+            s = line.strip()
+            if s.startswith("["):
+                section = s
+            elif s and not s.startswith("#") and section == "[all]":
+                k, v = s.split("=", 1)
+                want[k] = v
+        self.assertEqual(want.get("CONFIG_USER_NS"), "y")
+        self.assertEqual(want.get("CONFIG_NAMESPACES"), "y")
+        frag = LINUX / "board" / "qemu-aarch64-virt" / "linux.fragment"
+        have = {}
+        for line in frag.read_text(encoding="utf-8").splitlines():
+            s = line.strip()
+            m = re.match(r"^# (CONFIG_\w+) is not set$", s)
+            if m:
+                have[m.group(1)] = "n"
+            elif s.startswith("CONFIG_"):
+                k, v = s.split("=", 1)
+                have[k] = v
+        for k, v in want.items():
+            with self.subTest(option=k):
+                self.assertEqual(have.get(k), v)
 
     def test_release_targets_are_their_dev_twins_with_release(self):
         for tier in ("v8_0", "v8_2"):

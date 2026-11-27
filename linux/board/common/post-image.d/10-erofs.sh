@@ -17,6 +17,12 @@
 # root (users.table defines no other user). The result must fit the
 # family's root partition.
 #
+# Bluetooth (decision OA-15): only a device whose JSON says "bluetooth": true
+# gets the tier's bluetooth.erofs (BlueZ, D-Bus and D35bluetooth, from
+# post-build.d/40-bt-pack.sh). The devices without it are made first; the
+# pack is then unpacked over the stage once, before the first device with
+# it. A device with Bluetooth on a tier with no pack fails the build.
+#
 # (guess) fsck.erofs of the pinned erofs-utils (1.7 or later) has --extract
 # and --overwrite; unpacking as root keeps owners and modes.
 set -eu
@@ -109,9 +115,35 @@ if [ -d "$overlay" ]; then
 fi
 mkdir -p "$stage/usr/share/thimsy"
 
+# Bluetooth (decision OA-15): devices without it first, then the pack, then
+# the devices with it. Checked before any root is made.
+plain=
+with_bt=
 for id in $DEVICES; do
 	json=$BOARD/devices/$id.json
 	[ "$(card_json "$json" family)" = "$FAMILY" ] || card_die "$json is not for family $FAMILY"
+	# card_die in $(...) ends only the subshell: stop here too.
+	bt=$(card_json_bool "$json" bluetooth) || exit 1
+	if [ "$bt" = true ]; then
+		with_bt="$with_bt $id"
+	else
+		plain="$plain $id"
+	fi
+done
+bt_pack=$TIER_IMAGES/bluetooth.erofs
+if [ -n "$with_bt" ]; then
+	card_is_erofs "$bt_pack" ||
+		card_die "$bt_pack is missing or not an EROFS image, and${with_bt} has Bluetooth: list bluetooth in the tier's fragments"
+fi
+
+for id in $plain ${with_bt:+--bluetooth} $with_bt; do
+	if [ "$id" = --bluetooth ]; then
+		card_say "Bluetooth pack"
+		fsck.erofs --extract="$stage" --overwrite "$bt_pack" ||
+			card_die "fsck.erofs could not unpack $bt_pack"
+		continue
+	fi
+	json=$BOARD/devices/$id.json
 	out=$CARDS/$id
 	mkdir -p "$out"
 	cp "$json" "$stage/usr/share/thimsy/device.json"

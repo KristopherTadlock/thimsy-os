@@ -75,12 +75,31 @@ refused and `s2idle` stays. Nothing is needed after resume yet (`sleep-post`).
   `amixer` on the `Master` control *(guess: check the control name on the
   unit)*.
 
+## Idmapped mounts
+
+- thimsy-session mounts an ext4 drive made on a PC with an idmapped mount, so
+  its files appear owned by `nano` (decision OA-29). The kernel needs
+  `CONFIG_USER_NS=y` (under `CONFIG_NAMESPACES=y`); ext4 takes idmapped
+  mounts from 5.12 on, with no option of its own. `kernel-critical.conf`
+  asks every family for both, so the conformance check fails an import
+  without them.
+- ROCKNIX's RK3566 `linux.aarch64.conf` (branch `next`, 7.3.5, read
+  2026-11-27) has `CONFIG_NAMESPACES=y` and `# CONFIG_USER_NS is not set`.
+  So `board/rk3566/linux.fragment` (Phase 2a, not written yet) must set
+  `CONFIG_USER_NS=y`.
+
 ## Bluetooth notes
 
-- Userland: BlueZ and the D-Bus system bus are in every tier
-  (`configs/fragments/userland.fragment`); `D35bluetooth` starts them only
-  when `device.json` says `"bluetooth": true` and the user turned Bluetooth
-  on. It exits 3 at once when `/sys/class/bluetooth` is missing (no
+- Userland: BlueZ, the D-Bus system bus and `D35bluetooth` are only in the
+  roots of devices whose `device.json` says `"bluetooth": true` (decision
+  OA-15): the tier builds them (`configs/fragments/bluetooth.fragment`),
+  `post-build.d/40-bt-pack.sh` moves them into `bluetooth.erofs`, and card
+  assembly unpacks it for those devices only. So the ARC-D's card has them
+  and the ARC-S's has not. The recipes' own boot scripts (`S30dbus`,
+  `S40bluetoothd`) are deleted, and the D-Bus activation helper stays in
+  every root, since Buildroot's permissions table names it. `D35bluetooth`
+  starts D-Bus and `bluetoothd` only when the user
+  turned Bluetooth on. It exits 3 at once when `/sys/class/bluetooth` is missing (no
   Bluetooth in the kernel) and after `THIMSY_BT_WAIT_S` when no `hci*`
   appears; Nano then turns its switch back off.
 - Kernel: the kernel config is ROCKNIX's RK3566 `linux.aarch64.conf`, imported

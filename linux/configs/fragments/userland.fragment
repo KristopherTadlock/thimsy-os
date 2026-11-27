@@ -1,7 +1,7 @@
 # The userland every tier carries (IMPLEMENTATION.md E.4's tier row): Nano and
 # its services, sound, Wi-Fi, SSH and the filesystems' tools. Kept apart from
 # the tier fragments, which differ only in CPU tuning, so the list is written
-# once (principle 5).
+# once (principle 5). Bluetooth is not here: bluetooth.fragment (OA-15).
 BR2_PACKAGE_LIBTHIMSY=y
 BR2_PACKAGE_THIMSY_NANO=y
 BR2_PACKAGE_THIMSY_NANO_SCRAPE=y
@@ -54,18 +54,3 @@ BR2_PACKAGE_UTIL_LINUX_BINARIES=y
 BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_THIMSY_PATH)/board/common/busybox.fragment"
 
 BR2_TARGET_TZ_INFO=y
-
-# Bluetooth (plan 5.2): BlueZ with bluetoothctl, which Nano's system actions
-# run, and the D-Bus system bus it needs. Every tier carries them (one
-# userland for every family); D35bluetooth starts them only on a device whose
-# device.json says "bluetooth": true, and only once the user turned Bluetooth
-# on: no D-Bus at boot otherwise. The HID and HoG plugins pair game pads.
-# Licences (Buildroot's legal-info lists them from the recipes): BlueZ
-# GPL-2.0+ (daemon, tools) and LGPL-2.1+ (library); D-Bus AFL-2.1 or
-# GPL-2.0+; GLib LGPL-2.1+; readline GPL-3.0+ (bluetoothctl). Symbol names
-# (guess) for 2026.08, as Buildroot 2025.02 has them.
-BR2_PACKAGE_DBUS=y
-BR2_PACKAGE_BLUEZ5_UTILS=y
-BR2_PACKAGE_BLUEZ5_UTILS_CLIENT=y
-BR2_PACKAGE_BLUEZ5_UTILS_PLUGINS_HID=y
-BR2_PACKAGE_BLUEZ5_UTILS_PLUGINS_HOG=y

@@ -677,7 +677,8 @@ linux/
       rootfs-overlay/      etc/inittab, etc/init.d/{rcS,rcK,S*}, etc/init.d/deferred/D*, etc/thimsy/,
                            usr/libexec/thimsy/, usr/share/thimsy/
       post-build.sh        runs post-build.d/* in order (each file has one owner, section G)
-      post-build.d/        10-android-links.sh (the B.5 links), 20-build-props.sh, 30-permissions.sh
+      post-build.d/        10-android-links.sh (the B.5 links), 20-build-props.sh, 30-permissions.sh,
+                           40-bt-pack.sh (BlueZ and D-Bus into bluetooth.erofs, OA-15)
       post-image.sh        runs post-image.d/* in order
       post-image.d/        10-erofs.sh (root), 20-data.sh (data ext4, mkfs.ext4 -d), 30-genimage.sh (per-device
                            cards through genimage), 40-gpt-check.sh (tools/gpt_check.py on each card)
@@ -704,7 +705,7 @@ linux/
     thimsy-session/  thimsy-padd/          section F
   tools/
     defconfig.py  lint_packages.py  check_rcs.py  build_guard.sh  assets_allowlist.py
-    gpt_check.py  fit.py
+    gpt_check.py  fit.py  bt_pack.py
     thimsy-import/         E.7 (deferred, section G)
   tests/
     run.sh  test_*.py  thimsy_import/  qemu/  fixtures/
@@ -754,13 +755,14 @@ Buildroot reads one defconfig per tree. Thimsy keeps fragments as the source and
 |---|---|
 | `common.fragment` | aarch64, glibc toolchain (Buildroot's own, built once and reused as the shared SDK), BusyBox init, libudev-zero, `BR2_PER_PACKAGE_DIRECTORIES`, ccache, `BR2_GLOBAL_PATCH_DIR` to `gpl/patches`, no initramfs, EROFS host tools, `BR2_ROOTFS_OVERLAY`, post-build and post-image scripts |
 | `tier-v8_0.fragment`, `tier-v8_2.fragment` | the CPU tuning (`BR2_cortex_a53`, `BR2_cortex_a55`) and the userland: `thimsy-nano`, `libthimsy`, `thimsy-session`, `thimsy-padd`, `thimsy-fonts`, `thimsy-data`, alsa-utils, wpa_supplicant, dropbear, exfatprogs, e2fsprogs |
+| `bluetooth.fragment` | BlueZ with `bluetoothctl` and D-Bus, in a tier whose cards include a device with `"bluetooth": true`; `post-build.d/40-bt-pack.sh` moves them, with `D35bluetooth`, into `bluetooth.erofs`, which card assembly unpacks only into those devices' roots (decision OA-15) |
 | `gpu-panfrost.fragment`, `gpu-swrast.fragment` | Mesa with the driver set, host LLVM only for Panfrost's shader compiler |
 | `apps-alpha.fragment`, `apps-v1.fragment` | RetroArch and the cores (E.3), PPSSPP and ScummVM in v1 |
 | `hw-common.fragment` | kernel and U-Boot pinning style, `linux-firmware` selection rules (decision 24) |
 | `hw-rk3566.fragment`, `hw-qemu-aarch64.fragment` | kernel version and config sources, DTBs, U-Boot board |
 | `dev.fragment`, `release.fragment` | serial console, adbd gadget, dropbear by default; or none of them: no adbd, no serial getty, dropbear off until a user turns SSH on (then root's password `thimsy` or the user's, local network only by default; OA-3, `linux/docs/init.md`), the root password locked (`BR2_TARGET_ENABLE_ROOT_LOGIN` off; Buildroot's default root password is empty) |
 
-`targets.json`: `thimsy_v8_0` = common + tier-v8_0 + gpu-panfrost + gpu-swrast + apps-alpha + dev; `thimsy_v8_2` = common + tier-v8_2 + gpu-panfrost + apps-alpha + dev; `thimsy_v8_0_release` and `thimsy_v8_2_release` = the same with `release` instead of `dev`, marked `"publish": true`; `thimsy_rk3566_hw` = common + hw-common + hw-rk3566 + `generated/rk3566/defconfig.fragment`; `thimsy_qemu_aarch64_hw` = common + hw-common + hw-qemu-aarch64. `build.sh --publish` refuses a target that is not marked for publishing, and decision 16's public alpha is built from the release targets only. `defconfig.py` merges them with Buildroot's `merge_config.sh` semantics (later wins; `# override:` marks an intended change) and writes the defconfigs.
+`targets.json`: `thimsy_v8_0` = common + tier-v8_0 + userland + bluetooth + gpu-panfrost + gpu-swrast + apps-alpha + dev; `thimsy_v8_2` = common + tier-v8_2 + userland + gpu-panfrost + apps-alpha + dev (no bluetooth while no card is built from it); `thimsy_v8_0_release` and `thimsy_v8_2_release` = the same with `release` instead of `dev`, marked `"publish": true`; `thimsy_rk3566_hw` = common + hw-common + hw-rk3566 + `generated/rk3566/defconfig.fragment`; `thimsy_qemu_aarch64_hw` = common + hw-common + hw-qemu-aarch64. `build.sh --publish` refuses a target that is not marked for publishing, and decision 16's public alpha is built from the release targets only. `defconfig.py` merges them with Buildroot's `merge_config.sh` semantics (later wins; `# override:` marks an intended change) and writes the defconfigs.
 
 ### E.5 Init and the 3 s boot
 

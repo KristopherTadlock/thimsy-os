@@ -3,9 +3,13 @@
 # user left it on.
 # SPDX-License-Identifier: MIT
 #
-# Nothing starts unless device.json says "bluetooth": true
-# (ro.thimsy.device.bluetooth) and persist.thimsy.bluetooth.enabled=1 (off by
-# default): the plan's "no D-Bus at boot" (section 5.2). Nano turns
+# Only the roots of devices whose device.json says "bluetooth": true carry
+# this script, BlueZ and D-Bus (decision OA-15: post-build.d/40-bt-pack.sh
+# moves them into the tier's bluetooth.erofs, and card assembly unpacks it
+# for those devices only). Nothing starts unless device.json says
+# "bluetooth": true (ro.thimsy.device.bluetooth) and
+# persist.thimsy.bluetooth.enabled=1 (off by default): the plan's "no D-Bus
+# at boot" (section 5.2). Nano turns
 # Bluetooth on and off through its system actions, which set the key and run
 # this script, then bluetoothctl (nano/platform/linux/actions). Both daemons
 # run in the foreground of background jobs, with their pids in /run, so stop

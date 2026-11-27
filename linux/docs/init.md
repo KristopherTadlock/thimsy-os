@@ -22,6 +22,7 @@ linux/board/common/rootfs-overlay/
   etc/init.d/deferred/D20sound     alsactl restore (and store on stop)
   etc/init.d/deferred/D30net       loopback, host name, Wi-Fi if it was on
   etc/init.d/deferred/D35bluetooth D-Bus and bluetoothd, if the device has Bluetooth and it was on
+                                   (only in the roots of devices with Bluetooth, decision OA-15)
   etc/init.d/deferred/D40time      BusyBox ntpd
   etc/init.d/deferred/D50ssh       SSH: tcpsvd and dropbear (dev images; release: opt-in)
   etc/init.d/deferred/D60firstboot the games partition on the boot disk

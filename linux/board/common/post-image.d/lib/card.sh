@@ -8,6 +8,9 @@
 #     "sdk_from" (configs/targets.json), built by Buildroot under fakeroot;
 #   - the family's GPU pack, gpu-<driver>.erofs from the same tier tree, when
 #     thimsy-gpu-pack has made one (else the tier root's own Mesa is used);
+#   - for a device whose JSON says "bluetooth": true only, the tier's
+#     bluetooth.erofs (BlueZ, D-Bus and D35bluetooth; post-build.d/
+#     40-bt-pack.sh, decision OA-15); a tier without one fails such a card;
 #   - the hardware pack: this tree's usr/lib/modules and usr/lib/firmware,
 #     and board/<family>/common/rootfs-overlay (the family hook);
 #   - the device: board/<family>/devices/<id>.json, at
@@ -167,6 +170,20 @@ if v is None:
 if not isinstance(v, str):
     sys.exit("%s: %s is not a string" % (path, key))
 print(v)
+' "$1" "$2" || card_die "cannot read $2 from $1"
+}
+
+# card_json_bool FILE KEY: "true" or "false" for a top-level boolean of a JSON
+# file ("false" if absent); any other value is an error.
+card_json_bool() {
+	$PY -c '
+import json, sys
+path, key = sys.argv[1], sys.argv[2]
+with open(path, encoding="utf-8") as f:
+    v = json.load(f).get(key, False)
+if not isinstance(v, bool):
+    sys.exit("%s: %s is not true or false" % (path, key))
+print("true" if v else "false")
 ' "$1" "$2" || card_die "cannot read $2 from $1"
 }
 
