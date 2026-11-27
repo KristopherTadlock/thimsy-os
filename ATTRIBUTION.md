@@ -27,7 +27,7 @@ Only the pictures ship, not the fonts.
 The pictures Thimsy OS adds to the Colorful (Simplified) theme for the systems
 it has no art for (`mods/console-pictures/images/`, installed in
 `/system/etc/nano_esde_themes/colorful-simplified-es-de/_inc/systems/images/` by
-`mods/50-nano.sh`) are made by the Thimsy OS project from the photos below, all
+`scripts/colorful_theme.sh`, on Android and on Linux) are made by the Thimsy OS project from the photos below, all
 from Wikimedia Commons: each subject is cut out, scaled and placed on a
 transparent background with a floor shadow, and screens show original pixel
 scenes. A picture with a CC BY-SA source photo is under that CC BY-SA license;
@@ -125,8 +125,9 @@ credit; it does not allow selling or distributing the sound on its own.
 
 ### Colorful (Simplified)
 
-`/system/etc/nano_esde_themes/colorful-simplified-es-de/`, downloaded by
-`mods/50-nano.sh`: [Colorful (Simplified)](https://github.com/anthonycaccese/colorful-simplified-es-de)
+`/system/etc/nano_esde_themes/colorful-simplified-es-de/` (on Linux under
+`/usr/share/thimsy/system/etc/`), downloaded and prepared by `scripts/colorful_theme.sh`,
+which `mods/50-nano.sh` and `linux/build.sh` run: [Colorful (Simplified)](https://github.com/anthonycaccese/colorful-simplified-es-de)
 for ES-DE by ant (anthonycaccese), based on the Colorful theme for LaunchBox by
 [viking](https://forums.launchbox-app.com/profile/70421-viking/) and
 [faeran](https://forums.launchbox-app.com/profile/76940-faeran/). License:

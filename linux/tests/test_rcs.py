@@ -822,6 +822,26 @@ class TestPropsAndFamily(WorldCase):
         self.assertIn('envOr("THIMSY_DEVICE_JSON", "/usr/share/thimsy/device.json")', src)
         self.assertIn('envOr("THIMSY_BUILD_PROPS", "/usr/share/thimsy/build.props")', src)
 
+    def test_persist_defaults(self) -> None:
+        """OA-1: Android's theme settings (persist-defaults.props, from mods/nano-theme.props)
+        are set for each key persist.props lacks, before Nano starts; a value there is kept."""
+        self.w.write("usr/share/thimsy/persist-defaults.props",
+                     "# a comment\n\npersist.gammaos.nano.ndstheme=3\n"
+                     "persist.gammaos.nano.esde.themeset=colorful-simplified-es-de\n"
+                     "ro.not.persist=1\n"
+                     "persist.gammaos.nano.minima.bg=1a1a2e")   # no newline at the end
+        self.w.write("storage/.config/thimsy/persist.props",
+                     "persist.gammaos.nano.esde.themeset=slate-es-de\npersist.thimsy.wifi.enabled=1\n")
+        self.w.run(INITD + "/S01props", "start")
+        sets = [c["args"] for c in self.w.calls() if c["tool"] == "thimsy-prop" and c["args"][0] == "set"]
+        self.assertEqual(sets, [["set", "persist.gammaos.nano.ndstheme", "3"],
+                                ["set", "persist.gammaos.nano.minima.bg", "1a1a2e"]])
+        self.assertIn('"ro.not.persist=1" ignored', self.w.boot_log())
+
+    def test_no_persist_defaults_file(self) -> None:
+        self.w.run(INITD + "/S01props", "start")
+        self.assertEqual([c["args"][0] for c in self.w.calls() if c["tool"] == "thimsy-prop"], ["boot"])
+
     def test_family_from_the_only_family_dir(self) -> None:
         self.w.run(INITD + "/S01props", "start")
         self.assertEqual(self.w.read("run/thimsy/family"), "rk3566\n")

@@ -389,7 +389,10 @@ class AssetAllowlist(unittest.TestCase):
                      "nano_xmb/nds/dsvec.ttf", "nano_xmb/fonts/akrobat-regular.ttf",
                      "nano_xmb/assets/icon_amb.png", "nano_xmb/boot/logo.svg",
                      "nano_esde_themes/slate-es-de.zip",
-                     "nano_esde_themes/colorful-simplified-es-de/_inc/systems/images/ps2.webp"):
+                     # OA-1: the Colorful files scripts/colorful_theme.sh removes.
+                     "nano_esde_themes/colorful-simplified-es-de/_inc/systems/images/quake.webp",
+                     "nano_esde_themes/colorful-simplified-es-de/_inc/fonts/Gilroy-Bold.ttf",
+                     "nano_esde_themes/colorful-simplified-es-de/_inc/fonts/Akrobat-Bold.ttf"):
             ok, why = self.allow.decide(path)
             self.assertFalse(ok, path)
             self.assertTrue(why.startswith("denied"), (path, why))
@@ -544,8 +547,10 @@ class AssetAllowlist(unittest.TestCase):
 
         tmp = Path(tempfile.mkdtemp(prefix="thimsy-assets-"))
         self.addCleanup(shutil.rmtree, str(tmp), True)
+        theme = [f for f in files if f.startswith("nano_esde_themes/")]   # the prepared theme's (OA-1)
+        self.assertTrue(theme)
         src = self.fake_export(tmp, ["nano_xmb/controllers/LICENSE",
-                                     "nano_xmb/fonts/fontawesome-webfont.ttf"])
+                                     "nano_xmb/fonts/fontawesome-webfont.ttf"] + theme)
         lic = tmp / "licences"
         lic.mkdir()
         for f in ("ATTRIBUTION.md", "NOTICE"):
@@ -574,8 +579,11 @@ class AssetAllowlist(unittest.TestCase):
 
     def test_replacements_follow_android(self):
         """thimsy-data's Barlow is mods/50-nano.sh's: the same file for each Akrobat path, the
-        same commit and the same hashes; build.sh writes them into thimsy-data's hash file."""
+        same commit and the same hashes (scripts/colorful_theme.sh's pins, which 50-nano.sh
+        sources); build.sh writes them into thimsy-data's hash file."""
         mod = (REPO / "mods/50-nano.sh").read_text(encoding="utf-8")
+        pins = (REPO / "scripts/colorful_theme.sh").read_text(encoding="utf-8")
+        self.assertIn('source "$MODS/../scripts/colorful_theme.sh"', mod)
         pairs = re.search(r'for pair in ((?:"[^"]+" ?)+); do', mod).group(1)
         android = {}
         for pair in re.findall(r'"([^"]+)"', pairs):
@@ -584,9 +592,9 @@ class AssetAllowlist(unittest.TestCase):
         self.assertEqual(dict(aa.REPLACEMENTS), android)
         self.assertIn('"$xmb_fonts/Barlow-OFL.txt"', mod)
         self.assertEqual(dict(aa.REPLACEMENT_EXTRAS), {"nano_xmb/fonts/Barlow-OFL.txt": "OFL.txt"})
-        commit = re.search(r'BARLOW_URL="https://raw\.githubusercontent\.com/jpt/barlow/([0-9a-f]{40})"', mod).group(1)
+        commit = re.search(r'BARLOW_URL="https://raw\.githubusercontent\.com/jpt/barlow/([0-9a-f]{40})"', pins).group(1)
         android_sha = {os.path.basename(m.group(1)): m.group(2)
-                       for m in re.finditer(r'^  "(\S+) ([0-9a-f]{64})"$', mod, re.M)}
+                       for m in re.finditer(r'^  "(\S+) ([0-9a-f]{64})"$', pins, re.M)}
         mk = lp.Recipe(LINUX / "package/thimsy-data/thimsy-data.mk").vars
         self.assertEqual(mk["THIMSY_DATA_BARLOW_COMMIT"], commit)
         downloads = [os.path.basename(u) for u in mk["THIMSY_DATA_EXTRA_DOWNLOADS"].split()]

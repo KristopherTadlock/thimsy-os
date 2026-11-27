@@ -1,0 +1,15 @@
+# Nano's theme settings in Thimsy OS: the Colorful (Simplified) ES-DE theme
+# (scripts/colorful_theme.sh) in its dark colour scheme as the home, the
+# settings screens in Minima's look on a Midnight background, and no menu
+# sounds. mods/50-nano.sh writes the persist.* lines into Android's build.prop
+# as they are; the Linux build installs this file as
+# /usr/share/thimsy/persist-defaults.props, and S01props sets each key the
+# card's persist.props does not have, so both start the same and a choice made
+# later in Nano sticks (docs/linux/DECISIONS.md OA-1).
+# One key=value per line, no spaces, persist.* keys only.
+persist.gammaos.nano.ndstheme=3
+persist.gammaos.nano.esde.themeset=colorful-simplified-es-de
+persist.gammaos.nano.esde.colorscheme=colorful-dark
+persist.gammaos.nano.esde.settingstheme=minima
+persist.gammaos.nano.minima.bg=1a1a2e
+persist.gammaos.nano.nav_sounds=0

@@ -10,13 +10,16 @@
 # These are build.prop defaults, so choices made later in Nano, or "Boot
 # Android" in the power menu, stick. Runs after 40-added-apps.sh.
 #
-# The theme's Gilroy and Akrobat fonts, and Nano's Akrobat, are replaced by OFL
-# fonts (Urbanist, Barlow Semi Condensed), and its Quake picture is replaced by
-# one of this project's console pictures (mods/console-pictures, made from
-# freely licensed photos; its LICENSE credits each), which also cover the
-# catalog platforms the theme has no picture for. Every game system must have
+# The theme is prepared by scripts/colorful_theme.sh, which the Linux build
+# runs too, so both ship the same theme (docs/linux/DECISIONS.md OA-1): its
+# Gilroy and Akrobat fonts are replaced by OFL fonts (Urbanist, Barlow Semi
+# Condensed), and its Quake picture by one of this project's console pictures
+# (mods/console-pictures, made from freely licensed photos; its LICENSE credits
+# each), which also cover the catalog platforms the theme has no picture for.
+# Nano's own Akrobat is replaced by Barlow here. Every game system must have
 # its art in every bundled theme, and every catalog platform its picture in
-# Colorful (scripts/check_system_art.py).
+# Colorful (scripts/check_system_art.py). The theme settings in build.prop are
+# the lines of nano-theme.props, which the Linux build uses as its defaults.
 #
 # It also builds in the Android Games helper (tools/android-games), which lists
 # the installed Android games as the Android Games system and starts them;
@@ -29,24 +32,9 @@ SYSTEM="$1"
 ETC="$SYSTEM/etc"
 MODS="$(cd "$(dirname "$0")" && pwd)"
 source "$MODS/../scripts/modlib.sh"
-# Colorful (Simplified) by ant, from Colorful by viking and faeran. CC BY-NC-SA 2.0.
-THEME="colorful-simplified-es-de"
-THEME_COMMIT="669e7f6a2de57c5ab69fd865e70d1cd357dbabbb"
-THEME_URL="https://github.com/anthonycaccese/$THEME/archive/$THEME_COMMIT.zip"
-THEME_SHA256="b36570e97d9233343872d8079c99bddc4116283c274785d086ca63be6eee3211"
-# OFL fonts for the ES-DE theme: Urbanist 1.330 (its metrics match Gilroy's)
-# and Barlow Semi Condensed 1.422 (close to Akrobat's).
-URBANIST_URL="https://github.com/coreyhu/Urbanist/releases/download/1.330/Urbanist-fonts.zip"
-URBANIST_SHA256="4b808f025f020d8801bb55a7c3ea855e934527be70bf451ab4205e62bfb8fb60"
-URBANIST_OFL_URL="https://raw.githubusercontent.com/coreyhu/Urbanist/cdcd01ab1efda2cdc7ae5453209de0f06ab1a7b4/OFL.txt"
-URBANIST_OFL_SHA256="502f01e7ab22276fa50b68f6e4b9db36d2928e08de227484ec5f430cb0d9defa"
-BARLOW_URL="https://raw.githubusercontent.com/jpt/barlow/697600fcece1685b0ba409eb82868546def9a84e"
-BARLOW_FILES=(
-  "fonts/ttf/BarlowSemiCondensed-Medium.ttf ef5c39de3ac1764a24c7495098672ccc034e39679ccd65d76eed752da59e11e1"
-  "fonts/ttf/BarlowSemiCondensed-SemiBold.ttf 5358c566b2039988c68b4ea2af05270da055110a5d23fbd686d5a11fbecf4e03"
-  "fonts/ttf/BarlowSemiCondensed-Bold.ttf bd434e949d128dd0e5fab17f60e70fcb367bff1c3e0506812c8bd734e001b356"
-  "OFL.txt 186d750eb496a4c17a76385f82be6aea2ac1cf2de074a811d63786cf374ea73f"
-)
+# The theme's pins (THEME, THEME_COMMIT, the font URLs and hashes) and the
+# functions colorful_theme_fetch and colorful_theme_build.
+source "$MODS/../scripts/colorful_theme.sh"
 GAMES_PKG="org.thimsy.androidgames"
 cache="$(realpath -m "$2")/nano"
 work="$cache/work"
@@ -70,110 +58,12 @@ fi
 mkdir -p "$cache/fonts"
 rm -rf "$work"
 mkdir -p "$work"
-fetch() {
-  [[ -f "$3" ]] || { curl -fsSL --retry 3 -o "$3.partial" "$1" && mv "$3.partial" "$3"; } || { echo "download failed: $1" >&2; exit 1; }
-  echo "$2  $3" | sha256sum -c --quiet || { rm -f "$3"; echo "checksum mismatch: $3 (deleted from the cache)" >&2; exit 1; }
-}
-zip="$cache/$THEME-$THEME_COMMIT.zip"
-fetch "$THEME_URL" "$THEME_SHA256" "$zip"
-fetch "$URBANIST_URL" "$URBANIST_SHA256" "$cache/fonts/Urbanist-fonts-1.330.zip"
-fetch "$URBANIST_OFL_URL" "$URBANIST_OFL_SHA256" "$cache/fonts/Urbanist-OFL.txt"
-for entry in "${BARLOW_FILES[@]}"; do
-  read -r path sha <<<"$entry"
-  name="$(basename "$path")"
-  [[ "$name" == OFL.txt ]] && name="Barlow-OFL.txt"
-  fetch "$BARLOW_URL/$path" "$sha" "$cache/fonts/$name"
-done
+colorful_theme_fetch "$cache"
 
 # Nano reads bundled theme sets from /system/etc/nano_esde_themes/<name>/. The
 # README carries the license and credits.
-unzip -q "$zip" -d "$work"
-src="$work/$THEME-$THEME_COMMIT"
-rm -f "$src/.gitignore"
-
-# Everything shipped must be free to redistribute. Gilroy is commercial and
-# Akrobat's free-font EULA forbids redistributing it, so OFL fonts replace them,
-# with their licenses. quake.webp is a Quake Champions render (id Software);
-# this project's own picture replaces it below.
-fonts="$src/_inc/fonts"
-rm "$fonts"/Gilroy-{Light,Regular,SemiBold,Bold}.ttf "$fonts/Akrobat-Bold.ttf" "$src/_inc/systems/images/quake.webp"
-for weight in Light Regular SemiBold Bold; do
-  unzip -q -j "$cache/fonts/Urbanist-fonts-1.330.zip" "Urbanist-fonts/fonts/ttf/Urbanist-$weight.ttf" -d "$fonts"
-done
-cp "$cache/fonts/BarlowSemiCondensed-Bold.ttf" "$cache/fonts/Urbanist-OFL.txt" "$cache/fonts/Barlow-OFL.txt" "$fonts/"
-python3 -I - "$src" <<'PYEOF'
-import glob, os, sys
-src = sys.argv[1]
-path = os.path.join(src, "theme.xml")
-s = open(path, encoding="utf-8").read()
-for old, new in [("Gilroy-Light", "Urbanist-Light"), ("Gilroy-Regular", "Urbanist-Regular"),
-                 ("Gilroy-SemiBold", "Urbanist-SemiBold"), ("Gilroy-Bold", "Urbanist-Bold"),
-                 ("Akrobat-Bold", "BarlowSemiCondensed-Bold")]:
-    old, new = f"./_inc/fonts/{old}.ttf", f"./_inc/fonts/{new}.ttf"
-    assert s.count(old) == 1, f"theme.xml: {old} not found once"
-    s = s.replace(old, new)
-open(path, "w", encoding="utf-8").write(s)
-for xml in glob.glob(os.path.join(src, "**", "*.xml"), recursive=True):
-    t = open(xml, encoding="utf-8").read()
-    assert "Gilroy" not in t and "Akrobat" not in t and "quake.webp" not in t, f"{xml} still names a removed file"
-PYEOF
-# This project's console pictures and their metadata, for systems the theme
-# has none for; none of them may replace a file of the theme's.
-pictures="$MODS/console-pictures"
-for kind in images metadata-global metadata-custom; do
-  for f in "$pictures/$kind"/*; do
-    if [[ -e "$src/_inc/systems/$kind/$(basename "$f")" ]]; then
-      echo "the theme already has _inc/systems/$kind/$(basename "$f")" >&2
-      exit 1
-    fi
-    cp "$f" "$src/_inc/systems/$kind/"
-  done
-done
-cp "$pictures/LICENSE" "$src/_inc/systems/THIMSY-PICTURES-LICENSE.txt"
-# The theme's own colours for systems whose picture is now this project's,
-# matched to the new picture (theme-colours.json says why).
-python3 -I - "$src/_inc/systems/metadata-global" "$pictures/theme-colours.json" <<'PYEOF'
-import json, os, re, sys
-meta, colours = sys.argv[1], json.load(open(sys.argv[2], encoding="utf-8"))
-for system, values in colours.items():
-    path = os.path.join(meta, f"{system}.xml")
-    s = open(path, encoding="utf-8").read()
-    for tag, value in values.items():
-        if tag == "why":
-            continue
-        s, n = re.subn(rf"<{tag}>[0-9A-Fa-f]{{6}}</{tag}>", f"<{tag}>{value}</{tag}>", s)
-        assert n == 1, f"{path}: <{tag}> not found once"
-    open(path, "w", encoding="utf-8").write(s)
-PYEOF
-cat >>"$src/README.md" <<'EOF'
-
-## Changes in Thimsy OS
-
-[Thimsy OS](https://github.com/KristopherTadlock/thimsy-os) ships this theme
-with these changes, under the same CC BY-NC-SA 2.0 license:
-
-- The Gilroy font (Radomir Tinkov, commercial) is replaced by
-  [Urbanist](https://github.com/coreyhu/Urbanist) 1.330 (Light, Regular,
-  SemiBold, Bold), Copyright 2024 The Urbanist Project Authors, SIL Open Font
-  License 1.1 (`_inc/fonts/Urbanist-OFL.txt`).
-- The help bar's Akrobat Bold (Fontfabric, whose free-font license does not
-  allow redistributing it) is replaced by
-  [Barlow](https://github.com/jpt/barlow) Semi Condensed Bold 1.422, Copyright
-  2017 The Barlow Project Authors, SIL Open Font License 1.1
-  (`_inc/fonts/Barlow-OFL.txt`).
-- `theme.xml` names the new font files.
-- `_inc/systems/images/quake.webp`, a Quake Champions render (id Software),
-  is replaced by a Thimsy OS picture.
-- Pictures, with their `metadata-global` and `metadata-custom` entries, are
-  added for the systems the theme had no picture for (the Quake picture is
-  one of them). They are not under this theme's license: they are made by the
-  Thimsy OS project from freely licensed photos on Wikimedia Commons, and
-  `_inc/systems/THIMSY-PICTURES-LICENSE.txt` gives, for each picture, its
-  source photos with their authors and licenses, and its own license (CC
-  BY-SA where a source photo is CC BY-SA, otherwise CC BY-NC 4.0).
-- The colours in `_inc/systems/metadata-global/moonlight.xml` and
-  `quake.xml` are changed to match those systems' new pictures.
-EOF
+src="$work/$THEME"
+colorful_theme_build "$cache" "$src" "$MODS/console-pictures"
 
 # The Slate theme's system logos are their owners' trademarks; the source patch no longer
 # bundles it, and an image built without the patch has it removed here.
@@ -246,17 +136,16 @@ EOF
 add_setup_steps "$SYSTEM" "$work/setup-steps.sh"
 
 sudo cat "$SYSTEM/build.prop" >"$work/build.prop"
-cat >>"$work/build.prop" <<EOF
+# The theme lines are nano-theme.props', the Linux build's defaults too.
+{
+  cat <<EOF
 
 # Thimsy OS: boot into Nano, with the ES-DE theme engine, Minima's
 # look on Midnight for the settings, no menu sounds and no slide settings
 persist.bootanim.skip_nano=0
-persist.gammaos.nano.ndstheme=3
-persist.gammaos.nano.esde.themeset=$THEME
-persist.gammaos.nano.esde.colorscheme=colorful-dark
-persist.gammaos.nano.esde.settingstheme=minima
-persist.gammaos.nano.minima.bg=1a1a2e
-persist.gammaos.nano.nav_sounds=0
+EOF
+  grep '^persist\.' "$MODS/nano-theme.props"
+  cat <<EOF
 ro.gammaos.nano.no_slide=1
 # The stick LEDs on, following the screen's colour (the vendor sets the Follow
 # effect, but nothing turns GammaRGB on), and Max Performance
@@ -265,6 +154,7 @@ persist.gammaos.performance_mode=max
 # No global display shader until one is chosen
 persist.gammaos.shader.enable=0
 EOF
+} >>"$work/build.prop"
 write_through "$work/build.prop" "$SYSTEM/build.prop"
 
 # The RG Cube's Quick Settings tiles (its vendor build.prop, without the HDMI

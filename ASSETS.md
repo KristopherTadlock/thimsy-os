@@ -22,7 +22,7 @@ Path prefixes: `ps3xmb/` = `frameworks/base/cmds/gammaos-nano/ps3xmb/` and `nano
 
 ## Changes since the audit
 
-Made on 2026-11-12, after the audit; the tables below still show the state they audited, except the three Akrobat files' rows, which now say REPLACE (2026-11-25).
+Made on 2026-11-12, after the audit; the tables below still show the state they audited, except the three Akrobat files' rows, which now say REPLACE (2026-11-25), the two Colorful picture rows, which now say KEEP, and the rows added for Thimsy's changes to Colorful (2026-11-26, docs/linux/DECISIONS.md OA-1).
 
 - **Akrobat is not OFL.** ES-DE ships it under Fontfabric's Free Font EULA 2.0
   (`licenses/Akrobat_Fontfabric.pdf` in ES-DE's repository), which forbids redistributing the
@@ -39,6 +39,10 @@ Made on 2026-11-12, after the audit; the tables below still show the state they 
 - The Colorful ASK row for the nine artist-credited pictures is decided: keep them and credit
   their artists. [NOTICE](NOTICE) and [ATTRIBUTION.md](ATTRIBUTION.md) credit them and the items this
   audit found uncredited.
+- The Colorful per-system pictures' ASK row is decided as Android ships them: kept, with the
+  credits in NOTICE and ATTRIBUTION.md (2026-11-26, OA-1). The Linux image ships the same Colorful
+  theme as Android, prepared by one script (`scripts/colorful_theme.sh`, which `mods/50-nano.sh` and
+  `linux/build.sh` both run), and no Slate.
 
 ## Summary
 
@@ -148,12 +152,15 @@ primary face (Rodin today, so it changes when Rodin does).
 | `slate-es-de.zip`: per-system `*/images/logo.svg` | console and brand logos | the trademark owners | the zip's `LICENSE` says "The used logos and trademarks are copyright of their respective owners" | none (excluded from the theme licence) | ASK (policy: nominative trademark use, which every ES-DE build ships) |
 | `nano/nano_esde_assets/{help,controllers,badges}/*.svg` | ES-DE help glyphs (including PS/Xbox/Switch face buttons), controller and badge icons | third party: ES-DE `resources/graphics` | per `Android.bp` ("Sourced from ES-DE resources/graphics"); Inkscape SVGs | ES-DE's licence (MIT, PLAUSIBLE) | KEEP |
 | `colorful/_inc/fonts/Gilroy-{Bold,Light,Regular,SemiBold}.ttf` | the theme's main font | third party: Radomir Tinkov | CONFIRMED: the name table says "Copyright (c) 2016 by Radomir Tinkov. All rights reserved.", vendor UKWN | none (commercial) | REPLACE |
-| `colorful/_inc/fonts/Akrobat-Bold.ttf` | secondary font | Fontfabric | the same notice as Nano's Akrobat | as Akrobat above | REPLACE (Android's `mods/50-nano.sh` installs Barlow Semi Condensed Bold under this name; Linux ships no Colorful theme) |
+| `colorful/_inc/fonts/Akrobat-Bold.ttf` | secondary font | Fontfabric | the same notice as Nano's Akrobat | as Akrobat above | REPLACE (`scripts/colorful_theme.sh` removes it and adds Barlow Semi Condensed Bold, below; `theme.xml` names that) |
 | `colorful/_inc/sounds/*.wav` (7) | theme navigation sounds, 44.1 kHz stereo | the theme author | `ISFT=FL Studio 20` / `Fission`; no third-party credit | CC BY-NC-SA 2.0 | KEEP |
 | `colorful/_inc/images/*` (SVG icons, `game-art-default.webp`, `space.png`) | theme UI art | the theme author | README | CC BY-NC-SA 2.0 | KEEP |
-| `colorful/_inc/systems/images/*.webp` (about 195) | per-system art: composites of console product photos and screens | viking & faeran (Colorful for LaunchBox), g-spawn (ckau-book) | README credits. The content uses manufacturers' product photography and marks: e.g. `ps2.webp` shows a Sony WEGA TV, a PS2 and the "Sony Computer Entertainment" boot screen | CC BY-NC-SA 2.0 from the theme authors; the photos and marks underneath are not theirs to license | ASK (the same policy question as the Slate logos) |
+| `colorful/_inc/systems/images/*.webp` (about 195) | per-system art: composites of console product photos and screens | viking & faeran (Colorful for LaunchBox), g-spawn (ckau-book) | README credits. The content uses manufacturers' product photography and marks: e.g. `ps2.webp` shows a Sony WEGA TV, a PS2 and the "Sony Computer Entertainment" boot screen | CC BY-NC-SA 2.0 from the theme authors; the photos and marks underneath are not theirs to license | KEEP (was ASK, the same policy question as the Slate logos; decided as Android ships them, OA-1) |
 | `colorful/_inc/systems/images/quake.webp` | Quake system art: a Quake Champions character render | third party: id Software / Bethesda; "noorkabir (imgbin.com)" per the README | CONFIRMED: the README credit links an imgbin "quake-champions" PNG, and the content is an official 3D render | none | REPLACE |
-| `colorful/_inc/systems/images/{doom,openbor,mugen,easyrpg,lowresnx}.webp`, `auto-{allgames,favorites,lastplayed}.webp`, `custom-collections.webp` | art credited to other artists | DeviantArt artists azakachi-rd-17 (a Cacodemon, id's character), DOA687, mpadillathespriter; SeraphCircle; Duimon; Rick Patrick's folder art (softicons) plus Font Awesome | the README credits name them; no licence is stated | none found | ASK (the artists; or drop or redraw these 9 files) |
+| `colorful/_inc/systems/images/{doom,openbor,mugen,easyrpg,lowresnx}.webp`, `auto-{allgames,favorites,lastplayed}.webp`, `custom-collections.webp` | art credited to other artists | DeviantArt artists azakachi-rd-17 (a Cacodemon, id's character), DOA687, mpadillathespriter; SeraphCircle; Duimon; Rick Patrick's folder art (softicons) plus Font Awesome | the README credits name them; no licence is stated | none found | KEEP (was ASK; decided: kept and credited, see Changes since the audit) |
+| `colorful/_inc/fonts/Urbanist-{Light,Regular,SemiBold,Bold}.ttf` | Gilroy's replacement, added by `scripts/colorful_theme.sh` (2026-11-26) | third party: Urbanist 1.330, The Urbanist Project Authors | the release zip and its `OFL.txt`, pinned by sha256 in the script | SIL OFL 1.1 (`_inc/fonts/Urbanist-OFL.txt`) | KEEP |
+| `colorful/_inc/fonts/BarlowSemiCondensed-Bold.ttf` | Akrobat Bold's replacement, added by the script (2026-11-26) | third party: Barlow 1.422, The Barlow Project Authors | the file and `OFL.txt` at the commit the script pins, by sha256 | SIL OFL 1.1 (`_inc/fonts/Barlow-OFL.txt`) | KEEP |
+| `mods/console-pictures/images/*.webp`, added to colorful/_inc/systems/images/ by the script (2026-11-26), quake.webp in place of the theme's | this project's console pictures | this project, from Wikimedia Commons photos | `mods/console-pictures/sources.json` and `LICENSE` (one entry per picture) | CC BY-SA or CC BY-NC 4.0, per picture (ATTRIBUTION.md) | KEEP (the Linux list keeps `quake.webp` only with this project's bytes) |
 | `MAGISK_ES-DE_fix.zip` (`mods/37-esde.sh`) | GammaOS's Magisk fix | upstream GammaOS | NOTICE; only on the 1.2 base with `ESDE_APK` | Apache-2.0 | KEEP (not in 1.0a) |
 
 ## 5. Boot

@@ -171,8 +171,10 @@ class Credits(util.TestCase):
             for photo in entry["photos"]:
                 for key in ("title", "author", "licence", "url"):
                     self.assertIn(photo[key], block, f"{name}: {key}")
-        mod = util.slurp(f"{util.MODS}/50-nano.sh", text=True)
+        mod = util.slurp(f"{util.SCRIPTS}/colorful_theme.sh", text=True)
         self.assertIn('cp "$pictures/LICENSE" "$src/_inc/systems/THIMSY-PICTURES-LICENSE.txt"', mod)
+        self.assertIn('colorful_theme_build "$cache" "$src" "$MODS/console-pictures"',
+                      util.slurp(f"{util.MODS}/50-nano.sh", text=True))
 
     def test_attribution(self):
         rows = util.slurp(os.path.join(util.ROOT, "ATTRIBUTION.md"), text=True).splitlines()
