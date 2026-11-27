@@ -12,6 +12,8 @@
 //
 // As on Android, an empty value is the same as an unset key: set(key, "") removes it, and get()
 // returns the default for it. Values are limited to 91 bytes (PROP_VALUE_MAX - 1) except ro.*.
+// The image's defaults for persist.* keys are seeded into the same file (trySetDefaults), so a
+// default is stored exactly as a value the user chose is.
 #pragma once
 
 #include <cstdint>
@@ -79,6 +81,16 @@ class ConfigStore {
     // stored and the store's lock is released, on the calling thread.
     bool set(std::string_view key, std::string_view value) { return trySet(key, value) == SetResult::Ok; }
     SetResult trySet(std::string_view key, std::string_view value);
+
+    // Seeds persist.* defaults (thimsy-prop boot --defaults, OA-35): each key of defaults that has
+    // no value yet is stored, as set() would store it, all in one read-modify-write under the
+    // persist lock. A key that already has a value keeps it (a default never replaces a stored
+    // choice), and an empty default is skipped. Every key must be a valid persist.* key (else
+    // InvalidKey) and every value within set()'s limits, else nothing is stored and the first
+    // offending key's result is returned. Nothing is written when every key already has a value.
+    // *added, when given, gets the keys stored, sorted. Observers see each stored key.
+    SetResult trySetDefaults(const std::map<std::string, std::string>& defaults,
+                             std::vector<std::string>* added = nullptr);
 
     // Every key with a value, sorted, optionally only those starting with prefix.
     std::map<std::string, std::string> list(std::string_view prefix = {}) const;

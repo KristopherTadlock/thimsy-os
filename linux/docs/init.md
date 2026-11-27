@@ -158,11 +158,16 @@ from `/usr/share/thimsy/device.json`, `/storage/thimsy/install.json` and
 `/usr/share/thimsy/build.props` (B.3; the CLI is libthimsy's, G1a). The
 device family is `ro.thimsy.family`, else the only directory under
 `/usr/share/thimsy/family/`; it is written to `/run/thimsy/family`.
-Then each `persist.*` line of `/usr/share/thimsy/persist-defaults.props`
-(thimsy-data's copy of `mods/nano-theme.props`: the theme settings Android's
-build.prop sets, OA-1) whose key `persist.props` does not have is set with
-`thimsy-prop set`, so Nano starts with Android's defaults and a later choice
-is kept. Once every key is there, this runs no program.
+With `--defaults /usr/share/thimsy/persist-defaults.props` (thimsy-data's
+copy of `mods/nano-theme.props`: the theme settings Android's build.prop
+sets, OA-1), `thimsy-prop boot` then stores each `persist.*` line whose key
+`persist.props` has no value for, in one write through the store, so Nano
+starts with Android's defaults, stored as a choice made in Settings is
+(OA-35). A value already there is never changed, so a later choice is kept,
+and once every key is there nothing is written. A malformed line is a
+warning (exit 2, which S01props logs), not a failure. The seeding is C++
+(libthimsy's `ConfigStore::trySetDefaults`, B.3), not a loop in the script
+(OA-36).
 
 `build.props` comes from `post-build.d/20-build-props.sh`:
 `ro.thimsy.build.{version,commit,target,type,date,date.utc,arch}`. `type` is

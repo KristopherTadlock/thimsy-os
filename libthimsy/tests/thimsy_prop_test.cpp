@@ -4,6 +4,7 @@
 // thimsy-prop, run as a program (its path is in THIMSY_PROP).
 #include <gtest/gtest.h>
 #include <signal.h>
+#include <sys/stat.h>
 
 #include <algorithm>
 #include <chrono>
@@ -187,6 +188,98 @@ TEST_F(PropTool, BootWithBrokenOrMissingFiles) {
                              env2);
     EXPECT_EQ(r.code(), 2);
     EXPECT_NE(r.err.find("missing"), std::string::npos);
+}
+
+// OA-35: --defaults (S01props passes thimsy-data's copy of mods/nano-theme.props) stores each
+// persist.* default persist.props lacks, as a choice made in Settings is stored.
+TEST_F(PropTool, BootStoresTheDefaultsPersistPropsLacks) {
+    writeBootFiles();
+    {
+        auto s = store();
+        ASSERT_TRUE(s != nullptr);
+        ASSERT_TRUE(s->set("persist.gammaos.nano.esde.themeset", "slate-es-de"));  // the user's choice
+    }
+    thimsy_test::spit(dir / "defaults.props",
+                      "# the theme\n\n"
+                      "persist.gammaos.nano.ndstheme=3\n"
+                      "persist.gammaos.nano.esde.themeset=colorful-simplified-es-de\n"
+                      "  persist.gammaos.nano.minima.bg = 1a1a2e \r\n"
+                      "persist.gammaos.nano.empty=\n"
+                      "persist.gammaos.nano.nav_sounds=0");  // no newline at the end
+    const auto r = run({"boot", "--defaults", dir / "defaults.props"});
+    EXPECT_EQ(r.code(), 0) << r.err;
+    EXPECT_EQ(r.err, "");
+    auto s = store();
+    ASSERT_TRUE(s != nullptr);
+    EXPECT_TRUE(s->readOnlySealed());
+    EXPECT_EQ(s->get("ro.thimsy.version"), "0.1.0");
+    EXPECT_EQ(s->get("persist.gammaos.nano.ndstheme"), "3");
+    EXPECT_EQ(s->get("persist.gammaos.nano.esde.themeset"), "slate-es-de");  // never replaced
+    EXPECT_EQ(s->get("persist.gammaos.nano.minima.bg"), "1a1a2e");
+    EXPECT_EQ(s->get("persist.gammaos.nano.nav_sounds"), "0");
+    EXPECT_EQ(s->list("persist.").size(), 4u);  // an empty default stores nothing
+    const std::string text = thimsy_test::slurp(roots.persistFile);
+    EXPECT_NE(text.find("persist.gammaos.nano.ndstheme=3\n"), std::string::npos) << text;
+}
+
+TEST_F(PropTool, DefaultsOnALaterBootKeepTheUsersChoices) {
+    writeBootFiles();
+    thimsy_test::spit(dir / "defaults.props", "persist.gammaos.nano.nav_sounds=0\npersist.gammaos.nano.ndstheme=3\n");
+    ASSERT_EQ(run({"boot", "--defaults", dir / "defaults.props"}).code(), 0);
+    ASSERT_EQ(run({"set", "persist.gammaos.nano.nav_sounds", "1"}).code(), 0);  // chosen in Settings
+    struct stat before;
+    ASSERT_EQ(stat(roots.persistFile.c_str(), &before), 0);
+    // The next boot: a fresh run dir (tmpfs on a device), the same persist.props.
+    ScratchDir nextBoot;
+    for (auto& e : env) {
+        if (e.rfind("THIMSY_RUN_DIR=", 0) == 0) e = "THIMSY_RUN_DIR=" + (nextBoot / "props");
+    }
+    const auto r = run({"boot", "--defaults", dir / "defaults.props"});
+    EXPECT_EQ(r.code(), 0) << r.err;
+    EXPECT_EQ(run({"get", "persist.gammaos.nano.nav_sounds"}).out, "1\n");
+    EXPECT_EQ(run({"get", "persist.gammaos.nano.ndstheme"}).out, "3\n");
+    struct stat after;
+    ASSERT_EQ(stat(roots.persistFile.c_str(), &after), 0);
+    EXPECT_EQ(after.st_ino, before.st_ino);  // every key had a value: persist.props was not rewritten
+}
+
+TEST_F(PropTool, BadDefaultsLinesAreWarnings) {
+    writeBootFiles();
+    thimsy_test::spit(dir / "defaults.props",
+                      "persist.gammaos.nano.ndstheme=3\n"
+                      "ro.not.persist=1\n"
+                      "sys.thimsy.x=1\n"
+                      "not a line\n"
+                      "persist..bad=1\n"
+                      "persist.gammaos.nano.long=" + std::string(92, 'v') + "\n"
+                      "persist.gammaos.nano.nav_sounds=0\n");
+    const auto r = run({"boot", "--defaults", dir / "defaults.props"});
+    EXPECT_EQ(r.code(), 2) << r.err;  // sealed and seeded, with warnings
+    for (const char* want : {"\"ro.not.persist=1\" ignored", "\"sys.thimsy.x=1\" ignored", "\"not a line\" ignored",
+                             "\"persist..bad=1\" ignored", "persist.gammaos.nano.long ignored"}) {
+        EXPECT_NE(r.err.find(want), std::string::npos) << want << "\n" << r.err;
+    }
+    auto s = store();
+    ASSERT_TRUE(s != nullptr);
+    EXPECT_TRUE(s->readOnlySealed());
+    EXPECT_EQ(s->get("persist.gammaos.nano.ndstheme"), "3");
+    EXPECT_EQ(s->get("persist.gammaos.nano.nav_sounds"), "0");
+    EXPECT_EQ(s->get("persist.gammaos.nano.long"), "");
+    EXPECT_EQ(s->get("ro.not.persist"), "");
+    EXPECT_EQ(s->get("sys.thimsy.x"), "");
+}
+
+TEST_F(PropTool, MissingDefaultsFileIsAWarning) {
+    writeBootFiles();
+    EXPECT_EQ(run({"boot", "--defaults"}).code(), 64);
+    const auto r = run({"boot", "--defaults", dir / "absent.props"});
+    EXPECT_EQ(r.code(), 2);
+    EXPECT_NE(r.err.find("absent.props: missing"), std::string::npos) << r.err;
+    auto s = store();
+    ASSERT_TRUE(s != nullptr);
+    EXPECT_TRUE(s->readOnlySealed());
+    EXPECT_EQ(s->get("ro.thimsy.version"), "0.1.0");
+    EXPECT_EQ(s->list("persist.").size(), 0u);
 }
 
 TEST_F(PropTool, WatchPrintsAChange) {

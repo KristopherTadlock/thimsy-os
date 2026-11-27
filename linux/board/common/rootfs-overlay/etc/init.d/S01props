@@ -1,5 +1,6 @@
 #!/bin/sh
-# S01props: the read-only properties, then the device family.
+# S01props: the read-only properties and the default settings, then the
+# device family.
 # SPDX-License-Identifier: MIT
 #
 # "thimsy-prop boot" writes /run/thimsy/props/ro/<key> from
@@ -10,46 +11,25 @@
 # /usr/share/thimsy/family/; ro.thimsy.modules (device.json's "modules") is
 # S03modules' list.
 #
-# Then Nano's default settings: each persist.* line of
-# /usr/share/thimsy/persist-defaults.props (thimsy-data's copy of
-# mods/nano-theme.props, the theme settings Android's build.prop sets, OA-1)
-# whose key persist.props does not have is set, before Nano starts. A value
-# the user chose later is kept; once every key is there, no program runs.
+# With --defaults it then seeds Nano's default settings, before Nano starts:
+# each persist.* line of /usr/share/thimsy/persist-defaults.props (thimsy-data's
+# copy of mods/nano-theme.props, the theme settings Android's build.prop sets,
+# OA-1) whose key persist.props has no value for is stored there, as a choice
+# made in Settings is (OA-35). A value already there is never changed.
 . "${THIMSY_ROOT:-}/usr/share/thimsy/init/lib.sh"
 
 TAG=S01props
-
-# persist_defaults FILE: set each KEY=VALUE of FILE that persist.props lacks.
-persist_defaults() {
-	[ -r "$1" ] || return 0
-	while IFS= read -r _line || [ -n "$_line" ]; do
-		case $_line in
-		'' | '#'*) continue ;;
-		persist.*=*) ;;
-		*)
-			thimsy_warn $TAG "persist-defaults.props: \"$_line\" ignored (not a persist.* key=value line)"
-			continue
-			;;
-		esac
-		_key=${_line%%=*}
-		# prefs: keys from mods/nano-theme.props
-		thimsy_persist "$_key" ""
-		[ -z "$PERSIST_OUT" ] || continue
-		"$PROP" set "$_key" "${_line#*=}" ||
-			thimsy_warn $TAG "can't set the default $_key ($?)"
-	done < "$1"
-}
 
 case ${1:-start} in
 start)
 	if command -v "$PROP" > /dev/null 2>&1; then
 		"$PROP" boot --device "$R/usr/share/thimsy/device.json" \
 			--install "$R/storage/thimsy/install.json" \
-			--build "$R/usr/share/thimsy/build.props" ||
+			--build "$R/usr/share/thimsy/build.props" \
+			--defaults "$R/usr/share/thimsy/persist-defaults.props" ||
 			thimsy_warn $TAG "thimsy-prop boot failed ($?)"
-		persist_defaults "$R/usr/share/thimsy/persist-defaults.props"
 	else
-		thimsy_warn $TAG "thimsy-prop is missing: no ro.* properties"
+		thimsy_warn $TAG "thimsy-prop is missing: no ro.* properties, no default settings"
 	fi
 	# Detect afresh: an empty file makes thimsy_family look further.
 	: > "$R/run/thimsy/family"

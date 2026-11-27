@@ -3,9 +3,10 @@
 # settings screens in Minima's look on a Midnight background, and no menu
 # sounds. mods/50-nano.sh writes the persist.* lines into Android's build.prop
 # as they are; the Linux build installs this file as
-# /usr/share/thimsy/persist-defaults.props, and S01props sets each key the
-# card's persist.props does not have, so both start the same and a choice made
-# later in Nano sticks (docs/linux/DECISIONS.md OA-1).
+# /usr/share/thimsy/persist-defaults.props, and at boot thimsy-prop (run by
+# S01props) stores each key the card's persist.props does not have, so both
+# start the same and a choice made later in Nano sticks (docs/linux/DECISIONS.md
+# OA-1, OA-35).
 # One key=value per line, no spaces, persist.* keys only.
 persist.gammaos.nano.ndstheme=3
 persist.gammaos.nano.esde.themeset=colorful-simplified-es-de

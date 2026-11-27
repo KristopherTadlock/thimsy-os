@@ -57,14 +57,17 @@ scan cannot read is a problem: a variable (`thimsy_persist "$KEY" 1`), a key wit
 Their files are named from the repository root ("linux/src/..."); nano/'s from nano/. A pref-namespace
 key that only those files name has an exact row with an "owner": the component that keeps it.
 Not scanned: libthimsy/tools/thimsy-prop.cpp and linux/board/common/post-build.d/20-build-props.sh.
-They write only ro.* keys (device.json's scalars, build.props), all under the ro.* glob row (class R).
+The ro.* keys they write (device.json's scalars, build.props) are all under the ro.* glob row (class R).
+The persist.* keys thimsy-prop boot --defaults stores (the image's default settings, OA-35) come from
+the key files in KEY_FILES, which scan() reads with linux_root: each key is set, with its value as a
+default.
 """
 from __future__ import annotations
 
 import json
 import os
 import re
-from typing import Dict, Iterator, List, Optional, Set, Tuple
+from typing import Dict, Iterator, List, Optional, Set
 
 from .config import Upstream
 from .ratchets import PROP_KEY, PROP_NAMESPACES, SOURCE_EXT
@@ -410,10 +413,11 @@ _SCRIPT_NS = re.compile(r"(?:%s)\." % "|".join(PROP_NAMESPACES))
 _PATTERN_CMD = re.compile(r"(?:^|[\s;&|(`!])(?:grep|egrep|fgrep|sed|awk)(?=\s|\Z)")
 _PATTERN_KEY = re.compile(r"(?<![A-Za-z0-9_./\\\-])persist\\{0,2}\.[A-Za-z0-9_.\\\-]*")
 STORE_FILE = "persist.props"
-# "# prefs: keys from FILE" (FILE from the repository root): the next variable key, within
-# KEYS_FROM_LINES lines, takes its keys from FILE, a KEY=VALUE file the scan reads instead.
-_KEYS_FROM = re.compile(r"#\s*prefs:\s*keys from\s+(\S+)\s*$")
-KEYS_FROM_LINES = 15
+# The image's default settings (from the repository root): KEY=VALUE files whose persist.* keys
+# thimsy-prop boot --defaults stores in persist.props at boot when they have no value there (S01props
+# passes thimsy-data's copy of mods/nano-theme.props, OA-35). The scan reads them with linux_root.
+KEY_FILES = ("mods/nano-theme.props",)
+KEY_FILES_WRITER = "thimsy-prop boot --defaults"
 _PROPS_LINE = re.compile(r"(%s)=(.*)\Z" % _KEYCHARS)
 
 
@@ -421,10 +425,9 @@ def scan_linux_script(text: str, rel: str, out: Dict[str, Use]) -> None:
     """Keys in an init or shell script of linux/board: property:K, and the KEY of the init library's
     readers (with their defaults), setprop and getprop, bare or quoted. With OUT a Found, a KEY the scan
     cannot read is a problem: a variable, a key with a $-expansion in it, or persist.* text in a grep,
-    sed or awk line. A variable key is not a problem when a "# prefs: keys from FILE" comment came
-    at most KEYS_FROM_LINES lines before it: FILE goes into OUT.key_sources and scan() reads it."""
+    sed or awk line. A script names its keys in full (the image's default settings are not a script's:
+    scan() reads them from KEY_FILES)."""
     problems = out.problems if isinstance(out, Found) else None
-    keys_from = None  # (FILE, line of the comment)
 
     def note(key: str, op: str, n: int) -> Use:
         u = out.setdefault(key, Use())
@@ -436,9 +439,6 @@ def scan_linux_script(text: str, rel: str, out: Dict[str, Use]) -> None:
 
     for n, ln in enumerate(text.split("\n"), 1):
         if ln.lstrip().startswith("#"):
-            m = _KEYS_FROM.search(ln)
-            if m:
-                keys_from = (m.group(1), n)
             continue
         for m in _SCRIPT_TRIGGER.finditer(ln):
             note(m.group(1).rstrip("."), "get", n)
@@ -446,11 +446,6 @@ def scan_linux_script(text: str, rel: str, out: Dict[str, Use]) -> None:
             cmd, word, arg = m.groups()
             bare = word.replace('"', "").replace("'", "")
             if "$" in bare:
-                if (bare.startswith("$") and keys_from is not None and n - keys_from[1] <= KEYS_FROM_LINES
-                        and isinstance(out, Found)):
-                    out.key_sources.append((keys_from[0], "%s:%d" % (rel, n)))
-                    keys_from = None
-                    continue
                 if problems is not None and (bare.startswith("$") or _SCRIPT_NS.match(bare)):
                     problems.append("%s:%d: %s %s: the key is %s, which prefs.scan_linux_script cannot read: "
                                     "name the key in full" % (rel, n, cmd, word, "a variable" if bare.startswith("$")
@@ -472,12 +467,12 @@ def scan_linux_script(text: str, rel: str, out: Dict[str, Use]) -> None:
 
 
 def scan_props_file(root: str, src: str, where: str, out: Found) -> None:
-    """The keys of SRC (a KEY=VALUE file, from the repository root) that a script at WHERE sets
-    through a variable ("# prefs: keys from SRC"): each is set, with its value as a default. A
-    missing file, or a line that is not a comment or KEY=VALUE, is a problem."""
+    """The keys of SRC (a key file of KEY_FILES, from the repository root) that WHERE stores: each is
+    set, with its value as a default. A missing file, a line that is not a comment or KEY=VALUE, or a
+    key outside persist.* (thimsy-prop boot --defaults ignores it) is a problem."""
     path = os.path.join(root, *src.split("/"))
     if not os.path.isfile(path):
-        out.problems.append("%s: prefs: keys from %s: no such file" % (where, src))
+        out.problems.append("%s: key file %s: no such file" % (where, src))
         return
     with open(path, "rb") as f:
         text = f.read().decode("utf-8", "replace")
@@ -488,6 +483,9 @@ def scan_props_file(root: str, src: str, where: str, out: Found) -> None:
         m = _PROPS_LINE.match(s)
         if not m:
             out.problems.append("%s:%d: not a KEY=VALUE line (read for %s)" % (src, n, where))
+            continue
+        if not m.group(1).startswith("persist."):
+            out.problems.append("%s:%d: %s is not a persist.* key, which %s ignores" % (src, n, m.group(1), where))
             continue
         u = out.setdefault(m.group(1), Use())
         u.files.add(src)
@@ -544,8 +542,6 @@ class Found(dict):
         super().__init__(*a, **kw)
         self.problems: List[str] = []
         self.family_prefixes: Set[str] = set()
-        # (FILE from the repository root, "script:line") for each "# prefs: keys from FILE".
-        self.key_sources: List[Tuple[str, str]] = []
 
 
 def _array_items(toks: List[Tok], name: Optional[str], type_: Optional[str]) -> Iterator[List[List[Tok]]]:
@@ -684,8 +680,8 @@ def expand_runtime(found: Found, ctx: Context, families=RUNTIME_FAMILIES) -> Non
 
 def scan(nano_dir: str, files: Optional[List[str]] = None, linux_root: Optional[str] = None) -> Found:
     """{key: Use} over FILES (default: scanned_files), with the runtime families expanded; with
-    LINUX_ROOT (the repository root), also over linux_files. The runtime families are nano/'s only: a
-    "%s..." template or a key joined with + in linux/src is a problem."""
+    LINUX_ROOT (the repository root), also over linux_files and KEY_FILES. The runtime families are
+    nano/'s only: a "%s..." template or a key joined with + in linux/src is a problem."""
     out = Found()
     ctx = Context()
     for rel in files if files is not None else scanned_files(nano_dir):
@@ -705,8 +701,8 @@ def scan(nano_dir: str, files: Optional[List[str]] = None, linux_root: Optional[
                 scan_text(text, rel, out, lctx)
             else:
                 scan_linux_script(text, rel, out)
-        for src, where in out.key_sources:
-            scan_props_file(linux_root, src, where, out)
+        for src in KEY_FILES:
+            scan_props_file(linux_root, src, KEY_FILES_WRITER, out)
         expand_runtime(out, lctx, ())
     res = Found(sorted(out.items()))
     res.problems, res.family_prefixes = out.problems, out.family_prefixes

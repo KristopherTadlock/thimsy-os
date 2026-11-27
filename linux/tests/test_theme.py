@@ -7,7 +7,8 @@ export before assets.list filters it. Its "build" step runs here on a small
 fixture (a stand-in theme zip and fonts; no download), with the repository's
 console pictures, and the result goes through the committed assets.list.
 mods/nano-theme.props holds the theme settings: Android writes its lines into
-build.prop, Linux installs it as persist-defaults.props for S01props.
+build.prop, Linux installs it as persist-defaults.props, which S01props hands
+to thimsy-prop boot --defaults (OA-35).
 
 The script needs bash and unzip: on Windows Git for Windows' bash.exe (never
 the bash.exe of System32, which is WSL's), elsewhere bash from PATH. Without
@@ -278,6 +279,8 @@ class SharedWithAndroid(unittest.TestCase):
         self.assertEqual(dict(line.split("=", 1) for line in lines), self.WANT)
         for line in lines:
             self.assertRegex(line, r"^persist\.[A-Za-z0-9._-]+=[^\s]+$")
+            # thimsy-prop boot --defaults ignores a value the store refuses (over 91 bytes).
+            self.assertLessEqual(len(line.split("=", 1)[1].encode("utf-8")), 91, line)
         self.assertEqual(self.WANT["persist.gammaos.nano.esde.themeset"], script_var("THEME"))
 
     def test_android_writes_the_same_lines(self) -> None:
@@ -318,8 +321,10 @@ class SharedWithAndroid(unittest.TestCase):
         mk = (LINUX / "package/thimsy-data/thimsy-data.mk").read_text(encoding="utf-8")
         self.assertRegex(mk, r"\$\(INSTALL\) -D -m 0644 \$\(@D\)/\.thimsy-defaults/nano-theme\.props \\\n"
                              r"\t\t\$\(TARGET_DIR\)/usr/share/thimsy/persist-defaults\.props")
+        # S01props hands the file to thimsy-prop boot, which seeds the store (OA-35).
         s01 = (LINUX / "board/common/rootfs-overlay/etc/init.d/S01props").read_text(encoding="utf-8")
-        self.assertIn('persist_defaults "$R/usr/share/thimsy/persist-defaults.props"', s01)
+        self.assertIn('--defaults "$R/usr/share/thimsy/persist-defaults.props"', s01)
+        self.assertNotIn("persist_defaults", s01)
 
     def test_assets_list_keeps_quake_only_with_thimsy_bytes(self) -> None:
         entries = aa.read_list(LIST)
