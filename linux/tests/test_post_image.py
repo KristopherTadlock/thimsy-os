@@ -48,6 +48,9 @@ import test_card_image  # noqa: E402
 SHELLS = check_rcs.find_shells()
 SH: Optional[List[str]] = SHELLS[0] if SHELLS else None
 needs_sh = unittest.skipIf(SH is None, "no POSIX shell found")
+# A fake core utility (cp) first on PATH: Git for Windows' sh puts its own /usr/bin ahead of the
+# caller's PATH, so the fake is never run there.
+fake_coreutils = unittest.skipIf(os.name == "nt", "Git for Windows' sh runs its own /usr/bin first")
 
 RUNNER = LINUX / "board" / "common" / "post-image.sh"
 ARC = ["anbernic-rg-arc-d", "anbernic-rg-arc-s"]
@@ -486,6 +489,7 @@ class Rk3566OtherRunsTest(unittest.TestCase):
         r = run("anbernic-rg-arc-s")
         self.assertEqual(r.returncode, 0, r.stdout)
 
+    @fake_coreutils
     def test_bluetooth_pack_copy_failure_fails_the_build(self) -> None:
         """W8-SMALL-11: a cp of the unpacked Bluetooth pack into the stage that fails stops the build
         with the card assembly's own message, before the device with Bluetooth gets a root."""

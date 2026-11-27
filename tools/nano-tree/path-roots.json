@@ -70,8 +70,6 @@
      "note": "thimsy-data's allowed assets."},
     {"root": "/system/fonts", "disposition": "link", "linux": "/usr/share/fonts/thimsy",
      "note": "thimsy-fonts, under the Android names NanoMenuRender.cpp's fontPaths expects."},
-    {"root": "/system/lib64", "disposition": "not-reached",
-     "note": "drastic-nano's library check: absent on Linux, so the DS player is reported missing."},
     {"root": "/system/shaders", "disposition": "not-a-path",
      "note": "A suffix: DrasticRunner's <cache>/system/shaders."},
     {"root": "/vendor/bin", "disposition": "gate",
