@@ -145,7 +145,7 @@ pm_finish          # kills gptokeyb, closes messages; runtime ports also $ESUDO 
 | SDL2, SDL2_ttf, SDL2_image, SDL2_mixer in `/usr/lib` | PySDL2 GUI [S18][S28]; many ports use the system SDL2 | SDL2 with KMSDRM and GLES is in `apps-v1.fragment`; the add-on libraries are absent |
 | `unzip`, `tar`, `xz`, `pkill`, `killall`, `mount` with loop | glue and launchers [S5][S15] | BusyBox applets *(guess at which are enabled: check `busybox.fragment`)* |
 | Mesa GLES, EGL, GBM, libdrm | ports and gl4es [S19] | present (Panfrost) |
-| kernel: `SQUASHFS` with XZ, ZSTD, LZ4, GZIP and LZO; `BLK_DEV_LOOP`; `INPUT_UINPUT` | runtime mounts [S10], gptokeyb | uinput is in the QEMU fragment; the RK3566 config is ROCKNIX's, which very likely has squashfs *(guess)*; add all three to `kernel-critical.conf`. Which compressors the runtimes use was not read |
+| kernel: `SQUASHFS` with its decompressors; `BLK_DEV_LOOP`; `INPUT_UINPUT` | runtime mounts [S10], gptokeyb | uinput is in the QEMU fragment. The RK3566 config is ROCKNIX `next`'s 7.3.5 `linux.aarch64.conf`, which has `CONFIG_SQUASHFS=y` with `SQUASHFS_ZLIB`, `_LZ4`, `_LZO`, `_XZ` and `_ZSTD` all `=y`, `CONFIG_BLK_DEV_LOOP=y` and `CONFIG_INPUT_UINPUT=y` [S34]. Still add all three to `kernel-critical.conf`, as a guard against a later import dropping them. Which compressor each runtime uses was not read |
 | CA certificates, a working clock | PortMaster downloads over HTTPS from GitHub [S6]; certifi is bundled [S26] | D40time `ntpd` exists |
 
 None of this may enter `kernel-critical.conf` or a fragment until the owner agrees on the shape. No armhf userland: Thimsy is aarch64 only, so `DEVICE_HAS_ARMHF=N` and 32-bit ports stay unavailable.
@@ -181,8 +181,8 @@ None of this may enter `kernel-critical.conf` or a fragment until the owner agre
 - **`ANALOG_STICKS`** (2 on the ARC-D) picks each port's `.gptk.<n>` file [S8]. device_info finds it from input ABS capabilities [S4], which padd's pad reports.
 - **`HOTKEY`.** gptokeyb's hotkey defaults to Back [S12]. Thimsy keeps that. The session's own quit hotkey is checked against it so that one press does not trigger both *(guess at the interaction; test)*.
 - **uinput.** gptokeyb needs `/dev/uinput`. `nonroot_nano_plan.md` 4.2 keeps it root-only for padd. Options for the owner (section 9, Q2):
-  - (a) a `uinput` group that `nano` is in, with the node at 0660. The risk: any `nano` process can make a virtual keyboard, and Nano already runs as that user.
-  - (b) ports launched by the session with an extra `uinput` group that Nano itself does not hold.
+  - (a) a `uinput` group that `nano` is in, with the node at 0660. This amends OA-27, which fixes `nano`'s groups as `video`, `render`, `input` and `audio`, and the plan's rule that `/dev/uinput` stays root-only (`nonroot_nano_plan.md` 4.2). The risk: any `nano` process can make a virtual keyboard, and Nano already runs as that user.
+  - (b) ports launched by the session with an extra `uinput` group that Nano itself does not hold. Nano's groups stay as OA-27 lists them, but games run as `nano` (OA-28) would gain a group for ports only, so the owner should note it there too.
   - (c) a "keyboard mode" in padd that reads `.gptk` files. This is large, and gptokeyb2's state configs make it larger [S13].
 
 ### 3.5 Root actions without root (OA-27, OA-28)
@@ -192,6 +192,7 @@ None of this may enter `kernel-critical.conf` or a fragment until the owner agre
   - `mount <file> <dir>`: allowed only when `<file>` is a regular file directly in `/roms/ports/PortMaster/libs/` with a `.squashfs` name, and `<dir>` is a directory that `nano` owns under `nano`'s `$HOME`. The client sends a new session verb, `pm-mount:<file name>:<dir>`. The session mounts it read-only with `nosuid,nodev`, through loop, and records it against the game's process group.
   - `umount <dir or file>`: the matching verb, only for mounts the session recorded.
   - Anything else is run unprivileged, as `nano`. `chmod` of a device node, `systemctl` and the like then fail as they would without sudo, which upstream glue tolerates *(guess per command; test)*.
+- **The GUI goes through `ESUDO` too.** `pm_launch.txt` starts the GUI with `$ESUDO ./pugwash $PORTMASTER_CMDS`, after exporting `PYSDL2_DLL_PATH=/usr/lib` and `TERM=linux` [S18]. Upstream sets `ESUDO` to `sudo --preserve-env=...` with a fixed list of variables when sudo works, and to an empty string otherwise; ROCKNIX's `control.txt` sets `ESUDO=""`, because it runs as root [S5][S16]. On Thimsy, `pm-esudo` gets `./pugwash` and its arguments. It must not send that to the session: it runs it in place, as `nano`, in the same working directory and with the whole environment kept (`PYSDL2_DLL_PATH`, `HM_*_DIR`, `HOME`, `XDG_*`, the SDL variables). A kept list like upstream's would drop `PYSDL2_DLL_PATH` and the `HM_*` paths.
 - **Cleanup.** When the game's process group ends, the session unmounts that group's runtime mounts, so a crash or a quit hotkey leaves nothing mounted.
 - **Validation.** The new verbs follow the plan's rules for requests from an unprivileged writer: a fixed verb list and strictly parsed arguments (`nonroot_nano_plan.md` 4.2).
 - **Optional extension.** `bind_directories` with `PM_CAN_MOUNT=Y` would need a `pm-bind` verb as well. Starting with `PM_CAN_MOUNT=N` avoids it (section 3.2).
@@ -213,7 +214,7 @@ None of this may enter `kernel-critical.conf` or a fragment until the owner agre
 - **Android ES-DE.** Its `ports` system lists `.app`, `.port`, `.game` and others, but not `.sh` [S32]. So `.sh` scripts in `ROMs/ports/` are Linux-only, and the Android ES-DE app ignores them.
 - **Android Games stays separate.** Android's own "Android Games" system is `ROMs/androidgames` with `.app` [S32] (and `mods/nano-systems.txt`). It is untouched, and on Linux it is hidden by OA-22's visibility rule.
 - **Nano's Linux system.** Nano gets a `ports` system: folder `ports`, extensions `.sh`, launch type "port" with the template of section 3.6. It appears when the image ships the port launcher and the folder has scripts. `NanoSystemsHeal.cpp:89` already knows the folder name.
-- **Gamelists.** ES-DE ignores gamelists in ROM folders and reads `ES-DE/gamelists/<system>/gamelist.xml` [S33]. So the ROCKNIX-style `ports_dir/gamelist.xml` does nothing for Nano or ES-DE. Proposal: after the GUI exits, Thimsy's launcher (or Nano) merges each installed port's `gameinfo.xml` into `ES-DE/gamelists/ports/gamelist.xml`:
+- **Gamelists.** ES-DE ignores `gamelist.xml` files in the ROM folders by default; they belong under `ES-DE/gamelists/<system>/gamelist.xml` [S33]. So the ROCKNIX-style `ports_dir/gamelist.xml` does nothing for Nano or ES-DE. Proposal: after the GUI exits, Thimsy's launcher (or Nano) merges each installed port's `gameinfo.xml` into `ES-DE/gamelists/ports/gamelist.xml`:
   - with relative `./<Name>.sh` paths (OA-8: relative paths);
   - with the cover or screenshot copied to `ES-DE/downloaded_media/ports/covers/<Name>.png`, which keeps it off absolute `/roms/ports/...` image paths;
   - with unknown tags and Android's entries kept.
@@ -259,8 +260,8 @@ None of this may enter `kernel-critical.conf` or a fragment until the owner agre
    - a newer or older SDL2 than ports expect.
 
    Each needs a test port. Missing libraries are added to the image one by one, never by copying ROCKNIX's compat archive, whose contents and licences were not read.
-4. **The privilege broker** is new root code that takes input from scripts downloaded off the internet. It must stay as narrow as section 3.5 says, and be tested like the session's other verbs.
-5. **uinput access** (Q2) weakens the non-root plan's "uinput belongs to padd" rule if option (a) is chosen.
+4. **The privilege broker** is new root code that takes input from scripts downloaded off the internet. It must stay as narrow as section 3.5 says, and be tested like the session's other verbs. Its pass-through path runs the PortMaster GUI itself, so a mistake there either breaks the GUI (a lost variable) or runs it with more rights than `nano` has.
+5. **uinput access** (Q2) weakens the non-root plan's "uinput belongs to padd" rule, and option (a) changes OA-27's group list.
 6. **Self-updates.** PortMaster updates itself and its ports from the network [S25][S6]. A new release can change the glue's contract, for example `funcs.txt`'s version or the device_info cache format [S4][S5]. Thimsy pins the version it installs and tests, and the launcher re-copies Thimsy's glue on every start. Whether to block self-update is open (Q3).
 7. **Arbitrary code as `nano`.** Ports are third-party code with exec on one card folder. `nano` cannot reach the eMMC or root files (OA-27), and that is the fence.
 8. **RAM.** The ARC-D has 2 GB (`ram_mb: 2048`), so it is not `ultra` [S4]. Ports marked `reqs: Ultra` [S23] may not be offered or may run badly. Thimsy's own `profile_default` names (`small` to `ultra`, `device.schema.json`) are a different scale and must not be mixed with PortMaster's.
@@ -272,7 +273,7 @@ None of this may enter `kernel-critical.conf` or a fragment until the owner agre
 1. **Decide** (owner): Q1 to Q6 below. Nothing in the image changes before Q1 to Q3 are answered.
 2. **Glue, host-tested.** A `thimsy-portmaster` package in `linux/package/` (MIT) with:
    - `control.txt`, `mod_Thimsy.txt` and the start script;
-   - `pm-esudo`;
+   - `pm-esudo`, with host tests: `mount` and `umount` only for the allowed paths; `$ESUDO ./pugwash --debug`, run as `pm_launch.txt` runs it against a fake `pugwash` that prints its uid, working directory and environment, runs as `nano` with every variable kept; anything else runs unprivileged;
    - the `/etc/os-release` fields;
    - the gameinfo-to-gamelist merge, in Python, tested on the host with fixture ports;
    - a test that runs `device_info.txt` against a fake root with Thimsy's `os-release` and the ARC-D's DRM and input files, and expects `CFW_NAME=Thimsy`, 480x640, two sticks and aarch64. It is read from a pinned PortMaster release and is not committed if its licence does not allow it (MIT, [S1]).
@@ -289,7 +290,7 @@ None of this may enter `kernel-critical.conf` or a fragment until the owner agre
 
    No Android-surface change.
 6. **Device test on the ARC-D** (OA-18):
-   - install PortMaster offline and online;
+   - install PortMaster offline and online, with the GUI started through `pm_launch.txt` and `pm-esudo`;
    - one native SDL2 port, one Godot/FRT runtime port, one LÖVE port, one gl4es port, one Mono port;
    - rotation, audio, the quit hotkey, sleep during a port, card removal, runtime cleanup;
    - a card round trip with Android (the `ports` gamelist and `Thimsy/PortMaster/` untouched).
@@ -301,7 +302,7 @@ None of this may enter `kernel-critical.conf` or a fragment until the owner agre
   - (a) `<drive>/Thimsy/PortMaster/` on the exFAT drive, bind-mounted with exec at `/roms/ports` (recommended: plain files, carried with the card, as on Knulli and muOS);
   - (b) an ext4 image file on the drive, loop-mounted. Symlinks work, but the file is opaque to a PC and needs preallocation and its own fsck;
   - (c) internal `/storage`, which is too small at 256 MiB *(guess at the size)*.
-- **Q2, `/dev/uinput` for gptokeyb:** (a) a `uinput` group for `nano`; (b) only for ports the session launches; (c) a padd keyboard mode.
+- **Q2, `/dev/uinput` for gptokeyb:** (a) a `uinput` group for `nano`, which amends OA-27's fixed group list (`video`, `render`, `input`, `audio`); (b) only for ports the session launches; (c) a padd keyboard mode.
 - **Q3, shipping PortMaster:** download at first use, pinned (recommended), or ship the zip in the image with a source offer for its GPL parts. Separately: allow PortMaster's self-update, or hold it at Thimsy's tested pin.
 - **Q4, the GUI entry:** a Nano app entry (recommended), or a hidden item in the ports list as on ROCKNIX.
 - **Q5, upstream:** whether to offer `PlatformThimsy` and Thimsy detection to PortMaster.
@@ -342,3 +343,4 @@ None of this may enter `kernel-critical.conf` or a fragment until the owner agre
 - [S31] ES-DE Linux `es_systems.xml` (`ports`): https://gitlab.com/es-de/emulationstation-de/-/raw/master/resources/systems/linux/es_systems.xml
 - [S32] ES-DE Android `es_systems.xml` (`ports`, `androidgames`): https://gitlab.com/es-de/emulationstation-de/-/raw/master/resources/systems/android/es_systems.xml
 - [S33] ES-DE user guide (gamelist location, `noload.txt`): https://gitlab.com/es-de/emulationstation-de/-/raw/master/USERGUIDE.md
+- [S34] ROCKNIX RK3566 kernel config, `next` ("Linux/arm64 7.3.5"), read 2026-11-27: https://raw.githubusercontent.com/ROCKNIX/distribution/next/projects/ROCKNIX/devices/RK3566/linux/linux.aarch64.conf
