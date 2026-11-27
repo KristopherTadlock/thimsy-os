@@ -320,6 +320,27 @@ Built 2026-11-21 from the plan docs in this folder, each checked against the REA
 - **Owner answers, 2026-11-25 (second batch; plan §17.5):** question 11, save states load across same-commit 64-bit cores, "yes, but we need to test it" (per core: save on the Cube, load on the ARC and back; shared later, after v1); 12, test both GPU drivers, ship the most stable first; 13, serial later (to-do above); 14, Docked HDMI in v1, mirror later; 20 and 21, Phase 0 items with a pass rule; 22, "I don't care who wrote it. Use the ROCKNIX license." (no author recovery; a provenance line per patch); 23, the recommended recipe approach (our own recipes, ROCKNIX's `package.mk` ported into `gpl/`, cores built from the commits of `retroarch-cores.lock`), not objected to; 24, "use the FlipBase TF-A" (decision 18 for RK3566); 26, don't weigh the BaseOS licence (most files replaced anyway; the four C files used as-is). Questions 7 and 17 are moot (no erase). Question 10 is still being researched.
 - **(decide)** The plan's §14 decisions. Decided: 1 (base; amended by 21: ROCKNIX's hardware layer is a tracked upstream, its runtime unused), 3 (the Android build stays, maintained separately; the ARC-D will offer both), 5 (boot target), 18 for RK3566 (the unit's own vendor BL31 with FlipBase's pm-config patch, never redistributed; rkbin's as the fallback; other families as proposed) and 21 (device layer: Thimsy Base + importer). Reopened, each with a recommendation: 2 (first device: ARC-D dual boot by an SD-only route plus an ARC-S; erasing Android out by the SD-only principle), 4 (display stack: KMS/GBM hand-off first, no compositor; amendment proposed: the rotation contract confirmed for the Mali families only, a per-family display setting on Qualcomm, a per-game kiosk fallback), 6 (an MIT build tree with a `gpl/` area), 9 (real ES-DE: not in v1), 11 (GPU: Panfrost, GLES, no Vulkan; extension proposed: Mesa only on every family; amended by the owner: v1 ships the more stable driver from the Phase 0 A/B, both switchable until then), 12 (package profiles), 13 (image distribution; reopened again, proposed: the installer assembles each card from verified parts, which would supersede the earlier complete-images recommendation), 14 (H700 panel: variant images), 16 (public alpha: credit for imported patches, each with a provenance line), 17 (one clause moot). New: 19 (fork FlipBase at a pinned commit), 20 (card identity on the Cube), 22 (kernel per family: ROCKNIX's version at a Thimsy-chosen tag, skipping tags freely; about 6 version changes a month across families; RK3566's version chosen at Phase 2a), 23 (input: `thimsy-padd` everywhere, InputPlumber never in the image), 24 (firmware: ship only known-licence `linux-firmware`, fetch the rest from the user's device), 25 (image structure: tiers, GPU packs, hardware packs), 26 (coverage waves, wave 3 deferred until bootloader writing is allowed, and per-product status). Still open: 7 (the order of the plans), 8, 10, 15. New open questions 28 to 35 include ROCKNIX's tag cadence (33), stable updates on its .0 kernels (34) and Vulkan rotation on Qualcomm (35).
 
+### Non-root Nano on Linux and Android (nonroot_nano_plan.md): not started (follows OA-14, 2026-11-26)
+- **Goal:** Nano runs below root on both builds, with privileged work behind the platform layer (OA-4): `thimsy-session` on Linux; init services, NanoNetBridge and a small root helper on Android.
+- **Today:** Nano is root on both.
+  - Linux: every capability except `CAP_MKNOD`, inside NanoJail (OA-14 accepted the partial eMMC guard).
+  - Android: root in the reused `bootanim` domain with 11 capabilities, on a build that is permissive device-wide.
+  - Every handheld distro checked runs its frontend as root too. ArkOS's `ark` user has `NOPASSWD: ALL` sudo.
+- **Linux (recommended: before the alpha; about 10 to 16 days, guess):** almost no shared code changes.
+  - A `nano` user, with device-node groups set by the session (there is no udev).
+  - A group-owned config store and padd socket.
+  - exFAT and vfat mounted with `uid=`/`gid=`.
+  - A one-time chown of `/storage`.
+  - Session verbs `wifi:`, `bt:` and `perf:`.
+  - RLIMIT_RTPRIO, RLIMIT_NICE and RLIMIT_MEMLOCK in place of capabilities, then `setresuid` and `no_new_privs`.
+  - The session checks that the game pid Nano names is its own.
+  - A non-root mode in the headless E2E.
+- **Android (recommended: groundwork now, switch later; about 31 to 51 days, guess):**
+  - A1: remove `nsenter` and drop `SYS_ADMIN`, `SYS_PTRACE` and `SYS_CHROOT` at the next Android-surface batch.
+  - Fold the seam moves (Wi-Fi and Bluetooth to NanoNetBridge, `Power`, `AppControl`, `AppFiles`) into the OA-4 migration.
+  - Then a `thimsy-nanod` helper and a switch to uid `system` with `SYS_NICE` and `BLOCK_SUSPEND`.
+- **(decide)** The plan's §9: the user and uid, games as `nano` or a separate uid, ext4 drives from a PC, Linux timing, OA-5's scripts moving into the session, the Android end state and SELinux enforcing, and an Android interim with `DAC_OVERRIDE`.
+
 ## Scraping
 
 ### ScummVM scraping (scummvm_scraping_plan.md): listing done, scraping phases open
