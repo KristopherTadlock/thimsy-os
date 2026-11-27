@@ -227,7 +227,9 @@ keeps the image's root entry (locked on release images, empty on dev
 images). While SSH runs, D50ssh writes `/run/thimsy/ssh/shadow` (0600, in a
 0700 directory): the image's shadow with root's hash replaced by
 `root.hash`'s, or by the hash of `thimsy` built into D50ssh, and binds it
-over `/etc/shadow`; `stop` unbinds it. A `root.hash` that is a link, or
+over `/etc/shadow`; `stop` unbinds it. If the unbind fails, the file stays
+(with a warning), so the next start or password change still reaches the
+bound `/etc/shadow`. A `root.hash` that is a link, or
 holds anything but a crypt(3) hash (`$id$...` in `[A-Za-z0-9./$=]`), locks
 the password (`*`) with a warning: keys still work. dropbear runs without
 `-s`, so password logins work on every image; release images still run no
@@ -252,7 +254,8 @@ inetd mode under BusyBox `tcpsvd`, which starts `ssh-gate dropbear -i ...`
 for each connection with the peer in `TCPREMOTEADDR`. The gate runs dropbear
 only for 10/8, 172.16/12, 192.168/16, 169.254/16, 127/8, fc00::/7, fe80::/10
 (any `%interface` dropped), `::1`, and IPv4 peers in IPv6 form
-(`::ffff:a.b.c.d`); anything else, or no address, gets the connection closed
+(`::ffff:a.b.c.d`), and takes a bare `a.b.c.d` with no port too; anything
+else, or no address, gets the connection closed
 with nothing sent. With `any_network=1` tcpsvd runs dropbear directly. This
 needs no netfilter in the kernel or `nft`/`iptables` in the image, and fails
 closed. A peer on the same network that reaches the device's global IPv6
@@ -262,7 +265,9 @@ is allowed. tcpsvd serves at most 10 connections at once (`-c 10`).
 D50ssh starts, stops and changes the password one at a time, under
 `/run/thimsy/ssh.lock` (`flock` on fd 9); tcpsvd's pid is in
 `/run/thimsy/ssh/tcpsvd.pid`, trusted only while `/proc/PID/comm` is
-`tcpsvd`. A start while tcpsvd runs does nothing.
+`tcpsvd`. A start while tcpsvd runs does nothing. A tcpsvd that cannot
+listen (port 22 taken) exits at once with an error: start then warns,
+unbinds the shadow and exits 1.
 
 The residual risk OA-3 accepts: while SSH is on with the default password,
 anyone on the same local network can log in as root.
