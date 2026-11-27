@@ -28,9 +28,10 @@ from .patchfile import Patch
 
 C_FAMILY = (".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx", ".inc", ".inl", ".S", ".def")
 INCLUDE = re.compile(rb'^[ \t]*#[ \t]*include[ \t]*([<"])([^>"\r\n]+)[>"]', re.M)
-# A commit message line that marks a reviewed change to the Android surface: the step id, then what
-# and how it was reviewed, e.g. "android-surface: G9a mechanical move of ... (review: color-moved clean)".
-SURFACE_LINE = re.compile(r"^android-surface:[ \t]+(G[0-9][0-9A-Za-z-]*)\b.*\breview\b", re.M | re.I)
+# A commit message line that marks a reviewed change to the Android surface: the step id (a G step,
+# or a wave step W<n>-<area> from wave 7 on), then what and how it was reviewed, e.g.
+# "android-surface: G9a mechanical move of ... (review: color-moved clean)".
+SURFACE_LINE = re.compile(r"^android-surface:[ \t]+([GW][0-9][0-9A-Za-z-]*)\b.*\breview\b", re.M | re.I)
 ANY_SURFACE_LINE = re.compile(r"^android-surface:", re.M | re.I)
 
 
