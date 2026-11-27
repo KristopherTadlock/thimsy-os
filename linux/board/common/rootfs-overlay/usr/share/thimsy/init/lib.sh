@@ -42,6 +42,8 @@ thimsy_tool UDHCPC udhcpc
 thimsy_tool NTPD ntpd
 thimsy_tool DROPBEAR dropbear
 thimsy_tool DROPBEARKEY dropbearkey
+thimsy_tool TCPSVD tcpsvd
+thimsy_tool CRYPTPW cryptpw
 thimsy_tool DBUS_DAEMON dbus-daemon
 thimsy_tool DBUS_UUIDGEN dbus-uuidgen
 thimsy_tool BLUETOOTHD bluetoothd

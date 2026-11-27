@@ -40,8 +40,9 @@ section G. Nothing here has been built yet.
 A tier is a CPU tier's userland, built with its GPU packs; a hardware pack is a
 family's kernel, U-Boot, modules and firmware, built against a tier's SDK
 (decision D25). Only release targets may be published (decision I37): no adbd,
-no serial getty, SSH off until the user turns it on and then key-only, the root
-password locked. `tools/defconfig.py --check` refuses a publishable target that
+no serial getty, the root password locked, and SSH off until the user turns it on
+(then root's password is thimsy or the user's, local network only by default;
+decision OA-3). `tools/defconfig.py --check` refuses a publishable target that
 includes `dev.fragment` or breaks that policy, and `build.sh --publish` refuses a
 target not marked `"publish": true`.
 

@@ -3,10 +3,12 @@
 # serial console (Buildroot's BR2_TARGET_GENERIC_GETTY, which release.fragment
 # turns off; post-build.d/30-permissions.sh writes its inittab line), root
 # login, and debugging tools. SSH at boot follows from the build type
-# (ro.thimsy.build.type=dev, which root login makes): D50ssh decides.
+# (ro.thimsy.build.type=dev, which root login makes): D50ssh decides, and
+# while SSH runs root's password is "thimsy" (or the user's), as on release
+# images (decision OA-3).
 BR2_THIMSY_FLAVOUR_DEV=y
-# override: dev images allow root login, with an empty password; they stay with
-# their developer
+# override: dev images allow root login, with an empty password on the serial
+# console until D50ssh starts; they stay with their developer
 BR2_TARGET_ENABLE_ROOT_LOGIN=y
 BR2_TARGET_GENERIC_ROOT_PASSWD=""
 # override: the dev overlay goes on top of the common one: for now only its

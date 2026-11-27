@@ -4,7 +4,8 @@
 
     check_rcs.py [--linux DIR] [--sh "CMD ..."] [--no-git]
 
-Checks, for every script under linux/board/*/rootfs-overlay and the
+Checks, for every script under linux/board/*/rootfs-overlay (the rc, S and
+D scripts, the library, the family hooks and the SSH helpers) and the
 post-build runners:
 
   * it parses: ``sh -n`` with every POSIX shell found (BusyBox sh, dash,
@@ -12,7 +13,8 @@ post-build runners:
     not a pass;
   * no bashisms, from a pattern list (BusyBox ash runs them on the device);
   * no CR characters; ``#!/bin/sh`` on every executable script; every rc and
-    S/D script sources the init library (the test seams live there);
+    S/D script and every helper sources the init library (the test seams
+    live there);
   * scripts that are run, not sourced, are executable in the git index;
   * the S and D scripts are exactly those of E.5, in that order, and
     inittab points at rcS and rcK;
@@ -41,6 +43,8 @@ INITD = OVERLAY + "/etc/init.d"
 LIB = OVERLAY + "/usr/share/thimsy/init/lib.sh"
 CONF = OVERLAY + "/etc/thimsy/init.conf"
 INITTAB = OVERLAY + "/etc/inittab"
+# Programs the scripts run, in the overlay (D50ssh's).
+HELPERS = [OVERLAY + "/usr/libexec/thimsy/ssh-gate", OVERLAY + "/usr/sbin/thimsy-ssh-passwd"]
 
 # E.5's order, refined in docs/init.md (D05family added).
 S_ORDER = ["S00base", "S01props", "S02padd", "S03modules"]
@@ -52,7 +56,7 @@ RC_SCRIPTS = ["rcS", "rcD", "rcK"]
 # rcS and the first frame but /storage, the props and the pad).
 FORBIDDEN_SYNC = [
     "wpa_supplicant", "udhcpc", "dhcpcd", "dhclient", "ntpd", "ntpdate",
-    "chronyd", "hwclock", "dropbear", "sshd", "dbus-daemon", "dbus-uuidgen",
+    "chronyd", "hwclock", "dropbear", "sshd", "tcpsvd", "dbus-daemon", "dbus-uuidgen",
     "bluetoothd", "bluetoothctl",
     "alsactl", "sleep", "usleep", "mdev", "udevadm", "udevd", "fsck",
     "e2fsck", "mkfs", "sfdisk", "sgdisk", "gdisk", "parted", "partx",
@@ -60,7 +64,7 @@ FORBIDDEN_SYNC = [
 ]
 # The init library's tool variables for those programs.
 FORBIDDEN_SYNC_VARS = [
-    "WPA", "UDHCPC", "NTPD", "DROPBEAR", "DROPBEARKEY", "ALSACTL",
+    "WPA", "UDHCPC", "NTPD", "DROPBEAR", "DROPBEARKEY", "TCPSVD", "ALSACTL",
     "FSCK_EXT4", "SFDISK", "MKFS_EXFAT", "SYNC", "DBUS_DAEMON", "DBUS_UUIDGEN",
     "BLUETOOTHD",
 ]
@@ -121,10 +125,10 @@ def family_hooks(linux: Path) -> List[Path]:
 
 
 def scripts(linux: Path) -> Dict[str, List[Path]]:
-    """The scripts by role: sync, deferred, shutdown, sourced, build."""
+    """The scripts by role: sync, deferred, shutdown, helper, sourced, build."""
     initd = linux / INITD
     roles: Dict[str, List[Path]] = {
-        "sync": [], "deferred": [], "shutdown": [], "sourced": [], "build": []}
+        "sync": [], "deferred": [], "shutdown": [], "helper": [], "sourced": [], "build": []}
     if (initd / "rcS").exists():
         roles["sync"].append(initd / "rcS")
     roles["sync"] += sorted(p for p in initd.glob("S*") if p.is_file())
@@ -133,6 +137,7 @@ def scripts(linux: Path) -> Dict[str, List[Path]]:
     roles["deferred"] += sorted(p for p in (initd / "deferred").glob("D*") if p.is_file())
     if (initd / "rcK").exists():
         roles["shutdown"].append(initd / "rcK")
+    roles["helper"] += [linux / h for h in HELPERS if (linux / h).exists()]
     for rel in (LIB, CONF):
         if (linux / rel).exists():
             roles["sourced"].append(linux / rel)
@@ -152,7 +157,7 @@ def scripts(linux: Path) -> Dict[str, List[Path]]:
 def executables(linux: Path, roles: Dict[str, List[Path]]) -> List[Path]:
     """Scripts that are run, not only sourced."""
     out = []
-    for role in ("sync", "deferred", "shutdown", "build"):
+    for role in ("sync", "deferred", "shutdown", "helper", "build"):
         out += roles[role]
     out += family_hooks(linux)
     return out
@@ -299,7 +304,7 @@ def check_text(linux: Path, path: Path, rep: Report, *, sync: bool, executable: 
 
 def check_sources_lib(linux: Path, rep: Report, roles: Dict[str, List[Path]]) -> None:
     want = "/usr/share/thimsy/init/lib.sh"
-    for role in ("sync", "deferred", "shutdown"):
+    for role in ("sync", "deferred", "shutdown", "helper"):
         for p in roles[role]:
             if want not in p.read_text(encoding="utf-8", errors="replace"):
                 rep.problem(f"{rel(linux, p)}: does not source {want}")

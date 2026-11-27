@@ -3,7 +3,8 @@
 # read-only root, and the serial getty of dev images.
 # SPDX-License-Identifier: MIT
 #
-# - the init scripts executable (a checkout that lost its modes still works);
+# - the init scripts and D50ssh's helpers (ssh-gate, thimsy-ssh-passwd)
+#   executable (a checkout that lost its modes still works);
 # - mount points: /storage (the data partition, S00base);
 # - /etc/localtime -> /storage/.config/thimsy/localtime (Nano rewrites the
 #   target; plan 5.2, "Time");
@@ -11,7 +12,8 @@
 #   ("/root d 700") make: on dev builds, and release builds with SSH turned
 #   on, S00base bind-mounts /storage/.config/thimsy/home/root over it at boot
 #   (0700, owned by root), so SSH keys and shell history survive; release
-#   builds with SSH off keep it empty and read-only. A link here would
+#   builds with SSH off keep it empty and read-only (D50ssh binds it when
+#   SSH is turned on later, through "S00base home"). A link here would
 #   point at a path that does not exist at build time, which makedevs (run on
 #   the device table under fakeroot) can't chmod and chown;
 # - /dev/block/by-name is never part of the root (IMPLEMENTATION B.5);
@@ -32,7 +34,8 @@ cfg() {
 # Executable scripts.
 for f in "$target"/etc/init.d/rcS "$target"/etc/init.d/rcK "$target"/etc/init.d/rcD \
 	"$target"/etc/init.d/S[0-9][0-9]* "$target"/etc/init.d/deferred/D[0-9][0-9]* \
-	"$target"/usr/share/thimsy/family/*/hook; do
+	"$target"/usr/share/thimsy/family/*/hook \
+	"$target"/usr/libexec/thimsy/ssh-gate "$target"/usr/sbin/thimsy-ssh-passwd; do
 	[ -f "$f" ] && chmod 0755 "$f"
 done
 for f in "$target"/usr/share/thimsy/init/lib.sh "$target"/etc/thimsy/init.conf; do

@@ -1,53 +1,296 @@
 #!/bin/sh
-# D50ssh: dropbear.
+# D50ssh: SSH, dropbear run per connection by BusyBox tcpsvd.
 # SPDX-License-Identifier: MIT
 #
-# Dev images (ro.thimsy.build.type=dev) start it by default. Release images
-# start it only when the user turned SSH on (persist.thimsy.ssh.enabled=1),
-# and then key-only: no password logins (decision I37). The host key lives
-# on the data partition, so it survives updates.
+# The switch is persist.thimsy.ssh.enabled: on by default in dev images
+# (ro.thimsy.build.type=dev), off in release images until the user turns it
+# on (decision OA-3). Root logs in with a password or with a key in
+# /root/.ssh/authorized_keys (S00base binds root's home from the data
+# partition). The password is "thimsy" until the user sets another:
+# thimsy-ssh-passwd (and later Nano) writes its crypt(3) hash, never the
+# text, to /storage/.config/thimsy/ssh/root.hash (0600). While SSH runs,
+# /etc/shadow is a copy of the root's with that hash for root, bound over
+# it from /run; while it is off, root's password is the root's (locked in
+# release images). The host key and the hash live on the data partition, so
+# they survive updates.
+#
+# Local network only, unless persist.thimsy.ssh.any_network=1: dropbear has
+# no address list, so tcpsvd starts /usr/libexec/thimsy/ssh-gate for each
+# connection, and the gate starts "dropbear -i" only for a peer in a private,
+# link-local or loopback range (TCPREMOTEADDR). This needs no netfilter in
+# the kernel and fails closed.
+#
+# Actions: start, stop, and "password" (thimsy-ssh-passwd: the shadow again,
+# with the hash now on the card, if SSH runs). One at a time, under
+# /run/thimsy/ssh.lock (flock on fd 9, which tcpsvd is started without). A
+# pidfile is trusted only while its process runs and is tcpsvd
+# (/proc/PID/comm). Stopping ends the listener; sessions already open stay.
+# A tcpsvd that cannot listen (port 22 taken) exits at once: start then
+# undoes the shadow and fails.
 . "${THIMSY_ROOT:-}/usr/share/thimsy/init/lib.sh"
 
 TAG=D50ssh
-KEY=$THIMSY_CONFIG/ssh/dropbear_ed25519_host_key
-PIDFILE=$R/run/dropbear.pid
+SSH_DIR=$THIMSY_CONFIG/ssh
+KEY=$SSH_DIR/dropbear_ed25519_host_key
+HASH_FILE=$SSH_DIR/root.hash
+RUN_DIR=$R/run/thimsy/ssh
+SHADOW=$RUN_DIR/shadow
+PIDFILE=$RUN_DIR/tcpsvd.pid
+LOCK=$R/run/thimsy/ssh.lock
+GATE=$R/usr/libexec/thimsy/ssh-gate
+TCPSVD_NAME=${TCPSVD##*/}
+# crypt(3) SHA-512 of "thimsy" (salt "ThimsyDefault"; linux/tests/test_rcs.py
+# checks it). The password is public; the hash keeps the text off the disk.
+DEFAULT_HASH='$6$ThimsyDefault$HvvFMeHJl6X.ngQJ2.fYnAJiy/MIecv8PGnn/4p.5aAHxhy.QBMOSlNQaDhaRzchIaXO1YtP4D5fKhrMHDNcN.'
+
+# pid_is PID NAME: true when PID runs and is NAME (its /proc/PID/comm).
+pid_is() {
+	kill -0 "$1" 2>/dev/null || return 1
+	[ -r "$R/proc/$1/comm" ] || return 1
+	comm=
+	read -r comm < "$R/proc/$1/comm" || :
+	[ "$comm" = "$2" ]
+}
+
+# pid_of FILE NAME: true when FILE holds the pid of a running NAME, in
+# PID_OUT. A pidfile that names no process, or another one, is removed.
+pid_of() {
+	PID_OUT=
+	[ -r "$1" ] || return 1
+	pid=
+	read -r pid < "$1" || :
+	case $pid in
+	'' | *[!0-9]*) ;;
+	*)
+		if pid_is "$pid" "$2"; then
+			PID_OUT=$pid
+			return 0
+		fi
+		;;
+	esac
+	rm -f "$1"
+	return 1
+}
+
+# wait_exec PID NAME: up to 1 s for a background job just started to become
+# NAME (until it execs, its comm is this shell's), so its pidfile is trusted.
+wait_exec() {
+	i=0
+	while kill -0 "$1" 2>/dev/null && ! pid_is "$1" "$2" && [ "$i" -lt 10 ]; do
+		sleep 0.1 2>/dev/null || sleep 1
+		i=$((i + 1))
+	done
+}
+
+# stop_pidfile FILE NAME: TERM the NAME FILE names, wait up to 2 s for it,
+# then KILL it if that same process is still there.
+stop_pidfile() {
+	pid_of "$1" "$2" || return 0
+	rm -f "$1"
+	pid=$PID_OUT
+	kill -TERM "$pid" 2>/dev/null || return 0
+	i=0
+	while pid_is "$pid" "$2" && [ "$i" -lt 20 ]; do
+		sleep 0.1 2>/dev/null || sleep 1
+		i=$((i + 1))
+	done
+	if pid_is "$pid" "$2"; then
+		kill -KILL "$pid" 2>/dev/null || :
+	fi
+}
+
+# take_lock: hold $LOCK (fd 9) until this script exits.
+take_lock() {
+	mkdir -p "${LOCK%/*}"
+	exec 9>> "$LOCK"
+	"$FLOCK" 9 || thimsy_warn $TAG "flock $LOCK failed ($?); going on without it"
+}
+
+# is_mounted PATH: true when PATH is a mount point (/proc/mounts).
+is_mounted() {
+	[ -r "$R/proc/mounts" ] || return 1
+	while read -r _dev _mnt _rest; do
+		[ "$_mnt" = "$1" ] && return 0
+	done < "$R/proc/mounts"
+	return 1
+}
+
+# valid_hash TEXT: true for a crypt(3) hash ("$id$..."), with nothing that
+# could end a shadow field or line.
+valid_hash() {
+	case $1 in
+	\$[0-9a-z]*\$?*) ;;
+	*) return 1 ;;
+	esac
+	case $1 in
+	*[!A-Za-z0-9./\$=]*) return 1 ;;
+	esac
+	return 0
+}
+
+# root_hash: HASH_OUT is root's hash: the user's, else the default. A hash
+# file that is a link or is not a hash locks the password (keys still work).
+root_hash() {
+	HASH_OUT=$DEFAULT_HASH
+	if [ -L "$HASH_FILE" ]; then
+		thimsy_warn $TAG "ssh/root.hash is a link: password logins are off"
+		HASH_OUT='*'
+		return 0
+	fi
+	[ -e "$HASH_FILE" ] || return 0
+	chmod 0600 "$HASH_FILE" 2>/dev/null || :
+	h=
+	IFS= read -r h < "$HASH_FILE" || :
+	if valid_hash "$h"; then
+		HASH_OUT=$h
+		return 0
+	fi
+	thimsy_warn $TAG "ssh/root.hash is not a password hash: password logins are off"
+	HASH_OUT='*'
+}
+
+# write_shadow: $SHADOW is /etc/shadow with root's hash replaced (a root
+# line is added if there is none). Written in place: it may be the file bound
+# over /etc/shadow, which is also what is read here.
+write_shadow() {
+	root_hash
+	out=
+	found=0
+	if [ -r "$R/etc/shadow" ]; then
+		while IFS= read -r line || [ -n "$line" ]; do
+			case $line in
+			root:*)
+				rest=${line#root:}
+				case $rest in
+				*:*) rest=${rest#*:} ;;
+				*) rest= ;;
+				esac
+				line="root:$HASH_OUT:$rest"
+				found=1
+				;;
+			esac
+			out="$out$line
+"
+		done < "$R/etc/shadow"
+	fi
+	[ "$found" = 1 ] || out="${out}root:$HASH_OUT::0:99999:7:::
+"
+	mkdir -p "$RUN_DIR" || return 1
+	chmod 0700 "$RUN_DIR"
+	(
+		umask 077
+		printf '%s' "$out" > "$SHADOW"
+	) || return 1
+	chmod 0600 "$SHADOW"
+}
+
+# apply_shadow: the shadow written and bound over /etc/shadow.
+apply_shadow() {
+	if ! write_shadow; then
+		thimsy_warn $TAG "could not write $SHADOW: root's password is the image's"
+		return 1
+	fi
+	is_mounted /etc/shadow && return 0
+	"$MOUNT" --bind "$SHADOW" "$R/etc/shadow" 9>&- || {
+		thimsy_warn $TAG "could not bind $SHADOW on /etc/shadow: root's password is the image's"
+		return 1
+	}
+}
+
+# unbind_shadow: /etc/shadow is the image's again and $SHADOW is gone. If
+# the unbind fails, $SHADOW stays: it is the file still bound, which a later
+# start or password action rewrites in place.
+unbind_shadow() {
+	if is_mounted /etc/shadow; then
+		"$UMOUNT" "$R/etc/shadow" 9>&- || {
+			thimsy_warn $TAG "could not unbind /etc/shadow"
+			return 1
+		}
+	fi
+	rm -f "$SHADOW"
+}
+
+# listen_addr: ADDR_OUT is "::" (IPv6 and IPv4) when the kernel has IPv6,
+# else 0.0.0.0.
+listen_addr() {
+	ADDR_OUT=0.0.0.0
+	[ -e "$R/proc/net/if_inet6" ] && ADDR_OUT=::
+}
 
 case ${1:-start} in
 start)
 	command -v "$DROPBEAR" > /dev/null 2>&1 || exit 0
 	thimsy_build_prop ro.thimsy.build.type release
 	type=$BUILD_PROP_OUT
-	if [ "$type" = dev ]; then
-		thimsy_persist persist.thimsy.ssh.enabled 1
-	else
-		thimsy_persist persist.thimsy.ssh.enabled 0
-	fi
+	default=0
+	[ "$type" = dev ] && default=1
+	thimsy_persist persist.thimsy.ssh.enabled $default
 	[ "$PERSIST_OUT" = 1 ] || exit 0
+	take_lock
+	# A stop may have run (and the switch gone off) while this waited.
+	thimsy_persist persist.thimsy.ssh.enabled $default
+	[ "$PERSIST_OUT" = 1 ] || exit 0
+	pid_of "$PIDFILE" "$TCPSVD_NAME" && exit 0
+	if ! command -v "$TCPSVD" > /dev/null 2>&1; then
+		thimsy_warn $TAG "SSH is on, but tcpsvd is not on this image"
+		exit 1
+	fi
 	if [ ! -s "$KEY" ]; then
-		mkdir -p "${KEY%/*}"
-		"$DROPBEARKEY" -t ed25519 -f "$KEY" > /dev/null 2>&1 || {
+		mkdir -p "$SSH_DIR"
+		chmod 0700 "$SSH_DIR"
+		"$DROPBEARKEY" -t ed25519 -f "$KEY" > /dev/null 2>&1 9>&- || {
 			thimsy_warn $TAG "no host key"
 			exit 1
 		}
 	fi
-	opts=
-	[ "$type" = dev ] || opts=-s
-	# shellcheck disable=SC2086
-	"$DROPBEAR" -r "$KEY" -P "$PIDFILE" $opts || thimsy_warn $TAG "dropbear failed"
-	thimsy_log $TAG "dropbear started ($type${opts:+, keys only})"
+	apply_shadow || :
+	# Root's home (and its authorized_keys), when SSH was off at boot.
+	"$R/etc/init.d/S00base" home 9>&- || thimsy_warn $TAG "root's home is not bound"
+	thimsy_persist persist.thimsy.ssh.any_network 0
+	reach=lan
+	[ "$PERSIST_OUT" = 1 ] && reach=any
+	listen_addr
+	mkdir -p "$RUN_DIR"
+	if [ "$reach" = any ]; then
+		"$TCPSVD" -c 10 "$ADDR_OUT" 22 "$DROPBEAR" -i -r "$KEY" > /dev/null 2>&1 9>&- &
+	else
+		"$TCPSVD" -c 10 "$ADDR_OUT" 22 "$GATE" "$DROPBEAR" -i -r "$KEY" > /dev/null 2>&1 9>&- &
+	fi
+	svd=$!
+	printf '%s\n' "$svd" > "$PIDFILE"
+	wait_exec "$svd" "$TCPSVD_NAME"
+	# tcpsvd binds port 22 after it starts: a moment for a failed bind to show.
+	if pid_is "$svd" "$TCPSVD_NAME"; then
+		sleep 0.2 2>/dev/null || sleep 1
+	fi
+	if ! kill -0 "$svd" 2>/dev/null; then
+		wait "$svd"
+		rc=$?
+		if [ "$rc" != 0 ]; then
+			thimsy_warn $TAG "tcpsvd exited ($rc): SSH is off (is port 22 taken?)"
+			rm -f "$PIDFILE"
+			unbind_shadow || :
+			exit 1
+		fi
+	fi
+	thimsy_log $TAG "SSH on ($type, $reach network)"
 	;;
 stop)
-	[ -r "$PIDFILE" ] || exit 0
-	pid=
-	read -r pid < "$PIDFILE" || :
-	case $pid in
-	'' | *[!0-9]*) ;;
-	*) kill "$pid" 2>/dev/null ;;
-	esac
-	rm -f "$PIDFILE"
+	take_lock
+	stop_pidfile "$PIDFILE" "$TCPSVD_NAME"
+	unbind_shadow || :
+	;;
+password)
+	take_lock
+	is_mounted /etc/shadow || exit 0
+	write_shadow || {
+		thimsy_warn $TAG "could not write $SHADOW"
+		exit 1
+	}
+	thimsy_log $TAG "root's SSH password changed"
 	;;
 *)
-	echo "usage: $0 start|stop" >&2
+	echo "usage: $0 start|stop|password" >&2
 	exit 2
 	;;
 esac
