@@ -22,6 +22,7 @@
 
 #include <dirent.h>
 #include <stdio.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
@@ -753,6 +754,144 @@ bool NanoMenu::applyGameEmulator(const std::string& romPath, XmbSystem& s) {
     return true;
 }
 
+// ---- OA-38: a pick this platform cannot run starts with the image's default instead ----
+
+// The device's store of the image's default emulators: {"version": 1, "systems": {<key>: {"core":
+// "<core>_libretro_android.so"} or {"package": "...", "intent": "..."}}}, keyed by the system's ROM
+// folder (the built-in systems' id) or its id. Written once, on the first run (seedEmuDefaults).
+static const char* kEmuDefaultsPath = "/data/system/nano_emu_defaults.json";
+
+void NanoMenu::loadEmuDefaults() {
+    mEmuDefaultsLoaded = true;
+    mEmuDefaults.clear();
+    const std::string text = readWholeFile(kEmuDefaultsPath, 1024 * 1024);
+    njson::Value root;
+    if (text.empty() || !njson::parse(text, &root) || !root.isObject()) return;
+    const njson::Value* systems = root.find("systems");
+    if (!systems || !systems->isObject()) return;
+    for (const auto& kv : systems->obj) {
+        if (kv.first.empty() || !kv.second.isObject()) continue;
+        EmuDefault d{kv.second.getString("core"), kv.second.getString("package"), kv.second.getString("intent")};
+        if (d.coreSo.empty() == d.package.empty()) continue;   // a core or an app, not both
+        mEmuDefaults[kv.first] = std::move(d);
+    }
+}
+
+bool NanoMenu::emuDefaultsStored() {
+    struct stat st;
+    return stat(kEmuDefaultsPath, &st) == 0 || errno != ENOENT;
+}
+
+bool NanoMenu::emuDefaultsSave(const std::map<std::string, EmuDefault>& defaults) {
+    njson::Value systems = njson::Value::makeObject();
+    for (const auto& kv : defaults) {
+        njson::Value o = njson::Value::makeObject();
+        if (!kv.second.coreSo.empty()) {
+            o.set("core") = njson::Value::makeString(kv.second.coreSo);
+        } else {
+            o.set("package") = njson::Value::makeString(kv.second.package);
+            o.set("intent") = njson::Value::makeString(kv.second.intent);
+        }
+        systems.set(kv.first) = std::move(o);
+    }
+    njson::Value root = njson::Value::makeObject();
+    root.set("version") = njson::Value::makeNumber(1);
+    root.set("systems") = std::move(systems);
+    const std::string text = njson::serialize(root, true);
+    const std::string tmp = std::string(kEmuDefaultsPath) + ".tmp." + std::to_string(getpid());
+    const int fd = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+    if (fd < 0) { ALOGW("emucatalog: cannot write %s", tmp.c_str()); return false; }
+    const bool ok = write(fd, text.data(), text.size()) == (ssize_t)text.size() && fsync(fd) == 0;
+    close(fd);
+    if (!ok || rename(tmp.c_str(), kEmuDefaultsPath) != 0) { unlink(tmp.c_str()); return false; }
+    mEmuDefaultsLoaded = false;   // read again at the next fallback
+    return true;
+}
+
+bool NanoMenu::emuCanRun(const XmbSystem& s) {
+    return s.isStandalone() ? packageInstalled(s.launchPkg) : coreSoExists(s.coreSo);
+}
+
+bool NanoMenu::emuApplyDefault(XmbSystem& s) {
+    if (!mEmuDefaultsLoaded) loadEmuDefaults();
+    auto it = mEmuDefaults.find(s.romDir);
+    if (it == mEmuDefaults.end()) it = mEmuDefaults.find(s.id);
+    if (it == mEmuDefaults.end()) return false;
+    XmbSystem d;   // the default's launch fields, as applyEmuEntryToSystem sets them
+    if (!it->second.coreSo.empty()) {
+        d.launchType = XLT_LIBRETRO_CORE;
+        d.coreSo = it->second.coreSo;
+    } else {
+        d.launchType = XLT_CUSTOM_PACKAGE;
+        d.packageName = d.launchPkg = it->second.package;
+        d.launchIntent = it->second.intent;
+    }
+    if (!emuCanRun(d)) return false;
+    ALOGI("emucatalog: %s's emulator (%s) cannot run here; this launch uses the default %s", it->first.c_str(),
+          s.isStandalone() ? s.launchPkg.c_str() : s.coreSo.c_str(),
+          d.isStandalone() ? d.launchPkg.c_str() : d.coreSo.c_str());
+    s.launchType = d.launchType;
+    s.coreSo = d.coreSo;
+    s.packageName = d.packageName;
+    s.launchPkg = d.launchPkg;
+    s.launchIntent = d.launchIntent;
+    s.launchArgs.clear();   // the system's extra arguments belong to its own emulator
+    return true;
+}
+
+// OA-38 (W8-EMU-20): a system the emulator catalog made has no image default, so a launch whose
+// emulator cannot run here starts the first of its platform's catalog emulators that can, in the
+// emulator picker's order, as the systems heal picked one before store mode shared the systems.
+// Apps count only when the package list names them (none when it cannot be read).
+bool NanoMenu::emuApplyCatalogFirst(XmbSystem& s, const XmbSystem& sys) {
+    if (sys.builtin) return false;
+    loadEmuCatalog();
+    const std::string uid = emuPlatformFor(sys);
+    if (uid.empty()) return false;
+    std::vector<int> catIdx;
+    const std::vector<nanosys::Player> players = emuPlatformPlayers(uid, &catIdx);
+    const std::set<std::string> installed = installedPackages();
+    const int pi = nanosys::firstPlayerThatRuns(
+        players, [this](const std::string& so) { return coreSoExists(so); },
+        [&installed](const std::string& pkg) { return installed.count(pkg) > 0; });
+    if (pi < 0) return false;
+    XmbSystem d;   // the catalog emulator's launch fields
+    applyEmuEntryToSystem(d, mEmuCatalog[catIdx[pi]]);
+    ALOGI("emucatalog: %s's emulator (%s) cannot run here and it has no default that can; this launch uses %s",
+          sys.id.c_str(), s.isStandalone() ? s.launchPkg.c_str() : s.coreSo.c_str(),
+          mEmuCatalog[catIdx[pi]].player.c_str());
+    s.launchType = d.launchType;
+    s.coreSo = d.coreSo;
+    s.packageName = d.packageName;
+    s.launchPkg = d.launchPkg;
+    s.launchIntent = d.launchIntent;
+    s.launchArgs.clear();   // the system's extra arguments belong to its own emulator
+    return true;
+}
+
+// What a launch whose emulator cannot run here (the caller has seen emuCanRun(s) false) starts
+// instead, for that launch only (nothing is saved): the image's default for its system; else, for
+// a game whose own pick s carries (gameEmu), its system's own emulator, as such a game started
+// before its pick was kept; else, for a system the emulator catalog made, its catalog's first
+// emulator that can run. sys is the system the launch belongs to (nullptr: none known).
+NanoMenu::EmuFallback NanoMenu::emuLaunchFallback(XmbSystem& s, const XmbSystem* sys, bool gameEmu) {
+    if (emuApplyDefault(s)) return EmuFallback::ImageDefault;
+    if (gameEmu && sys && emuCanRun(*sys)) {
+        ALOGI("emucatalog: the game's emulator (%s) cannot run here and %s has no default that can; this launch "
+              "uses the system's own %s", s.isStandalone() ? s.launchPkg.c_str() : s.coreSo.c_str(), sys->id.c_str(),
+              sys->isStandalone() ? sys->launchPkg.c_str() : sys->coreSo.c_str());
+        s.launchType = sys->launchType;
+        s.coreSo = sys->coreSo;
+        s.packageName = sys->packageName;
+        s.launchPkg = sys->launchPkg;
+        s.launchIntent = sys->launchIntent;
+        s.launchArgs = sys->launchArgs;   // its own emulator's extra arguments
+        return EmuFallback::SystemOwn;
+    }
+    if (sys && emuApplyCatalogFirst(s, *sys)) return EmuFallback::CatalogFirst;
+    return EmuFallback::None;
+}
+
 // ---- Emulators as ES-DE names them (the ES-DE folder as Nano's store) ----
 
 // The label of ES-DE's command for esdeSys that starts launch's emulator; "" when ES-DE has none.
@@ -763,9 +902,10 @@ std::string NanoMenu::esdeEmulatorLabel(const std::string& esdeSys, const XmbSys
 }
 
 // The emulator of the system's platform that ES-DE's command `label` (for esdeSys) starts, when it
-// can run here; -1 when there is none.
+// can run here (or, with runnableOnly false, the first such emulator Nano's catalog has); -1 when
+// there is none.
 int NanoMenu::esdeCatalogForLabel(int sysIdx, const std::string& esdeSys, const std::string& label,
-                                  const std::set<std::string>& installed) {
+                                  const std::set<std::string>& installed, bool runnableOnly) {
     if (sysIdx < 0 || sysIdx >= (int)mXmbSystems.size()) return -1;
     const std::vector<std::string> keys = esdesys::esdeKeysForLabel(esdeSys, label);
     if (keys.empty()) return -1;
@@ -776,7 +916,8 @@ int NanoMenu::esdeCatalogForLabel(int sysIdx, const std::string& esdeSys, const 
         for (size_t i = 0; i < players.size(); i++) {
             const nanosys::Player& p = players[i];
             if (esdesys::esdeEmulatorKey(p.libretro, p.coreSo, p.package) != k) continue;
-            if (p.libretro ? coreSoExists(p.coreSo) : installed.count(p.package) > 0) return idx[i];
+            if (!runnableOnly || (p.libretro ? coreSoExists(p.coreSo) : installed.count(p.package) > 0))
+                return idx[i];
         }
     return -1;
 }

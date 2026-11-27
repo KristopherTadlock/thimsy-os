@@ -1817,11 +1817,13 @@ void NanoMenu::overlayLaunchGame() {
     if (romPath.empty()) return;
     if (launchSelectedAppShortcut()) return;
     // The game's own emulator (Game Options > Emulator), over its system's or the recorded one.
+    bool gameEmu = false;
     { XmbSystem g;
       if (applyGameEmulator(romPath, g)) {
           coreSo = g.coreSo; launchPkg = g.launchPkg; launchIntent = g.launchIntent;
           launchArgs = g.launchArgs;
           standalone = g.isStandalone();
+          gameEmu = true;
       } }
     // Same check as the home launcher: a game whose file is gone (deleted, or its card is not
     // mounted) must say so instead of replacing the running app with an emulator that then dies.
@@ -1832,6 +1834,20 @@ void NanoMenu::overlayLaunchGame() {
         if (fromRecent && romParentDirReachable(romPath)) recentRemoveAt(mXmbGameIndex);
         return;
     }
+
+    // OA-38: an emulator this platform cannot run starts with its default for this launch only.
+    { XmbSystem g;
+      const int si = fromRecent ? recentSystemIndex(mXmbRecent[mXmbGameIndex]) : mXmbSystemIndex;
+      const bool haveSys = si >= 0 && si < (int)mXmbSystems.size();
+      g.id = haveSys ? mXmbSystems[si].id : romDir;
+      g.romDir = romDir;
+      g.coreSo = coreSo; g.launchIntent = launchIntent;
+      if (standalone) g.launchPkg = launchPkg;
+      if (!emuCanRun(g) && emuLaunchFallback(g, haveSys ? &mXmbSystems[si] : nullptr, gameEmu) != EmuFallback::None) {
+          coreSo = g.coreSo; launchPkg = g.launchPkg; launchIntent = g.launchIntent;
+          launchArgs = g.launchArgs;
+          standalone = g.isStandalone();
+      } }
 
     // Same emulator guard as the home launcher: if the core .so or standalone app is not on the
     // device, warn instead of replacing the running app with an emulator that immediately dies.

@@ -46,8 +46,13 @@
 //    "caps": {"FactoryReset": false},                    capabilities answered (FakeCapabilities.h);
 //                                                        every one not named is true
 //    "settings": {"unsupported": ["global", "secure:location_mode"],
-//                 "values": {"system:screen_off_timeout": "300000"}}}
+//                 "values": {"system:screen_off_timeout": "300000"}},
 //                                                        the settings stores (FakeSettings.h)
+//    "emulators": {"cores": ["snes9x_libretro_android.so"], "apps": ["org.ppsspp.ppsspp"],
+//                  "defaults": [{"system": "snes", "core": "snes9x_libretro_android.so",
+//                                "package": "", "intent": ""}]}}
+//                                                        which emulators run, the image's defaults
+//                                                        (FakeEmulators.h, W8-EMU)
 #pragma once
 
 #include <string>
@@ -55,6 +60,7 @@
 #include <vector>
 
 #include "FakeCapabilities.h"
+#include "FakeEmulators.h"
 #include "FakeEvdev.h"
 #include "FakeNetwork.h"
 #include "FakeSettings.h"
@@ -81,6 +87,7 @@ struct HostConfig {
     FakeNetConfig network;
     CapAnswers caps;              // W6-caps (FakeCapabilities.h)
     FakeSettingsConfig settings;  // W6-caps (FakeSettings.h)
+    FakeEmulatorsConfig emulators;   // W8-EMU
 };
 
 // Parses `text` over the defaults in *out. false, with *err naming the member, on a syntax error,

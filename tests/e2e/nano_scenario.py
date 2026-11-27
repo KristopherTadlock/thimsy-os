@@ -56,7 +56,8 @@ SANITIZER_MARKERS = ("ERROR: AddressSanitizer", "ERROR: LeakSanitizer", "WARNING
 STEPS = ("boot", "expect", "expect_prop", "expect_persist", "expect_file", "expect_launch", "expect_no_shell",
          "press", "frames", "barrier", "capture", "wait_ms", "set_prop", "child_exit", "quit")
 MODIFIERS = ("within_ms", "hold_ms", "device", "note")
-BOOT_FIELDS = ("props", "devices", "display", "shell", "barrier", "files", "record_props", "volumes")
+BOOT_FIELDS = ("props", "devices", "display", "shell", "barrier", "files", "record_props", "volumes",
+               "emulators")
 EXPECT_FIELDS = ("present_count_at_least", "prop", "event", "exited")
 
 
@@ -169,6 +170,11 @@ def _validate(kind: str, step: Dict[str, Any], where: str, first: bool) -> None:
         if not isinstance(vols, list) or not all(isinstance(x, dict) and isinstance(x.get("id"), str) and x["id"]
                                                  for x in vols):
             raise ScenarioError("%s: boot.volumes lists drives, each with an \"id\" (FakeVolumes.h)" % where)
+        emus = v.get("emulators", {})
+        if not isinstance(emus, dict) or set(emus) - {"cores", "apps", "defaults"} or \
+                not all(isinstance(emus.get(k, []), list) for k in ("cores", "apps", "defaults")):
+            raise ScenarioError("%s: boot.emulators takes the lists cores, apps and defaults (FakeEmulators.h)"
+                                % where)
     elif kind == "expect":
         if not isinstance(v, dict) or not v or set(v) - set(EXPECT_FIELDS):
             raise ScenarioError("%s: expect takes %s" % (where, ", ".join(EXPECT_FIELDS)))
@@ -250,6 +256,8 @@ def host_config(boot: Dict[str, Any]) -> Dict[str, Any]:
         "record_props": boot.get("record_props", [""]),
         "volumes": boot.get("volumes", []),
     }
+    if "emulators" in boot:   # absent: no core and no app runs (FakeEmulators.h)
+        cfg["emulators"] = boot["emulators"]
     return cfg
 
 

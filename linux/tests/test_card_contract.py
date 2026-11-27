@@ -11,10 +11,12 @@ linux/tests/fixtures/card/ holds two copies of one card:
                    (Cube mount-order paths, Android-only labels);
   linux-written/   the same card after a Linux visit that follows the
                    contract (favourite, play, collection add, emulator
-                   choices, a PPSSPP setting, settings.ini, a playlist).
+                   picks, a PPSSPP setting, settings.ini, a playlist).
 The vector tests check the contract's rules between the two: Android's
-files Linux must not rewrite stay byte-identical, labels and unknown tags
-survive, and nothing Linux owns holds an absolute card path.
+files Linux must not rewrite stay byte-identical, emulator picks follow
+OA-38 (the last pick wins, in the shared files, with ES-DE's labels; what
+Linux did not pick is kept), unknown tags survive, and nothing Linux owns
+holds an absolute card path.
 
 Standard library only. Nothing here builds or runs a program.
 
@@ -38,6 +40,8 @@ CARDS = HERE / "fixtures" / "card"
 ANDROID = CARDS / "android-cube"
 LINUXW = CARDS / "linux-written"
 DOC = REPO / "LIBRARY-FORMAT.md"
+# ES-DE's commands per system (its android table), as Nano has them: the labels both platforms write.
+ESDE_COMMANDS = REPO / "nano" / "NanoEsdeEmulators.inc"
 
 sys.path.insert(0, str(LINUX / "tools" / "thimsy-import"))
 from thimsy_import import devicejson  # noqa: E402
@@ -45,7 +49,6 @@ from thimsy_import import devicejson  # noqa: E402
 # Where each schema's file lives on the card.
 SCHEMA_FOR = {
     "ES-DE/nano/systems.json": "systems.schema.json",
-    "ES-DE/nano/systems.linux.json": "systems.linux.schema.json",
     "ES-DE/nano/emulators.json": "emulators.schema.json",
     "ES-DE/nano/names.json": "names.schema.json",
     "ES-DE/nano/index.json": "index.schema.json",
@@ -57,6 +60,11 @@ CARD_SCHEMAS = sorted(set(SCHEMA_FOR.values()))
 LAUNCH_FIELDS = ("launchType", "coreSo", "package", "launchArgs", "intentTemplate")
 ABSOLUTE_CARD = re.compile(r"/storage/|/mnt/media_rw/|/sdcard/|/data/media/0/")
 CUBE_PREFIX = re.compile(r"/storage/(00000000-0000-0000-0000-[0-9A-Fa-f]{12})/")
+
+# What the Linux visit in linux-written/ picked (OA-38): Spyro and Mario Kart 64 per game, PlayStation
+# per system. Everything else on the card is what Android picked, and stays.
+LINUX_GAME_PICKS = {("psx", "./Spyro the Dragon (USA).chd"), ("n64", "./Mario Kart 64 (USA).z64")}
+LINUX_SYSTEM_PICKS = {"psx"}
 
 
 def load(name):
@@ -100,6 +108,34 @@ def ini(path):
         k, _, v = s.partition("=")
         out[(section, k.strip())] = v.strip()
     return out
+
+
+def esde_commands():
+    """{system: {label: [keys]}} from kEsdeCommands in NanoEsdeEmulators.inc (generated from ES-DE)."""
+    text = ESDE_COMMANDS.read_text(encoding="utf-8")
+    body = text[text.index("kEsdeCommands[] = {"):]
+    body = body[:body.index("\n};")]
+    cstr = r'"((?:[^"\\]|\\.)*)"'
+    row = re.compile(r"^\s*\{%s, %s, %s, %s\},\s*$" % (cstr, cstr, cstr, cstr), re.M)
+    out = {}
+    for m in row.finditer(body):
+        out.setdefault(m.group(1), {})[m.group(2)] = m.group(4).split()
+    return out
+
+
+def launch_key(system):
+    """The emulator a systems.json entry's launch fields start, as ES-DE's table keys it."""
+    if system.get("launchType") == "libretro-core":
+        so = system.get("coreSo", "")
+        suffix = "_libretro_android.so"
+        return "core:" + so[:-len(suffix)] if so.endswith(suffix) else ""
+    return "pkg:" + system["package"] if system.get("package") else ""
+
+
+def gamelists(card):
+    """{folder: parsed gamelist} for every gamelist on the card."""
+    root = card / "ES-DE" / "gamelists"
+    return {p.parent.name: esde_xml(p) for p in sorted(root.glob("*/gamelist.xml"))}
 
 
 def files_under(root):
@@ -194,21 +230,24 @@ class Rejections(unittest.TestCase):
             change(doc)
             self.bad("card.schema.json", doc, why)
 
-    def test_systems_linux_json(self):
-        base = card_json(LINUXW, "ES-DE/nano/systems.linux.json")
+    def test_emulators_json_keys_and_games(self):
+        base = card_json(ANDROID, "ES-DE/nano/emulators.json")
         for why, change in (
-                ("a core path", lambda d: d["systems"]["psx"].update(key="/usr/lib/libretro/pcsx_rearmed_libretro.so")),
-                ("an Android package", lambda d: d["systems"]["psx"].update(key="pkg:org.ppsspp.ppsspp")),
-                ("upper case", lambda d: d["systems"]["psx"].update(key="core:PCSX_ReARMed")),
-                ("a launch command", lambda d: d["systems"]["psx"].update(argv=["retroarch"])),
-                ("a './' game key", lambda d: d["games"].update({"./n64/x.z64": {"key": "core:x"}})),
-                ("a game key with './' inside", lambda d: d["games"].update({"n64/./x.z64": {"key": "core:x"}})),
-                ("a game key with no folder", lambda d: d["games"].update({"x.z64": {"key": "core:x"}}))):
+                ("a core path as a key", lambda d: d["items"][0].update(key="/usr/lib/libretro/pcsx_rearmed_libretro.so")),
+                ("an Android package as a key", lambda d: d["items"][0].update(key="pkg:org.ppsspp.ppsspp")),
+                ("upper case", lambda d: d["items"][0].update(key="core:PCSX_ReARMed")),
+                ("a './' game key", lambda d: d["items"][0].update(game="./n64/x.z64")),
+                ("a game key with './' inside", lambda d: d["items"][0].update(game="n64/./x.z64")),
+                ("a game key with no folder", lambda d: d["items"][0].update(game="x.z64")),
+                ("an empty am", lambda d: d["items"][0].update(am="")),
+                ("no items", lambda d: d.pop("items"))):
             doc = json.loads(json.dumps(base))
             change(doc)
-            self.bad("systems.linux.schema.json", doc, why)
+            self.bad("emulators.schema.json", doc, why)
         for key in ("core:mupen64plus_next", "emu:ppsspp", "emu:m64plus-fz", "family:melonds", "family:psp.ppsspp"):
-            self.good("systems.linux.schema.json", {"version": 1, "systems": {"x": {"key": key}}}, key)
+            doc = json.loads(json.dumps(base))
+            doc["items"][0]["key"] = key
+            self.good("emulators.schema.json", doc, key)
 
     def test_format_json(self):
         self.good("format.schema.json", {"version": 1}, "major 1")
@@ -244,40 +283,110 @@ class Rejections(unittest.TestCase):
         self.good("systems.schema.json", systems, "an unknown system field")
 
 
+class Retired(unittest.TestCase):
+    """OA-38 retired systems.linux.json: Linux's picks go in the shared files."""
+
+    def test_no_card_and_no_schema_has_it(self):
+        self.assertFalse((SCHEMA / "systems.linux.schema.json").exists())
+        for card in (ANDROID, LINUXW):
+            self.assertFalse((card / "ES-DE/nano/systems.linux.json").exists(), card.name)
+
+    def test_the_doc_says_so(self):
+        text = DOC.read_text(encoding="utf-8")
+        self.assertIn("OA-38", text)
+        self.assertRegex(text, r"`systems\.linux\.json`[^\n]*retired")
+
+
 class Vectors(unittest.TestCase):
     """The rules between an Android-written card and the same card after a Linux visit."""
 
     def test_files_linux_only_reads_stay_byte_identical(self):
         # names.json and index.json: compatibility mode until the floor (interop Q12).
-        # emulators.json: Android's; Linux keeps its own per-game choices in systems.linux.json.
         # es_settings.xml: ROMDirectory is written only when empty.
-        for rel in ("ES-DE/nano/names.json", "ES-DE/nano/index.json", "ES-DE/nano/emulators.json",
-                    "ES-DE/settings/es_settings.xml"):
+        for rel in ("ES-DE/nano/names.json", "ES-DE/nano/index.json", "ES-DE/settings/es_settings.xml"):
             with self.subTest(file=rel):
                 self.assertEqual((ANDROID / rel).read_bytes(), (LINUXW / rel).read_bytes())
 
-    def test_launch_fields_are_androids(self):
+    def test_launch_fields_change_only_where_linux_picked(self):
+        """OA-38: a system's launch fields are its last pick. One Linux could not run (n64's app) is kept."""
         a = {s["id"]: s for s in card_json(ANDROID, "ES-DE/nano/systems.json")["systems"]}
         l = {s["id"]: s for s in card_json(LINUXW, "ES-DE/nano/systems.json")["systems"]}
         self.assertEqual(set(a), set(l), "Linux keeps every system, used or not")
+        self.assertEqual(a["n64"]["launchType"], "custom-package", "fixture: a pick Linux cannot run")
         for sid in a:
-            for f in LAUNCH_FIELDS:
-                with self.subTest(system=sid, field=f):
-                    self.assertEqual(a[sid].get(f), l[sid].get(f))
+            changed = [f for f in LAUNCH_FIELDS if a[sid].get(f) != l[sid].get(f)]
+            with self.subTest(system=sid):
+                if sid in LINUX_SYSTEM_PICKS:
+                    self.assertTrue(changed, "fixture: Linux picked this system's emulator")
+                else:
+                    self.assertEqual(changed, [], "kept as the last pick left it (a fallback is never written)")
 
-    def test_labels_and_unknown_tags_survive(self):
-        a, l = (esde_xml(c / "ES-DE/gamelists/psx/gamelist.xml") for c in (ANDROID, LINUXW))
-        self.assertEqual([e.findtext("label") for e in a.iter("alternativeEmulator")],
-                         [e.findtext("label") for e in l.iter("alternativeEmulator")])
-        lgames = {g.findtext("path"): g for g in l.iter("game")}
-        for g in a.iter("game"):
-            path = g.findtext("path")
-            with self.subTest(game=path):
-                self.assertIn(path, lgames)
-                self.assertTrue(path.startswith("./"), "gamelist paths are relative")
-                for child in g:
-                    if child.tag in ("altemulator", "mainlineOnlyTag", "hidden", "favorite", "name"):
-                        self.assertEqual(lgames[path].findtext(child.tag), child.text, child.tag)
+    def test_a_system_pick_carries_its_es_de_label(self):
+        cmds = esde_commands()
+        l = {s["id"]: s for s in card_json(LINUXW, "ES-DE/nano/systems.json")["systems"]}
+        lists = gamelists(LINUXW)
+        for sid in LINUX_SYSTEM_PICKS:
+            folder = l[sid]["romDir"]
+            labels = [e.findtext("label") for e in lists[folder].iter("alternativeEmulator")]
+            with self.subTest(system=sid):
+                self.assertEqual(len(labels), 1)
+                self.assertIn(launch_key(l[sid]), cmds[folder][labels[0]],
+                              "the gamelist's label names the emulator systems.json now starts")
+
+    def test_every_label_is_one_es_de_knows(self):
+        """Both platforms write ES-DE's own labels, so the ES-DE app reads either side's picks."""
+        cmds = esde_commands()
+        self.assertIn("PCSX ReARMed", cmds["psx"])
+        for card in (ANDROID, LINUXW):
+            for folder, gl in gamelists(card).items():
+                labels = [e.findtext("label") for e in gl.iter("alternativeEmulator")]
+                labels += [g.findtext("altemulator") for g in gl.iter("game") if g.findtext("altemulator")]
+                for label in labels:
+                    with self.subTest(card=card.name, folder=folder, label=label):
+                        self.assertIn(label, cmds.get(folder, {}))
+
+    def test_labels_linux_did_not_pick_and_unknown_tags_survive(self):
+        al, ll = gamelists(ANDROID), gamelists(LINUXW)
+        self.assertLessEqual(set(al), set(ll), "no gamelist is lost")
+        for folder, a in al.items():
+            l = ll[folder]
+            if folder not in LINUX_SYSTEM_PICKS:  # system ids are their folders here
+                self.assertEqual([e.findtext("label") for e in a.iter("alternativeEmulator")],
+                                 [e.findtext("label") for e in l.iter("alternativeEmulator")])
+            lgames = {g.findtext("path"): g for g in l.iter("game")}
+            for g in a.iter("game"):
+                path = g.findtext("path")
+                with self.subTest(folder=folder, game=path):
+                    self.assertIn(path, lgames)
+                    self.assertTrue(path.startswith("./"), "gamelist paths are relative")
+                    for child in g:
+                        if child.tag == "altemulator" and (folder, path) in LINUX_GAME_PICKS:
+                            continue
+                        if child.tag in ("altemulator", "mainlineOnlyTag", "hidden", "favorite", "name"):
+                            self.assertEqual(lgames[path].findtext(child.tag), child.text, child.tag)
+
+    def test_linux_game_picks_are_in_the_shared_files(self):
+        """A Linux pick ES-DE has a label for is the game's <altemulator>, and its emulators.json item goes."""
+        cmds = esde_commands()
+        ll = gamelists(LINUXW)
+        items = {i["game"] for i in card_json(LINUXW, "ES-DE/nano/emulators.json")["items"]}
+        for folder, path in sorted(LINUX_GAME_PICKS):
+            with self.subTest(folder=folder, game=path):
+                game = {g.findtext("path"): g for g in ll[folder].iter("game")}[path]
+                self.assertIn(game.findtext("altemulator"), cmds[folder])
+                self.assertNotIn(folder + "/" + path[2:], items, "last pick wins: the older pick's item goes")
+
+    def test_emulators_json_keeps_what_linux_did_not_pick(self):
+        a = card_json(ANDROID, "ES-DE/nano/emulators.json")
+        l = card_json(LINUXW, "ES-DE/nano/emulators.json")
+        picked = {f + "/" + p[2:] for f, p in LINUX_GAME_PICKS}
+        kept = [i for i in a["items"] if i["game"] not in picked]
+        self.assertTrue(kept, "fixture: an Android pick Linux leaves alone")
+        self.assertEqual([i for i in l["items"] if i["game"] not in picked], kept,
+                         "other games' items survive whole, in order")
+        for k in a:
+            if k != "items":
+                self.assertEqual(l.get(k), a[k], "top-level keys survive: " + k)
 
     def test_play_stats_only_move_forward(self):
         a, l = (esde_xml(c / "ES-DE/gamelists/psx/gamelist.xml") for c in (ANDROID, LINUXW))
@@ -298,7 +407,7 @@ class Vectors(unittest.TestCase):
             self.assertTrue(line.startswith("%ROMPATH%/"), "a new line under ROMDirectory uses %ROMPATH%: " + line)
 
     def test_nothing_linux_owns_holds_an_absolute_card_path(self):
-        owned = ["ES-DE/nano/systems.linux.json", "ES-DE/nano/format.json", "emulator_config/card.json"]
+        owned = ["ES-DE/nano/format.json", "emulator_config/card.json"]
         for rel, _p in files_under(LINUXW):
             if rel.startswith("Thimsy/") or re.match(r"emulator_config/[^/]+/linux/", rel):
                 owned.append(rel)
@@ -319,12 +428,6 @@ class Vectors(unittest.TestCase):
             found |= set(CUBE_PREFIX.findall(p.read_text(encoding="utf-8")))
         self.assertTrue(found)
         self.assertLessEqual(found, set(ids))
-
-    def test_systems_linux_game_keys_name_real_games(self):
-        doc = card_json(LINUXW, "ES-DE/nano/systems.linux.json")
-        emus = {i["game"] for i in card_json(LINUXW, "ES-DE/nano/emulators.json")["items"]}
-        for game in doc.get("games", {}):
-            self.assertIn(game, emus, "fixture: the Linux choice sits beside Android's for the same game")
 
     # Example key classes for the PPSSPP fixture only; the full list is later work (OA-26).
     PPSSPP_PLATFORM_KEYS = {("General", "CurrentDirectory"), ("Graphics", "GraphicsBackend")}

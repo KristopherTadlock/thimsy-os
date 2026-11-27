@@ -4,18 +4,17 @@ Version 1 of the contract, written 2026-11-26. This is the document `android_lau
 
 Where this comes from:
 
-- The owner's answers OA-8, OA-19 to OA-26 and OA-32, and the interop questions decided autonomously (Q4, Q6, Q12), in `docs/linux/DECISIONS.md`.
+- The owner's answers OA-8, OA-19 to OA-26, OA-32 and OA-38 (emulator picks across platforms), and the interop questions decided autonomously (Q4, Q6, Q12), in `docs/linux/DECISIONS.md`.
 - The interop audit, `docs/linux/INTEROP-AUDIT.md`, and its raw reports in `docs/linux/interop-2026-11-26/`.
 - `linux_handheld_plan.md` §6.2 to §7.10 and `portable_settings_plan.md`.
 
-**Status.** Most of this describes what the Android build already writes. The new parts (`card.json`, `systems.linux.json`, `format.json`, the Linux folders, `Thimsy/settings.ini`, the playlists) are not implemented by either build yet. Section 9 lists every known gap and where its fix lands. Anything marked ***proposed*** is a choice made while writing this contract that the owner has not decided; section 10 lists them.
+**Status.** Most of this describes what the Android build already writes. The new parts (`card.json`, `format.json`, the Linux folders, `Thimsy/settings.ini`, the playlists) are not implemented by either build yet. Section 9 lists every known gap and where its fix lands. Anything marked ***proposed*** is a choice made while writing this contract that the owner has not decided; section 10 lists them.
 
 **Machine-checkable parts.** The JSON files have JSON Schemas (draft-07, the subset `linux/tools/thimsy-import/thimsy_import/devicejson.py` validates):
 
 | File on the card | Schema |
 |---|---|
 | `emulator_config/card.json` | `linux/schema/card.schema.json` |
-| `ES-DE/nano/systems.linux.json` | `linux/schema/systems.linux.schema.json` |
 | `ES-DE/nano/format.json` | `linux/schema/format.schema.json` |
 | `ES-DE/nano/systems.json` | `linux/schema/systems.schema.json` |
 | `ES-DE/nano/emulators.json` | `linux/schema/emulators.schema.json` |
@@ -24,7 +23,7 @@ Where this comes from:
 
 `linux/tests/test_card_contract.py` validates the test vectors in `linux/tests/fixtures/card/` against them and checks the rules between an Android-written card and the same card after a Linux visit (section 8).
 
-Schemas of Thimsy's new files (`card.json`, `systems.linux.json`, `format.json`) are strict: they describe exactly what a writer of this major version emits. Schemas of files already in users' hands (`systems.json`, `emulators.json`, `names.json`, `index.json`) allow unknown fields, because real cards carry them. In code, no reader ever refuses a file for an unknown field (rule 1.3).
+Schemas of Thimsy's new files (`card.json`, `format.json`) are strict: they describe exactly what a writer of this major version emits. Schemas of files already in users' hands (`systems.json`, `emulators.json`, `names.json`, `index.json`) allow unknown fields, because real cards carry them. In code, no reader ever refuses a file for an unknown field (rule 1.3).
 
 ## 1. Rules for every file
 
@@ -61,7 +60,7 @@ Shipped Android builds never check a `version` field (INTEROP-AUDIT.md). So:
 - **The ROMDirectory re-root rule stays "only when the stored folder is missing"**, widened only to "or the stored id is a known alias of this card" (check.md B6).
 - **Theme keys in `es_settings.xml`** are written only for a theme that exists in `<store>/themes` (OA-32 Q4).
 
-**The compatibility floor** is the first Thimsy Android release built after the AOSP job that carries this contract's Android changes (Q12). Until a card has been written by that release, Linux runs in compatibility mode: it never rewrites `names.json` or `index.json` and keeps every Android label. A card has been written by the floor when its `card.json` has an Android writer with `contract` 1 or more (***proposed***, W7-INTEROP-6).
+**The compatibility floor** is the first Thimsy Android release built after the AOSP job that carries this contract's Android changes (Q12). Until a card has been written by that release, Linux runs in compatibility mode: it never rewrites `names.json` or `index.json`, and it changes a label only where the user picks an emulator on Linux (OA-38, section 5). A card has been written by the floor when its `card.json` has an Android writer with `contract` 1 or more (***proposed***, W7-INTEROP-6).
 
 ### 1.5 JSON values
 
@@ -91,7 +90,7 @@ Best first. A writer uses the first form the file allows.
 |---|---|---|
 | (a) relative to the owning folder | `./Crash Bandicoot (USA).chd` | gamelist `<path>`; playlist entries |
 | (b) `%ROMPATH%/<system>/<rel>` | `%ROMPATH%/psx/Crash Bandicoot (USA).chd` | collections; `custom_systems` paths |
-| (c) a game key, `<ES-DE folder>/<rel>` | `n64/Mario Kart 64 (USA).z64` | `emulators.json`; `systems.linux.json` `games` |
+| (c) a game key, `<ES-DE folder>/<rel>` | `n64/Mario Kart 64 (USA).z64` | `emulators.json` |
 | (d) `%CARDID%` for the store's own volume | `/storage/%CARDID%/ROMs/psx` | `systems.json` scan sources; `settings.ini` paths; `<emu>/linux/` files |
 | (e) absolute, `/storage/<id>/...` | `/storage/9602-C755/Homebrew/demo.nes` | only where the file's format needs an absolute path (ES-DE's ROMDirectory and collection lines outside ROMDirectory), and `names.json` and `index.json` until the floor |
 | by name, no path | `downloaded_media/psx/covers/<name>.png` | media |
@@ -120,9 +119,8 @@ A path to an id that is neither mounted nor an alias is a missing volume. Nothin
     themes/<set>/                       (4.5)                                     both
     custom_systems/es_systems.xml       append-only (4.6)                         both
     nano/format.json                    contract major (4.7)                      both
-    nano/systems.json                   Nano's systems (4.8)                      Android owns launch fields
-    nano/systems.linux.json             Linux's emulator choices (4.9)            Linux
-    nano/emulators.json                 Android's per-game choices (4.10)         Android
+    nano/systems.json                   Nano's systems (4.8)                      both (last pick, OA-38)
+    nano/emulators.json                 per-game picks with no label (4.10)       both
     nano/names.json, nano/index.json    titles, scrape index (4.11)               Android until the floor
     nano/not-in-a-system-folder.txt     the move's report (4.12)                  the move
   ROMs/<es-de system name>/             games; same-core in-game saves (4.13)     user; emulators
@@ -165,7 +163,7 @@ A path to an id that is neither mounted nor an alias is a missing volume. Nothin
 - **Paths:** `<path>` is form (a), `./<rel>`, matched case-insensitively.
 - **Fields both platforms write:** `favorite`, `hidden`, `name` (title overrides), `desc`, `rating` (0 to 1), `releasedate` (`YYYYMMDDT000000`), `developer`, `publisher`, `genre`, `players`, `playcount` (only ever incremented) and `lastplayed` (`%Y%m%dT%H%M%S`, local time, ES-DE's own format; a later time always wins).
 - **Favourites, hidden games and Recently Played travel here** (OA-23). Recently Played is rebuilt from `<lastplayed>` on each side. The device keeps a cache (`nano_xmb_recent.list`) and a journal of starts made with the card out (`nano_esde_played.txt`), flushed when the card is in. No play journal on the card (Q6).
-- **Emulator labels:** `<altemulator>` per game and `<alternativeEmulator><label>` per gamelist hold ES-DE `android`-table labels. Android writes them as today (rule 1.4). **Linux never writes, changes or deletes either tag** (***proposed***, W7-INTEROP-3); its choices go in `systems.linux.json` (4.9). Linux reads them as hints through the family table (section 5).
+- **Emulator labels:** `<altemulator>` per game and `<alternativeEmulator><label>` per gamelist hold ES-DE labels: the user's last emulator pick, made on either platform (OA-38, section 5). Both platforms write them with the same code: the label of ES-DE's command that starts the picked emulator. A writer changes a tag only for the game or system the user just picked for, and only removes one when the new pick has no ES-DE label (the pick then goes to `emulators.json` or `systems.json`). A label a platform cannot run is kept, never rewritten by a fallback.
 - **`<folder>` entries** (PSP folders seeded with `<folderlink>`) are handled like `<game>` entries, so an edit never adds a second entry for the same title (G20).
 - **Unknown tags are kept.** An unreadable gamelist is never replaced.
 
@@ -202,33 +200,23 @@ Read by both as a theme root. Downloaded themes go here, not to the device (cont
 
 ### 4.8 `ES-DE/nano/systems.json`
 
-- **Owner:** Android owns the launch fields: `launchType` (`libretro-core`, `custom-package`, `retroarch-intent`), `coreSo` (`<core>_libretro_android.so`), `package`, `launchArgs` and `intentTemplate` (Q4). Linux reads them and never changes them.
+- **Launch fields:** `launchType` (`libretro-core`, `custom-package`, `retroarch-intent`), `coreSo` (`<core>_libretro_android.so`), `package`, `launchArgs` and `intentTemplate` are each system's emulator pick, in Nano's own terms on both platforms: `coreSo` is the Android core file name everywhere, and Linux maps it to its own core. The last pick wins, made on either platform (OA-38, replacing Q4's "Android owns them"). A writer changes a system's launch fields only for a pick: the user picking its emulator in Nano on either platform, or Nano adopting the `<alternativeEmulator>` the ES-DE app wrote (`esdeStoreApplySystemEmus`), which is a pick made in the ES-DE app. A platform that cannot run a pick starts the system with a fallback and leaves the fields as they are (section 5). Android's once-per-config systems heal (`systemsHealTick`: `nanosys::playerRepair` for a custom system's emulator that cannot run there, `nanosys::staleCoreRepairs` for a built-in system's stale Nano core) does not run in ES-DE store mode, so it never rewrites this file (W8-EMU-20, OA-38); outside store mode, where there is no card file, it still repairs the device's own systems.
 - **Shared fields** (both may write): `id`, `builtin`, `enabled`, `order`, `displayName`, `shortname`, `romDir`, `scanSources` (the card's id written `%CARDID%`), `disabledDefaultFolders`, `extensions`, `icon`, and `scraper` with `override` and `platform` only. The scraper accounts (`user`, `pass`, `key`) are never on the card (OA-32 Q6); the schema refuses them.
 - **Format:** `{"version": 1, "systems": [...]}`. Schema: `linux/schema/systems.schema.json`. Android rebuilds the file from structs; a field only Linux knows is lost on the next Android save.
-- **Linux writing it:** only with every system's launch fields byte-identical to what it read, and every system kept, used or not. Until Linux's code does that, Linux does not write this file at all (***proposed***, W7-INTEROP-4).
+- **Linux writing it:** every system kept, used or not, and every system's launch fields byte-identical to what it read except the systems the user picked an emulator for on Linux (W7-INTEROP-4 as OA-38 amends it). Linux writes it with the shared writer Android uses (`esdeSystemsJson`), whose systems are the card's as adopted, so a fallback, which is never stored, cannot reach the file.
 - **Android, from the floor:** never replaces a launch tuple it does not know with its own (android_launcher_plan.md §3 item 4).
 
-### 4.9 `ES-DE/nano/systems.linux.json` (new)
+### 4.9 `ES-DE/nano/systems.linux.json` (retired)
 
-- **Owner:** Linux. Android ignores it and never deletes it.
-- **Format:** schema `linux/schema/systems.linux.schema.json`.
-
-```json
-{ "version": 1,
-  "systems": { "psx": { "key": "core:pcsx_rearmed", "set": "2026-11-22" } },
-  "games":   { "n64/Mario Kart 64 (USA).z64": { "key": "core:mupen64plus_next" } } }
-```
-
-- `systems` is keyed by `systems.json`'s `id`. `games` (***proposed***, W7-INTEROP-2) is keyed by the game key, form (c), spelled exactly as `emulators.json` spells it.
-- A value is a portable emulator key (section 5), never a path, package or command.
-- Unknown fields are kept by Linux's writer.
+`systems.linux.json` is retired by OA-38: Linux's picks, per system and per game, go in the shared files (4.2, 4.8, 4.10), so a pick made on one platform is the other's too. No build writes it and the contract has no schema for it. No Linux card exists yet, so no card holds one; a reader that finds one ignores it and leaves it alone (rule 1.3).
 
 ### 4.10 `ES-DE/nano/emulators.json`
 
-- **Owner:** Android. Per-game choices that ES-DE has no label for: `{"version": 1, "items": [{"game", "label", "am"}]}`. Schema: `linux/schema/emulators.schema.json`.
-- Android edits it in place: unknown top-level keys and other games' items survive; the item of the game the user re-picks on Android is rebuilt or removed (plan §7.6). Android loads an item only when its `am` matches its catalogue.
+- **Owner:** both (OA-38). Per-game picks that ES-DE has no label for: `{"version": 1, "items": [{"game", "label", "am"}]}`. Schema: `linux/schema/emulators.schema.json`.
+- Each platform edits it in place with the same code (`esdeStoreSaveGameEmu`): unknown top-level keys and other games' items survive; the item of the game the user re-picks is rebuilt, or removed when the new pick has an ES-DE label (which then goes in `<altemulator>`). The last pick wins (plan §7.6's rule, made shared).
+- `am` names the pick in Nano's emulator catalog (Daijishou's am start arguments), the same catalog on both platforms, so each finds the same entry. A reader loads an item only when its `am` matches its catalog. A platform that cannot run the item's emulator keeps the item and starts the game with its own default (section 5).
 - **New field `key`:** the portable key of the same choice `am` describes, written by Android from the floor on (contract A3).
-- **Linux reads it and never writes it** (***proposed***, W7-INTEROP-2). This replaces the earlier idea of Linux adding `key` or `linux` fields to Android's items (contract.md C5, plan §7.6): an Android re-pick would delete them.
+- Linux adds no field of its own to an item: a re-pick on Android rebuilds the item (contract.md C5's `linux` field would be lost).
 
 ### 4.11 `ES-DE/nano/names.json` and `ES-DE/nano/index.json`
 
@@ -394,42 +382,54 @@ User emulator definitions to import (`user_emulators_plan.md`; plan §6.4's sche
 
 **The family table** is shared data: generated from ES-DE's `android` and `linuxarm` tables at one pinned ES-DE commit, plus a hand-kept alias and `saveCompatible` list. It maps labels, `coreSo` names and Android packages to keys. A pair of cores is listed as save-compatible only after its round trip passes (plan §6.2).
 
-**Where each platform keeps its choices:**
+**Where the picks are** (OA-38): the same place on both platforms, so the last pick wins, whichever platform made it.
 
 | | Per system | Per game |
 |---|---|---|
-| Android | `systems.json` launch fields; `<alternativeEmulator>` | `<altemulator>`, else `emulators.json` (`am`, and `key` from the floor) |
-| Linux | `systems.linux.json` `systems` | `systems.linux.json` `games` (proposed) |
+| Both | `systems.json` launch fields, with `<alternativeEmulator>` | `<altemulator>`, else `emulators.json` (`am`, and `key` from the floor) |
 
-**Resolution on Linux, per launch:**
+- **A pick is written with ES-DE's label** for the emulator: the label of the ES-DE command that starts it, from ES-DE's table (`NanoEsdeEmulators.inc`, ES-DE's `android` table at a pinned commit). Core labels are the same in ES-DE's `android` and `linuxarm` tables, so a Linux pick of a core carries the label the ES-DE app on either platform reads.
+- **What is written is the pick, never a fallback.** No writer changes a tag, an item or a system's launch fields except for the game or system the user just picked for (or the ES-DE app picked for, 4.8), and other games' labels and items are left as they are. Android's systems heal does not run in store mode (4.8).
+- **Nano's catalog is the same on both platforms** (`nano_xmb/daijishou`), so a pick is stored in Nano's own terms (`coreSo` as the Android core file name, `am` as the catalog's) and read back the same way on the other platform.
 
-1. Linux's own choice: per game, then per system.
-2. Android's choice, mapped through the family table: `<altemulator>` or the `emulators.json` item for the game, then `<alternativeEmulator>`, then `systems.json`'s launch fields. It is used if a member of that family is in the image and enabled by the device's package profile.
-3. The device's default for the system.
-4. "Unavailable on this device", shown, with every stored value kept.
+**Resolution, per launch, on each platform:**
 
-A missing core or emulator always falls through to the next step, never to a launch error. Android resolves its own choices as today, and from the floor never replaces what it does not know (plan §7.10).
+1. The game's pick (`<altemulator>`, else its `emulators.json` item), else the system's (`systems.json`'s launch fields, kept in step with `<alternativeEmulator>`).
+2. If this platform cannot run that emulator (the core is not in the image, the app is not installed, or this platform cannot start apps of that kind), this platform's image default for the system, for this launch only. The shared pick stays, so the platform that made it still uses it.
+3. If the default cannot run either (or there is none) and the emulator was the game's own pick, the system's emulator, when this platform can run it, for this launch only, as such a game started before OA-38 kept its pick.
+4. If the system is one Nano's emulator catalog made (a custom system, which has no image default), the first of its platform's catalog emulators this platform can run, in the emulator picker's order (RetroArch cores first, then by name; an app only when the package list names it), for this launch only (W8-EMU-20).
+5. Otherwise: "Emulator not installed", shown, with every stored value kept.
+
+Nothing a fallback chooses is stored: not on the card, not in the game's or system's pick, and not in Recently Played, which keeps the emulator the game was recorded with.
+
+**Each platform's image defaults are stored on the device** (OA-38, like OA-35's theme defaults): on first run Nano writes the image's default emulator for each system into the device's store (`nano_emu_defaults.json` in Nano's device state, beside `nano_systems.json`), and a later release that changes a default reaches new installs only. Android's come from the image's own table (the build's `nano_systems.json`, else Nano's built-in systems); Linux's from Linux's table (`nanoplat::Emulators::imageDefaults`, `platform/linux/Emulators.cpp`), cores Linux builds; a launch uses a default only when the image ships its core. Fallbacks read only this store, never the card.
+
+**Whether this platform can run an emulator** is the platform's answer (`nanoplat::Emulators`): Android's firmware looks for the core in RetroArch's cores and the app in the package list; Linux looks for the core in the image's core folder and fails closed for every app (it starts none yet).
+
+**The ES-DE app and a label from the other platform.** A label only one of ES-DE's tables has (an Android app's "(Standalone)" label read by ES-DE on a PC, say) is not one the ES-DE app can run there: it shows its usual notice that the game's or system's alternative emulator is invalid, and uses its default. That is ES-DE's own handling, documented here and not worked around: the label is kept, so the platform that made the pick still uses it.
+
+**Later:** the family table and portable keys (`key`, `family:`) map one platform's core to the other's save-compatible member (`mupen64plus_next_gles3` on Android, `mupen64plus_next` on Linux) instead of falling back to the default.
 
 ## 6. Direction of travel
 
 | From | To | Arrives | Does not arrive (v1) |
 |---|---|---|---|
 | Android card | Linux | the library, favourites, hidden games, play counts, Recently Played, collections, media, titles, ES-DE settings, the theme (where it exists on the card), `settings.ini`, music playlists, BIOS, same-core saves, PPSSPP saves and shared settings, ScummVM saves | save states, different-core saves, RetroArch settings and `.lpl` playlists, Android app preferences, systems with no Linux emulator (kept, hidden) |
-| Linux card | Android | the same | the same, mirrored; Android does not use `linux/`, `systems.linux.json` or Linux's override layers |
+| Linux card | Android | the same | the same, mirrored; Android does not use `linux/` or Linux's override layers; emulator picks are shared (section 5) |
 | Either | Thimsy Home, mainline ES-DE | ES-DE's own files (OA-20) | Nano's own files |
 
 ## 7. What each side must tolerate
 
 - **Both:**
   - unknown files, folders, tags, keys and fields (kept);
-  - labels and keys they cannot run (kept, shown as unavailable);
+  - labels, picks and keys they cannot run (kept; the game starts with this platform's default, section 5);
   - every legacy path form;
-  - a missing `format.json`, `card.json`, `systems.linux.json` or `settings.ini`;
+  - a missing `format.json`, `card.json` or `settings.ini`;
   - gamelists and media from mainline ES-DE;
   - temporary files left by a pull.
 - **Linux additionally:** never reads or edits Android's `app/` mirrors, `Android/`, or Android's RetroArch config files; ignores the `<command>` lines in `custom_systems`; treats Android packages as not installed (fail closed).
 - **Android additionally (from the floor):**
-  - never deletes `linux/` folders, `systems.linux.json` or the `key` fields;
+  - never deletes `linux/` folders or the `key` fields;
   - keeps a launch tuple it does not know;
   - resolves forms (c) and (d);
   - treats an id in `card.json`'s aliases as this card;
@@ -440,9 +440,12 @@ A missing core or emulator always falls through to the next step, never to a lau
 
 **Now:** `linux/tests/test_card_contract.py` validates every JSON file in `linux/tests/fixtures/card/` against its schema and checks that each schema refuses what this contract forbids: path aliases, absolute or `..` copy paths, scraper accounts in `systems.json`, relative keys in `names.json` and `index.json`, emulator keys that are paths or packages. It also checks the rules between `android-cube/` (a card as the Cube leaves it) and `linux-written/` (the same card after a Linux visit):
 
-- `names.json`, `index.json`, `emulators.json` and `es_settings.xml` are byte-identical;
-- `systems.json`'s launch fields are Android's;
-- labels and unknown tags survive;
+- `names.json`, `index.json` and `es_settings.xml` are byte-identical;
+- `systems.json`'s launch fields change only for the systems Linux picked, and each such pick carries its ES-DE label (OA-38);
+- every label on either card is one ES-DE's table has for that system;
+- labels and `emulators.json` items Linux did not pick survive, and a Linux game pick replaces the game's older pick (its label, or its item);
+- `systems.linux.json` is on neither card and has no schema;
+- unknown tags survive;
 - play counts only grow;
 - collection lines are kept verbatim;
 - nothing Linux owns holds an absolute card path;
@@ -467,15 +470,15 @@ From INTEROP-AUDIT.md and its reports. "Android-surface" means the change alters
 | Gap | Severity | Fix lands in | File and function |
 |---|---|---|---|
 | G1: Linux never enters store mode by itself | CRIT | Linux | `nano/platform/linux/Volumes.cpp` (a default-store hook), setting `persist.gammaos.nano.esde.dir=<cardRoot()>/ES-DE` at first run; shared `NanoEsdeStore.cpp` `esdeDataDir`/`esdeStoreMode` (120-132) read it. Not the internal path: `esdeStoreFollowCard` skips `emulated` (check.md C-1) |
-| N1: every libretro launch from the XMB refused on Linux | CRIT | Linux, via OA-4 | `NanoMenuXmb.cpp` `NanoMenu::coreSoExists` (3345) to a new `nanoplat::Emulators::installed`; Linux answers from the image's emulator manifest |
+| N1: every libretro launch from the XMB refused on Linux | CRIT | Linux, via OA-4 | `NanoMenuXmb.cpp` `NanoMenu::coreSoExists` (3345) to `nanoplat::Emulators::coreInstalled` (W8-EMU); Linux answers from the image's core folder |
 | G2, C-2, C-3: Cube paths do not resolve; names.json pruned, index.json art cleared | CRIT | Linux, then Android | alias resolution in an extended `nanoplat::Volumes` (`canonicalStorePath`, `cardAliases`); `NanoMenuScraper.cpp` `saveRomNameOverrides` (prune) and `loadScrapeIndex` (`artOk`) resolve aliases; Linux in compatibility mode (4.11) |
 | G2: id repair ignores the Cube form | HIGH | shared, Android-surface | `NanoEmuSync.cpp` `emusync::isVolumeId` and `repoint` learn the 36-character form (check.md B9) |
-| G5, C-4: Linux deletes `<alternativeEmulator>`, rebuilds `<altemulator>` with Android `am`; Android per-game `am` choices applied on Linux then fail | HIGH | shared, Android-surface | `NanoMenuPS3EmuCatalog.cpp` `esdeStoreSaveSystemEmus` (897-913) and `NanoEsdeStore.cpp` `esdeStoreSaveGameEmu` (1520-1571) never delete or rewrite a label on Linux; Linux writes `systems.linux.json` instead; `esdeStoreLoadGameEmus` (1478) maps `am` through the family table on Linux |
-| C-5, G10: `systems.json` launch tuples ping-pong | HIGH | shared, then Android | `NanoMenuXmb.cpp` `esdeStoreAdoptSystems` (1123-1215), `esdeSystemsJson`, `esdeStoreSaveSystems`: Linux keeps Android's launch fields verbatim, or does not write (4.8); Android from the floor keeps unknown tuples |
-| G4, N2: no Linux fallback; Linux defaults are Android cores; PPSSPP and ScummVM refused | HIGH | Linux | `nano/platform/linux/Launcher.cpp` `argvFor` (398-415) and the missing-core path (196-197); the built-in table in `NanoMenuXmb.cpp` (`kXmbSystemDefs`, 233-248) to `Emulators::defaultFor` |
+| G5, C-4: Linux deletes `<alternativeEmulator>`, rebuilds `<altemulator>` with Android `am`; Android per-game `am` choices applied on Linux then fail | HIGH | shared, Android-surface | OA-38 makes the shared writes the rule: `esdeStoreSaveSystemEmus` and `esdeStoreSaveGameEmu` write the last pick on both platforms, with ES-DE's label, and touch only the picked game or system; a pick this platform cannot run starts with its image default (the launch sites in `NanoMenuXmb.cpp` and `NanoMenuOverlay.cpp`; W8-EMU) |
+| C-5, G10: `systems.json` launch tuples ping-pong | HIGH | shared | OA-38: a tuple is the last pick, from either platform; a platform that cannot run it falls back per launch and never rewrites it (4.8), so a tuple changes only for a pick (in Nano on either platform, or the ES-DE app's label adopted); Android's once-per-config systems heal does not run in store mode (4.8). `esdeStoreAdoptSystems` already takes a tuple from Nano's catalog, which both platforms share |
+| G4, N2: no Linux fallback; Linux defaults are Android cores; PPSSPP and ScummVM refused | HIGH | Linux, and shared | the fallback to the device's stored image defaults (section 5); Linux's defaults from `Emulators::imageDefaults` (`platform/linux/Emulators.cpp`) instead of `kXmbSystemDefs`; PPSSPP and ScummVM in `Launcher.cpp` `argvFor` are later work |
 | G3, C-6: Linux RetroArch saves to ext4, states unset | HIGH | Linux | `Launcher.cpp` writes `/run/thimsy/ra-append.cfg` (4.17) and passes `--appendconfig` |
 | G7: BIOS on the card unusable on Linux | HIGH | Linux, via OA-4 | `NanoBiosWorker.cpp` slot-base check (557-575) and `NanoBiosUtil.cpp` `canonical` behind the platform; `NanoRaConfig.cpp` `retroarchConfigFile` gains Linux's system folder; copy rules for Flycast and DraStic BIOS (4.16 `copies`) |
-| G6, N5: `packageInstalled` fails open | HIGH | Linux, via OA-4 | `NanoMenuXmb.cpp` `NanoMenu::packageInstalled` (3357) to `Emulators::installed`, failing closed on Linux; emulator_config move and app-mirror sync report unsupported on Linux |
+| G6, N5: `packageInstalled` fails open | HIGH | Linux, via OA-4 | `NanoMenuXmb.cpp` `NanoMenu::packageInstalled` (3357) to `Emulators::appInstalled` (W8-EMU), failing closed on Linux, so the emulator_config move and app-mirror sync find no Android app there |
 | G8, G9: paths Linux writes do not resolve on the Cube; the Cube id moves | HIGH | Android | Android reads `card.json` aliases (A4, A5); vold names volumes by serial (D20(c), OA-19) |
 | G12: foreign-id writes land on ext4 | MED | shared and Linux | shared `makeDirs`/`sdMkdirs` refuse a foreign id (`Volumes::isForeignId`); thimsy-session keeps `/storage` from gaining unknown names |
 | G14: theme and downloaded themes do not travel | MED | shared, Android-surface | `NanoMenuEsdeMenu.cpp` theme choice into `settings.ini` (OA-32) and `es_settings.xml` (4.1); theme downloads to `<store>/themes` |
@@ -501,9 +504,8 @@ From INTEROP-AUDIT.md and its reports. "Android-surface" means the change alters
 Proposed here, not decided by the owner:
 
 - **W7-INTEROP-1:** this file lives at the repository root, as the plans list it.
-- **W7-INTEROP-2:** Linux's per-game choices go in `systems.linux.json` `games`. Linux never writes `emulators.json`.
-- **W7-INTEROP-3:** Linux never writes, changes or deletes `<altemulator>` or `<alternativeEmulator>`.
-- **W7-INTEROP-4:** Linux does not write `systems.json` until its writer keeps Android's launch fields verbatim.
+- ~~**W7-INTEROP-2**~~ and ~~**W7-INTEROP-3**~~: replaced by the owner's OA-38 (emulator picks are shared; the last pick wins).
+- **W7-INTEROP-4:** Linux writes `systems.json` only with every system's launch fields as it read them, except the systems the user picked on Linux (as OA-38 amends it).
 - **W7-INTEROP-5:** `format.json` stays at major 1 until the floor.
 - **W7-INTEROP-6:** `card.json` aliases are objects, and a writer's `contract` field marks the floor.
 - **W7-INTEROP-7:** in compatibility mode, Linux's scrape index stays internal.
@@ -517,7 +519,7 @@ Proposed here, not decided by the owner:
 
 Questions only the owner can answer:
 
-1. Should a choice made on Linux ever change Android's choice? W7-INTEROP-3 says never: each platform keeps its own, and a user picks on both. The alternative is the plan's §7.6 rule (write a label found in both ES-DE tables), which makes such picks shared.
-2. Should Linux's per-game choices live in `systems.linux.json` (W7-INTEROP-2), or as fields in Android's `emulators.json` (the plan's §7.6), where an Android re-pick deletes them?
+1. ~~Should a choice made on Linux ever change Android's choice?~~ Answered by OA-38: yes, the last pick wins on both platforms.
+2. ~~Where should Linux's per-game choices live?~~ Answered by OA-38: in the shared files (`<altemulator>` and `emulators.json`); `systems.linux.json` is retired.
 3. ScummVM's shared settings: a new shared `scummvm/scummvm.ini` (W7-INTEROP-12), or may Linux import read-only from the Android mirror `scummvm/app/files/scummvm.ini`?
 4. Where should user music playlists live: `Thimsy/playlists/` (W7-INTEROP-13) or inside a music folder the user chose?

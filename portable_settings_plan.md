@@ -189,7 +189,7 @@ Evidence is file:line at `linux` HEAD. "Row" means a settings-table row: it is w
 | Scraper accounts | `scraper.ssuser/.sspass/.tgdbkey` | `NanoScrapeQueue.cpp:497-498` | rows `NanoMenuPS3Menu.cpp:10046-10048` | **S** (Export Library already excludes them: `android_launcher_plan.md` §3 item 9) |
 | Where the store is | `nano.esde.dir`, `scraper.dir`, `nano.esde.mediadir` | `NanoEsdeStore.cpp:120-132`, `NanoThemeEngine.cpp:67`, `:1746` | `NanoSdMove.cpp:984-987`, `:2250-2253`; `NanoEsdeStore.cpp:177` | **D** (a file on the store cannot say where the store is) |
 | Keep emulator files on microSD | `nano.emu_sd`, `.emu_sd_card`, `.emu_sd_appwins` | `NanoSdMove.cpp:100-107` | `NanoBiosUi.cpp:1153`; row `NanoMenuPS3Menu.cpp:9760` | **D** |
-| Legacy per-system overrides | `nano.xmb.<id>.dir/.core/.path` | `NanoMenuXmb.cpp:351-356`, `:1862` | none in shared code | **D**, superseded by `nano/systems.json` and `systems.linux.json` (contract C5) |
+| Legacy per-system overrides | `nano.xmb.<id>.dir/.core/.path` | `NanoMenuXmb.cpp:351-356`, `:1862` | none in shared code | **D**, superseded by `nano/systems.json` and `systems.linux.json` (contract C5; `systems.linux.json` since retired by OA-38, picks are shared in `nano/systems.json`) |
 | Apps lists | `nano.apps.showall`, `.extra_apps`, `.pinned_pkgs`, `.primary_pkgs`, `.background_pkgs`, `.screen_*_pkgs`, `.browser_pkg` | `NanoMenuPS3Menu.cpp:138`, `:13067-13083`, `:13436`; `NanoMenuState.cpp:362` | `NanoMenuPS3Menu.cpp:14395`; row `:9721` | **A** (Android package names) |
 | Per-app orientation | `/data/system/nano_app_orient.json` | `NanoMenuOverlay.cpp:2084-2092` | `NanoMenuOverlay.cpp:2118` | **A** |
 

@@ -456,6 +456,7 @@ private:
     // writes it; saveSystemsConfig serializes mXmbSystems back atomically.
     bool loadSystemsConfig();
     void seedSystemsConfig();
+    void seedEmuDefaults();   // OA-38: the image's default emulators into the device's store, once
     void saveSystemsConfig(bool quiet = false);   // quiet: no banner when it cannot be saved now
     // Cross-process config coherence: nanosecond mtime stamp of
     // nano_systems.json (-1 when absent) and the stamp of this process's last
@@ -470,6 +471,7 @@ private:
     // systems whose player cannot run one that can, once RetroArch's cores can be read
     // (nanosys::staleCoreRepairs, nanosys::playerRepair). Once per config: a healed one says so
     // ("healed" in nano_systems.json, mSystemsHealDone), so a player the user picks later is kept.
+    // Not in ES-DE store mode (OA-38): the systems are the card's, shared, and a launch falls back.
     void systemsHealTick();
     bool mSystemsHealChecked = false;
     bool mSystemsHealDone = false;
@@ -560,10 +562,10 @@ private:
     // does not). False, with a message shown, when it is used and the file holds no valid ID.
     bool launchFileIdFor(const std::string& tmpl, const std::string& args, const std::string& romPath,
                          const std::string& displayName, std::string& id);
-    // Pre-launch emulator guard (ES-DE style, checked lazily at launch). coreSoExists stats the
-    // RetroArch core .so; packageInstalled scans /data/system/packages.list for a standalone package.
-    // Both fail OPEN (return true) if the check itself cannot be performed, so a transient FS state
-    // never blocks a valid launch. showEmuMissingMsg surfaces a theme-agnostic toast and we do not launch.
+    // Pre-launch emulator guard (ES-DE style, checked lazily at launch). coreSoExists and
+    // packageInstalled ask the platform (NanoPlatform.h's Emulators): the firmware stats the
+    // RetroArch core .so and scans /data/system/packages.list, failing OPEN when it cannot check;
+    // Linux fails closed. showEmuMissingMsg surfaces a theme-agnostic toast and we do not launch.
     bool coreSoExists(const std::string& coreSo);
     bool packageInstalled(const std::string& pkg);
     void showEmuMissingMsg(const std::string& displayName, bool standalone);
@@ -3685,6 +3687,24 @@ private:
     const GameEmulator* gameEmulatorFor(const std::string& romPath);
     void setGameEmulator(const std::string& romPath, const GameEmulator* emu);   // nullptr = the system's
     bool applyGameEmulator(const std::string& romPath, XmbSystem& s);   // give s the game's emulator, if set
+    // OA-38: a launch whose emulator cannot run here starts with this platform's image default for
+    // its system instead, for that launch only; the pick is kept. The defaults are the device's store
+    // (nano_emu_defaults.json, keyed by the system's ROM folder or id), read once.
+    struct EmuDefault { std::string coreSo, package, intent; };
+    std::map<std::string, EmuDefault> mEmuDefaults;
+    bool mEmuDefaultsLoaded = false;
+    void loadEmuDefaults();
+    bool emuCanRun(const XmbSystem& s);       // the launch guard's test: its core, or its app
+    bool emuApplyDefault(XmbSystem& s);       // s's launch fields become its default, when that can run
+    // ... or, for sys made by the emulator catalog, its platform's first catalog emulator that can run.
+    bool emuApplyCatalogFirst(XmbSystem& s, const XmbSystem& sys);
+    // The launch sites' fallback, asked only when s's emulator cannot run here (emuCanRun false): this
+    // launch takes its default, else (gameEmu: s carries the game's own pick) the system's emulator
+    // when that can run, else (a custom system) its catalog's first that can. sys: s's system, if known.
+    enum class EmuFallback { None, ImageDefault, SystemOwn, CatalogFirst };
+    EmuFallback emuLaunchFallback(XmbSystem& s, const XmbSystem* sys, bool gameEmu);
+    bool emuDefaultsStored();                 // the store exists (seeded), readable or not
+    bool emuDefaultsSave(const std::map<std::string, EmuDefault>& defaults);
     int recentSystemIndex(const XmbRecentEntry& re) const;   // the system a recent entry belongs to, -1 if none
     void openGameEmulatorPicker(int sysIdx, const std::string& romPath);
     std::string mGameEmuRom;                    // the game the emulator picker is open for
@@ -4256,7 +4276,8 @@ private:
     void esdeGamelistSetSystem(const std::string& folder, const char* field, const std::string& value);
     std::string esdeEmulatorLabel(const std::string& esdeSys, const XmbSystem& launch);
     int esdeCatalogForLabel(int sysIdx, const std::string& esdeSys, const std::string& label,
-                            const std::set<std::string>& installed);   // mEmuCatalog index, -1 = none that runs here
+                            const std::set<std::string>& installed,
+                            bool runnableOnly = true);   // mEmuCatalog index, -1 = none (that runs here)
     std::set<std::string> emuInstalledPackages();
     std::vector<std::string> esdeSystemFolders(int sysIdx);      // its ES-DE folders, in its folders' order
     std::string esdeCommandSystem(const std::string& folder, int sysIdx);   // whose ES-DE commands they are

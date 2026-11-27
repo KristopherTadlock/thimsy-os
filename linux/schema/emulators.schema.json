@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://thimsy.invalid/linux/schema/emulators.schema.json",
   "title": "Thimsy ES-DE/nano/emulators.json",
-  "description": "Android's per-game emulator choices that ES-DE has no label for (esdeStoreSaveGameEmu, NanoEsdeStore.cpp). Android-owned; written in place, so unknown top-level keys and other games' items survive, and the re-picked game's item is rebuilt as {game, label, am}. The 'key' field is this contract's addition (written by Android from the compatibility floor on). Linux reads this file and never writes it (proposed, W7-INTEROP; Linux's own per-game choices are in systems.linux.json). Unknown fields are allowed here because the file is already in the field. Only the draft-07 keywords devicejson.py validates are used.",
+  "description": "The per-game emulator picks that ES-DE has no label for, from either platform (esdeStoreSaveGameEmu, NanoEsdeStore.cpp; OA-38: the last pick wins on both platforms, per game here and in the gamelists' <altemulator>). Written in place by both, so unknown top-level keys and other games' items survive, and the re-picked game's item is rebuilt as {game, label, am} or removed when its new pick has an ES-DE label. 'am' is the pick in Nano's emulator catalog on every platform (Daijishou's am start arguments), so each platform finds the same entry; a platform that cannot run it keeps the item and starts the game with its own default (LIBRARY-FORMAT.md 5). The 'key' field is this contract's addition (written from the compatibility floor on). Unknown fields are allowed here because the file is already in the field. Only the draft-07 keywords devicejson.py validates are used.",
   "type": "object",
   "required": ["items"],
   "properties": {
@@ -21,7 +21,7 @@
       "properties": {
         "game": {"$ref": "#/definitions/game"},
         "label": {"type": "string", "description": "Nano's display label of the emulator."},
-        "am": {"type": "string", "minLength": 1, "description": "Android am start arguments; Android loads an item only when it matches its catalogue."},
+        "am": {"type": "string", "minLength": 1, "description": "The catalog entry's am start arguments (Nano's catalog is the same on both platforms); a reader loads an item only when it matches its catalog."},
         "key": {"$ref": "#/definitions/emu_key", "description": "The portable key of the same choice that 'am' describes."}
       }
     }

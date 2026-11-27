@@ -128,6 +128,8 @@ TEST(LinuxPlatform, HasEveryService) {
     // The Wi-Fi switch through the platform's own actions (the Quick Menu's Wi-Fi row).
     EXPECT_TRUE(p->settings->supports(nanoplat::SettingSource::kGlobal, "wifi_on"));
     EXPECT_FALSE(p->settings->supports(nanoplat::SettingSource::kProp, "persist.gammaos.nano.unknown_row"));
+    ASSERT_TRUE(p->emulators != nullptr);  // W8-EMU: no Android app is ever installed here
+    EXPECT_FALSE(p->emulators->appInstalled("com.retroarch.aarch64"));
 }
 
 TEST(LinuxPlatform, HasIsFalseWithoutCapabilities) {

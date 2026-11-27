@@ -395,11 +395,17 @@ int playerRepair(const SysCore& system, const std::vector<Player>& players,
             break;
         }
     if (!catalogs) return -1;
+    if (system.libretro ? coreInstalled(system.coreSo) : packageInstalled(system.package)) return -1;
+    return firstPlayerThatRuns(players, coreInstalled, packageInstalled);
+}
+
+int firstPlayerThatRuns(const std::vector<Player>& players,
+                        const std::function<bool(const std::string&)>& coreInstalled,
+                        const std::function<bool(const std::string&)>& packageInstalled) {
     auto runs = [&](const Player& p) {
         if (p.libretro) return !p.coreSo.empty() && coreInstalled(p.coreSo);
         return !p.package.empty() && packageInstalled(p.package);
     };
-    if (system.libretro ? coreInstalled(system.coreSo) : packageInstalled(system.package)) return -1;
     bool noneReady = true;
     const std::vector<size_t> order = playerChoices(players, runs, &noneReady);
     return noneReady || order.empty() ? -1 : (int)order[0];

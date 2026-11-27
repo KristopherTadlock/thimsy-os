@@ -73,6 +73,9 @@ Nano process whose fields equal the given ones, e.g. `{"ev": "grab", "on": true}
 - `barrier`: start with the frame barrier on.
 - `files`: {absolute jail path: text}, written before Nano starts (ROMs, ES-DE files, state files).
 - `record_props`: key prefixes logged as `prop` events (default every key).
+- `emulators`: `{"cores": [...], "apps": [...], "defaults": [{"system", "core", "package",
+  "intent"}]}`, the emulators that run here and the image's defaults (`FakeEmulators.h`, W8-EMU).
+  Left out, no core and no app runs, so a scenario that launches lists its core.
 
 Key names: `DPAD_UP`, `DPAD_DOWN`, `DPAD_LEFT`, `DPAD_RIGHT` (the arrow keys, which Nano navigates
 by), `A` (`BTN_SOUTH`), `B` (`BTN_EAST`), `X` (`BTN_WEST`), `Y` (`BTN_NORTH`), `L`, `R`, `L2`, `R2`,
@@ -111,9 +114,10 @@ The runner talks to `nano-headless` through `/run/thimsy/headless/` (`nano/platf
 | `boot_home.jsonl` | boot to the home: the DRM path, presents, the pad opened and grabbed, a captured frame, no launch |
 | `navigate.jsonl` | presses reach Nano; it keeps presenting; nothing launches |
 | `launch_game.jsonl` | a system opened and a game launched with a core; the handshake and the ROM file; the game ends and Nano comes back with it played |
+| `launch_recent_fallback.jsonl` | OA-38: a Recently Played game whose core cannot run here starts with the image's default, and Recently Played still names its own core afterwards |
 | `setting_persisted.jsonl` | Font Size changed: a `setting` event for system `font_scale` from the fake settings dispatcher, `persist.gammaos.nano.fontscale` in `persist.props` (where Linux keeps it), still there after exit, and no `settings` command |
 
-The key sequences of `launch_game` and `setting_persisted` are first guesses at the XMB's layout,
+The key sequences of `launch_game`, `launch_recent_fallback` and `setting_persisted` are first guesses at the XMB's layout,
 marked `TODO(G10)`: they are fixed from the first run's captures and events.
 
 ### Android command strings (to rewrite in OA-4 migration steps 3 and 6)
@@ -130,6 +134,7 @@ SystemSettings) land, each assertion becomes one on a platform event (the fake p
 |---|---|---|---|
 | `launch_game.jsonl` | 7 | shell rule `am start` | nothing: the launch already goes through the fake launcher's `launch` event |
 | `launch_game.jsonl` | 20 | `expect_no_shell`: `settings put`, `pm uninstall` | no `shell` event at all |
+| `launch_recent_fallback.jsonl` | 19 | `expect_no_shell`: `settings put`, `pm uninstall` | no `shell` event at all |
 | `setting_persisted.jsonl` | 7 | (was: shell rules `settings put system font_scale `, `settings get `) | done (W6-caps): no shell rules; the fake `Settings` keeps the font scale |
 | `setting_persisted.jsonl` | 18 | (was: `shell` event with rule 0, `settings put system font_scale`) | done (W6-caps): the fake `Settings` event `{"ev": "setting", "op": "put", "source": "system", "key": "font_scale"}`, and `expect_no_shell` `settings ` |
 | `boot_home.jsonl` | 16 | `expect_no_shell`: `am start`, `am force-stop`, `pm uninstall`, `reboot` | no `shell` event at all |

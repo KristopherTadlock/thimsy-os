@@ -32,6 +32,7 @@
 #include "Boot.h"  // W6-boot
 #include "Capabilities.h"  // W6-caps
 #include "Settings.h"  // W6-caps
+#include "Emulators.h"  // W8-EMU
 
 std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs& /*args*/) {
     std::unique_ptr<Platform> platform(new Platform);
@@ -49,5 +50,6 @@ std::unique_ptr<nanoplat::Platform> nanoplat::createPlatform(const PlatformArgs&
     // W6-caps: Nano's preferences; unknown keys fail closed. The Wi-Fi and Bluetooth switches go
     // through the actions above (Platform declares actions before settings, so they outlive it).
     platform->settings = nanolinux::settings::create(platform->actions.get());
+    platform->emulators = nanolinux::makeEmulators();  // W8-EMU: the image's cores; no apps
     return platform;
 }

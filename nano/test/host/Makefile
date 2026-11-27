@@ -345,6 +345,9 @@ HL_PLATFORM_SRCS += platform/host/FakeBoot.cpp
 # (hl_extra_fake_settings_test below).
 HL_TESTS += fake_settings_test
 HL_PLATFORM_SRCS += platform/host/FakeCapabilities.cpp platform/host/FakeSettings.cpp
+# The fake emulators (W8-EMU).
+HL_TESTS += fake_emulators_test
+HL_PLATFORM_SRCS += platform/host/FakeEmulators.cpp
 HL_PLATFORM_OBJS := $(patsubst %.cpp,$(HL_O)/obj/%.o,$(HL_PLATFORM_SRCS))
 HL_CPPFLAGS := $(NANOCOMPAT_CPPFLAGS) -I$(LIBTHIMSY)/include -I$(NANO) -I$(LIBTHIMSY)/testing -I$(HL_TEST_DIR)
 HL_WARN := -Wall -Wextra -Werror

@@ -136,6 +136,13 @@ class SurfaceUnit(unittest.TestCase):
         self.assertEqual(missing, ["V.cpp"])
         self.assertEqual([(c.sha, paths) for c, paths in unannotated], [("5" * 40, ["V.cpp"])])
 
+    def test_wave_step_ids(self):
+        """Wave steps name themselves W<n>-<area>, as the G steps did G<n>."""
+        wave = Commit("4" * 40, "Z\n\nandroid-surface: W8-emu move of Z (review: color-moved clean)\n", {"Z.cpp"})
+        other = Commit("5" * 40, "V\n\nandroid-surface: X1 add V (review: color-moved clean)\n", {"V.cpp"})
+        missing, _ = coverage({"Z.cpp", "V.cpp"}, [wave, other])
+        self.assertEqual(missing, ["V.cpp"])
+
     def test_surface_joins(self):
         """G7-main: P.cpp reached the patch off the surface (G5) and joined it in an annotated
         commit; Q.cpp joined it in an unannotated one; R.cpp was changed bare while on it."""

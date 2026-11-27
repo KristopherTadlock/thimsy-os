@@ -19,8 +19,8 @@
 //
 // Declared when used, not ahead: this header holds only the platform object and how it is made,
 // installed and reached. Each interface (Display, Launcher, Audio, Volumes, Power, SystemActions,
-// InputPolicy, Network, Boot, Capabilities with the Cap set, and Settings) is declared by the step
-// that moves the code behind it, in the same commit as the move, sized to that code.
+// InputPolicy, Network, Boot, Capabilities with the Cap set, Settings, and Emulators) is declared by
+// the step that moves the code behind it, in the same commit as the move, sized to that code.
 //
 // Who may use it. drastic-nano, gammaos-nano-scrape, the host tests and the other binaries built
 // from Nano's files never call install(). No file they compile may include this header or name
@@ -540,6 +540,39 @@ class Settings {
 };
 // --- end Settings --------------------------------------------------------------------------------
 
+// --- Emulators (W8-EMU) --------------------------------------------------------------------------
+// Which emulators this platform can run, and the image's own default emulator per system (OA-38: a
+// pick this platform cannot run starts with that default instead). Nano names an emulator the same
+// way on every platform, as its launch fields do: a libretro core by its Android file name
+// (<core>_libretro_android.so) and a standalone emulator by its Android package. The firmware's
+// answers are NanoMenu::coreSoExists and packageInstalled, moved (platform/firmware/Emulators.cpp);
+// Linux's come from the image's core folder and fail closed for every app, since it starts none yet
+// (platform/linux/Emulators.cpp); the host's from the config's scripted lists
+// (platform/host/FakeEmulators.cpp). Any thread; each call may touch the filesystem.
+
+// One system's emulator in the launch fields' terms (NanoMenu::XmbSystem's): a core, or an app.
+struct SystemEmulator {
+    std::string system;   // the system's id, which is its ROM folder for the built-in systems ("psx")
+    std::string coreSo;   // a libretro core, "<core>_libretro_android.so"; "" for an app
+    std::string package;  // a standalone emulator's package; "" for a core
+    std::string intent;   // the app's am start template ({file.uri} and the rest); "" for a core
+};
+
+class Emulators {
+ public:
+    virtual ~Emulators() = default;
+    // The libretro core `coreSo` (Nano's name for it) can run here. True for "": no core to check.
+    virtual bool coreInstalled(const std::string& coreSo) = 0;
+    // The standalone emulator `package` can run here. True for "": no app to check.
+    virtual bool appInstalled(const std::string& package) = 0;
+    // The image's default emulator for each system it has one for, which Nano writes into the
+    // device's store of defaults on its first run (OA-38). Empty when the image's defaults are the
+    // systems shared code already reads: the firmware's are the build's nano_systems.json, else
+    // Nano's built-in table.
+    virtual std::vector<SystemEmulator> imageDefaults() = 0;
+};
+// --- end Emulators -------------------------------------------------------------------------------
+
 // The platform's services, one member per G7 area. Each platform library derives from it to keep
 // its own state, and its createPlatform() sets every member, so call sites use them untested.
 struct Platform {
@@ -557,6 +590,7 @@ struct Platform {
     std::unique_ptr<Boot> boot;  // W6-boot: never null once createPlatform() returns
     std::unique_ptr<Capabilities> caps;  // W6-caps: never null once createPlatform() returns
     std::unique_ptr<Settings> settings;  // W6-caps: never null once createPlatform() returns
+    std::unique_ptr<Emulators> emulators;  // W8-EMU: never null once createPlatform() returns
 };
 
 struct PlatformArgs {

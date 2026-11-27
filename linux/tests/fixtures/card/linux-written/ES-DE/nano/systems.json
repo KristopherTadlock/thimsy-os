@@ -29,7 +29,7 @@
       "shortname": "PSX",
       "romDir": "psx",
       "launchType": "libretro-core",
-      "coreSo": "mednafen_psx_hw_libretro_android.so",
+      "coreSo": "pcsx_rearmed_libretro_android.so",
       "package": "",
       "launchArgs": "",
       "intentTemplate": "",

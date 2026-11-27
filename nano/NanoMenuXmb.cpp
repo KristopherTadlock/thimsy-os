@@ -49,6 +49,7 @@
 #include "NanoJson.h"
 #include "NanoLaunch.h"
 #include "NanoLaunchCommit.h"   // commitLaunch: the launch handshake's writes
+#include "NanoPlatform.h"       // Emulators: which cores and apps can run here (W8-EMU)
 #include "NanoSystemsHeal.h"
 #include "NanoBiosUtil.h"
 #include "NanoScummvmList.h"
@@ -339,6 +340,7 @@ void NanoMenu::initXmbSystems() {
     if (!loadSystemsConfig()) {
         seedSystemsConfig();
     }
+    seedEmuDefaults();   // OA-38: once, on the first run
 
     for (auto& sys : mXmbSystems) {
         // Legacy per-system prop overrides keyed on the original built-in
@@ -924,6 +926,41 @@ void NanoMenu::seedSystemsConfig() {
     saveSystemsConfig();
 }
 
+// OA-38: the image's default emulator for each system, written into the device's store
+// (nano_emu_defaults.json, which emuApplyDefault reads) the first time Nano runs, as OA-35 stores the
+// theme's defaults: a later release that changes a default reaches new installs only. They are the
+// platform's own table when it has one (Linux's), else the build's systems, else Nano's built-in table.
+void NanoMenu::seedEmuDefaults() {
+    if (emuDefaultsStored()) return;
+    std::map<std::string, EmuDefault> defaults;
+    for (const auto& e : nanoplat::get().emulators->imageDefaults())
+        if (!e.system.empty() && e.coreSo.empty() != e.package.empty())
+            defaults.emplace(e.system, EmuDefault{e.coreSo, e.package, e.intent});
+    const char* from = "the platform's table";
+    if (defaults.empty()) {
+        std::vector<XmbSystem> image;
+        if (loadBundledSystems(&image)) {
+            from = nanosys::kBundledSystems;
+            for (const auto& s : image) {
+                const std::string key = s.romDir.empty() ? s.id : s.romDir;
+                if (key.empty()) continue;
+                if (s.isStandalone()) defaults.emplace(key, EmuDefault{std::string(), s.launchPkg, s.launchIntent});
+                else if (s.launchType == XLT_LIBRETRO_CORE && !s.coreSo.empty())
+                    defaults.emplace(key, EmuDefault{s.coreSo, std::string(), std::string()});
+            }
+        } else {
+            from = "the built-in systems";
+            for (int i = 0; i < kNumXmbSystemDefs; i++) {
+                const SystemDef& d = kXmbSystemDefs[i];
+                if (d.launchPkg[0]) defaults.emplace(d.romDir, EmuDefault{std::string(), d.launchPkg, d.launchIntent});
+                else if (d.coreSo[0]) defaults.emplace(d.romDir, EmuDefault{d.coreSo, std::string(), std::string()});
+            }
+        }
+    }
+    if (emuDefaultsSave(defaults))
+        ALOGI("NanoMenu: the image's default emulators stored (%zu systems, from %s)", defaults.size(), from);
+}
+
 void NanoMenu::saveSystemsConfig(bool quiet) {
     if (mEsdeSystemsAdopted) {   // the card's systems wait to be loaded: these would replace them
         ALOGW("NanoMenu: systems not saved; the ES-DE folder's are being loaded");
@@ -1271,6 +1308,13 @@ void NanoMenu::systemsHealTick() {
     mSystemsHealNextMs = now + 2000;
     // The other process saved since this one loaded: heal what it saved, once reloaded.
     if (systemsConfigStamp() != mSystemsCfgStamp) return;
+    // OA-38 (W8-EMU-20): in store mode the systems are the card's, shared with the other platform,
+    // and an emulator this one cannot run is still a pick there: none is rewritten, and a launch falls
+    // back for itself (emuLaunchFallback). Not marked healed, so it runs once out of store mode.
+    if (esdeStoreMode()) {
+        mSystemsHealChecked = true;
+        return;
+    }
     struct stat st;
     if (stat("/data/data/com.retroarch.aarch64/cores", &st) != 0 || !S_ISDIR(st.st_mode)) return;
     mSystemsHealChecked = true;
@@ -1667,6 +1711,13 @@ void NanoMenu::gsAutoAddTick() {
     };
 
     int added = 0, linked = 0, needEmu = 0;
+    // OA-38: a system whose emulator cannot run here still starts with its fallback (W8-EMU-21).
+    auto needsEmu = [this](const XmbSystem& sys) {
+        if (emuCanRun(sys)) return false;
+        XmbSystem t;   // its launch fields, not its games
+        t.id = sys.id; t.romDir = sys.romDir; t.coreSo = sys.coreSo; t.launchPkg = sys.launchPkg;
+        return emuLaunchFallback(t, &sys, false) == EmuFallback::None;
+    };
     for (const auto& c : cands) {
         if (c.catIdx < 0 || c.catIdx >= (int)mEmuCatalog.size()) continue;
         const std::string full = c.folder;
@@ -1712,7 +1763,7 @@ void NanoMenu::gsAutoAddTick() {
             ScanSource src; src.type = 0; src.value = full; src.subfolders = 1; s.scanSources.push_back(src);
             invalidateSystemScan(s);
             linked++;
-            if (s.isStandalone() ? !packageInstalled(s.launchPkg) : !coreSoExists(s.coreSo)) needEmu++;
+            if (needsEmu(s)) needEmu++;
         } else {
             // The platform's first player may be one this device can't run (WonderSwan's is the
             // SwanEmu app): the first that can, when there is one.
@@ -1725,8 +1776,7 @@ void NanoMenu::gsAutoAddTick() {
             ScanSource src; src.type = 0; src.value = full; src.subfolders = 1; mXmbSystems[idx].scanSources.push_back(src);
             invalidateSystemScan(mXmbSystems[idx]);
             added++;
-            if (mXmbSystems[idx].isStandalone() ? !packageInstalled(mXmbSystems[idx].launchPkg)
-                                                : !coreSoExists(mXmbSystems[idx].coreSo)) needEmu++;
+            if (needsEmu(mXmbSystems[idx])) needEmu++;
         }
     }
 
@@ -3339,47 +3389,13 @@ void NanoMenu::showRomMissingMsg(const std::string& displayName) {
                    trDyn("It may have been deleted, or its storage is not connected."), 260);
 }
 
-// True when the RetroArch libretro core .so for a system is present on disk. RetroArch keeps its
-// cores under its own data dir; this is the exact path every launch branch feeds RetroArch. Fails
-// OPEN (returns true) for an empty coreSo so a non-core launch type is never blocked here.
+// Whether a game's core or app can run here: the platform's answer (NanoPlatform.h's Emulators).
 bool NanoMenu::coreSoExists(const std::string& coreSo) {
-    if (coreSo.empty()) return true;   // not a libretro-core launch; nothing to check
-    std::string corePath = "/data/data/com.retroarch.aarch64/cores/" + coreSo;
-    struct stat st;
-    if (stat(corePath.c_str(), &st) != 0) return false;
-    return S_ISREG(st.st_mode) && st.st_size > 0;
+    return nanoplat::get().emulators->coreInstalled(coreSo);
 }
 
-// True when a standalone emulator package is installed. Reads /data/system/packages.list directly
-// (the authoritative DB; the package name is the first space-delimited token of each line) rather
-// than mAppEntries, which drops system/com.android.*/com.gammaos.* packages an emulator may live in.
-// Fails OPEN (returns true) if the list is unreadable, so a transient state never blocks a launch.
 bool NanoMenu::packageInstalled(const std::string& pkg) {
-    if (pkg.empty()) return true;
-    // DS games route to drastic-nano, which runs libdrastic from /system and no
-    // longer needs the DraStic APK: the system copy counts as "installed".
-    if (pkg == "com.dsemu.drastic" &&
-        property_get_bool("persist.gammaos.nano.drastic_nano", false) &&
-        access("/system/lib64/libdrastic_arm64.so", R_OK) == 0)
-        return true;
-    int fd = open("/data/system/packages.list", O_RDONLY);
-    if (fd < 0) return true;   // fail-open: never block a launch if the DB cannot be read
-    std::string content;
-    char b[4096];
-    ssize_t n;
-    while ((n = read(fd, b, sizeof(b))) > 0) content.append(b, (size_t)n);
-    close(fd);
-    size_t pos = 0;
-    while (pos < content.size()) {
-        size_t eol = content.find('\n', pos);
-        if (eol == std::string::npos) eol = content.size();
-        size_t sp = content.find(' ', pos);
-        if (sp != std::string::npos && sp <= eol &&
-            content.compare(pos, sp - pos, pkg) == 0)
-            return true;
-        pos = eol + 1;
-    }
-    return false;
+    return nanoplat::get().emulators->appInstalled(pkg);
 }
 
 // Tell the user a game's emulator/core is not on the device, instead of launching into a black
@@ -3828,6 +3844,25 @@ void NanoMenu::launchXmbGame() {
             return;
         }
 
+        // What Recently Played keeps when the entry moves to the front: the fallback below is this
+        // launch's only.
+        const XmbRecentEntry recorded = re;
+        // OA-38: an emulator this platform cannot run starts with its default for this launch only.
+        { XmbSystem g;
+          const int si = recentSystemIndex(re);
+          g.id = si >= 0 ? mXmbSystems[si].id : re.romDir;
+          g.romDir = si >= 0 ? mXmbSystems[si].romDir : re.romDir;
+          g.coreSo = re.coreSo; g.launchIntent = re.launchIntent;
+          if (re.standalone) g.launchPkg = re.launchPkg;
+          const EmuFallback fb = emuCanRun(g) ? EmuFallback::None
+                                              : emuLaunchFallback(g, si >= 0 ? &mXmbSystems[si] : nullptr, gameEmu);
+          if (fb != EmuFallback::None) {
+              re.coreSo = g.coreSo; re.launchPkg = g.launchPkg; re.launchIntent = g.launchIntent;
+              re.standalone = g.isStandalone();
+              // The system's extra arguments are its own emulator's: kept for it, dropped otherwise.
+              gameEmu = fb != EmuFallback::SystemOwn;
+          } }
+
         // The emulator that opens this game may not be on the device (a core was never installed, or
         // the standalone app was uninstalled). Warn instead of black-screening on launch.
         if (re.standalone) {
@@ -3873,7 +3908,7 @@ void NanoMenu::launchXmbGame() {
         if (mXmbGameIndex > 0) {
             std::vector<XmbRecentEntry> saved = mXmbRecent;
             saved.erase(saved.begin() + mXmbGameIndex);
-            saved.insert(saved.begin(), re);
+            saved.insert(saved.begin(), recorded);
             std::swap(mXmbRecent, saved);
             saveXmbRecent();
             std::swap(mXmbRecent, saved); // restore in-memory order
@@ -4010,6 +4045,17 @@ void NanoMenu::launchXmbGame() {
         gameSys = *sysp;
         applyGameEmulator(gameSys.roms[gameIdx], gameSys);
         sysp = &gameSys;
+    }
+    // OA-38: an emulator this platform cannot run starts with its default for this launch only.
+    if (!emuCanRun(*sysp)) {
+        XmbSystem fallback = *sysp;
+        const EmuFallback fb = emuLaunchFallback(fallback, &mXmbSystems[sysIdx], sysp == &gameSys);
+        if (fb == EmuFallback::ImageDefault || fb == EmuFallback::CatalogFirst) {
+            gameSys = std::move(fallback);
+            sysp = &gameSys;
+        } else if (fb == EmuFallback::SystemOwn) {
+            sysp = &mXmbSystems[sysIdx];   // the game starts as its system does
+        }
     }
     const auto& sys = *sysp;
 

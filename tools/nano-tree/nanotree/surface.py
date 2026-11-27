@@ -30,8 +30,8 @@ C_FAMILY = (".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx", ".inc", ".
 INCLUDE = re.compile(rb'^[ \t]*#[ \t]*include[ \t]*([<"])([^>"\r\n]+)[>"]', re.M)
 # A commit message line that marks a reviewed change to the Android surface: the step id, then what
 # and how it was reviewed, e.g. "android-surface: G9a mechanical move of ... (review: color-moved clean)".
-# Step ids are the plan's G steps or the migration waves' W steps ("W6-boot").
-SURFACE_LINE = re.compile(r"^android-surface:[ \t]+((?:G|W)[0-9][0-9A-Za-z-]*)\b.*\breview\b", re.M | re.I)
+# Step ids are the plan's G steps or the migration waves' W steps, W<n>-<area> ("W6-boot", "W8-emu").
+SURFACE_LINE = re.compile(r"^android-surface:[ \t]+([GW][0-9][0-9A-Za-z-]*)\b.*\breview\b", re.M | re.I)
 ANY_SURFACE_LINE = re.compile(r"^android-surface:", re.M | re.I)
 
 
