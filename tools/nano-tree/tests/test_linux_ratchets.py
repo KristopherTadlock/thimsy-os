@@ -184,7 +184,7 @@ class Counters(unittest.TestCase):
         self.put("Off.cpp", 'void g() { system("am x"); }\n')
         self.put("D.cpp", 'static const char* p = "rk356x"; const char* q = "albums sums ums";\n')
         self.put("S.cpp", 'void s() { fork(); execv("/system/bin/rm", 0); std::system("x"); ::popen("y", "r");\n'
-                          '  my::system(); notstd::popen(); mystd::fork(); }\n')
+                          '  ::std::system("z"); my::system(); notstd::popen(); mystd::fork(); my::std::fork(); }\n')
         self.put("main.cpp", 'int main() { system("am x"); }\n')
         self.put("platform/firmware/P.cpp", 'void p() { system("am x"); }\n')
         self.put("NanoPlatform.h", "struct P { virtual void setBrightnessViaHal(int) = 0;\n"
@@ -193,7 +193,7 @@ class Counters(unittest.TestCase):
         self.assertEqual(linux_shared_sources(self.tmp), ["A.cpp", "D.cpp", "S.cpp", "NanoPlatform.h"])
         hits = linux_ratchet_hits(self.tmp)
         counts = {r: {k: len(v) for k, v in hits[r].items()} for r in RATCHETS}
-        self.assertEqual(counts["spawners"], {"system": 2, "popen": 2, "fork": 1, "execv": 1})
+        self.assertEqual(counts["spawners"], {"system": 3, "popen": 2, "fork": 1, "execv": 1})
         self.assertEqual(counts["android_tool_literals"], {"total": 2})
         self.assertEqual([h[2] for h in hits["android_includes"]["total"]], ["binder/IBinder.h"])
         self.assertEqual(counts["android_paths"], {"/data": 1, "/system": 1})

@@ -149,11 +149,11 @@ def write_list(path: str, header: str, items: List[str]) -> None:
 # tools/nano-tree/linux-ratchets.json that may only shrink, towards 0, as the migration moves the code
 # behind nanoplat (tools/nano-tree/tests/test_linux_ratchets.py).
 
-# Functions that start a program, called bare, as ::f( or as std::f( (not as a member or as another
-# namespace's function).
+# Functions that start a program, called bare, as ::f(, as std::f( or as ::std::f( (not as a member or
+# as another namespace's function).
 SPAWNERS = ("system", "popen", "fork", "vfork", "execv", "execvp", "execve", "execl", "execlp", "execle",
             "execvpe", "fexecve", "posix_spawn", "posix_spawnp")
-SPAWN_CALL = re.compile(r"(?<![A-Za-z0-9_.>:])(?:(?:std)?::)?(%s)\s*\(" % "|".join(SPAWNERS))
+SPAWN_CALL = re.compile(r"(?<![A-Za-z0-9_.>:])(?:(?:::)?std::|::)?(%s)\s*\(" % "|".join(SPAWNERS))
 
 # Android-only programs a string literal may start with (the shell gate refuses all of them on Linux).
 ANDROID_TOOLS = frozenset("""

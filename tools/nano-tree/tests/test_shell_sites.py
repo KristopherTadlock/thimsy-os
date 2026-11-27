@@ -37,7 +37,7 @@ LOWER = "py -3.12 tools/nano-tree/tests/test_linux_ratchets.py --lower"
 
 # Functions that start a program (and pclose, which the gate must see to answer its own streams).
 WRAPPED_FUNCS = SPAWNERS + ("pclose",)
-CALL = re.compile(r"(?<![A-Za-z0-9_.>:])(?:(?:std)?::)?(%s)\s*\(" % "|".join(WRAPPED_FUNCS))
+CALL = re.compile(r"(?<![A-Za-z0-9_.>:])(?:(?:::)?std::|::)?(%s)\s*\(" % "|".join(WRAPPED_FUNCS))
 EXEC_FUNCS = ("execv", "execvp", "execve", "execl", "execlp", "execle", "execvpe", "fexecve")
 # fork and vfork start nothing by themselves (the exec after them does): they need no wrap.
 UNWRAPPED_OK = ("fork", "vfork")
@@ -131,6 +131,17 @@ class ShellSites(unittest.TestCase):
             elif n < cap:
                 problems.append("%s: %d calls, ceiling %d: lower the ceiling with %s" % (fn, n, cap, LOWER))
         self.assertFalse(problems, "program starts in Linux-compiled shared code:\n  " + "\n  ".join(problems))
+
+
+class CallPattern(unittest.TestCase):
+    """CALL finds a call bare, as ::f(, std::f( and ::std::f(, and not a member's or another namespace's."""
+
+    def test_qualified_calls(self):
+        code = ('void s() { system("a"); ::popen("b", "r"); std::system("c"); ::std::system("d");\n'
+                '  pclose(f); ::std::pclose(g); obj.system(); p->popen(); my::system(); notstd::popen();\n'
+                '  mystd::fork(); my::std::fork(); ::my::system(); systemd(); }\n')
+        found = [m.group(1) for m in CALL.finditer(code)]
+        self.assertEqual(found, ["system", "popen", "system", "system", "pclose", "pclose"])
 
 
 @unittest.skipUnless(os.path.isfile(GATE), "no nano/platform/linux here")
