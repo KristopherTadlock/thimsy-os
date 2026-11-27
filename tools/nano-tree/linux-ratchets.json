@@ -22,11 +22,11 @@
   },
   "android_paths": {
     "/config": 6,
-    "/data": 315,
+    "/data": 314,
     "/mnt": 59,
     "/sdcard": 32,
     "/storage": 141,
-    "/system": 96,
+    "/system": 95,
     "/vendor": 2
   },
   "device_literals": {
