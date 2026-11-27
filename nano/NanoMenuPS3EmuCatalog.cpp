@@ -753,6 +753,60 @@ bool NanoMenu::applyGameEmulator(const std::string& romPath, XmbSystem& s) {
     return true;
 }
 
+// ---- OA-38: a pick this platform cannot run starts with the image's default instead ----
+
+// The device's store of the image's default emulators: {"version": 1, "systems": {<key>: {"core":
+// "<core>_libretro_android.so"} or {"package": "...", "intent": "..."}}}, keyed by the system's ROM
+// folder (the built-in systems' id) or its id. Written once, on the first run (seedEmuDefaults).
+static const char* kEmuDefaultsPath = "/data/system/nano_emu_defaults.json";
+
+void NanoMenu::loadEmuDefaults() {
+    mEmuDefaultsLoaded = true;
+    mEmuDefaults.clear();
+    const std::string text = readWholeFile(kEmuDefaultsPath, 1024 * 1024);
+    njson::Value root;
+    if (text.empty() || !njson::parse(text, &root) || !root.isObject()) return;
+    const njson::Value* systems = root.find("systems");
+    if (!systems || !systems->isObject()) return;
+    for (const auto& kv : systems->obj) {
+        if (kv.first.empty() || !kv.second.isObject()) continue;
+        EmuDefault d{kv.second.getString("core"), kv.second.getString("package"), kv.second.getString("intent")};
+        if (d.coreSo.empty() == d.package.empty()) continue;   // a core or an app, not both
+        mEmuDefaults[kv.first] = std::move(d);
+    }
+}
+
+bool NanoMenu::emuCanRun(const XmbSystem& s) {
+    return s.isStandalone() ? packageInstalled(s.launchPkg) : coreSoExists(s.coreSo);
+}
+
+bool NanoMenu::emuApplyDefault(XmbSystem& s) {
+    if (!mEmuDefaultsLoaded) loadEmuDefaults();
+    auto it = mEmuDefaults.find(s.romDir);
+    if (it == mEmuDefaults.end()) it = mEmuDefaults.find(s.id);
+    if (it == mEmuDefaults.end()) return false;
+    XmbSystem d;   // the default's launch fields, as applyEmuEntryToSystem sets them
+    if (!it->second.coreSo.empty()) {
+        d.launchType = XLT_LIBRETRO_CORE;
+        d.coreSo = it->second.coreSo;
+    } else {
+        d.launchType = XLT_CUSTOM_PACKAGE;
+        d.packageName = d.launchPkg = it->second.package;
+        d.launchIntent = it->second.intent;
+    }
+    if (!emuCanRun(d)) return false;
+    ALOGI("emucatalog: %s's emulator (%s) cannot run here; this launch uses the default %s", it->first.c_str(),
+          s.isStandalone() ? s.launchPkg.c_str() : s.coreSo.c_str(),
+          d.isStandalone() ? d.launchPkg.c_str() : d.coreSo.c_str());
+    s.launchType = d.launchType;
+    s.coreSo = d.coreSo;
+    s.packageName = d.packageName;
+    s.launchPkg = d.launchPkg;
+    s.launchIntent = d.launchIntent;
+    s.launchArgs.clear();   // the system's extra arguments belong to its own emulator
+    return true;
+}
+
 // ---- Emulators as ES-DE names them (the ES-DE folder as Nano's store) ----
 
 // The label of ES-DE's command for esdeSys that starts launch's emulator; "" when ES-DE has none.
@@ -763,9 +817,10 @@ std::string NanoMenu::esdeEmulatorLabel(const std::string& esdeSys, const XmbSys
 }
 
 // The emulator of the system's platform that ES-DE's command `label` (for esdeSys) starts, when it
-// can run here; -1 when there is none.
+// can run here (or, with runnableOnly false, the first such emulator Nano's catalog has); -1 when
+// there is none.
 int NanoMenu::esdeCatalogForLabel(int sysIdx, const std::string& esdeSys, const std::string& label,
-                                  const std::set<std::string>& installed) {
+                                  const std::set<std::string>& installed, bool runnableOnly) {
     if (sysIdx < 0 || sysIdx >= (int)mXmbSystems.size()) return -1;
     const std::vector<std::string> keys = esdesys::esdeKeysForLabel(esdeSys, label);
     if (keys.empty()) return -1;
@@ -776,7 +831,8 @@ int NanoMenu::esdeCatalogForLabel(int sysIdx, const std::string& esdeSys, const 
         for (size_t i = 0; i < players.size(); i++) {
             const nanosys::Player& p = players[i];
             if (esdesys::esdeEmulatorKey(p.libretro, p.coreSo, p.package) != k) continue;
-            if (p.libretro ? coreSoExists(p.coreSo) : installed.count(p.package) > 0) return idx[i];
+            if (!runnableOnly || (p.libretro ? coreSoExists(p.coreSo) : installed.count(p.package) > 0))
+                return idx[i];
         }
     return -1;
 }

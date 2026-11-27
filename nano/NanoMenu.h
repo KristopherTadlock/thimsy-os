@@ -3675,6 +3675,15 @@ private:
     const GameEmulator* gameEmulatorFor(const std::string& romPath);
     void setGameEmulator(const std::string& romPath, const GameEmulator* emu);   // nullptr = the system's
     bool applyGameEmulator(const std::string& romPath, XmbSystem& s);   // give s the game's emulator, if set
+    // OA-38: a launch whose emulator cannot run here starts with this platform's image default for
+    // its system instead, for that launch only; the pick is kept. The defaults are the device's store
+    // (nano_emu_defaults.json, keyed by the system's ROM folder or id), read once.
+    struct EmuDefault { std::string coreSo, package, intent; };
+    std::map<std::string, EmuDefault> mEmuDefaults;
+    bool mEmuDefaultsLoaded = false;
+    void loadEmuDefaults();
+    bool emuCanRun(const XmbSystem& s);       // the launch guard's test: its core, or its app
+    bool emuApplyDefault(XmbSystem& s);       // s's launch fields become its default, when that can run
     int recentSystemIndex(const XmbRecentEntry& re) const;   // the system a recent entry belongs to, -1 if none
     void openGameEmulatorPicker(int sysIdx, const std::string& romPath);
     std::string mGameEmuRom;                    // the game the emulator picker is open for
@@ -4246,7 +4255,8 @@ private:
     void esdeGamelistSetSystem(const std::string& folder, const char* field, const std::string& value);
     std::string esdeEmulatorLabel(const std::string& esdeSys, const XmbSystem& launch);
     int esdeCatalogForLabel(int sysIdx, const std::string& esdeSys, const std::string& label,
-                            const std::set<std::string>& installed);   // mEmuCatalog index, -1 = none that runs here
+                            const std::set<std::string>& installed,
+                            bool runnableOnly = true);   // mEmuCatalog index, -1 = none (that runs here)
     std::set<std::string> emuInstalledPackages();
     std::vector<std::string> esdeSystemFolders(int sysIdx);      // its ES-DE folders, in its folders' order
     std::string esdeCommandSystem(const std::string& folder, int sysIdx);   // whose ES-DE commands they are

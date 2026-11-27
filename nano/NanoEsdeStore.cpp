@@ -1486,8 +1486,11 @@ void NanoMenu::esdeStoreLoadGameEmus() {
     for (const auto& kv : mEsdeGlAltEmu) {
         const std::string rom = esdeCanonRom(kv.first);
         if (rom.empty()) continue;
-        const int cat = esdeCatalogForLabel(kv.second.sys, esdeCommandSystem(kv.second.folder, kv.second.sys),
-                                            kv.second.label, installed);
+        const std::string cmds = esdeCommandSystem(kv.second.folder, kv.second.sys);
+        int cat = esdeCatalogForLabel(kv.second.sys, cmds, kv.second.label, installed);
+        // OA-38: a label for an emulator that cannot run here is still the game's pick; its launch
+        // falls back to this platform's default (emuApplyDefault).
+        if (cat < 0) cat = esdeCatalogForLabel(kv.second.sys, cmds, kv.second.label, installed, false);
         if (cat >= 0) mGameEmus[gameEmuKey(rom)] = GameEmulator{emuEntryLabel(cat), mEmuCatalog[cat].amArgs};
     }
     std::string text;

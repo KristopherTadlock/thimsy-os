@@ -1832,6 +1832,19 @@ void NanoMenu::overlayLaunchGame() {
         return;
     }
 
+    // OA-38: an emulator this platform cannot run starts with its default for this launch only.
+    { XmbSystem g;
+      const int si = fromRecent ? recentSystemIndex(mXmbRecent[mXmbGameIndex]) : mXmbSystemIndex;
+      g.id = si >= 0 && si < (int)mXmbSystems.size() ? mXmbSystems[si].id : romDir;
+      g.romDir = romDir;
+      g.coreSo = coreSo; g.launchIntent = launchIntent;
+      if (standalone) g.launchPkg = launchPkg;
+      if (!emuCanRun(g) && emuApplyDefault(g)) {
+          coreSo = g.coreSo; launchPkg = g.launchPkg; launchIntent = g.launchIntent;
+          launchArgs = g.launchArgs;
+          standalone = g.isStandalone();
+      } }
+
     // Same emulator guard as the home launcher: if the core .so or standalone app is not on the
     // device, warn instead of replacing the running app with an emulator that immediately dies.
     if (standalone) {

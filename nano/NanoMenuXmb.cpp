@@ -3795,6 +3795,19 @@ void NanoMenu::launchXmbGame() {
             return;
         }
 
+        // OA-38: an emulator this platform cannot run starts with its default for this launch only.
+        { XmbSystem g;
+          const int si = recentSystemIndex(re);
+          g.id = si >= 0 ? mXmbSystems[si].id : re.romDir;
+          g.romDir = si >= 0 ? mXmbSystems[si].romDir : re.romDir;
+          g.coreSo = re.coreSo; g.launchIntent = re.launchIntent;
+          if (re.standalone) g.launchPkg = re.launchPkg;
+          if (!emuCanRun(g) && emuApplyDefault(g)) {
+              re.coreSo = g.coreSo; re.launchPkg = g.launchPkg; re.launchIntent = g.launchIntent;
+              re.standalone = g.isStandalone();
+              gameEmu = true;   // the system's extra arguments are its own emulator's
+          } }
+
         // The emulator that opens this game may not be on the device (a core was never installed, or
         // the standalone app was uninstalled). Warn instead of black-screening on launch.
         if (re.standalone) {
@@ -3977,6 +3990,14 @@ void NanoMenu::launchXmbGame() {
         gameSys = *sysp;
         applyGameEmulator(gameSys.roms[gameIdx], gameSys);
         sysp = &gameSys;
+    }
+    // OA-38: an emulator this platform cannot run starts with its default for this launch only.
+    if (!emuCanRun(*sysp)) {
+        XmbSystem fallback = *sysp;
+        if (emuApplyDefault(fallback)) {
+            gameSys = std::move(fallback);
+            sysp = &gameSys;
+        }
     }
     const auto& sys = *sysp;
 
