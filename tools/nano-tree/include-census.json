@@ -2263,7 +2263,8 @@
   "platform/linux/tests/shellgate_test.cpp": {
    "includes": [
     "missing:ShellGate.h",
-    "missing:compat_test_util.h"
+    "missing:compat_test_util.h",
+    "shim:compat/include/nanocompat/nanocompat.h"
    ]
   },
   "platform/linux/tests/volumes_test.cpp": {

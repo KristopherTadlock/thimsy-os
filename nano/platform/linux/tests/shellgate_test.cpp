@@ -34,6 +34,8 @@
 #include <string>
 #include <vector>
 
+#include <nanocompat/nanocompat.h>
+
 #include "compat_test_util.h"
 
 extern char** environ;
@@ -88,6 +90,34 @@ int inChild(F fn) {
 
 const char* const kTzDate = "TZ=Europe/Berlin date -d @1767225600 +%z 2>/dev/null";
 
+// The gate's log lines (tag ThimsyShellGate) while it lives.
+struct LogCapture {
+    std::vector<std::string> lines;
+    LogCapture() {
+        nanocompat::setLogSink([this](int, const char* tag, const char* msg) {
+            if (tag && std::string(tag) == "ThimsyShellGate") lines.push_back(msg);
+        });
+    }
+    ~LogCapture() { nanocompat::setLogSink(nullptr); }
+    size_t count(const std::string& needle) const {
+        size_t n = 0;
+        for (const std::string& l : lines)
+            if (l.find(needle) != std::string::npos) n++;
+        return n;
+    }
+};
+
+// In a child: stderr to /dev/null (as runArgv does), then a refused exec of ARGV.
+int refuseExecQuietly(std::vector<const char*> argv) {
+    return inChild([&] {
+        int fd = open("/dev/null", O_WRONLY);
+        if (fd < 0 || dup2(fd, 2) < 0) _exit(2);
+        argv.push_back(nullptr);
+        execv(argv[0], const_cast<char* const*>(argv.data()));
+        _exit(errno == ENOENT ? 42 : 1);
+    });
+}
+
 }  // namespace
 
 // ------------------------------------------------------------------------------- the allow-list
@@ -126,6 +156,37 @@ TEST_F(ShellGateTest, OnlyTheExactShapePasses) {
          }) {
         EXPECT_EQ(classifyCommand(c).verdict, Verdict::Refuse) << c;
     }
+}
+
+// A pass hands the original string to sh, so no class may accept what sh expands: the lexer keeps
+// double-quoted "$(x)" in the word.
+TEST_F(ShellGateTest, NoClassAcceptsShellExpansion) {
+    for (const char* c : {
+             "TZ=\"$(reboot)\" date -d @1 +%z",
+             "TZ=\"Europe/$(reboot)\" date -d @1 +%z",
+             "TZ=Europe/Berlin date -d \"@1$(reboot)\" +%z",
+             "TZ=Europe/Berlin date -d @1`reboot` +%z",
+             "TZ=$Z date -d @1 +%z",
+             "TZ=Europe/* date -d @1 +%z",
+             "TZ=Europe/Berlin date -d @{1,2} +%z",
+             "curl \"https://h/$(x)\"",
+             "curl 'https://h/x'",
+         }) {
+        EXPECT_EQ(classifyCommand(c).verdict, Verdict::Refuse) << c;
+    }
+}
+
+// As in sh, a carriage return is part of a word, not a blank.
+TEST_F(ShellGateTest, ACarriageReturnIsAWordCharacter) {
+    EXPECT_EQ(classifyCommand("TZ=UTC date -d @1 +%z\r").verdict, Verdict::Refuse);
+    EXPECT_EQ(classifyCommand("TZ=UTC\rdate -d @1 +%z").verdict, Verdict::Refuse);
+    EXPECT_EQ(classifyCommand("TZ=UTC date\r-d @1 +%z").verdict, Verdict::Refuse);
+    Decision d = classifyCommand("am\rstart x");
+    EXPECT_EQ(d.verdict, Verdict::Refuse);
+    ASSERT_EQ(d.commands.size(), 1u);
+    EXPECT_EQ(d.commands[0].words.size(), 2u);
+    EXPECT_EQ(d.commands[0].words[0], std::string("am\rstart"));
+    EXPECT_EQ(classifyCommand("setprop\ra 1").verdict, Verdict::Refuse);
 }
 
 // --------------------------------------------------------------------------- refused by default
@@ -489,6 +550,64 @@ TEST_F(ShellGateTest, ExecRefusalsInChildrenAreCountedInTheParent) {
     EXPECT_EQ(refusalCount(), 4u);
     std::vector<std::string> want = {"/system/bin/am start", "/system/bin/restorecon", "sh"};
     EXPECT_EQ(refusedShapes(), want);
+}
+
+// A child's stderr is often not Nano's log (runArgv: /dev/null; esdeRunProc: a side file), so the
+// parent logs what its children refused, once per shape, on its next gate call.
+TEST_F(ShellGateTest, ExecRefusalsInChildrenAreLoggedByTheParentOncePerShape) {
+    LogCapture log;
+    const std::vector<const char*> forceStop = {"/system/bin/am", "force-stop", "org.es_de.frontend"};
+    EXPECT_EQ(refuseExecQuietly(forceStop), 42);
+    EXPECT_EQ(refuseExecQuietly(forceStop), 42);
+    EXPECT_EQ(refuseExecQuietly({"/system/bin/pidof", "org.vita3k.emulator"}), 42);
+    // A shell command refused in a child, with its stderr gone too.
+    EXPECT_EQ(inChild([] {
+                  int fd = open("/dev/null", O_WRONLY);
+                  if (fd < 0 || dup2(fd, 2) < 0) _exit(2);
+                  _exit(WEXITSTATUS(system("logcat -d 2>/dev/null")));
+              }),
+              127);
+    // The parent's next gate call logs them; its own refusal logs with the command.
+    EXPECT_EQ(WEXITSTATUS(system("sync")), 127);
+    EXPECT_EQ(log.count("/system/bin/am force-stop (an exec"), 1u);
+    EXPECT_EQ(log.count("/system/bin/pidof (an exec"), 1u);
+    EXPECT_EQ(log.count("logcat (an exec"), 1u);
+    EXPECT_EQ(log.count("sync: sync"), 1u);
+    // Again: counted, not logged again.
+    EXPECT_EQ(refuseExecQuietly(forceStop), 42);
+    EXPECT_EQ(WEXITSTATUS(system("sync")), 127);
+    std::vector<std::string> want = {"/system/bin/am force-stop", "/system/bin/pidof", "logcat", "sync"};
+    EXPECT_EQ(refusedShapes(), want);
+    EXPECT_EQ(refusalCount(), 7u);
+    EXPECT_EQ(log.lines.size(), 4u);
+}
+
+TEST_F(ShellGateTest, AFullShapeTableIsLoggedOnceNotOnEveryRefusal) {
+    LogCapture log;
+    for (int round = 0; round < 2; round++)
+        for (int i = 0; i < 140; i++) system(("tool" + std::to_string(i)).c_str());
+    EXPECT_EQ(refusedShapes().size(), 128u);
+    EXPECT_EQ(refusalCount(), 280u);
+    EXPECT_EQ(log.count("table is full"), 1u);
+    EXPECT_EQ(log.count("tool0: tool0"), 1u);
+    EXPECT_EQ(log.count("tool127: tool127"), 1u);
+    EXPECT_EQ(log.count("tool128"), 0u);
+    EXPECT_EQ(log.lines.size(), 129u);
+}
+
+// runArgv SIGKILLs a child that overruns its timeout: if it held the registry's lock, the lock is
+// broken once the child is gone, and refusals are recorded and logged again.
+TEST_F(ShellGateTest, ALockLeftByADeadProcessIsBroken) {
+    fflush(nullptr);
+    pid_t dead = fork();
+    if (dead == 0) _exit(0);
+    ASSERT_EQ(waitpid(dead, nullptr, 0), dead);
+    setRegistryLockHolderForTests(dead);
+    LogCapture log;
+    EXPECT_EQ(WEXITSTATUS(system("am start x")), 127);
+    std::vector<std::string> want = {"am start"};
+    EXPECT_EQ(refusedShapes(), want);
+    EXPECT_EQ(log.count("am start: am start x"), 1u);
 }
 
 TEST_F(ShellGateTest, ThePlatformsOwnExecRuns) {

@@ -24,6 +24,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <sched.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -56,8 +57,14 @@ namespace {
 // What may still run on Linux (OA-4 migration step 1). Each entry is an exact shape: one pattern word
 // per word of the simple command, assignments included. A pattern word is a literal, or a literal
 // prefix followed by one class: {zone} (an Olson id: letters, digits, '/', '_', '+', '-'; at most 48
-// characters, no ".."), {digits} (1 to 19 digits) or {url} (http:// or https://, no blank or quote).
-// Nothing else matches: no extra word, option or wrapper.
+// characters, no "..") or {digits} (1 to 19 digits). Nothing else matches: no extra word, option or
+// wrapper.
+//
+// A shell entry that passes hands the caller's ORIGINAL string to sh, while the words matched here are
+// the lexer's (double-quoted text is kept verbatim, "$(x)" included). So a class must never accept a
+// character sh gives a meaning to: $ ` ( ) ; | & < > * ? [ ] ~ { } \ ' " or a blank. Both classes above
+// accept only letters, digits and / _ + -. (A {url} class was removed for this reason: no entry used
+// it, and "https://h/$(reboot)" would have matched it.)
 //
 // The list is short and temporary. Every entry names its call site and is removed by migration step 4
 // (Http, FileOps and Archive as nanoplat interfaces) or the step that moves its feature behind the
@@ -102,15 +109,6 @@ bool isDigits(const char* s) {
     return true;
 }
 
-bool isUrl(const char* s) {
-    if (strncmp(s, "http://", 7) != 0 && strncmp(s, "https://", 8) != 0) return false;
-    size_t n = strlen(s);
-    if (n > 2000) return false;
-    for (const char* p = s; *p; p++)
-        if (isspace((unsigned char)*p) || *p == '\'' || *p == '"' || *p == '`' || *p == '\\') return false;
-    return true;
-}
-
 // Async-signal-safe.
 bool matchWord(const char* pat, const char* w) {
     const char* brace = strchr(pat, '{');
@@ -121,8 +119,7 @@ bool matchWord(const char* pat, const char* w) {
     const char* cls = brace + 1;
     if (strcmp(cls, "zone}") == 0) return isZone(rest);
     if (strcmp(cls, "digits}") == 0) return isDigits(rest);
-    if (strcmp(cls, "url}") == 0) return isUrl(rest);
-    return false;
+    return false;   // an unknown class matches nothing
 }
 
 // The entry WORDS (n of them, read through get(i)) match, or nullptr. Async-signal-safe.
@@ -165,29 +162,42 @@ void shapeInto(char* out, size_t cap, const char* w0, const char* w1) {
 }
 
 // ---------------------------------------------------------------------------- refusal registry
-// Every refusal is counted and its shape logged once. Exec refusals happen in a forked child, so the
-// registry lives in a shared anonymous mapping made before main (no fork has happened yet): a child's
-// count and first-seen shape reach the parent. Updates take a spin lock in that mapping; a parent
-// thread holding it at fork time still releases it (the memory is shared), and a child gives up
-// after a bounded wait rather than hang (it then counts without logging).
+// Every refusal is counted and its shape logged once, in Nano's log. Exec refusals happen in a forked
+// child, whose stderr is often not Nano's log (runArgv sends it to /dev/null, esdeRunProc to a side
+// file), so a child never logs: it records the shape as not yet logged, and the process that made the
+// registry (the owner: Nano itself) logs every such shape through ALOG on its next gate call
+// (system(), popen(), pclose()) or refusalCount()/refusedShapes() (flushPending()).
+//
+// The registry lives in a shared anonymous mapping made before main (no fork has happened yet), so a
+// child's count and shapes reach the owner. Updates take a spin lock in that mapping whose word is the
+// holder's pid: a parent thread holding it at fork time still releases it (the memory is shared), a
+// holder that died with it held (runArgv SIGKILLs a child that overruns its timeout) is found with
+// kill(pid, 0) == ESRCH and the lock broken, and a waiter gives up after a bounded wait rather than
+// hang (it then counts without recording).
 
 constexpr size_t kShapeMax = sizeof(ExecPlan::shape);
 constexpr size_t kSlots = 128;
 
 struct Registry {
-    int lock;
-    unsigned total;
-    unsigned used;
+    int lock;                      // 0, or the pid of the process holding it
+    int owner;                     // the pid that made the registry: the only process that logs
+    unsigned total;                // every refusal
+    unsigned used;                 // slots filled
+    unsigned unlogged;             // slots filled but not yet logged (refused in another process)
+    unsigned char overflow;        // 1: a new shape found the table full; 2: that was logged
+    unsigned char logged[kSlots];
     char shapes[kSlots][kShapeMax];
 };
 
 Registry gLocalRegistry;   // if the shared mapping cannot be made
 
 Registry* makeRegistry() {
+    Registry* r = &gLocalRegistry;
     void* p = mmap(nullptr, sizeof(Registry), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
-    if (p == MAP_FAILED) return &gLocalRegistry;
-    memset(p, 0, sizeof(Registry));
-    return static_cast<Registry*>(p);
+    if (p != MAP_FAILED) r = static_cast<Registry*>(p);
+    memset(r, 0, sizeof(Registry));
+    r->owner = getpid();
+    return r;
 }
 
 Registry* gRegistry = makeRegistry();
@@ -197,51 +207,91 @@ Registry* registry() {
     return r ? r : &gLocalRegistry;
 }
 
+bool isOwner(const Registry* r) { return getpid() == r->owner; }
+
+// Async-signal-safe; keeps errno.
 bool lockRegistry(Registry* r) {
-    for (long i = 0; i < 2000000; i++) {
-        int expected = 0;
-        if (__atomic_compare_exchange_n(&r->lock, &expected, 1, false, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED))
-            return true;
-        if ((i & 63) == 63) sched_yield();
+    const int self = getpid();
+    const int savedErrno = errno;
+    bool ok = false;
+    for (long i = 0; i < 2000000 && !ok; i++) {
+        int holder = 0;
+        if (__atomic_compare_exchange_n(&r->lock, &holder, self, false, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED)) {
+            ok = true;
+        } else if ((i & 63) == 63) {
+            // A holder that is gone (killed with the lock held) never releases it: break it. A
+            // zombie still answers kill(); once it is reaped, the next wait breaks the lock.
+            if (holder > 0 && holder != self && kill(holder, 0) == -1 && errno == ESRCH)
+                __atomic_compare_exchange_n(&r->lock, &holder, 0, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
+            sched_yield();
+        }
     }
-    return false;
+    errno = savedErrno;
+    return ok;
 }
 
 void unlockRegistry(Registry* r) { __atomic_store_n(&r->lock, 0, __ATOMIC_RELEASE); }
 
-// Counts a refusal; true when SHAPE is new (the caller logs it). Async-signal-safe.
-bool countRefusal(const char* shape) {
+// Counts a refusal and records SHAPE once. LOGNOW: the caller is the owner and logs a new shape
+// itself (it returns true then); otherwise a new shape waits for the owner's flushPending(). A new
+// shape that finds the table full is counted but not recorded, and the owner logs once that the table
+// is full. Async-signal-safe.
+bool countRefusal(const char* shape, bool logNow) {
     Registry* r = registry();
     __atomic_add_fetch(&r->total, 1, __ATOMIC_SEQ_CST);
     if (!lockRegistry(r)) return false;
-    bool first = true;
+    bool fresh = true;
     unsigned used = r->used;
     for (unsigned i = 0; i < used && i < kSlots; i++) {
         if (strncmp(r->shapes[i], shape, kShapeMax - 1) == 0) {
-            first = false;
+            fresh = false;
             break;
         }
     }
-    if (first && used < kSlots) {
+    bool callerLogs = false;
+    if (fresh && used < kSlots) {
         size_t n = 0;
         for (; shape[n] && n + 1 < kShapeMax; n++) r->shapes[used][n] = shape[n];
         r->shapes[used][n] = '\0';
+        r->logged[used] = logNow ? 1 : 0;
+        if (!logNow) __atomic_add_fetch(&r->unlogged, 1, __ATOMIC_RELEASE);
         r->used = used + 1;
+        callerLogs = logNow;
+    } else if (fresh && r->overflow == 0) {
+        __atomic_store_n(&r->overflow, 1, __ATOMIC_RELEASE);
     }
     unlockRegistry(r);
-    return first;
+    return callerLogs;
 }
 
-// Logs a refused exec from a forked child: one write(2), no allocation.
-void writeRefusedExec(const char* shape) {
-    char buf[256];
-    const char* pre = "thimsy-shellgate: refused exec (OA-4: not on the allow-list): ";
-    size_t n = 0;
-    for (const char* p = pre; *p && n < sizeof buf - 2; p++) buf[n++] = *p;
-    for (const char* p = shape; *p && n < sizeof buf - 2; p++) buf[n++] = *p;
-    buf[n++] = '\n';
-    ssize_t w = write(2, buf, n);
-    (void)w;
+// In the owner: logs every recorded shape not logged yet, and a full table once. Cheap when there is
+// nothing to log. Not async-signal-safe (never called from an exec wrapper).
+void flushPending() {
+    Registry* r = registry();
+    if (!isOwner(r)) return;
+    if (__atomic_load_n(&r->unlogged, __ATOMIC_ACQUIRE) == 0 && __atomic_load_n(&r->overflow, __ATOMIC_ACQUIRE) != 1)
+        return;
+    std::vector<std::string> shapes;
+    bool overflow = false;
+    if (!lockRegistry(r)) return;
+    for (unsigned i = 0; i < r->used && i < kSlots; i++) {
+        if (!r->logged[i]) {
+            shapes.push_back(r->shapes[i]);
+            r->logged[i] = 1;
+        }
+    }
+    __atomic_store_n(&r->unlogged, 0, __ATOMIC_RELEASE);
+    if (r->overflow == 1) {
+        r->overflow = 2;
+        overflow = true;
+    }
+    unlockRegistry(r);
+    for (const std::string& s : shapes)
+        ALOGW("refused (OA-4: not on the allow-list; logged once per shape): %s (an exec, or in a forked child)",
+              s.c_str());
+    if (overflow)
+        ALOGW("refused: %zu distinct shapes recorded, the table is full; later new shapes are counted, not logged",
+              kSlots);
 }
 
 // ------------------------------------------------------------------------------ state and routes
@@ -254,7 +304,7 @@ Routes gRoutes;
 std::map<FILE*, int> gSynthetic;              // popen() streams the gate made: their wait status
 
 void noteRefused(const std::string& shape, const std::string& what) {
-    if (countRefusal(shape.c_str()))
+    if (countRefusal(shape.c_str(), isOwner(registry())))
         ALOGW("refused (OA-4: not on the allow-list; logged once per shape): %s: %s", shape.c_str(), what.c_str());
 }
 
@@ -306,7 +356,7 @@ std::vector<Token> lexShell(std::string_view s) {
     size_t i = 0, n = s.size();
     while (i < n) {
         char c = s[i];
-        if (c == ' ' || c == '\t' || c == '\r') { i++; continue; }
+        if (c == ' ' || c == '\t') { i++; continue; }   // as in sh, '\r' is an ordinary word character
         if (c == '#') {   // a comment to the end of the line
             while (i < n && s[i] != '\n') i++;
             continue;
@@ -337,7 +387,7 @@ std::vector<Token> lexShell(std::string_view s) {
         bool digitsOnly = true;
         while (i < n) {
             c = s[i];
-            if (c == ' ' || c == '\t' || c == '\r' || isOpChar(c) || c == '>' || c == '<') break;
+            if (c == ' ' || c == '\t' || isOpChar(c) || c == '>' || c == '<') break;
             if (c == '$' && i + 1 < n && s[i + 1] == '(') break;
             if (c == '\\' && i + 1 < n) {
                 t.text += s[i + 1];
@@ -741,9 +791,13 @@ void setRoutes(Routes routes) {
     gRoutes = std::move(routes);
 }
 
-unsigned refusalCount() { return __atomic_load_n(&registry()->total, __ATOMIC_SEQ_CST); }
+unsigned refusalCount() {
+    flushPending();
+    return __atomic_load_n(&registry()->total, __ATOMIC_SEQ_CST);
+}
 
 std::vector<std::string> refusedShapes() {
+    flushPending();
     std::vector<std::string> out;
     Registry* r = registry();
     if (!lockRegistry(r)) return out;
@@ -769,10 +823,15 @@ void resetForTests() {
     if (lockRegistry(r)) {
         r->used = 0;
         __atomic_store_n(&r->total, 0, __ATOMIC_SEQ_CST);
+        __atomic_store_n(&r->unlogged, 0, __ATOMIC_SEQ_CST);
+        r->overflow = 0;
+        memset(r->logged, 0, sizeof r->logged);
         memset(r->shapes, 0, sizeof r->shapes);
         unlockRegistry(r);
     }
 }
+
+void setRegistryLockHolderForTests(int pid) { __atomic_store_n(&registry()->lock, pid, __ATOMIC_SEQ_CST); }
 
 // -------------------------------------------------------------------------------------- wrappers
 
@@ -791,6 +850,7 @@ Recorder recorder() {
 using namespace nanolinux::shellgate;
 
 extern "C" int __wrap_system(const char* command) {
+    flushPending();   // what forked children refused since the last gate call
     if (!command) return __real_system(nullptr);   // "is there a shell?"
     Decision d = classifyCommand(command);
     if (Recorder r = recorder()) {
@@ -819,6 +879,7 @@ extern "C" int __wrap_system(const char* command) {
 }
 
 extern "C" FILE* __wrap_popen(const char* command, const char* mode) {
+    flushPending();
     if (!command || !mode) return __real_popen(command, mode);
     Decision d = classifyCommand(command);
     if (Recorder r = recorder()) {
@@ -844,6 +905,7 @@ extern "C" FILE* __wrap_popen(const char* command, const char* mode) {
 }
 
 extern "C" int __wrap_pclose(FILE* stream) {
+    flushPending();
     int status = -1;
     bool mine = false;
     {
@@ -866,7 +928,9 @@ namespace {
 int runExecPlan(const ExecPlan& plan, const char* path, char* const argv[], char* const envp[],
                 int (*realExec)(const char*, char* const[], char* const[])) {
     if (plan.action == ExecAction::Pass) return realExec(path, argv, envp);
-    if (countRefusal(plan.shape)) writeRefusedExec(plan.shape);
+    // Recorded, not logged: this is (nearly always) a forked child whose stderr may be /dev/null; the
+    // owner logs the shape (flushPending).
+    countRefusal(plan.shape, false);
     errno = ENOENT;
     return -1;
 }

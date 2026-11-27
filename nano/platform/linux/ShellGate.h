@@ -38,13 +38,16 @@
 // sees what a missing program gives: exit status 127 from system() and pclose(), no output from popen(),
 // and exec*() failing with ENOENT (each of Nano's fork-and-exec sites then calls _exit(127) itself).
 // Every refusal is counted (refusalCount(), also from forked children: the counter lives in a shared
-// mapping) and logged once per distinct command shape (refusedShapes()).
+// mapping) and logged once per distinct command shape (refusedShapes()). Only Nano's own process logs:
+// a forked child (whose stderr may be /dev/null) records its refused shape, and Nano logs it through
+// ALOG on its next system(), popen(), pclose(), refusalCount() or refusedShapes() call.
 //
 // The platform layer's own process starts (OA-5) never go through the gate: they use platformExecve()
 // below (Launcher.cpp) or their own spawn (actions/Run.cpp, ControlKeys.cpp's posix_spawn).
 //
 // The exec wrappers run in a forked child of a threaded process, so their decision allocates nothing
-// and takes no lock that a parent thread could hold (classifyExec); they log with one write(2).
+// and takes no lock that a parent thread could hold (classifyExec); they record a refusal in the
+// shared mapping and log nothing.
 #pragma once
 
 #include <functional>
@@ -125,11 +128,15 @@ void setRoutes(Routes routes);
 
 // Every refusal so far, counted once per call (exec refusals in forked children included).
 unsigned refusalCount();
-// The distinct shapes refused so far, in order (each was logged once).
+// The distinct shapes refused so far, in order (each logged once; at most 128, then the log says the
+// table is full once and later new shapes are only counted). Both calls first log what forked
+// children refused.
 std::vector<std::string> refusedShapes();
 // The distinct shapes routed so far, in order (each was logged once).
 std::vector<std::string> routedShapes();
 void resetForTests();
+// Tests only: marks the registry's lock as held by PID (as if PID died holding it).
+void setRegistryLockHolderForTests(int pid);
 
 // The status a refused or routed command gives system() and pclose() (as a shell's wait status).
 inline int waitStatusFor(int exitCode) { return (exitCode & 0xff) << 8; }
