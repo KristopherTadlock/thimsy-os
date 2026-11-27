@@ -839,23 +839,57 @@ bool NanoMenu::emuApplyDefault(XmbSystem& s) {
     return true;
 }
 
-// What a launch whose emulator cannot run here starts instead, for that launch only (nothing is
-// saved): the image's default for its system, else, for a game whose own pick s carries (own is
-// that game's system), the system's own emulator, as such a game started before its pick was kept.
-NanoMenu::EmuFallback NanoMenu::emuLaunchFallback(XmbSystem& s, const XmbSystem* own) {
-    if (emuCanRun(s)) return EmuFallback::None;
+// OA-38 (W8-EMU-20): a system the emulator catalog made has no image default, so a launch whose
+// emulator cannot run here starts the first of its platform's catalog emulators that can, in the
+// emulator picker's order, as the systems heal picked one before store mode shared the systems.
+// Apps count only when the package list names them (none when it cannot be read).
+bool NanoMenu::emuApplyCatalogFirst(XmbSystem& s, const XmbSystem& sys) {
+    if (sys.builtin) return false;
+    loadEmuCatalog();
+    const std::string uid = emuPlatformFor(sys);
+    if (uid.empty()) return false;
+    std::vector<int> catIdx;
+    const std::vector<nanosys::Player> players = emuPlatformPlayers(uid, &catIdx);
+    const std::set<std::string> installed = installedPackages();
+    const int pi = nanosys::firstPlayerThatRuns(
+        players, [this](const std::string& so) { return coreSoExists(so); },
+        [&installed](const std::string& pkg) { return installed.count(pkg) > 0; });
+    if (pi < 0) return false;
+    XmbSystem d;   // the catalog emulator's launch fields
+    applyEmuEntryToSystem(d, mEmuCatalog[catIdx[pi]]);
+    ALOGI("emucatalog: %s's emulator (%s) cannot run here and it has no default that can; this launch uses %s",
+          sys.id.c_str(), s.isStandalone() ? s.launchPkg.c_str() : s.coreSo.c_str(),
+          mEmuCatalog[catIdx[pi]].player.c_str());
+    s.launchType = d.launchType;
+    s.coreSo = d.coreSo;
+    s.packageName = d.packageName;
+    s.launchPkg = d.launchPkg;
+    s.launchIntent = d.launchIntent;
+    s.launchArgs.clear();   // the system's extra arguments belong to its own emulator
+    return true;
+}
+
+// What a launch whose emulator cannot run here (the caller has seen emuCanRun(s) false) starts
+// instead, for that launch only (nothing is saved): the image's default for its system; else, for
+// a game whose own pick s carries (gameEmu), its system's own emulator, as such a game started
+// before its pick was kept; else, for a system the emulator catalog made, its catalog's first
+// emulator that can run. sys is the system the launch belongs to (nullptr: none known).
+NanoMenu::EmuFallback NanoMenu::emuLaunchFallback(XmbSystem& s, const XmbSystem* sys, bool gameEmu) {
     if (emuApplyDefault(s)) return EmuFallback::ImageDefault;
-    if (!own || !emuCanRun(*own)) return EmuFallback::None;
-    ALOGI("emucatalog: the game's emulator (%s) cannot run here and %s has no default that can; this launch "
-          "uses the system's own %s", s.isStandalone() ? s.launchPkg.c_str() : s.coreSo.c_str(), own->id.c_str(),
-          own->isStandalone() ? own->launchPkg.c_str() : own->coreSo.c_str());
-    s.launchType = own->launchType;
-    s.coreSo = own->coreSo;
-    s.packageName = own->packageName;
-    s.launchPkg = own->launchPkg;
-    s.launchIntent = own->launchIntent;
-    s.launchArgs = own->launchArgs;   // its own emulator's extra arguments
-    return EmuFallback::SystemOwn;
+    if (gameEmu && sys && emuCanRun(*sys)) {
+        ALOGI("emucatalog: the game's emulator (%s) cannot run here and %s has no default that can; this launch "
+              "uses the system's own %s", s.isStandalone() ? s.launchPkg.c_str() : s.coreSo.c_str(), sys->id.c_str(),
+              sys->isStandalone() ? sys->launchPkg.c_str() : sys->coreSo.c_str());
+        s.launchType = sys->launchType;
+        s.coreSo = sys->coreSo;
+        s.packageName = sys->packageName;
+        s.launchPkg = sys->launchPkg;
+        s.launchIntent = sys->launchIntent;
+        s.launchArgs = sys->launchArgs;   // its own emulator's extra arguments
+        return EmuFallback::SystemOwn;
+    }
+    if (sys && emuApplyCatalogFirst(s, *sys)) return EmuFallback::CatalogFirst;
+    return EmuFallback::None;
 }
 
 // ---- Emulators as ES-DE names them (the ES-DE folder as Nano's store) ----

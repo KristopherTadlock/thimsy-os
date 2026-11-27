@@ -471,6 +471,7 @@ private:
     // systems whose player cannot run one that can, once RetroArch's cores can be read
     // (nanosys::staleCoreRepairs, nanosys::playerRepair). Once per config: a healed one says so
     // ("healed" in nano_systems.json, mSystemsHealDone), so a player the user picks later is kept.
+    // Not in ES-DE store mode (OA-38): the systems are the card's, shared, and a launch falls back.
     void systemsHealTick();
     bool mSystemsHealChecked = false;
     bool mSystemsHealDone = false;
@@ -3685,10 +3686,13 @@ private:
     void loadEmuDefaults();
     bool emuCanRun(const XmbSystem& s);       // the launch guard's test: its core, or its app
     bool emuApplyDefault(XmbSystem& s);       // s's launch fields become its default, when that can run
-    // The launch sites' fallback: s's emulator cannot run here, so this launch takes its default, else
-    // (own: the system of a game whose own pick s carries) the system's emulator, when that can run.
-    enum class EmuFallback { None, ImageDefault, SystemOwn };
-    EmuFallback emuLaunchFallback(XmbSystem& s, const XmbSystem* own);
+    // ... or, for sys made by the emulator catalog, its platform's first catalog emulator that can run.
+    bool emuApplyCatalogFirst(XmbSystem& s, const XmbSystem& sys);
+    // The launch sites' fallback, asked only when s's emulator cannot run here (emuCanRun false): this
+    // launch takes its default, else (gameEmu: s carries the game's own pick) the system's emulator
+    // when that can run, else (a custom system) its catalog's first that can. sys: s's system, if known.
+    enum class EmuFallback { None, ImageDefault, SystemOwn, CatalogFirst };
+    EmuFallback emuLaunchFallback(XmbSystem& s, const XmbSystem* sys, bool gameEmu);
     bool emuDefaultsStored();                 // the store exists (seeded), readable or not
     bool emuDefaultsSave(const std::map<std::string, EmuDefault>& defaults);
     int recentSystemIndex(const XmbRecentEntry& re) const;   // the system a recent entry belongs to, -1 if none

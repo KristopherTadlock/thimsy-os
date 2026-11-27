@@ -1308,6 +1308,13 @@ void NanoMenu::systemsHealTick() {
     mSystemsHealNextMs = now + 2000;
     // The other process saved since this one loaded: heal what it saved, once reloaded.
     if (systemsConfigStamp() != mSystemsCfgStamp) return;
+    // OA-38 (W8-EMU-20): in store mode the systems are the card's, shared with the other platform,
+    // and an emulator this one cannot run is still a pick there: none is rewritten, and a launch falls
+    // back for itself (emuLaunchFallback). Not marked healed, so it runs once out of store mode.
+    if (esdeStoreMode()) {
+        mSystemsHealChecked = true;
+        return;
+    }
     struct stat st;
     if (stat("/data/data/com.retroarch.aarch64/cores", &st) != 0 || !S_ISDIR(st.st_mode)) return;
     mSystemsHealChecked = true;
@@ -1704,6 +1711,13 @@ void NanoMenu::gsAutoAddTick() {
     };
 
     int added = 0, linked = 0, needEmu = 0;
+    // OA-38: a system whose emulator cannot run here still starts with its fallback (W8-EMU-21).
+    auto needsEmu = [this](const XmbSystem& sys) {
+        if (emuCanRun(sys)) return false;
+        XmbSystem t;   // its launch fields, not its games
+        t.id = sys.id; t.romDir = sys.romDir; t.coreSo = sys.coreSo; t.launchPkg = sys.launchPkg;
+        return emuLaunchFallback(t, &sys, false) == EmuFallback::None;
+    };
     for (const auto& c : cands) {
         if (c.catIdx < 0 || c.catIdx >= (int)mEmuCatalog.size()) continue;
         const std::string full = c.folder;
@@ -1749,7 +1763,7 @@ void NanoMenu::gsAutoAddTick() {
             ScanSource src; src.type = 0; src.value = full; src.subfolders = 1; s.scanSources.push_back(src);
             invalidateSystemScan(s);
             linked++;
-            if (s.isStandalone() ? !packageInstalled(s.launchPkg) : !coreSoExists(s.coreSo)) needEmu++;
+            if (needsEmu(s)) needEmu++;
         } else {
             // The platform's first player may be one this device can't run (WonderSwan's is the
             // SwanEmu app): the first that can, when there is one.
@@ -1762,8 +1776,7 @@ void NanoMenu::gsAutoAddTick() {
             ScanSource src; src.type = 0; src.value = full; src.subfolders = 1; mXmbSystems[idx].scanSources.push_back(src);
             invalidateSystemScan(mXmbSystems[idx]);
             added++;
-            if (mXmbSystems[idx].isStandalone() ? !packageInstalled(mXmbSystems[idx].launchPkg)
-                                                : !coreSoExists(mXmbSystems[idx].coreSo)) needEmu++;
+            if (needsEmu(mXmbSystems[idx])) needEmu++;
         }
     }
 
@@ -3841,12 +3854,13 @@ void NanoMenu::launchXmbGame() {
           g.romDir = si >= 0 ? mXmbSystems[si].romDir : re.romDir;
           g.coreSo = re.coreSo; g.launchIntent = re.launchIntent;
           if (re.standalone) g.launchPkg = re.launchPkg;
-          const EmuFallback fb = emuLaunchFallback(g, gameEmu && si >= 0 ? &mXmbSystems[si] : nullptr);
+          const EmuFallback fb = emuCanRun(g) ? EmuFallback::None
+                                              : emuLaunchFallback(g, si >= 0 ? &mXmbSystems[si] : nullptr, gameEmu);
           if (fb != EmuFallback::None) {
               re.coreSo = g.coreSo; re.launchPkg = g.launchPkg; re.launchIntent = g.launchIntent;
               re.standalone = g.isStandalone();
-              // The system's extra arguments are its own emulator's: kept for it, dropped for a default.
-              gameEmu = fb == EmuFallback::ImageDefault;
+              // The system's extra arguments are its own emulator's: kept for it, dropped otherwise.
+              gameEmu = fb != EmuFallback::SystemOwn;
           } }
 
         // The emulator that opens this game may not be on the device (a core was never installed, or
@@ -4035,8 +4049,8 @@ void NanoMenu::launchXmbGame() {
     // OA-38: an emulator this platform cannot run starts with its default for this launch only.
     if (!emuCanRun(*sysp)) {
         XmbSystem fallback = *sysp;
-        const EmuFallback fb = emuLaunchFallback(fallback, sysp == &gameSys ? &mXmbSystems[sysIdx] : nullptr);
-        if (fb == EmuFallback::ImageDefault) {
+        const EmuFallback fb = emuLaunchFallback(fallback, &mXmbSystems[sysIdx], sysp == &gameSys);
+        if (fb == EmuFallback::ImageDefault || fb == EmuFallback::CatalogFirst) {
             gameSys = std::move(fallback);
             sysp = &gameSys;
         } else if (fb == EmuFallback::SystemOwn) {

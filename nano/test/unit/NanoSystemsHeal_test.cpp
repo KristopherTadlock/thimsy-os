@@ -365,6 +365,34 @@ TEST(NanoSystemsHeal, PlayerRepairLeavesOtherSystems) {
     EXPECT_EQ(playerRepair(typed, wonderSwanPlayers(), thimsyCores(), kNoApps), -1);
 }
 
+// OA-38 (W8-EMU-20): a custom system's launch with no default that runs takes the catalog's first
+// player that does, in the emulator picker's order, whatever the system names (a typed-in app too).
+TEST(NanoSystemsHeal, FirstPlayerThatRunsIsThePickersFirst) {
+    const auto players = wonderSwanPlayers();
+    const int pi = firstPlayerThatRuns(players, thimsyCores(), kNoApps);
+    ASSERT_GE(pi, 0);
+    EXPECT_EQ(players[pi].coreSo, "mednafen_wswan_libretro_android.so");
+    // Only the app runs: the app.
+    const auto none = [](const std::string&) { return false; };
+    const auto swanEmu = [](const std::string& pkg) { return pkg == "com.explusalpha.SwanEmu"; };
+    const int app = firstPlayerThatRuns(players, none, swanEmu);
+    ASSERT_GE(app, 0);
+    EXPECT_EQ(players[app].package, "com.explusalpha.SwanEmu");
+    // Both run: RetroArch first.
+    EXPECT_EQ(firstPlayerThatRuns(players, thimsyCores(), swanEmu), pi);
+}
+
+TEST(NanoSystemsHeal, FirstPlayerThatRunsNoneWhenNothingRuns) {
+    const auto none = [](const std::string&) { return false; };
+    EXPECT_EQ(firstPlayerThatRuns(wonderSwanPlayers(), none, kNoApps), -1);
+    EXPECT_EQ(firstPlayerThatRuns({}, thimsyCores(), kNoApps), -1);
+    // A player with no core or package never runs, whatever the checks say.
+    Player blank;
+    blank.libretro = true;
+    const auto all = [](const std::string&) { return true; };
+    EXPECT_EQ(firstPlayerThatRuns({blank}, all, all), -1);
+}
+
 TEST(NanoSystemsHeal, PlayerChoicesListRetroArchFirst) {
     // Both run: the core comes first though the catalog spells it "Retroarch".
     const auto players = wonderSwanPlayers();

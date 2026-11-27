@@ -1842,7 +1842,7 @@ void NanoMenu::overlayLaunchGame() {
       g.romDir = romDir;
       g.coreSo = coreSo; g.launchIntent = launchIntent;
       if (standalone) g.launchPkg = launchPkg;
-      if (emuLaunchFallback(g, gameEmu && haveSys ? &mXmbSystems[si] : nullptr) != EmuFallback::None) {
+      if (!emuCanRun(g) && emuLaunchFallback(g, haveSys ? &mXmbSystems[si] : nullptr, gameEmu) != EmuFallback::None) {
           coreSo = g.coreSo; launchPkg = g.launchPkg; launchIntent = g.launchIntent;
           launchArgs = g.launchArgs;
           standalone = g.isStandalone();

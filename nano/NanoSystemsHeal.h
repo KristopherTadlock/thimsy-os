@@ -146,5 +146,12 @@ int playerRepair(const SysCore& system, const std::vector<Player>& players,
                  const std::function<bool(const std::string&)>& coreInstalled,
                  const std::function<bool(const std::string&)>& packageInstalled);
 
+// The first of players that runs, in playerChoices order, as an index into players; -1 when none
+// runs. playerRepair's pick, and (OA-38) what a launch of a system the emulator catalog made starts
+// when its emulator cannot run here and it has no image default that can, for that launch only.
+int firstPlayerThatRuns(const std::vector<Player>& players,
+                        const std::function<bool(const std::string&)>& coreInstalled,
+                        const std::function<bool(const std::string&)>& packageInstalled);
+
 }  // namespace nanosys
 }  // namespace android
