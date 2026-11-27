@@ -3,7 +3,6 @@
 # when the set changes. After a deliberate change, or a merge that brought new keys from nano-144:
 #   python3 tools/nano-tree/tests/test_nano_ratchets.py --update-props
 ctl.restart
-ctl.start
 ctl.stop
 debug.tracing.screen_brightness
 init.svc.gammaos-nano-overlay
