@@ -11,7 +11,9 @@
 // <seq> is a decimal number Nano increments per request. A request is acted on at every write of
 // the key (the session watches the file, not the value), except that a numbered request whose
 // <seq> equals the last one handled is ignored. Verbs: sleep, poweroff, reboot, quit-game,
-// eject:<volume id>, scrape, restart-nano, brightness:<0-100>.
+// eject:<volume id>, scrape, restart-nano, brightness:<0-100>, take-ownership:<volume id> (OA-29:
+// the user agreed that a read-only ext4 drive's top folder becomes nano's), keep-read-only:<volume
+// id> (the user declined: the drive stays read-only, and Nano is not asked again for it).
 //
 // sys.powerctl, which Nano writes on Android ("shutdown[,reason]", "reboot[,reason]"), is read too:
 // it becomes poweroff or reboot.
@@ -23,7 +25,9 @@
 namespace thimsy {
 namespace session {
 
-enum class Verb { Sleep, PowerOff, Reboot, QuitGame, Eject, Scrape, RestartNano, Brightness };
+enum class Verb {
+    Sleep, PowerOff, Reboot, QuitGame, Eject, Scrape, RestartNano, Brightness, TakeOwnership, KeepReadOnly
+};
 
 const char* toString(Verb v);
 

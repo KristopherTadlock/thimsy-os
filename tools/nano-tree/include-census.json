@@ -2215,6 +2215,7 @@
   "platform/linux/Volumes.cpp": {
    "includes": [
     "libthimsy:thimsy/json.h",
+    "nano:platform/linux/ControlKeys.h",
     "nano:platform/linux/Volumes.h",
     "shim:compat/include/log/log.h",
     "shim:compat/include/nanocompat/nanocompat.h"

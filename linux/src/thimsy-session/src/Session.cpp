@@ -47,9 +47,16 @@ namespace {
 constexpr const char* kRunDir = "/run/thimsy";
 constexpr const char* kPropsDir = "/run/thimsy/props";
 constexpr const char* kPersistFile = "/storage/.config/thimsy/persist.props";
+// The ext2/3/4 drives the user chose to keep read-only, one id per line (W8-IDMAP-15).
+constexpr const char* kKeepReadOnlyFile = "/storage/.config/thimsy/keep-read-only";
 constexpr const char* kStateDir = "/run/thimsy/session";
 // <dev>.pid of every running check, so a respawned session can stop what an earlier one left.
 constexpr const char* kFsckDir = "/run/thimsy/session/fsck";
+// The private staging point of ext2/3/4 mounts for Nano (OA-29, io/Idmap.h).
+constexpr const char* kStageDir = "/run/thimsy/session/stage";
+// Nano is still started as root. OA-27's switch (nonroot_nano_plan.md L3), which starts it as nano
+// (1000), turns this on, and with it the ext2/3/4 mounts for nano (PolicyConfig::nanoRunsAsNano).
+constexpr bool kNanoRunsAsNano = false;
 constexpr const char* kLogDir = "/run/thimsy/log";
 constexpr const char* kVolumesJson = "/run/thimsy/volumes.json";
 constexpr const char* kMediaRwDir = "/run/thimsy/media_rw";
@@ -86,12 +93,23 @@ std::string baseName(const std::string& p) {
     return s == std::string::npos ? p : p.substr(s + 1);
 }
 
+Ownership ownershipFor(NanoAccess a) {
+    switch (a) {
+        case NanoAccess::Owned: return Ownership::Nano;
+        case NanoAccess::Idmapped: return Ownership::Idmapped;
+        case NanoAccess::ReadOnly: return Ownership::NeedsDecision;
+        case NanoAccess::FsError: return Ownership::FsError;
+    }
+    return Ownership::NeedsDecision;
+}
+
 class Session {
  public:
     explicit Session(const Options& o)
         : opts_(o), sysfs_(o.root), evdev_(sysfs_, o.fakeHw) {
         PolicyConfig pc;
         pc.mediaRwDir = "/mnt/media_rw";
+        pc.nanoRunsAsNano = kNanoRunsAsNano;
         vols_ = VolumeManager(pc);
     }
     ~Session();
@@ -123,6 +141,7 @@ class Session {
     void delFd(int fd);
     void registerEvdev();
     void adoptMounts();
+    bool saveKeptReadOnly();
     void coldplug();
 
     void runSup(const std::vector<SupAction>& acts);
@@ -395,26 +414,27 @@ void Session::registerEvdev() {
     evdevFds_ = nowSet;
 }
 
+// mountinfo, not /proc/mounts: its superblock options tell a drive whose filesystem went read-only
+// by itself from one the session mounted read-only (W8-IDMAP-16).
 void Session::adoptMounts() {
     std::string text;
-    if (!readFile(P("/proc/mounts"), &text)) return;
-    size_t pos = 0;
-    while (pos < text.size()) {
-        size_t nl = text.find('\n', pos);
-        if (nl == std::string::npos) nl = text.size();
-        std::string line = text.substr(pos, nl - pos);
-        pos = nl + 1;
-        size_t a = line.find(' ');
-        if (a == std::string::npos) continue;
-        size_t b = line.find(' ', a + 1);
-        std::string dev = line.substr(0, a);
-        std::string mnt = line.substr(a + 1, b == std::string::npos ? std::string::npos : b - a - 1);
-        if (mnt.compare(0, 9, "/storage/") != 0 || dev.compare(0, 5, "/dev/") != 0) continue;
-        std::string id = mnt.substr(9);
+    if (!readFile(P("/proc/self/mountinfo"), &text)) return;
+    for (const MountInfo& m : parseMountInfo(text)) {
+        if (m.mountPoint.compare(0, 9, "/storage/") != 0 || m.source.compare(0, 5, "/dev/") != 0) continue;
+        std::string id = m.mountPoint.substr(9);
         if (id.empty() || id.find('/') != std::string::npos) continue;
-        vols_.adoptMounted(baseName(dev), id);
-        log("found " + dev + " mounted at " + mnt);
+        vols_.adoptMounted(baseName(m.source), id, ownershipOfMount(m.fsType, m.mountOptions, m.superOptions));
+        log("found " + m.source + " mounted at " + m.mountPoint);
     }
+}
+
+// Whenever the set changes: a drive declined, or taken after a decline.
+bool Session::saveKeptReadOnly() {
+    std::string err;
+    const std::string text = keptReadOnlyText(vols_.keptReadOnly());
+    if (writeFileAtomic(P(kKeepReadOnlyFile), text, AtomicWriteOptions(), &err)) return true;
+    log("cannot save " + std::string(kKeepReadOnlyFile) + ": " + err);
+    return false;
 }
 
 void Session::coldplug() {
@@ -472,7 +492,7 @@ bool Session::init() {
             kmsg("making / shared failed: " + std::string(strerror(errno)) +
                  "; with no eMMC Nano keeps this namespace and /sys/class/typec is not hidden");
         }
-        mounter_ = makeSyscallMounter();
+        mounter_ = makeSyscallMounter(P(kStageDir));
     } else {
         mounter_ = makeCommandMounter(tool("mount"), tool("umount"), P(std::string(kLogDir) + "/mount.log"), childEnv());
     }
@@ -480,6 +500,10 @@ bool Session::init() {
     // Nano first: everything else can wait for it.
     killOrphanNano();
     killOrphanFsck();
+    // Before Nano starts, so the staging point's own bind reaches no namespace of Nano's (W8-IDMAP-14).
+    if (kNanoRunsAsNano && !mounter_->prepareForNano(&err)) {
+        log("no private staging point, so ext2/3/4 drives will not mount: " + err);
+    }
     struct stat st;
     bool deferredRan = stat(P(kDeferredMarker).c_str(), &st) == 0;
     pid_t padd = readPidFile(P("/run/thimsy/padd.pid"));
@@ -509,6 +533,8 @@ bool Session::init() {
     // The volumes file exists from the start, so Nano can read it at once.
     int64_t serial = 0;
     if (parseInt64(store_->get(kKeyVolumesSerial), &serial) && serial > 0) volumesSerial_ = static_cast<uint64_t>(serial);
+    std::string kept;
+    if (readFile(P(kKeepReadOnlyFile), &kept)) vols_.setKeptReadOnly(parseKeptReadOnly(kept));
     adoptMounts();
     publishVolumes();
 
@@ -702,7 +728,19 @@ void Session::runVol(const std::vector<VolAction>& acts) {
                 bool ok = makeDirs(mp);
                 if (ok && !opts_.fakeHw && !setImmutable(mp, &err)) log("immutable flag on " + a.mountPoint + ": " + err);
                 err.clear();
-                ok = ok && mounter_->mount(P("/dev/" + a.dev), mp, a.fs, a.options, &err);
+                Ownership own = Ownership::None;
+                if (ok && a.forNano) {
+                    NanoMountResult res;
+                    ok = mounter_->mountForNano(P("/dev/" + a.dev), mp, a.fs, a.options, &res, &err);
+                    if (ok) {
+                        own = ownershipFor(res.access);
+                        log(a.dev + "'s top folder is " + std::to_string(res.ownerUid) + ":" +
+                            std::to_string(res.ownerGid) + ", mounted for nano " + toString(res.access) +
+                            (res.idmapError.empty() ? "" : " (no idmapped mount: " + res.idmapError + ")"));
+                    }
+                } else {
+                    ok = ok && mounter_->mount(P("/dev/" + a.dev), mp, a.fs, a.options, &err);
+                }
                 if (ok) {
                     std::string link = P(std::string(kMediaRwDir) + "/" + a.id);
                     unlink(link.c_str());
@@ -712,7 +750,25 @@ void Session::runVol(const std::vector<VolAction>& acts) {
                     if (err.empty()) err = "cannot make " + a.mountPoint;
                     log("mounting " + a.dev + " failed: " + err);
                 }
-                runVol(vols_.onMountDone(a.dev, ok, err));
+                runVol(vols_.onMountDone(a.dev, ok, err, own));
+                break;
+            }
+            case VolActKind::TakeOwnership: {
+                std::string err;
+                bool stillMounted = true;
+                bool ok = mounter_->takeOwnership(P("/dev/" + a.dev), P(a.mountPoint), a.fs, a.options, &stillMounted,
+                                                  &err);
+                if (!stillMounted) unlink(P(std::string(kMediaRwDir) + "/" + a.id).c_str());
+                // A superblock gone read-only (ext4 errors) refuses the writable mount: an error to
+                // report, not a decision to ask for again.
+                std::string mountinfo;
+                bool fsError = !ok && stillMounted && readFile(P("/proc/self/mountinfo"), &mountinfo) &&
+                               superblockReadOnlyAt(parseMountInfo(mountinfo), a.mountPoint);
+                log(ok ? "took " + a.mountPoint + "'s top folder for nano; mounted writable (" + a.options + ")"
+                       : "taking " + a.mountPoint + "'s top folder failed: " + err +
+                             (stillMounted ? "" : "; the drive is no longer mounted") +
+                             (fsError ? "; its filesystem is read-only after an error" : ""));
+                runVol(vols_.onTakeOwnershipDone(a.dev, ok, stillMounted, err, fsError));
                 break;
             }
             case VolActKind::Unmount: {
@@ -983,6 +1039,34 @@ void Session::handleRequest(const Request& r, bool answer) {
         case Verb::Scrape: runSup(sup_.scrapeRequested(monoNow())); break;
         case Verb::RestartNano: runSup(sup_.restartNano(monoNow())); break;
         case Verb::Brightness: result = setBrightness(std::stoi(r.arg)); break;
+        case Verb::TakeOwnership: {
+            std::vector<VolAction> acts;
+            std::string err;
+            const bool wasKept = vols_.keptReadOnly().count(r.arg) > 0;
+            if (!vols_.takeOwnership(r.arg, &acts, &err)) {
+                result = "error:" + err;
+            } else {
+                runVol(acts);
+                const Volume* v = vols_.byId(r.arg);
+                if (!v || v->ownership != Ownership::Nano) {
+                    result = "error:" + (v ? v->error : std::string("the drive went away"));
+                } else if (wasKept) {
+                    saveKeptReadOnly();  // the earlier "keep read-only" is over
+                }
+            }
+            break;
+        }
+        case Verb::KeepReadOnly: {
+            std::string err;
+            const bool wasKept = vols_.keptReadOnly().count(r.arg) > 0;
+            if (!vols_.keepReadOnly(r.arg, &err)) {
+                result = "error:" + err;
+            } else if (!wasKept && !saveKeptReadOnly()) {
+                result = "error:the choice could not be saved";   // kept until the session restarts
+            }
+            runVol({});   // publishes the drive's new ownership
+            break;
+        }
     }
     if (answer) store_->set(kKeyDone, doneValue(r, result));
 }

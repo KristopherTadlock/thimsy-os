@@ -34,10 +34,10 @@ LIBS := -pthread
 
 LIB_NAMES := atomic_file config json uevent watch
 CORE_NAMES := core/InputCodes core/KeyMachine core/SleepPlan core/VolumePolicy core/Supervisor core/Requests \
-	core/NanoJail core/GpuEnv io/Sysfs io/Blkid io/Mounter io/Proc io/Netlink io/Evdev
+	core/NanoJail core/GpuEnv io/Sysfs io/Blkid io/Mounter io/Idmap io/Proc io/Netlink io/Evdev
 APP_NAMES := Session main
 TESTS := key_machine_test sleep_plan_test volume_policy_test supervisor_test requests_test nano_jail_test \
-	blkid_test io_test gpu_env_test
+	blkid_test io_test gpu_env_test idmap_test
 
 REL_OBJS := $(LIB_NAMES:%=$(O)/rel/lib/%.o) $(CORE_NAMES:%=$(O)/rel/%.o) $(APP_NAMES:%=$(O)/rel/%.o)
 ASAN_LIB_OBJS := $(LIB_NAMES:%=$(O)/asan/lib/%.o) $(CORE_NAMES:%=$(O)/asan/%.o)

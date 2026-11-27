@@ -64,6 +64,7 @@ each write the session sets `sys.thimsy.volumes.serial` to a new, larger number:
 | `boot_disk` | On the card Thimsy booted from. The boot card's `games` partition is the default library drive (decision I44). |
 | `read_only` | The device is read-only (a card's lock switch): mounted `ro`, never checked. |
 | `size_bytes` | The partition's size. |
+| `ownership` | Only for a mounted ext2/3/4 drive that is not read-only (OA-29, below): `nano` (its top folder belongs to `nano`, uid and gid 1000: as it was made, or after `take-ownership`), `idmapped` (an idmapped mount shows the drive's owner as `nano`; the drive itself is unchanged), `needs_decision` (no idmapped mount could be made: the drive is mounted read-only until the user agrees to `take-ownership`; Nano should ask, and send `keep-read-only` if the user declines), `declined` (read-only: the user declined, and the session keeps that per drive id, so Nano does not ask again at each insert; `take-ownership` still works when the user asks for it), `fs_error` (the filesystem went read-only by itself, as ext4's `errors=remount-ro` does: read-only, nothing to ask; `error` says so). |
 | `error` | Present when there is something to say: why a check or mount failed, why a drive is a duplicate, that an eject failed because the drive is busy. |
 
 ### Requests: `sys.thimsy.session.request` and `sys.thimsy.session.done`
@@ -91,6 +92,8 @@ the verb instead (`quit-game:error:no game`). Values follow the store's limit of
 | `scrape` | Starts `thimsy-nano-scrape` unless it runs (as `sys.gammaos.nano.scrape_run` does). | `ok` |
 | `restart-nano` | Stops Nano and starts it again at once (the Android `park_restart` trigger's job). | `ok` |
 | `brightness:<0-100>` | Sets the first backlight to that share of `max_brightness` (0 is off; anything above 0 is at least 1). | `ok`, or `error:...` without a backlight |
+| `take-ownership:<id>` | For a mounted drive whose `ownership` is `needs_decision` or `declined`, once the user agreed (OA-29): chowns the drive's top folder (only that folder) to `nano` and mounts the drive again writable; `ownership` becomes `nano`, and a kept `keep-read-only` for the drive is dropped. | `error:...` when there is no such mounted drive, it has no decision pending, its filesystem is read-only after an error (`fs_error`), or the change failed (the drive then stays read-only, shows `fs_error` if its filesystem turned out read-only, or shows `mount_failed` if it lost its mount) |
+| `keep-read-only:<id>` | For a mounted drive whose `ownership` is `needs_decision` (or already `declined`), once the user declined (OA-29): the drive stays read-only and its `ownership` becomes `declined`, now and at every later mount of that id (saved in `/storage/.config/thimsy/keep-read-only`, Files). | `error:...` when there is no such mounted drive or it has no decision pending; `error:the choice could not be saved` when that file could not be written (the drive is still `declined` until the session restarts) |
 
 A malformed numbered request is answered `<seq>:error:<why>`; a malformed unnumbered one only logged.
 
@@ -132,14 +135,16 @@ Nano's own Reboot and Power Off (the last step of its shutdown, `Power::powerAct
    `ALSA_CARD=<audio.card_index>` (0 without one): the card `/etc/asound.conf`'s `default` (plug over
    a dmix) and its control use, so Nano's streams and its games' share the card.
 2. Makes `/` a shared mount (so drives mounted later reach Nano's namespace), stops a Nano left over
-   by an earlier session (`/run/thimsy/nano.pid`), and **starts Nano at once** (`thimsy-session: nano
-   started` in the kernel log). Nano's output goes to `/run/thimsy/log/nano.log`.
+   by an earlier session (`/run/thimsy/nano.pid`), makes the private staging point for ext2/3/4
+   drives (Drives, below; only once Nano runs as `nano`), and **starts Nano at once**
+   (`thimsy-session: nano started` in the kernel log). Nano's output goes to
+   `/run/thimsy/log/nano.log`.
 3. Starts `thimsy-padd` if `S02padd`'s one (`/run/thimsy/padd.pid`) is not running; watches it either
    way (a pidfd) and starts it again if it dies.
 4. Listens for uevents and opens the input nodes; writes the first `volumes.json`.
 5. If an earlier session of this boot already ran the deferred services
    (`/run/thimsy/session/deferred-started`), it scans the block devices itself and adopts drives that
-   are still mounted (`/proc/mounts`) instead of mounting them again.
+   are still mounted (`/proc/self/mountinfo`) instead of mounting them again.
 
 ### Nano
 
@@ -227,6 +232,49 @@ A drive is checked, then mounted at `/storage/<id>` with plan 7.3's options:
 | exfat | `fsck.exfat -p`, always (the plan's choice until Phase 0 times it) | `dirsync,noatime,nodev,nosuid,noexec` |
 | ext4 | `e2fsck -p`, always | `noatime,nodev,nosuid,noexec` |
 
+Every drive mount carries `nosuid` and `nodev`: the options above say so, and on a device the
+session's own mount calls add both whatever the options say (`kDriveMountFlags` in
+`src/io/Idmap.h`). Through an idmapped mount (below) a process of uid 1000 creates files stored as
+the drive's owner (often root), setuid ones included.
+
+ext2/3/4 drives that are not read-only are mounted for Nano, which runs as `nano` (OA-27, OA-29). A
+drive made on a PC carries the PC user's uids, so the session mounts it first at a private staging
+point (`/run/thimsy/session/stage/<dev>`) and reads the owner of its top folder. The stage directory
+is a private bind of itself, so nothing mounted under it reaches Nano's namespace. That bind is the
+one mount that does propagate (everything under the shared `/` does), so the session makes it once at
+start, before Nano starts (after detaching one an earlier session left, which propagates too), never
+later, and detaches it when it exits. If it cannot be made private, ext2/3/4 drives show
+`mount_failed`. Then:
+
+- a superblock that is read-only although the mount asked for writable (ext4 found errors while
+  mounting): the mount is moved to `/storage/<id>` as it is (`ownership` `fs_error`);
+- owned by uid 1000 already: the mount is moved to `/storage/<id>` as it is (`ownership` `nano`);
+- else an idmapped mount (kernel 5.12 and later, `CONFIG_USER_NS`, OA-34): a user namespace whose
+  only mapping is the owner's uid and gid to 1000 (a child unshares its user namespace and waits
+  while the session writes its `setgroups` (`deny`), `uid_map` and `gid_map`, then opens its
+  `ns/user`), `open_tree(OPEN_TREE_CLONE)` of the staging mount, `mount_setattr(MOUNT_ATTR_IDMAP)`
+  with that namespace (setting `MOUNT_ATTR_NOSUID`, `MOUNT_ATTR_NODEV` and `MOUNT_ATTR_NOEXEC` in the
+  same call) and `move_mount` to `/storage/<id>` (`ownership` `idmapped`). The drive's files
+  look owned by `nano`, and what Nano writes is stored as the owner's uid, so the PC sees nothing
+  changed. Files of other uids show as `nobody`;
+- when any step fails (`EINVAL`, `EPERM`, `ENOSYS` or anything else): the staging mount is made
+  read-only (that mount only) and moved to `/storage/<id>` (`ownership` `needs_decision`), and the
+  session logs why. A `take-ownership` request mounts the drive again writable at the staging point,
+  chowns its top folder to 1000:1000, detaches the read-only mount and moves the new one in (a
+  per-mount flag does not propagate, so Nano's namespace needs the new mount). When that writable
+  mount is refused because the superblock went read-only meanwhile (`/proc/self/mountinfo`'s
+  superblock options say `ro`), the drive shows `fs_error`. A `keep-read-only` request records the
+  user's "no" (`/storage/.config/thimsy/keep-read-only`): that drive then shows `declined` instead of
+  `needs_decision` at every mount, until a `take-ownership` succeeds.
+
+The staging mount is detached in every case. A respawned session reads an adopted mount's ownership
+from `/proc/self/mountinfo`: a read-only superblock means `fs_error`; else `idmapped` in the mount's
+own options means `idmapped`, and `ro` there means `needs_decision` (or `declined`, as above).
+
+Until Nano runs as `nano` (OA-27's switch; `kNanoRunsAsNano` in `Session.cpp`), Nano runs as root and
+ext2/3/4 drives are mounted as they are, with no `ownership`: root needs no mapping, and could not
+create files through one, since uid 0 is not mapped in it.
+
 A check that exits above 1 (above 3 for `e2fsck`) leaves the drive `check_failed`. A card pulled while
 being checked stops the check and is never mounted; one pulled while mounted is detached
 (`umount -l`). Filesystem serials and labels are read from the superblocks by the session itself
@@ -240,7 +288,9 @@ being checked stops the check and is never mounted; one pulled while mounted is 
 | `/usr/share/thimsy/gpu.json` | read: the GPU pack's environment for Nano (At start) |
 | `/run/thimsy/nano.pid`, `/run/thimsy/padd.pid` | the processes it supervises |
 | `/run/thimsy/media_rw/<id>` | links to the mount points; the root's `/mnt/media_rw` must link here (G9's `10-android-links.sh`), since the root is read-only |
+| `/storage/.config/thimsy/keep-read-only` | the ext2/3/4 drives the user chose to keep read-only (`keep-read-only`), one id per line; rewritten (atomically, fsynced) when that set changes, read at start |
 | `/run/thimsy/session/deferred-started` | written when it starts `rcD`: a respawned session does not start it again |
+| `/run/thimsy/session/stage` | a private bind of itself, made before Nano starts; ext2/3/4 drives are mounted at `stage/<dev>` before they move to `/storage/<id>` (Drives) |
 | `/run/thimsy/log/session.log` | its own log; `nano.log`, `padd.log`, `scrape.log`, `fsck.log`, `deferred.log`, `session-tools.log` for the programs it starts |
 | `/dev/kmsg` | markers: `thimsy-session: started`, `nano started`, `nano exited`, `deferred services starting`, `sleep`, `awake`, `poweroff requested` |
 
@@ -257,8 +307,13 @@ as libthimsy's Makefile, and runs:
   machine with a fake clock (2.9 s and 3.1 s presses, the wake press, the quit combo), the sleep plan
   (a lid closing during a game), the volume policy (a card removed mid-check, the root disk's
   partitions with and without the games name, a second card with a `data` partition, the eMMC, two
-  cards with one serial), the supervisor's back-off, the request parser, the jail plan, and Blkid on
-  exFAT, FAT16, FAT32, ext4, GPT and MBR images built in the test;
+  cards with one serial, an ext4 drive's ownership, the `take-ownership` and `keep-read-only`
+  requests, mountinfo's superblock options), the supervisor's
+  back-off, the request parser, the jail plan, Blkid on exFAT, FAT16, FAT32, ext4, GPT and MBR images
+  built in the test, and the ext2/3/4 mount sequences for Nano (`idmap_test.cpp`: staging, the owner
+  check, the idmapped mount and each failure's read-only fallback, a superblock gone read-only,
+  taking the top folder, `nosuid` and `nodev` on every mount, the staging point made only before
+  Nano starts) over fake system calls;
 - the E2E (`tests/e2e/test_e2e.py`): the real binary, sanitized, as
   `thimsy-session --root R --fake-hw --tooldir T`.
 

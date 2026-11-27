@@ -75,22 +75,65 @@ namespace {
 
 class SyscallMounter : public Mounter {
  public:
+    SyscallMounter(std::string stageRoot, std::unique_ptr<MountSys> sys)
+        : stageRoot_(std::move(stageRoot)), sys_(std::move(sys)) {}
+    ~SyscallMounter() override {
+        if (staged_) sys_->umount(stageRoot_, MNT_DETACH);  // the detach reaches Nano's copy too
+    }
+
     bool mount(const std::string& dev, const std::string& dir, const std::string& fs, const std::string& options,
                std::string* err) override {
         unsigned long flags = 0;
         std::string data;
         splitMountOptions(options, &flags, &data);
-        if (::mount(dev.c_str(), dir.c_str(), fs.c_str(), flags, data.empty() ? nullptr : data.c_str()) == 0) {
-            return true;
-        }
-        if (err) *err = strerror(errno);
+        int e = sys_->mount(dev, dir, fs, flags | kDriveMountFlags, data);
+        if (e == 0) return true;
+        if (err) *err = strerror(e);
         return false;
     }
     bool unmount(const std::string& dir, bool lazy, std::string* err) override {
-        if (umount2(dir.c_str(), lazy ? MNT_DETACH : 0) == 0) return true;
-        if (err) *err = strerror(errno);
+        int e = sys_->umount(dir, lazy ? MNT_DETACH : 0);
+        if (e == 0) return true;
+        if (err) *err = strerror(e);
         return false;
     }
+    bool prepareForNano(std::string* err) override {
+        if (!tried_) {
+            tried_ = true;
+            staged_ = prepareStage(*sys_, stageRoot_, &stageErr_);
+        }
+        if (!staged_ && err) *err = stageErr_;
+        return staged_;
+    }
+    bool mountForNano(const std::string& dev, const std::string& dir, const std::string& fs,
+                      const std::string& options, NanoMountResult* res, std::string* err) override {
+        if (!stageReady(err)) return false;
+        return mountExtForNano(*sys_, stageFor(dev), dev, dir, fs, options, res, err);
+    }
+    bool takeOwnership(const std::string& dev, const std::string& dir, const std::string& fs,
+                       const std::string& options, bool* stillMounted, std::string* err) override {
+        *stillMounted = true;
+        if (!stageReady(err)) return false;
+        return takeExtOwnership(*sys_, stageFor(dev), dev, dir, fs, options, stillMounted, err);
+    }
+
+ private:
+    // <stageRoot>/<the device's kernel name>.
+    std::string stageFor(const std::string& dev) const {
+        size_t s = dev.rfind('/');
+        return stageRoot_ + "/" + (s == std::string::npos ? dev : dev.substr(s + 1));
+    }
+    bool stageReady(std::string* err) const {
+        if (staged_) return true;
+        if (err) *err = "no private staging point: " + stageErr_;
+        return false;
+    }
+
+    std::string stageRoot_;
+    std::unique_ptr<MountSys> sys_;
+    bool tried_ = false;   // prepareForNano ran (it runs once)
+    bool staged_ = false;  // and made the private staging point
+    std::string stageErr_ = "not prepared before Nano started";
 };
 
 class CommandMounter : public Mounter {
@@ -123,6 +166,21 @@ class CommandMounter : public Mounter {
         if (err && err->empty()) *err = "umount exited " + std::to_string(rc);
         return false;
     }
+    bool prepareForNano(std::string*) override { return true; }  // no staging on fake hardware
+    // Fake hardware has no owners to map: the drive is mounted as it is.
+    bool mountForNano(const std::string& dev, const std::string& dir, const std::string& fs,
+                      const std::string& options, NanoMountResult* res, std::string* err) override {
+        *res = NanoMountResult();
+        res->ownerUid = kNanoId;
+        res->ownerGid = kNanoId;
+        return mount(dev, dir, fs, options, err);
+    }
+    bool takeOwnership(const std::string&, const std::string&, const std::string&, const std::string&,
+                       bool* stillMounted, std::string* err) override {
+        *stillMounted = true;
+        if (err) *err = "not with fake hardware";
+        return false;
+    }
 
  private:
     std::string mount_, umount_, log_;
@@ -131,7 +189,13 @@ class CommandMounter : public Mounter {
 
 }  // namespace
 
-std::unique_ptr<Mounter> makeSyscallMounter() { return std::unique_ptr<Mounter>(new SyscallMounter()); }
+std::unique_ptr<Mounter> makeSyscallMounter(std::string stageRoot) {
+    return makeSyscallMounter(std::move(stageRoot), makeRealMountSys());
+}
+
+std::unique_ptr<Mounter> makeSyscallMounter(std::string stageRoot, std::unique_ptr<MountSys> sys) {
+    return std::unique_ptr<Mounter>(new SyscallMounter(std::move(stageRoot), std::move(sys)));
+}
 
 std::unique_ptr<Mounter> makeCommandMounter(std::string mountProg, std::string umountProg, std::string logFile,
                                             std::vector<std::string> env) {

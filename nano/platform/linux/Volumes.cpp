@@ -36,6 +36,8 @@
 #include <nanocompat/nanocompat.h>
 #include <thimsy/json.h>
 
+#include "ControlKeys.h"
+
 namespace nanolinux {
 
 namespace {
@@ -105,7 +107,8 @@ class LinuxVolumes : public nanoplat::Volumes {
     std::string cardRoot() override {
         std::vector<VolumeEntry> found;
         for (const VolumeEntry& v : snapshot())
-            if (inUse(v) && !v.readOnly && access(v.path.c_str(), W_OK) == 0) found.push_back(v);
+            if (inUse(v) && !v.readOnly && !readOnlyForNano(v) && access(v.path.c_str(), W_OK) == 0)
+                found.push_back(v);
         std::stable_sort(found.begin(), found.end(), [](const VolumeEntry& a, const VolumeEntry& b) {
             const bool sa = a.kind == "sd", sb = b.kind == "sd";
             if (sa != sb) return sa;
@@ -144,7 +147,7 @@ class LinuxVolumes : public nanoplat::Volumes {
     std::vector<std::string> writableFolders(const std::string& vol, const std::string& rel) override {
         std::vector<std::string> found;
         for (const VolumeEntry& v : snapshot()) {
-            if (v.id == vol || !inUse(v)) continue;
+            if (v.id == vol || !inUse(v) || readOnlyForNano(v)) continue;
             const std::string cand = v.path + rel;
             if (writableDir(cand)) found.push_back(cand);
         }
@@ -253,7 +256,8 @@ bool parseVolumesJson(std::string_view text, std::vector<VolumeEntry>* out, std:
                        memberString(o, "fs", where, &v.fs, &e) && memberString(o, "label", where, &v.label, &e) &&
                        memberString(o, "kind", where, &v.kind, &e) &&
                        memberBool(o, "boot_disk", where, &v.bootDisk, &e) &&
-                       memberBool(o, "read_only", where, &v.readOnly, &e)) {
+                       memberBool(o, "read_only", where, &v.readOnly, &e) &&
+                       memberString(o, "ownership", where, &v.ownership, &e)) {
                 list.push_back(std::move(v));
             }
         }
@@ -264,6 +268,48 @@ bool parseVolumesJson(std::string_view text, std::vector<VolumeEntry>* out, std:
     }
     *out = std::move(list);
     return true;
+}
+
+bool needsOwnershipDecision(const VolumeEntry& v) { return v.state == "mounted" && v.ownership == "needs_decision"; }
+
+bool readOnlyForNano(const VolumeEntry& v) {
+    return v.state == "mounted" &&
+           (v.ownership == "needs_decision" || v.ownership == "declined" || v.ownership == "fs_error");
+}
+
+std::string takeOwnershipVerb(const std::string& id) {
+    return looksLikeVolumeId(id) ? "take-ownership:" + id : std::string();
+}
+
+std::string keepReadOnlyVerb(const std::string& id) {
+    return looksLikeVolumeId(id) ? "keep-read-only:" + id : std::string();
+}
+
+namespace {
+
+// Sends a drive request built by one of the verb functions above; false for an id they refuse.
+bool sendDriveRequest(const std::string& verb, const std::string& id,
+                      const std::function<void(const std::string& verb)>& sessionRequest) {
+    if (verb.empty()) {
+        ALOGW("volumes: no request for '%s': not a volume id", id.c_str());
+        return false;
+    }
+    if (sessionRequest) {
+        sessionRequest(verb);
+    } else {
+        controlkeys::sessionRequest(verb);
+    }
+    return true;
+}
+
+}  // namespace
+
+bool requestTakeOwnership(const std::string& id, const std::function<void(const std::string& verb)>& sessionRequest) {
+    return sendDriveRequest(takeOwnershipVerb(id), id, sessionRequest);
+}
+
+bool requestKeepReadOnly(const std::string& id, const std::function<void(const std::string& verb)>& sessionRequest) {
+    return sendDriveRequest(keepReadOnlyVerb(id), id, sessionRequest);
 }
 
 std::unique_ptr<nanoplat::Volumes> makeVolumes(VolumesOptions options) {
