@@ -39,6 +39,10 @@ class LinuxBoot : public nanoplat::Boot {
               earlyDrmFd, overlayMode ? 1 : 0);
     }
 
+    // main_linux.cpp opens the settings store synchronously before any thread starts, so by the
+    // time anything asks, nothing more will load: waiting cannot help, and true means "every
+    // saved setting there will be is in" (only defaults when nanocompat::init failed, which
+    // main_linux.cpp has already logged).
     void awaitSavedSettings(SettingsReader) override {}
     bool savedSettingsLoaded() override { return true; }
     bool soundSystemReady() override { return true; }
