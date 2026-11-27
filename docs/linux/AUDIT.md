@@ -84,7 +84,7 @@ Source: `docs/linux/DECISIONS.md`, "Wave 4: the G7 seam moves, gfix2, review" an
 ### (b) Pending the owner
 
 - Display EGL moves (G7D-2, G7D-3): allow a step that adds accessors to the frozen NanoMenu.h, or leave it to G10.
-- Release-build SSH: add a key-import path or keep release SSH unusable (recommended: the import path).
+- ~~Release-build SSH~~: decided 2026-11-26, root password `thimsy` by default, changeable in Nano, LAN-only by default (DECISIONS.md OA-3).
 - AAudio pointer lifetime: confirm in the AOSP review before cherry-picking G7-audio.
 
 ## Wave 5
