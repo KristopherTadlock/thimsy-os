@@ -429,7 +429,7 @@ class NativeSettingsParser(unittest.TestCase):
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "S.cpp")
-            with open(path, "w", encoding="utf-8") as fh:
+            with open(path, "w", encoding="utf-8", newline="\n") as fh:
                 fh.write('constexpr Row kNative[] = {\n'
                          '    // a comment\n'
                          '    {SettingSource::kSystem, "font_scale", "persist.x.fontscale"},\n'
