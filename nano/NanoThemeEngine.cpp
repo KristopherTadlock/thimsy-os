@@ -13,6 +13,7 @@
 
 #include "NanoMenu.h"
 #include "NanoEsdeTheme.h"
+#include "NanoEsdeThemeFallback.h"   // OA-37: a chosen set that is not installed
 #include "NanoEsdeSystemName.h"
 #include "NanoI18n.h"
 #include "NanoUtf8Case.h"
@@ -559,7 +560,7 @@ bool NanoMenu::esdeBuildTheme(const EsdeBuildKey& k, const char* why) {
 // readable yet (media unknown), when the variant the last boot resolved for the system is used. The
 // focused system is resolved again once storage comes up (renderEsde, mEsdeMediaSig).
 std::string NanoMenu::esdeVariantFor(const std::string& selVariant, int sysIdx, const std::string& sysTheme) {
-    if (!mStorageReady) {
+    if (!mStorageReady && mEsdeMissingSet.empty()) {   // the records are the chosen set's, not a stand-in's
         for (const char* tag : {"foc", "repx", "rep"})
             for (const auto& r : mEsdePredict)
                 if (r.first == tag && r.second.set == mEsdeSetName && r.second.sysTheme == sysTheme &&
@@ -637,11 +638,19 @@ void NanoMenu::ensureEsdeTheme() {
     mEsdeGridCursor = -1; mEsdeGridScroll = 0.0f; mEsdeGamelistGrid = -1;   // reset grid state/cache
     mEsdeOtherViewAnim = EsdeViewAnim();   // and the other view's, in dual screen mode
 
+    // OA-37: a chosen set that is not installed (it was on a card that is out, say) is stood in for
+    // by the default; the stored choice stays, and esdeMissingSetRecheck loads it once it is back.
     std::string dir = esdeSetDir(want);
+    const std::string standInDir = dir.empty() ? esdeSetDir(kEsdeDefaultSet) : std::string();
+    const std::string load = esdethemefb::setToLoad(want, !dir.empty(), kEsdeDefaultSet, !standInDir.empty());
+    mEsdeMissingSet = esdethemefb::missingSet(want, !dir.empty(), kEsdeDefaultSet);
+    mEsdeMissingCheckMs = (int64_t)uptimeMillis();
     if (dir.empty()) {
-        ALOGW("esde: theme set '%s' not found under %s, %s or %s",
-              want.c_str(), kEsdeDataDir, kEsdeSystemDir, esdeUserThemes().c_str());
-        return;
+        ALOGW("esde: theme set '%s' not found under %s, %s or %s%s",
+              want.c_str(), kEsdeDataDir, kEsdeSystemDir, esdeUserThemes().c_str(),
+              load.empty() ? "" : "; the default theme stands in until it is back");
+        if (load.empty()) return;
+        dir = standInDir;
     }
     // Pick a representative system's theme folder for the shared layout load.
     std::string sysTheme = "default", sysName = "System";
@@ -660,6 +669,10 @@ void NanoMenu::ensureEsdeTheme() {
     property_get("persist.gammaos.nano.esde.colorscheme", cs, "");
     property_get("persist.gammaos.nano.esde.variant", va, "");
     property_get("persist.gammaos.nano.esde.aspectratio", ar, "automatic");
+    if (load != want) {   // the chosen set's options are not the stand-in's (as the load-failure fallback)
+        va[0] = cs[0] = fs[0] = '\0';
+        snprintf(ar, sizeof(ar), "%s", "automatic");
+    }
     float aspect = mHeight > 0 ? (float)mWidth / (float)mHeight : 1.7778f;
     char loc[PROPERTY_VALUE_MAX] = {0};
     {   // the theme's <language> block follows the device locale, as ES-DE's automatic setting does
@@ -669,11 +682,11 @@ void NanoMenu::ensureEsdeTheme() {
     if (mEsdeEverLoaded) mEsdePrebuildOpen = false;   // a reload: nothing built at startup applies
     mEsdeEverLoaded = true;
     EsdeBuildKey key;
-    key.set = want; key.dir = dir; key.selVariant = va; key.variant = va;
+    key.set = load; key.dir = dir; key.selVariant = va; key.variant = va;
     key.colorScheme = cs; key.aspectRatio = ar; key.fontSize = fs; key.locale = esdeNormLocale(loc);
     key.sysTheme = sysTheme; key.sysName = sysName; key.aspect = aspect;
-    bool ok = esdeBuildTheme(key, "set");
-    esdePredictRecord("rep", &key);
+    bool ok = esdeBuildTheme(key, load == want ? "set" : "default (chosen set missing)");
+    if (load == want) esdePredictRecord("rep", &key);   // a stand-in leaves the chosen set's records for its return
     // Now that capabilities are parsed, honour the selected variant's noMedia/noVideos trigger
     // for the representative system and reparse once if it resolves to a different variant.
     if (ok && repIdx >= 0) {
@@ -682,12 +695,12 @@ void NanoMenu::ensureEsdeTheme() {
             EsdeBuildKey effKey = key;
             effKey.variant = eff;
             ok = esdeBuildTheme(effKey, "set (variant trigger)");
-            esdePredictRecord("repx", &effKey);
-        } else {
+            if (load == want) esdePredictRecord("repx", &effKey);
+        } else if (load == want) {
             esdePredictRecord("repx", nullptr);
         }
     }
-    if (!ok && want != kEsdeDefaultSet) {
+    if (!ok && load != kEsdeDefaultSet) {
         ALOGW("esde: load '%s' failed: %s; falling back to the default theme", want.c_str(),
               mEsdeDoc.error().c_str());
         if (mEsdeDoc.error() == kEsdeTimedOut && sEsdeRetrySet != want) {
@@ -710,11 +723,26 @@ void NanoMenu::ensureEsdeTheme() {
             return a == nanoesde::XsAnim::SLIDE ? "slide" : a == nanoesde::XsAnim::FADE ? "fade" : "instant";
         };
         ALOGI("esde: loaded '%s' set (variant='%s' colorScheme='%s' font='%s' aspect='%s' xsSysToGl=%s xsGlToSys=%s)",
-              want.c_str(), va, cs, fs, mEsdeDoc.selectedAspect().c_str(),
+              load.c_str(), va, cs, fs, mEsdeDoc.selectedAspect().c_str(),
               animName(mEsdeDoc.xsSystemToGamelist()), animName(mEsdeDoc.xsGamelistToSystem()));
     }
     esdeCacheSounds();        // snapshot the theme's navigation-sound paths for esdeSfx
     mEsdeLoadedSysIdx = -1;   // force a per-focused-system re-resolve on the next render
+}
+
+// OA-37: while the default stands in for a chosen set that was not installed at its load, look for
+// that set again (why: what prompted the look, for the log). Once it is back, the next
+// ensureEsdeTheme loads it. A few access() calls: the callers run it on a storage or theme-folder
+// change, a raise of the home, the theme menu opening, and otherwise at most every
+// esdethemefb::kRecheckMs from esdeSdcardThemesTick, never per frame.
+void NanoMenu::esdeMissingSetRecheck(const char* why) {
+    if (mEsdeMissingSet.empty()) return;
+    mEsdeMissingCheckMs = (int64_t)uptimeMillis();
+    if (esdeSetDir(mEsdeMissingSet).empty()) return;
+    ALOGI("esde: theme set '%s' is back (%s); loading it", mEsdeMissingSet.c_str(), why);
+    mEsdeMissingSet.clear();
+    mEsdeLoaded = false;
+    mDisplayDirty = true;
 }
 
 // Watch the user theme folder (/sdcard/ES-DE/themes) so a set dropped in there - or an edit to the
@@ -727,6 +755,7 @@ void NanoMenu::esdeSdcardThemesTick() {
     int64_t now = (int64_t)uptimeMillis();
     if (now - mEsdeSdcardPollMs < 1500) return;   // a few polls/sec is plenty for a manual file drop
     mEsdeSdcardPollMs = now;
+    if (esdethemefb::recheckDue(mEsdeMissingSet, now, mEsdeMissingCheckMs)) esdeMissingSetRecheck("periodic check");
     struct stat st;
 
     // Two independent signatures so a sibling theme dropped in does NOT needlessly reparse the
@@ -759,6 +788,7 @@ void NanoMenu::esdeSdcardThemesTick() {
     mEsdeSdcardSig = dirSig;
     mEsdeSdcardActiveSig = activeSig;
     if (dirChanged) esdeMenuEnumerateInstalled();  // a set appeared / disappeared: refresh the picker
+    if (dirChanged) esdeMissingSetRecheck("theme folder changed");
     if (activeChanged && activeOnSdcard) mEsdeLoaded = false;   // active set edited in place: reparse it
     mDisplayDirty = true;
     ALOGI("esde: user theme folder changed (dir=%d active=%d)", (int)dirChanged, (int)activeChanged);
@@ -771,8 +801,11 @@ void NanoMenu::esdeReloadForSystem(int sysIdx) {
     esdeForgetMediaMisses();   // art added since (the Android Games helper) shows on re-entry
     if (!mEsdeLoaded || mEsdeSetName.empty()) return;
     if (sysIdx < 0 || sysIdx >= (int)mXmbSystems.size()) return;
+    // The chosen set failed to load, or is missing (OA-37), and the default stands in for it
+    // (ensureEsdeTheme): the stand-in's key is used below.
+    const bool standIn = mEsdeDocKey.set == kEsdeDefaultSet && mEsdeSetName != kEsdeDefaultSet;
     std::string dir = esdeSetDir(mEsdeSetName);
-    if (dir.empty()) return;
+    if (dir.empty() && !standIn) return;
     const auto& s = mXmbSystems[sysIdx];
     std::string sysTheme = esdeThemeSystemName(s.romDir, s.shortname);
     std::string sysName = s.name;
@@ -791,8 +824,7 @@ void NanoMenu::esdeReloadForSystem(int sysIdx) {
     key.set = mEsdeSetName; key.dir = dir; key.selVariant = va; key.variant = eff;
     key.colorScheme = cs; key.aspectRatio = ar; key.fontSize = fs; key.locale = mEsdeDoc.locale();
     key.sysTheme = sysTheme; key.sysName = sysName; key.aspect = aspect;
-    if (mEsdeDocKey.set == kEsdeDefaultSet && mEsdeSetName != kEsdeDefaultSet) {
-        // The chosen set failed to load and the default stands in for it (ensureEsdeTheme).
+    if (standIn) {
         key.set = mEsdeDocKey.set; key.dir = mEsdeDocKey.dir;
         key.selVariant = key.variant = mEsdeDocKey.selVariant;
         key.colorScheme = mEsdeDocKey.colorScheme; key.aspectRatio = mEsdeDocKey.aspectRatio;
@@ -804,7 +836,7 @@ void NanoMenu::esdeReloadForSystem(int sysIdx) {
     // built from these same inputs.
     const bool first = mEsdeLoadedSysIdx < 0;
     const bool ok = (first && mEsdeDoc.valid() && key == mEsdeDocKey) || esdeBuildTheme(key, "system");
-    if (first) esdePredictRecord("foc", &key);
+    if (first && mEsdeMissingSet.empty()) esdePredictRecord("foc", &key);
     if (ok) {
         mEsdeRepSysTheme = sysTheme;
         mEsdeLoadedSysIdx = sysIdx;
@@ -2599,6 +2631,7 @@ void NanoMenu::renderEsde() {
         if (mediaSig != mEsdeMediaSig) {
             if (mEsdeMediaSig >= 0) mEsdeLoadedSysIdx = -1;
             mEsdeMediaSig = mediaSig;
+            esdeMissingSetRecheck("storage changed");   // OA-37: a set on the card that came back
         }
     }
     esdeRebuildSysList();

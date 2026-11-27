@@ -1792,6 +1792,10 @@ private:
     nanoesde::Theme mEsdeDoc;                     // parsed theme for the selected set
     bool mEsdeLoaded = false;                     // latched after the first load attempt
     std::string mEsdeSetName;                     // active theme-set directory name
+    // OA-37: the chosen set, while it is not installed and the default stands in for it (else empty),
+    // and when it was last looked for (esdeMissingSetRecheck, NanoThemeEngine.cpp).
+    std::string mEsdeMissingSet;
+    int64_t mEsdeMissingCheckMs = 0;
     // Theme parses run on worker threads (EsdeThemeBuilder, NanoThemeEngine.cpp): each builds a
     // separate nanoesde::Theme from an EsdeBuildKey (every input of Theme::load) and the render
     // thread swaps the finished one into mEsdeDoc. At startup the keys the last boot used
@@ -2186,6 +2190,7 @@ private:
     void renderEsdeSecondary();
     void ensureEsdeTheme();
     void esdeSdcardThemesTick();                  // watch /sdcard/ES-DE/themes for user-dropped themes
+    void esdeMissingSetRecheck(const char* why);  // OA-37: load the chosen set once it is back
     void esdeRebuildSysList();
     // The ES-DE system and game in focus at a launch, for the fresh home after it: the overlay home
     // starts at the first launch with no state of its own. esdeApplyReturn restores it once the

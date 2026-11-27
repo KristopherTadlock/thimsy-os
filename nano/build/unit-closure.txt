@@ -19,6 +19,7 @@ NanoDisplayTarget_test	NanoDisplayTarget.cpp	-
 NanoEmuSync_test	NanoEmuSync.cpp	-
 NanoEsdeSystemName_test	NanoJson.cpp NanoEsdeSystemName.cpp	@nano_esde_themes @ps3xmb ziparchive/zip_archive.h
 NanoEsdeTheme_test	NanoEsdeTheme.cpp	@nano_esde_themes tinyxml2.h ziparchive/zip_archive.h
+NanoEsdeThemeFallback_test	-	-
 NanoFrameFlag_test	-	-
 NanoHakuxSetup_test	NanoBiosCatalog.cpp NanoAppFiles.cpp NanoBiosUtil.cpp NanoHakuxSetup.cpp	openssl/md5.h openssl/sha.h zlib.h
 NanoI18n_test	NanoJson.cpp NanoI18n.cpp	-

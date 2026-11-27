@@ -310,6 +310,7 @@ test/unit/NanoDisplayTarget_test.cpp
 test/unit/NanoEmuSync_test.cpp
 test/unit/NanoEsdeSystemName_test.cpp
 test/unit/NanoEsdeTheme_test.cpp
+test/unit/NanoEsdeThemeFallback_test.cpp
 test/unit/NanoFrameFlag_test.cpp
 test/unit/NanoHakuxSetup_test.cpp
 test/unit/NanoI18n_test.cpp
