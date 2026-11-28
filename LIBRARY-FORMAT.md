@@ -85,7 +85,7 @@ Android's JSON writer (`NanoJson`) prints numbers with `%.6g` and turns infinity
 
 ### 1.6 What readers skip
 
-`Android/`, `LOST.DIR`, `System Volume Information`, `.Trashes`, `.Spotlight-V100`, names starting with `.` (macOS `._*` files included) except Thimsy's own `.previous/` and `.thimsy-slot` (4.24), and the temporary names in 1.2. Syncthing markers, if Android Syncthing shares a card folder, are left alone.
+`Android/`, `LOST.DIR`, `System Volume Information`, `.Trashes`, `.Spotlight-V100`, names starting with `.` (macOS `._*` files included) except Thimsy's own `.previous/` and `.thimsy-slot` (4.24) and `.thimsy-legacy.json` (4.17), and the temporary names in 1.2. Syncthing markers, if Android Syncthing shares a card folder, are left alone.
 
 ## 2. Identity and paths
 
