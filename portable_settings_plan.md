@@ -2,6 +2,20 @@
 
 Status: draft for review (2026-11-26). Phase 0 (the schema inventory, §7.1) is done; nothing else has been built or run. Line numbers are at `linux` 1f45bd6. Facts that were not checked on a device or in a tool's source are marked **(verify)**; estimates are marked *(guess)*.
 
+> **Superseded in part (2026-11-27, `docs/linux/DECISIONS.md` OA-46 to OA-51).** The owner rethought config portability; `per_device_config_plan.md` is the design that follows.
+>
+> - **The card file is dropped.** OA-47: Thimsy's own settings are local only. There is no `Thimsy/settings.ini`, the device's settings store is the only copy, and Nano does not write ES-DE's `ThemeSet` for portability. OA-32's answers (the location, the "Use this card's settings?" question, card wins, platform and `[device.<model>]` sections, the rollout) no longer apply. `LIBRARY-FORMAT.md` 4.21 is removed.
+> - **Except the theme.** OA-51 puts the theme switches (XMB, ES-DE, Minima and the like, with their style switches) and each theme's settings (theme set, variant, colour scheme, font size) on the card, shared by every device; the card's value wins, and the device's local value is used with no card. They go in `Thimsy/theme.json`, not an INI file, with four keys mirrored into `es_settings.xml` for the ES-DE app. Aspect ratio stays local. The 31 keys and the rules are in `per_device_config_plan.md` §2.4 and §4.7 and `LIBRARY-FORMAT.md` 4.26.
+> - **What still applies:**
+>   - the settings inventory, `tools/nano-tree/prefs.json`, with `prefs.py` and `test_prefs.py` (phase 0, §1 and §2): it stays as the inventory (OA-47) and gains a `card` field that marks the theme keys. Classes P, M, A and L now only describe the settings; none of them puts anything on a card;
+>   - the device store: Android's `persist.*` properties under their legacy names and Linux's ConfigStore stay the working copy, now the only copy (Conventions), with §3.4's layers 1 and 2 (built-in and device-profile defaults) under it;
+>   - OA-35's seeding of the image's theme defaults into the device store (local);
+>   - §6, the `Prefs` facade in front of wave 6's `Settings` (OA-4 step 8), now without a card layer except the theme's. Of §7.1's phases, 0 is done; 2, 3 and 5 (the facade, and moving call sites to it) stay as OA-4 step 8 work; 6 keeps its platform apply hooks and loses the per-model layer;
+>   - §4.5's durability rules, which `per_device_config_plan.md` §5.5 reuses for every card write.
+> - **What no longer applies:** the INI dialect and the card file (§3.1 to §3.3), the three-way merge with the card (§4.1 to §4.4), migration to the card (§5.2), and §7.1's phases 1, 4, 7, 8 and 9 (phase 7's theme part moves to `per_device_config_plan.md` phase 4). §8's questions are closed by OA-32 and then OA-47.
+>
+> The body below is kept as written, for the inventory and the record.
+
 ## Requirement (owner, 2026-11-26, OA-20)
 
 - The card stays fully usable by the real ES-DE app. ES-DE's own files hold only ES-DE's formats; Thimsy-only data lives in Thimsy's own files.
