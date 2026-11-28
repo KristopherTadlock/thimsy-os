@@ -43,7 +43,7 @@ What the owner gets:
 | D5. Start + Select in Nano's menus | **Always opens the Quick Menu**, plus the chosen combo. A route no setting removes (HOTKEYS.md:409). | Only the chosen combo. |
 | D6. RetroArch's own menu combo, shipped as L3 + R3 | **Move it to Hold Start** (`input_menu_toggle_gamepad_combo` 2 → 7) while the Hotkey Combo is L3 + R3 and Universal Hotkeys is On. Only if it is still the shipped 2; put back when that stops. The button map gets a "Hold Start" row (today combo 7 has none). | (b) Start + Select (4): gives Start + Select, which D4 frees, to RetroArch's menu, which then also opens on game resets (A + B + Start + Select). (c) Leave it: every L3 + R3 chord also opens RetroArch's menu. |
 | D7. A hotkey or the Button Map Button already on L3 or R3 when L3 + R3 is chosen | **Allowed.** Anbernic + L3 still runs it. Only the combo can't use its own buttons: no "combo + L3". The docs say shoulder buttons suit L3 + R3 (no room in the row's text). | Refuse, or swap the button off. |
-| D8. Both combo buttons from one controller | **Not now: any controller, as today.** D10 makes a cross-player L3 + R3 chord unlikely. | Same controller, with all built-in input devices counting as one. Needs a check of every device's input nodes first (§9), since a handheld whose Start and Select come from different nodes would lose today's chord. |
+| D8. Both combo buttons from one controller | **Decided by the owner (2026-11-27): the same controller.** Start and Select (or whichever pair the combo is) must both come from one controller; player 1's Start with player 2's Select is no longer a chord. The built-in controls count as one controller even where they come from several input nodes. | (Any controller, as before: rejected.) Phase 0 must check every device's input nodes (section 9) so a handheld whose Start and Select come from different nodes keeps its chord. |
 | D9. The button map's combo row while Controller Bindings is Off | **Hidden**, since the combo does nothing then. Changes today's map for the default too. | Keep showing it. |
 | D10. A time window for pairs with a stick click | **200 ms** between the two presses for L3 + R3 (and any pair with L3 or R3); later than that, no chord. Start + Select keeps no window, as today. Adds no delay: both buttons are delivered anyway. | No window for any pair (sprint + crouch held 3 s quits; sprint + later R3 + L1 loads a state). |
 
@@ -282,7 +282,7 @@ First pull the decision into pure static functions, as `ThimsyDeviceKeys.functio
 - The detector (PWM:7688-7737, P:171149-171198): `ssKey` becomes "is one of the combo's keycodes". Arming, release, the 3 s `mNanoHoldQuit`, the "pressed again" cancel and the lost key-up drop keep their logic.
 - Resets and the Back cancel (P:170599, 170921-170925, 170953-170958): rename only.
 - Comments at PWM:2782, 2818, 2864, 2915, 3088, 7492 say "the hotkey combo".
-- Leave alone: the Anbernic + Select / Start block (PWM:7562-7578) still runs first. The old RetroArch Back → `BTN_SELECT` injection (`mRetroarchSelectDown`, P:170262-170272) can still arm a Start + Select combo, as today (D8 not taken); it can't arm L3 + R3.
+- Leave alone: the Anbernic + Select / Start block (PWM:7562-7578) still runs first. The old RetroArch Back → `BTN_SELECT` injection (`mRetroarchSelectDown`, P:170262-170272) is treated as coming from the built-in controller (D8, same controller), so it can still arm a Start + Select combo with the built-in Start; it can't arm L3 + R3.
 
 ### 6.2 drastic-nano (`drastic-nano/InputMap.cpp`, `InputMap.h`)
 
@@ -448,7 +448,7 @@ With `adb logcat -s GammaHotkeys WindowManager GammaOSNano DrasticNano` running:
 
 On a device without stick clicks (TrimUI Brick or MagicX, when one is available): the row offers only Start + Select and Off; an `adb setprop` of L3 + R3 is turned back into Start + Select at Nano's start.
 
-Only if D8's alternative is taken: on every device, `getevent -lp` shows whether Start, Select, L3 and R3 come from one input node, and `dumpsys input` whether the built-in pad is "external".
+For D8 (same controller, decided): on every device, `getevent -lp` shows whether Start, Select, L3 and R3 come from one input node, and `dumpsys input` whether the built-in pad is "external".
 
 ---
 

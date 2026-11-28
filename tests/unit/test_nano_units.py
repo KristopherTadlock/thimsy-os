@@ -1,7 +1,8 @@
-"""Nano's USB-C role helper (NanoTypec) and its monitor mode helper (NanoMonitorMode), with their
-AOSP unit tests (test/unit/*_test.cpp), built with g++ and run on the host against a small stand-in
-for GoogleTest (tests/fixtures/nano_gtest). The sources are the files patches/thimsy/0001-thimsy.patch
-creates, what the release ships (an AOSP tree's copy only where it is exactly the patch's result).
+"""Nano's USB-C role helper (NanoTypec), its monitor mode helper (NanoMonitorMode) and its sync of
+emulator settings with the card (NanoEmuSync), with their AOSP unit tests (test/unit/*_test.cpp),
+built with g++ and run on the host against a small stand-in for GoogleTest (tests/fixtures/nano_gtest).
+The sources are the files patches/thimsy/0001-thimsy.patch creates, what the release ships (an AOSP
+tree's copy only where it is exactly the patch's result).
 And nothing in the patch or the mods touches the
 USB controller's mode file in debugfs.
 """
@@ -20,6 +21,7 @@ GTEST = os.path.join(util.TESTS, "fixtures", "nano_gtest")
 PROGRAMS = {
     "typec": ("NanoTypec.h", "NanoTypec.cpp", "test/unit/NanoTypec_test.cpp"),
     "monitor_mode": ("NanoMonitorMode.h", "NanoMonitorMode.cpp", "test/unit/NanoMonitorMode_test.cpp"),
+    "emusync": ("NanoEmuSync.h", "NanoEmuSync.cpp", "test/unit/NanoEmuSync_test.cpp"),
 }
 # dwc3's debugfs mode file (/sys/kernel/debug/25100000.dwc3/mode): a read while the controller is
 # runtime-suspended panics the kernel (usb_c_dock_plan.md R6), and a write races its state machine.
@@ -71,6 +73,18 @@ class HostTests(util.TestCase):
     def test_monitor_mode(self):
         proc = self.build_and_run("monitor_mode")
         self.assertIn("[       OK ] MonitorMode.ReadsTheList\n", proc.stdout)
+
+    def test_emusync(self):
+        """Emulator settings kept on the card: the Cube's 36-character card id is a volume id and is
+        repointed, and a card win on scummvm.ini keeps the games only ScummVM's copy has (with their
+        comments), but not those of a copy another card's sync wrote."""
+        proc = self.build_and_run("emusync")
+        for name in ("EmuSync.VolumeIds", "EmuSync.TheCubesCardIdIsRepointed", "EmuSync.OnlyScummvmIniMergesGames",
+                     "EmuSync.ACardWinKeepsTheGamesOnlyScummvmHas", "EmuSync.MergedGamesKeepTheCardsLineEnds",
+                     "EmuSync.CommentsGoWithTheSectionBelowThem", "EmuSync.OnlyThisDevicesScummvmCopyKeepsItsGames",
+                     "EmuSync.MergedGamesTheCardMissedGoThereNextTime",
+                     "EmuSync.SettingsNamingACardThatIsOutNameThisOne"):
+            self.assertIn("[       OK ] " + name + "\n", proc.stdout)
 
     def test_gtest_stand_in_reports_failures(self):
         gxx = shutil.which("g++")
