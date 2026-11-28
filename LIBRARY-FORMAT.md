@@ -71,7 +71,7 @@ Schemas of Thimsy's new files (`card.json`, a set's `device.json`, `picks.json`,
 
 Shipped Android builds never check a `version` field (INTEROP-AUDIT.md). So:
 
-- **Changes are additive only.** A new file, a new field or a new folder. Never a new meaning for an existing field. `devices/`, `slot-kept/`, `theme.json`, the playlists and the folders `retroarch/saves/<family>/<system>/` and `retroarch/states/<core>/<system>/` are new; shipped builds leave them alone (plan §6.3).
+- **Changes are additive only.** A new file, a new field or a new folder. Never a new meaning for an existing field. `devices/`, `slot-kept/`, `conflicts/`, `retroarch/thimsy-older/`, `retroarch/.thimsy-run.json`, `theme.json`, the playlists and the folders `retroarch/saves/<family>/<system>/` and `retroarch/states/<core>/<system>/` are new; shipped builds leave them alone (plan §6.3).
 - **Labels are kept.** No writer removes or rewrites an existing `<altemulator>` or `<alternativeEmulator>`. From the per-device change on, neither build writes them at all; Android reads them once, at migration (***proposed***, plan §2.3, owner question 5). Older builds and the real ES-DE app read only these labels, and they stay valid.
 - **`names.json` and `index.json` stay in their absolute form** until the Android compatibility floor (Q12). Relative keys would be pruned or cleared by every shipped build (check.md B1, B2).
 - **The ROMDirectory re-root rule stays "only when the stored folder is missing"**, widened only to "or the stored id is a known alias of this card" (check.md B6).
@@ -149,11 +149,14 @@ A path to an id that is neither mounted nor an alias is a missing volume. Nothin
     card.json                           identity hints, aliases (4.16)            both
     devices/<id>/                       one device's emulator set (4.24, 4.25)    that device
     slot-kept/<id or legacy>/<emu>/     slot files kept before a fill (4.24)      Android
+    conflicts/<id>/<card folder>/       shared files a link merge kept (4.15)     that device
     retroarch/system/, cheats/          BIOS, cheats (4.17)                       shared
     retroarch/saves/<family>/<system>/[<subdir>/]
                                         every RetroArch in-game save (4.17)       shared
     retroarch/states/<core>/<system>/[<subdir>/]
                                         every RetroArch save state (4.17)         shared
+    retroarch/thimsy-older/             files swept out of a launch (4.17)        both
+    retroarch/.thimsy-run.json          a launch's run marker (4.17)              both
     retroarch/retroarch.cfg, config/    Android's live slot (4.17, 4.24)          Android
     retroarch/playlists/, ...           Android's own data (4.17)                 Android
     ppsspp/...                          shared storage, Android's slot (4.18)     shared and Android

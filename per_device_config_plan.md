@@ -101,6 +101,8 @@ Status: draft for review (2026-11-27), revised after the first review. Nothing h
                                            and game folder (2.7); .thimsy-legacy.json records the saves taken in there
     retroarch/states/<core>/<system>/[<subdir>/]
                                            every RetroArch save state, one folder per core, system and game folder (2.7)
+    retroarch/thimsy-older/                files swept out of a launch's save and state folders (2.7)
+    retroarch/.thimsy-run.json             a launch's run marker, until its sweep (5.6)
     <emu>/...                              shared storage (2.7): emulated drives, saves, states, BIOS;
                                            Android's settings files here are a live slot (5.6)
     <emu>/app/                             legacy shared mirror: read once at migration (6)
@@ -110,7 +112,7 @@ Status: draft for review (2026-11-27), revised after the first review. Nothing h
     emulators/*.json                       user emulator definitions to import (unchanged)
 ```
 
-Nothing that exists moves or is deleted. New: `emulator_config/devices/`, `emulator_config/slot-kept/`, `emulator_config/conflicts/`, the folders `retroarch/saves/<family>/<system>/` and `retroarch/states/<core>/<system>/`, `Thimsy/theme.json`. `systems.linux.json` stays retired (W8-EMU-1). The per-platform folders the contract drafted for Linux (`retroarch/linux/saves/`, `retroarch/linux/states/`, `<emu>/linux/`) are withdrawn under OA-53; no Linux card has shipped, so no card has them.
+Nothing that exists moves or is deleted. New: `emulator_config/devices/`, `emulator_config/slot-kept/`, `emulator_config/conflicts/`, `retroarch/thimsy-older/` and `retroarch/.thimsy-run.json`, the folders `retroarch/saves/<family>/<system>/` and `retroarch/states/<core>/<system>/`, `Thimsy/theme.json`. `systems.linux.json` stays retired (W8-EMU-1). The per-platform folders the contract drafted for Linux (`retroarch/linux/saves/`, `retroarch/linux/states/`, `<emu>/linux/`) are withdrawn under OA-53; no Linux card has shipped, so no card has them.
 
 ### 2.2 A set
 

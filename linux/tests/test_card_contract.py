@@ -98,6 +98,7 @@ LINUX_MAY_ADD = re.compile(
     r"^(?:ES-DE/nano/format\.json$"
     r"|emulator_config/card\.json$"
     r"|emulator_config/devices/linux-[0-9a-f]{16}/"
+    r"|emulator_config/conflicts/linux-[0-9a-f]{16}/"
     r"|emulator_config/retroarch/(?:saves|states)/[^/]+/[^/]+/(?:[^/]+/)*[^/]+$"
     r"|emulator_config/ppsspp/PSP/(?:SAVEDATA|PPSSPP_STATE)/"
     r"|emulator_config/scummvm/saves/"
@@ -480,6 +481,16 @@ class Vectors(unittest.TestCase):
         text = DOC.read_text(encoding="utf-8")
         for name in ("thimsy-older/", ".thimsy-run.json", ".<date>.2.bak"):
             self.assertIn(name, text)
+
+    def test_link_merge_conflicts_are_kept_under_linux_own_id(self):
+        """4.15: Linux writes conflicts/ only under its own id, through a link merge; section 3 lists it."""
+        self.assertRegex("emulator_config/conflicts/linux-9c1d0e7a42b35f86/ppsspp/PSP/SAVEDATA/x/DATA.BIN",
+                         LINUX_MAY_ADD)
+        self.assertNotRegex("emulator_config/conflicts/android-0123456789abcdef/ppsspp/PSP/SAVEDATA/x/DATA.BIN",
+                            LINUX_MAY_ADD)
+        tree = DOC.read_text(encoding="utf-8").split("## 3. Layout and owners", 1)[1].split("## 4.", 1)[0]
+        for folder in ("conflicts/<id>/", "retroarch/thimsy-older/", "retroarch/.thimsy-run.json"):
+            self.assertIn(folder, tree)
 
     def test_launch_fields_are_kept_as_read(self):
         a = {s["id"]: s for s in card_json(ANDROID, "ES-DE/nano/systems.json")["systems"]}
