@@ -12,7 +12,8 @@ linux/tests/fixtures/card/ holds three cards:
   linux-written/   the same card after a Linux visit that follows the
                    contract (favourite, play, collection add, Linux's own
                    emulator set and picks, the theme, a playlist, a save
-                   and a save state in the shared per-core folders);
+                   in the shared per-family folder and a save state in
+                   the shared per-core folder);
   multi-device/    several devices' emulator sets side by side (OA-46):
                    two Android Cubes, both sides of a dual-boot ARC-D, a
                    partial set, and a theme.json with a newer writer's key.
@@ -79,10 +80,11 @@ THEME_KEYS = frozenset("""
     esde.settings_theme esde.menu_color_scheme esde.menu_blur esde.transition esde.clock esde.variant_triggers
 """.split())
 
-# Shared saves and states (OA-53, LIBRARY-FORMAT.md 4.17 to 4.19): one folder per RetroArch core,
-# and the standalone emulators' own shared folders.
+# Shared saves and states (OA-53, LIBRARY-FORMAT.md 4.17 to 4.19): RetroArch's saves in
+# saves/<family>/<system>/ and states in states/<core>/<system>/ (a family or core id, then a
+# system id), and the standalone emulators' own shared folders.
 SHARED_SAVES = re.compile(
-    r"^emulator_config/(?:retroarch/(?:saves|states)/(?P<core>[^/]+)/[^/]+$"
+    r"^emulator_config/(?:retroarch/(?:saves|states)/(?P<core>[a-z0-9][a-z0-9_.-]*)/(?P<system>[a-z0-9]+)/[^/]+$"
     r"|ppsspp/PSP/(?:SAVEDATA|PPSSPP_STATE)/"
     r"|scummvm/saves/)")
 
@@ -91,7 +93,7 @@ LINUX_MAY_ADD = re.compile(
     r"^(?:ES-DE/nano/format\.json$"
     r"|emulator_config/card\.json$"
     r"|emulator_config/devices/linux-[0-9a-f]{16}/"
-    r"|emulator_config/retroarch/(?:saves|states)/[^/]+/[^/]+$"
+    r"|emulator_config/retroarch/(?:saves|states)/[^/]+/[^/]+/[^/]+$"
     r"|emulator_config/ppsspp/PSP/(?:SAVEDATA|PPSSPP_STATE)/"
     r"|emulator_config/scummvm/saves/"
     r"|Thimsy/theme\.json$"
@@ -397,19 +399,23 @@ class Vectors(unittest.TestCase):
                                         "no per-platform folder (W7-INTEROP-11, -12, -15 withdrawn)")
 
     def test_saves_and_states_are_shared_per_core(self):
-        """OA-53: Linux's saves and states go to the shared folders, a RetroArch core's in its own folder."""
+        """OA-53: Linux's saves and states go to the shared folders: RetroArch's saves per family and
+        system, its states per core and system, none beside a ROM."""
+        systems = {s["id"] for s in card_json(LINUXW, "ES-DE/nano/systems.json")["systems"]}
         before = {rel for rel, _p in files_under(ANDROID)}
         added = [rel for rel, _p in files_under(LINUXW) if rel not in before]
         shared = [rel for rel in added if SHARED_SAVES.match(rel)]
-        self.assertTrue(any("/states/" in r for r in shared), "the visit left a state in retroarch/states/<core>/")
-        self.assertTrue(any("/saves/" in r for r in shared), "the visit left a save in retroarch/saves/<core>/")
+        self.assertTrue(any("/states/" in r for r in shared), "the visit left a state in retroarch/states/<core>/<system>/")
+        self.assertTrue(any("/saves/" in r for r in shared), "the visit left a save in retroarch/saves/<family>/<system>/")
         for rel in added:
             if re.search(r"\.(srm|sav|state\d*|state\.auto)$", rel):
                 with self.subTest(file=rel):
                     m = SHARED_SAVES.match(rel)
                     self.assertIsNotNone(m, "a save or state outside the shared folders")
+                    self.assertFalse(rel.startswith("ROMs/"), "nothing beside a ROM")
                     if rel.startswith("emulator_config/retroarch/"):
-                        self.assertTrue(m.group("core"), "one folder per core")
+                        self.assertTrue(m.group("core"), "one folder per family or core")
+                        self.assertIn(m.group("system"), systems, "then one folder per system")
 
     def test_launch_fields_are_kept_as_read(self):
         a = {s["id"]: s for s in card_json(ANDROID, "ES-DE/nano/systems.json")["systems"]}
