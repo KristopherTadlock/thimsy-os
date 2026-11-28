@@ -668,7 +668,7 @@ Wave 7's owner questions, all answered:
 
 Open now:
 
-- `per_device_config_plan.md` §9, questions 1 to 28 except 13, which OA-53 answered (among them: the device's own theme while a card's is shown, a theme switch, borderline theme keys, ES-DE app theme edits, ES-DE labels, the switch's defaults and its off state, the id form, RetroArch's live config on Android, scraper preferences, `systems.json`'s shared fields, where RetroArch saves live, the beside-ROM saves and states shipped builds left, shared storage with the card out, user definitions on the card, how Linux points an emulator at the card, MAME's `cfg/`, a save of another family beside the ROM, RetroArch's loading menus during a Nano launch, a core whose states or saves fail the cross-platform test, and games of one name in two subfolders of one system).
+- `per_device_config_plan.md` §9, questions 1 to 29 except 13, which OA-53 answered (among them: the device's own theme while a card's is shown, a theme switch, borderline theme keys, ES-DE app theme edits, ES-DE labels, the switch's defaults and its off state, the id form, RetroArch's live config on Android, scraper preferences, `systems.json`'s shared fields, where RetroArch saves live, the beside-ROM saves and states shipped builds left, shared storage with the card out, user definitions on the card, how Linux points an emulator at the card, MAME's `cfg/`, a save of another family beside the ROM, RetroArch's loading menus during a Nano launch, a core whose states or saves fail the cross-platform test, games of one name in two subfolders of one system, and RetroArch started from outside Nano while a Nano run is alive).
 
 Settled since the last revision:
 
