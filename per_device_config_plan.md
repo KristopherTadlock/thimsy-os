@@ -1,22 +1,27 @@
 # Per-device config plan: emulator sets per device, the theme on the card
 
-Status: draft for review (2026-11-27), revised after the first review. Nothing here is built or run. It designs the owner's rethink of config portability (`docs/linux/DECISIONS.md` OA-46 to OA-51) for both builds. Line numbers are at `linux` 9cdec1c. Facts not checked on a device or in a tool's source are marked **(verify)**; estimates are marked *(guess)*.
+Status: draft for review (2026-11-27), revised after the first review. Nothing here is built or run. It designs the owner's rethink of config portability (`docs/linux/DECISIONS.md` OA-46 to OA-54) for both builds. Revised the same day for OA-46's wording (`systems.json`'s launch fields) and for OA-52 to OA-54 (shared emulator storage; shared saves, states and BIOS; emulator definitions). Line numbers are at `linux` 9cdec1c. Facts not checked on a device or in a tool's source are marked **(verify)**; estimates are marked *(guess)*.
 
 ## Requirement (owner, 2026-11-27)
 
-- **OA-46:** emulator settings (RetroArch, PPSSPP, ScummVM and the rest of `emulator_config/`) and emulator picks (which emulator launches each system and each game) are per device. One card holds several devices' sets side by side. Thimsy uses the card's set for this device, else the device's local set. A per-device "SD card settings" switch: turning it on copies the local set to the card; when it is on and the card has no set for this device, the local set is copied to the card. The device always keeps a local mirror; with the switch on, the card's set wins and refreshes the mirror, and device changes go to both. A set is keyed by the unit's chip serial and the platform (coordinator, for audit).
+- **OA-46:** emulator settings (RetroArch, PPSSPP, ScummVM and the rest of `emulator_config/`) and the launch configuration (which emulator, core or app launches each platform/system and each game, including the launch fields `systems.json` holds for each platform) are per device. One card holds several devices' sets side by side. Thimsy uses the card's set for this device, else the device's local set. A per-device "SD card settings" switch: turning it on copies the local set to the card; when it is on and the card has no set for this device, the local set is copied to the card. The device always keeps a local mirror; with the switch on, the card's set wins and refreshes the mirror, and device changes go to both. A set is keyed by the unit's chip serial and the platform (coordinator, for audit).
 - **OA-47:** Thimsy's own settings are local only. No `settings.ini`. `prefs.json` stays as the inventory. OA-35's seeding stays.
 - **OA-48:** music playlists on the card (`Thimsy/playlists/<name>.m3u8`), no device mirror, card wins. `nano_music.json` becomes a scan cache.
 - **OA-49:** box art, media, gamelists and collections on the card only, no mirror.
 - **OA-50:** PortMaster and everything it installs is local.
 - **OA-51:** the theme switches (XMB, ES-DE, Minima and the like, with their style switches) and each theme's settings are on the card, shared by every device, card first; the local value is used with no card. Aspect ratio stays local (coordinator). Where on the card it lives is settled here (§2.4).
+- **OA-52:** emulated system storage (Vita3K's `ux0`, Eden's NAND and SD, Dolphin's Wii NAND, Azahar's NAND and SD, PPSSPP's memory stick, PS2 memory cards) is shared on the card, the same for every device, with no device mirror. The emulator's settings stay per device. Where settings and storage share a folder, Thimsy keeps the settings per device and points the emulator at the shared storage (§2.7).
+- **OA-53:** in-game saves, save states and BIOS files are on the card, shared by every device, with no device mirror. OA-21 still decides which files two cores can share; differing cores' files stay apart by name or folder, and a state is offered only to the core that made it (coordinator, for audit).
+- **OA-54:** everything an emulator integration needs (the per-device set, the shared storage, the hotkeys, the controller map, the launch configuration, card or local storage) comes from emulator definition files, `user_emulators_plan.md`'s definition extended, on both builds. The shipped emulators use the same files. Not implemented now, and nothing built now may hard-code what a definition says (§2.8).
 
 ## Conventions
 
-- **Set:** one device's emulator settings files and picks.
+- **Set:** one device's emulator settings files and its launch configuration (picks).
 - **Card set:** this device's set on the card, `emulator_config/devices/<id>/`.
 - **Local set:** this device's set on its own storage. It is OA-46's mirror.
 - **Live file:** the file an emulator actually reads (an Android app's private folder, a folder on the card the emulator was pointed at, or Linux's `/storage/.config/<emu>`).
+- **Shared storage:** an emulator's files that are the same for every device: emulated system drives (OA-52), in-game saves, save states and BIOS (OA-53). On the card only, never in a set, never mirrored (§2.7).
+- **Definition:** an emulator definition file (`user_emulators_plan.md` §1 and §1a). It says which of an emulator's files are settings, which are shared storage and which are left out, and how the emulator is launched and pointed at its files (§2.8).
 - **Library card:** the card whose `ES-DE` folder Nano uses as the store (OA-25 chooses between two). The emulator sets use the card `usb_storage_plan.md` calls the Emulator Settings Drive where that setting exists, else the slot card (`emuSdSlotCard`, never a USB drive). On today's devices the two are the same card.
 - **Theme card:** the card that holds `Thimsy/theme.json` (OA-51): the library card when the store is on a card, else the slot card (`emuSdSlotCard`). Store mode is opt-in on Android: it is off while `persist.gammaos.nano.esde.dir` is empty (`esdeStoreMode`, `NanoEsdeStore.cpp` 128-132), and the default store is internal (`/storage/emulated/0/ES-DE`, line 59). So a device with a card in and no store on it still has a theme card. On Linux it is the library card, which is always a card.
 - **Parked set:** a local set that belongs to another id, kept beside the live one (§5.4).
@@ -74,7 +79,7 @@ Status: draft for review (2026-11-27), revised after the first review. Nothing h
   ES-DE/                                   shared, card only (OA-49): ES-DE's own formats
     settings/es_settings.xml               ES-DE's keys; Nano also mirrors 4 theme keys (2.4)
     gamelists/  collections/  downloaded_media/  themes/  custom_systems/
-    nano/systems.json                      shared system list; launch fields kept as read (2.3)
+    nano/systems.json                      shared system list; launch fields per device, kept as read (2.3, 2.6)
     nano/emulators.json                    legacy, read once at migration, never written again
     nano/names.json  index.json  format.json
   ROMs/<system>/                           games; same-core in-game saves (OA-21)
@@ -86,12 +91,14 @@ Status: draft for review (2026-11-27), revised after the first review. Nothing h
       picks.json                           system and game picks
       <emu>/<rel>                          settings files, at the path they have in the emulator's folder
       <emu>/app/<rel>                      Android app-private settings (was <emu>/app/<rel>)
+      emulators/<def id>.json              this device's user emulator definitions (2.8)
       .previous/                           the card set as it was before the last replace (4.2, 4.5)
     slot-kept/<set id or legacy>/<emu>/<rel>  slot files kept before a fill (5.6)
-    retroarch/system/  cheats/             shared data, as today
-    retroarch/linux/saves/  states/        Linux saves and states (OA-21), as today
-    <emu>/...                              shared data (saves, memory cards, states) as today; Android's
-                                           settings files here are now a live slot (5.6)
+    retroarch/system/  cheats/             shared BIOS and cheats, as today
+    retroarch/saves/<core>/                saves of a core outside the card core's family (2.7)
+    retroarch/states/<core>/               every RetroArch save state, one folder per core (2.7)
+    <emu>/...                              shared storage (2.7): emulated drives, saves, states, BIOS;
+                                           Android's settings files here are a live slot (5.6)
     <emu>/app/                             legacy shared mirror: read once at migration (6)
   Thimsy/
     theme.json                             the theme, shared; on the theme card (2.4)
@@ -99,11 +106,11 @@ Status: draft for review (2026-11-27), revised after the first review. Nothing h
     emulators/*.json                       user emulator definitions to import (unchanged)
 ```
 
-Nothing that exists moves or is deleted. New: `emulator_config/devices/`, `emulator_config/slot-kept/`, `Thimsy/theme.json`. `systems.linux.json` stays retired (W8-EMU-1).
+Nothing that exists moves or is deleted. New: `emulator_config/devices/`, `emulator_config/slot-kept/`, the per-core folders `retroarch/saves/<core>/` and `retroarch/states/<core>/`, `Thimsy/theme.json`. `systems.linux.json` stays retired (W8-EMU-1). The per-platform folders the contract drafted for Linux (`retroarch/linux/saves/`, `retroarch/linux/states/`, `<emu>/linux/`) are withdrawn under OA-53; no Linux card has shipped, so no card has them.
 
 ### 2.2 A set
 
-`device.json` (schema `linux/schema/device.schema.json`, new, strict):
+`device.json` (schema `linux/schema/emu-set.schema.json`, new, strict; not `device.schema.json`, which is the hardware `device.json` of `docs/linux/IMPLEMENTATION.md` E.7):
 
 ```json
 { "version": 1, "id": "linux-9c1d0e7a42b35f86", "platform": "linux",
@@ -126,26 +133,17 @@ The local set's `device.json` has the same form. Its `id` names the set whose fi
 - `systems` is keyed by `systems.json`'s `id`; the fields are the launch fields' own names (`launchType`, `coreSo`, `package`, `launchArgs`, `intentTemplate`), which both builds use (`NanoPlatform.h`'s `Emulators` names emulators the Android way on every platform). `games` is keyed by the game key, form (c) of `LIBRARY-FORMAT.md` 2.2, with `emulators.json`'s fields. `key` is the portable key, informative only.
 - **Local game picks use the same key plus the card id:** `<card id>/<system>/<rel>`, with the card id the sync base uses (§5.2), for a game under a card's `ROMs/`. The launch path converts the path apps open (`gameEmuKey`, `NanoMenuPS3EmuCatalog.cpp` 651-655) by stripping `/storage/<vol>/ROMs/`. Only entries whose card id is the set's card go to and from `picks.json`, with the card id stripped or added; so a card with a new volume id, or a second card (OA-25), neither duplicates nor drops an entry. Games elsewhere (internal storage, outside `ROMs/`) keep their path and stay local.
 - **A system pick** is a system whose launch fields in `nano_systems.json` differ from its entry in `nano_emu_defaults.json` (W8). Only those are written to `picks.json`; a system with no entry uses the image default (§5.7).
-- **Settings files per emulator** are data, one row per file or folder: the set path, the live path on each platform, and flags (`many`: not checked just before a launch; `skip`: subfolders left out). Android's table is `NanoEmuSync`'s `items()` plus the settings files now in the card folders; Linux's comes from the emulator manifest. A first cut:
+- **Settings files per emulator** come from the emulator's definition (§2.8): its `files.settings` entries, one per file or folder, each with its base folder on each platform and its flags (`many`: not checked just before a launch; `skip`: subfolders left out). Nano holds no list of its own. §2.7 gives the first cut the shipped definitions carry.
 
-| Emulator | In the set | Stays shared (not in the set) |
-|---|---|---|
-| RetroArch | `retroarch.cfg`; `config/` (core options, overrides, remaps); user-made `autoconfig/` profiles (Android only, as today) | `system/`, `cheats/`, saves, states, `.lpl` playlists, thumbnails, shaders, caches |
-| PPSSPP | `PSP/SYSTEM/ppsspp.ini`, `controls.ini`, `<GAMEID>_ppsspp.ini`; Android `app/shared_prefs` | `PSP/SAVEDATA`, `PSP/PPSSPP_STATE`, `Cheats`, `TEXTURES`, `flash0/font` |
-| ScummVM | `scummvm.ini` (Android `app/files/scummvm.ini`; Linux `/storage/.config/scummvm/scummvm.ini`) | `saves/` |
-| Flycast (Android) | `emu.cfg`, `mappings/` | `data/` (BIOS, VMUs) |
-| DraStic, drastic-nano (Android) | their config files and `app/shared_prefs` **(list to check per emulator)** | BIOS, saves, states, cheats |
-| Dolphin, Azahar, ARMSX2, Vita3K, M64Plus FZ, hakuX, SeedlessDS, WatermelonDS (Android) | `app/` items as today, plus their config files on the card **(list to check per emulator)** | saves, memory cards, states, textures |
+  A set never holds shared storage (§2.7) or a definition's `files.exclude` entries. Caches, logs, shader caches and any file over 16 MiB are never in a set either; that is a rule of the set code, whatever a definition says.
 
-  Caches, logs, shader caches and anything over 16 MiB are never in a set.
-
-  SeedlessDS's `files/SeedlessDS/user` item (`NanoEmuSync.cpp` 51) syncs the whole folder except `backup` and `savestates`, so it may hold in-game saves **(verify what it holds)**. It stays out of the set and keeps today's shared mirror until checked; then only its settings files move into the set, and its saves stay shared (OA-21).
+  SeedlessDS's `files/SeedlessDS/user` item (`NanoEmuSync.cpp` 51) syncs the whole folder except `backup` and `savestates`, so it may hold in-game saves **(verify what it holds)**. Until checked, its definition keeps the folder out of the set and today's shared mirror stays; then its settings files go under `files.settings` and its saves under `files.shared` (OA-53).
 
 ### 2.3 Picks and ES-DE's files
 
 - **Thimsy keeps picks only in its per-device sets.** From this change on, neither build writes ES-DE's `<altemulator>` or `<alternativeEmulator>` labels or `nano/emulators.json`, and neither adopts a label change afterwards. Existing labels are read once, at migration (§6), and then left as they are.
 - **What the standalone ES-DE app sees:** the labels it or a shipped Thimsy build wrote last, unchanged. Its picks are its own and do not change Thimsy's; Thimsy's picks do not reach it. Its files stay valid, since nothing removes or rewrites a label.
-- **`nano/systems.json`** stays the shared system list (folders, names, order, extensions, scan sources). Its launch fields stop being picks: a writer keeps each existing system's launch fields exactly as it read them, and writes this device's pick only for a system it adds (the format requires launch fields, and shipped builds use them). Reading it, Nano takes the shared fields and keeps this device's launch fields (§5.7). Why the shared fields stay on the card: §2.6.
+- **`nano/systems.json`** stays the shared system list (folders, names, order, extensions, scan sources). Its launch fields are per device (OA-46 names them): a device's own are in its set's `picks.json` and its local `nano_systems.json`. A writer keeps each existing system's launch fields on the card exactly as it read them, and writes this device's own only for a system it adds (the format requires launch fields, and shipped builds launch from them). Reading it, Nano takes the shared fields and keeps this device's launch fields (§5.7). The card's launch fields then serve only shipped builds, a custom system's first launch on a device with nothing else (§5.7) and the card core for saves (§2.7). Which fields are shared: §2.6.
 
 ### 2.4 The theme on the card (OA-51)
 
@@ -184,17 +182,103 @@ The local set's `device.json` has the same form. Its `id` names the set whose fi
 | Theme | `Thimsy/theme.json` on the theme card, mirror in `es_settings.xml` | card first; local value with no card (§4.7) |
 | Playlists | `Thimsy/playlists/*.m3u8` on the library's volume: the library card, else internal storage (Android `/storage/emulated/0`) when the library is there or no card is in; Linux always has a library card | no mirror; the card's win while it is in (OA-48, `LIBRARY-FORMAT.md` 4.22) |
 | Gamelists, collections, media, downloaded themes | `ES-DE/` | card only (OA-49); downloads go to `<theme card>/ES-DE/themes` and existing ones are copied there at migration (G14, §6.1 step 8), so a theme choice finds its set on any device |
-| `systems.json`'s shared fields | `ES-DE/nano/systems.json` | library data, card wins, as today (§2.6) |
+| `systems.json`'s shared fields | `ES-DE/nano/systems.json` | library data, card wins, as today; its launch fields are per device (OA-46, §2.6) |
 | Scraper preferences | local properties | local only (OA-47, §2.6) |
-| BIOS, in-game saves | `bios/`, `emulator_config/<emu>/...`, beside the ROMs | shared where the core matches (OA-21, unchanged) |
-| Save states | the emulator folders, `linux/states/` | per platform (OA-21, unchanged); not per device |
+| Emulated system storage | the emulator's card folder (§2.7) | shared, card only, no mirror (OA-52) |
+| BIOS, in-game saves | `bios/`, `emulator_config/<emu>/...`; same-family saves beside the ROMs | shared, card only, no mirror; differing cores' saves apart by folder (OA-53, OA-21, §2.7) |
+| Save states | `retroarch/states/<core>/`, each standalone emulator's state folder | shared by every device and both platforms, one folder per core; a state is offered only to its core (OA-53, §2.7) |
 
 ### 2.6 Thimsy data the card holds today
 
 OA-47 makes Thimsy's settings local. Two existing paths take Thimsy data from the card; each is decided here.
 
 - **The 12 scraper preferences** (`kEsdeSettingProps`): they choose how Nano's scraper works, so they are Thimsy settings and local. Recommended: `esdeStoreApplySettings` stops copying them from `es_settings.xml`, and `esdeStoreSettingChanged` stops writing them, so the card keeps whatever the ES-DE app wrote last. Its `ROMDirectory` fill-in stays (that is ES-DE's own data). `LIBRARY-FORMAT.md`'s list of them (157) goes. Owner question 14.
-- **`systems.json`'s shared fields** (`enabled`, `order`, `displayName`, `shortname`, `romDir`, `scanSources`, `disabledDefaultFolders`, `extensions`, `icon`, `scraper.override`, `scraper.platform`): recommended, library data under OA-49, on the card only, card wins, adopted as today (`esdeStoreAdoptSystems`, `NanoMenuXmb.cpp` 1123). Reason: they describe this card's library (which folders hold which system, how the systems are named and sorted, the custom systems the card adds); they mean nothing without the card, and shipped builds already share them. The launch fields are not shared (§2.3). Owner question 15.
+- **`systems.json`'s fields, checked against OA-46.** OA-46 makes the launch fields per device: `launchType`, `coreSo`, `package`, `launchArgs`, `intentTemplate`. They are the set's system picks (`picks.json` `systems`, §2.2) and the device's local `nano_systems.json`; the card's copies are kept as read (§2.3). The other fields (`enabled`, `order`, `displayName`, `shortname`, `romDir`, `scanSources`, `disabledDefaultFolders`, `extensions`, `icon`, `scraper.override`, `scraper.platform`) choose no emulator, so they do not conflict with OA-46. Recommended: they stay library data under OA-49, on the card only, card wins, adopted as today (`esdeStoreAdoptSystems`, `NanoMenuXmb.cpp` 1123). Reason: they describe this card's library (which folders hold which system, how the systems are named and sorted, the custom systems the card adds); they mean nothing without the card, and shipped builds already share them. Two edges:
+  - **Custom systems:** the entry (folder, name, extensions, icon) is shared; its launch fields are per device. The device that adds one writes its own launch fields into the entry only because the format needs them. Every other device uses §5.7's order, in which the card's fields come after its own picks and image defaults, and records nothing until the user picks.
+  - **`enabled` on a device that cannot run a system:** the system stays enabled on the card. A device whose definitions have no launch entry for it hides it through the per-device capability rule (`nanoplat::Emulators`, fed by the definitions), never by writing `enabled`.
+
+  Owner question 15.
+
+### 2.7 Shared storage and settings, per emulator (OA-52, OA-53)
+
+Every file an emulator keeps is one of three kinds, and its definition says which (§2.8):
+
+| Kind | Examples | Where | Rule |
+|---|---|---|---|
+| Per-device settings | graphics, controls, performance, folders, per-game settings | the live file, the local set, the card set (§2.2) | OA-46 |
+| Shared storage | emulated drives (installed games, updates, DLC, firmware, system save areas), in-game saves, save states, memory cards, BIOS and keys | the emulator's card folder `emulator_config/<card folder>/`, `bios/`, `retroarch/system/`, same-family saves beside the ROMs | one copy on the card for every device; never in a set; no device mirror (OA-52, OA-53) |
+| Left out | caches, shader caches, logs, crash dumps, temporary files | the emulator's local folders | never synced, never on the card |
+
+**No mirror.** The local set holds settings only. With the card out, an emulator whose shared storage is on the card does not start ("<emulator> needs the card"), as shipped Android builds do today (`README.md` 586-587). usb_storage_plan.md's fallback to internal storage then covers settings only: a fallback copy of a drive or a save folder would be the mirror OA-52 and OA-53 rule out, and two copies would split a save (owner question 20). On single-card Linux the card is always in.
+
+**Android with the emulator files on internal storage** (`emu_sd` off): recommended, they stay there until the user runs Move Emulator Files, as today. Nothing is mirrored either way (owner question 19).
+
+**How an emulator is pointed at the shared storage.** The definition names a method for each shared entry (`point`, §2.8). The code implements the methods, never a per-emulator case:
+
+| Method | Platforms | What it does | Shipped use |
+|---|---|---|---|
+| `slot` | Android | the emulator's whole folder is on the card, so its storage is already there; its settings files in that folder are a live slot, filled from this device's set before each launch (§5.6) | RetroArch, PPSSPP's memory stick, Azahar's SAF folder, Flycast, DraStic: the folders Move Emulator Files already puts on the card |
+| `link` | both | the folder stays local, and each shared subfolder becomes a link to the card folder. Android: today's Dolphin and hakuX link lists (`NanoSdMove.cpp`; apps reach `Android/data` directly, `README.md` 575-579). Linux: a symbolic link on `/storage` (ext4) to the card's folder, which the exFAT card itself could not hold | Dolphin's `Wii/`, `GC/`, `StateSaves/` on Android; PPSSPP's shared subfolders on Linux |
+| `config_key` | both | a key in a per-device settings file names the card folder. Nano writes it into the live file before each launch from where the card is now (§5.6 step 3), so a stored path never points at a card that is out | Vita3K's `pref-path` in `config.yml` **(verify)**; Eden's and Azahar's `[Data%20Storage]` `nand_directory` and `sdmc_directory` **(verify on the Android builds)**; Dolphin's `NANDRootPath`, `MemcardAPath`, `MemcardBPath` **(verify)**; a PS2 emulator's `[Folders]` keys **(verify)**; ScummVM's `savepath` |
+| `append` | Linux | a per-launch append config written to `/run/thimsy/` | RetroArch's `system_directory`, `savefile_directory`, `savestate_directory`, `cheat_database_path` (`LIBRARY-FORMAT.md` 4.17) |
+| `bind` | Linux | thimsy-session bind-mounts the card folder over the local one for the run, through the OA-30 request path | only an emulator that refuses a link **(verify per emulator)**; definitions of origin `system` or `index` only |
+
+Where a definition could use more than one, the recommended order is `config_key`, then `link`, then `bind` (owner question 23). `LIBRARY-FORMAT.md` 4.18's bind mounts for PPSSPP become links unless PPSSPP refuses them **(verify)**.
+
+**The first cut the shipped definitions carry.** Paths are relative to the emulator's own folder; the card folder is `emulator_config/<card folder>/`. Rows marked Android have no Linux build today; when one is added, its definition gains Linux roots and a Linux method, and the table does not change.
+
+| Emulator | Settings (per device) | Shared storage | Left out | Pointed by |
+|---|---|---|---|---|
+| RetroArch | `retroarch.cfg`; `config/` (core options, overrides, remaps); user-made `autoconfig/` profiles (Android only, as today) | `system/` (BIOS and each core's own system data, a core's NAND included), `cheats/`, saves and states (below) | `.lpl` playlists (per platform, OA-23), thumbnails, shaders, caches, logs | Android `slot` plus its folder keys (`raDirKeys`, now data); Linux `append` |
+| PPSSPP | `PSP/SYSTEM/ppsspp.ini`, `controls.ini`, `<GAMEID>_ppsspp.ini`; Android `app/shared_prefs` | the memory stick's `PSP/SAVEDATA`, `PSP/PPSSPP_STATE`, `PSP/GAME`, `PSP/Cheats`, `PSP/TEXTURES`, `PSP/flash0/font` | `PSP/SYSTEM/CACHE`, shader caches **(verify names)** | Android `slot`; Linux `link` per subfolder (the settings sit inside the memory stick, so the stick cannot be pointed at the card whole) |
+| ScummVM | `scummvm.ini` (Android `app/files/scummvm.ini`; Linux `/storage/.config/scummvm/scummvm.ini`) | `saves/` | logs | `config_key` (`savepath`) |
+| Vita3K (Android) | `config.yml`; `app/shared_prefs` | `ux0/` (installed games, updates, DLC, saves); the firmware partitions `os0/`, `vs0/`, `sa0/`, `pd0/` | `cache/`, `shaderlog/`, logs **(verify names)** | `config_key` `pref-path` **(verify)**, else `link` |
+| Eden (Android) | `config/config.ini` **(verify)** | `nand/` (firmware, installed updates and DLC, system saves), `sdmc/`, `keys/` (BIOS class), `load/` (mods) | `shader/`, `cache/`, `log/` | `link` **(verify)**; `config_key` where the build has the storage keys |
+| Dolphin (Android) | `Config/*.ini`, `GameSettings/*.ini`; `app/shared_prefs` | `Wii/` (the NAND), `GC/` (memory cards, GCI folders), `StateSaves/`, `Load/` (texture packs) | `Cache/`, `Shaders/`, `Logs/`, `Dump/` | `link` (today's list) |
+| Azahar (Android) | `config/config.ini` **(verify)** | `nand/`, `sdmc/` (installed titles), `sysdata/` (BIOS class), `states/`, `cheats/`, `load/` | `shaders/`, `log/` | `slot` (its SAF folder is on the card) |
+| ARMSX2 (Android) | `inis/*.ini` **(verify)** | `memcards/`, `sstates/`, `bios/` | `cache/`, `logs/` | `config_key` or `link` **(verify)** |
+| Flycast (Android) | `emu.cfg`, `mappings/` | `data/` (BIOS, VMUs, states) | shader caches | `slot` |
+| DraStic, drastic-nano (Android) | `config/` files and `app/shared_prefs` **(list to check)** | `backup/` (saves), `savestates/`, `system/` (BIOS), `cheats/` | none known | `slot` |
+| hakuX (Android) | its settings files **(list to check)** | the hard disk image and the EEPROM (an emulated drive), BIOS and flash files | caches | `link` (today's list) |
+| M64Plus FZ, SeedlessDS, WatermelonDS (Android) | their settings files **(list to check per emulator)** | saves, states, BIOS | caches | as today |
+
+**Saves and states per core (OA-53).** One copy on the card for every device and both platforms; differing cores never share a file:
+
+- **RetroArch in-game saves.** OA-21's rule, per launch: when the core Nano runs is in the save-compatible family of the system's *card core*, the save goes beside the ROM (`savefiles_in_content_dir`); otherwise it goes to `retroarch/saves/<core>/` (`savefile_directory` with `sort_savefiles_enable`). The card core is the core named by the card's `systems.json` launch fields for the system, kept as read (§2.3). In store mode it is the system pick shipped Android builds launched (the card's copy won, `esdeStoreAdoptSystems`), so it is the likeliest maker of the beside-ROM saves already there, and it does not change when one device changes its pick. A system with no launch fields on the card has no card core, so every core's saves go to `retroarch/saves/<core>/` (owner question 17). Both platforms apply the rule: Android sets the keys in its live slot at launch, Linux in the append config. The family comes from the definitions' `save_family` (`user_emulators_plan.md` §1a), which carries the family table's `saveCompatible` column (`LIBRARY-FORMAT.md` 4.17) as data. This replaces Linux's `retroarch/linux/saves/<system>/` and answers `LIBRARY-FORMAT.md` §10's "which Android core" question.
+- **RetroArch save states.** Always `retroarch/states/<core>/` (`savestate_directory` with `sort_savestates_enable`, and `savestates_in_content_dir` false), on both platforms. RetroArch then lists only the running core's states, so a state is offered only to its core. This replaces `retroarch/linux/states/<system>/` and the shipped Android default of states beside the ROM. Existing beside-ROM states are copied once at Android's migration (§6.1 step 9, owner question 18). Loose files a shipped build left directly in `retroarch/saves/` or `retroarch/states/` stay where they are; the per-core folders sit beside them.
+- **`<core>`** is the folder name RetroArch's sort options use, the core's library name, for example `Beetle PSX HW` **(verify that one core gives the same name on Android and Linux)**. A core whose name differs per platform is simply kept apart, which is safe.
+- **Standalone emulators** keep saves and states in their own shared folders (PPSSPP's `SAVEDATA` and `PPSSPP_STATE`, Dolphin's `GC/` and `StateSaves/`). No other emulator writes there, so they stay apart by folder. The same emulator on both platforms (PPSSPP) shares one folder; `card.json`'s `emulators` versions (`LIBRARY-FORMAT.md` 4.16) warn when the other side's build was newer. `ppsspp/linux/PSP/PPSSPP_STATE/` is withdrawn.
+- **BIOS** is one copy: `bios/` (the drop folder), `retroarch/system/` and each emulator's BIOS folder named by its definition's `bios` block (`user_emulators_plan.md` §6). The BIOS installer writes there; its installed-file records stay on each device (`LIBRARY-FORMAT.md` 4.14). Key files (Eden's `keys/`, Azahar's `sysdata/`) count as BIOS.
+
+**Sizes.** Shared storage is the bulk of `emulator_config/`, and these rules keep one copy of it, on the card:
+
+- An emulated drive can be large *(guesses)*: Vita3K's `ux0` holds installed Vita games of 1 to 4 GB each; Eden's NAND and SD hold firmware (a few hundred MB) plus installed updates and DLC (GBs); Azahar's `sdmc` holds installed titles (hundreds of MB to GBs); hakuX's disk image is GBs; Dolphin's Wii NAND is up to 512 MB. PPSSPP's `SAVEDATA` and PS2 memory cards (8 MB each) are small.
+- No mirror means no second copy: Android's internal storage and Linux's 256 MiB `/storage` (`linux/board/rk3566/genimage.cfg`) never hold a drive. The sets stay small: settings only, each file capped at 16 MiB.
+- More devices cost nothing: one copy serves them all. Per-core folders cost a little: a game played with two cores has two saves and two state folders.
+- The card needs the room. An install inside an emulator that fills the card fails in that emulator. Move Emulator Files and the migration check free space before they copy, as today.
+- A FAT32 card cannot hold a file over 4 GiB (a disk image, a large installed title). `LIBRARY-FORMAT.md` 3 already recommends exFAT; Nano warns when a definition's `drive` entry is on a FAT32 card *(proposed)*.
+
+### 2.8 Emulator definitions drive it (OA-54)
+
+Every per-emulator rule in this plan is a field of the emulator's definition: `user_emulators_plan.md` §1's file, extended in its §1a. The shipped emulators (RetroArch, PPSSPP and ScummVM on both builds, and on Android the pack-ins Move Emulator Files handles today) are described by the same files, so a definition written by hand gets the same integration.
+
+| What this plan needs | Definition field (`user_emulators_plan.md` §1a) | Used in |
+|---|---|---|
+| where its config files are, per platform | `files.roots` | §3, `EmulatorFiles` |
+| which files are per-device settings | `files.settings` | the set (§2.2), the sync (§5) |
+| which files are shared storage, and its card folder | `files.shared` (`class`: `drive`, `saves`, `states`, `bios`, `content`), `storage.card_folder`, `bios` | §2.7, Move Emulator Files, the BIOS installer |
+| which files are left out of the set | `files.exclude` | §2.2, the move |
+| how config reaches the emulator at launch and comes back | `files.live` (`local` or `slot`, per platform), `files.shared[].point`, `files.after` | §5.6 |
+| launch entries per platform | `launch.android` (today's `players`), `launch.linux` (argv templates, the core, its save family) | §5.7, the catalog, §2.7's save rule |
+| hotkeys | `actions`, `provision` | `ThimsyHotkeyController`, `NanoHotkeys`, Linux's session |
+| controller map | `controls` | the button map, pad provisioning |
+| card or local storage | `files.shared[].place` (`card` or `local`), `storage.needs_card_to_start` | §2.7, §3 |
+
+- **Where they live.** Shipped definitions are in the image: Android `/system/etc/gammaos/hotkeys/` (from `mods/hotkeys/`), Linux `/usr/share/thimsy/emulators/` *(proposed)*. User definitions are local: Android `/data/system/gammaos/hotkeys/`, Linux `/storage/.config/thimsy/emulators/` *(proposed)*. Both pairs come from `DeviceStore` (§3). They are plain JSON with a published schema (`linux/schema/emulator-def.schema.json`, new), so a user can read and write one.
+- **On the card.** OA-54 keeps the definitions and the sets locally or on the card, per OA-46. Recommended: with the switch on, the set carries a copy of this device's user definitions as `devices/<id>/emulators/<def id>.json`, so a reinstalled device gets them back with its set. Nano acts on a definition as root, so a copy that changed on the card (a PC edit) is not used until the user accepts it on the device through `user_emulators_plan.md` §8's import screen; until then the local copy is used. Shipped definitions are never copied to the card (owner question 21).
+- **What stays in code:** the file formats (ini, `retroarch_cfg`, yaml, `xml_prefs`, JSON), the pointing methods (§2.7), the base folders a definition may name on each platform, and the safety rules no definition can loosen (the 16 MiB cap, caches never synced, the path limits and origin rules of `user_emulators_plan.md` §1a, §4, §6 and §8). No list of emulators, packages, files or folders.
+- **Today's per-emulator tables become data** in the shipped definitions, moved with no change of behaviour. This plan moves the ones it changes: `NanoEmuSync`'s `items()`, RetroArch's `raDirKeys` and its slot file list, and the Dolphin and hakuX link lists where §2.7 uses them. The rest move with `user_emulators_plan.md`'s phases: `NanoSdMove.cpp`'s `kGroupPkg[]` groups (phase 5), the BIOS installer's `SlotKind`s (phase 5). The 14 C++ button-map readers and the hotkey provisioning formats stay as named formats a definition chooses (`user_emulators_plan.md` §5).
+- **Linux's "emulator manifest"** (`LIBRARY-FORMAT.md` 9, N1) is the set of shipped definitions: `nanoplat::Emulators` answers what is installed from their `launch.linux` entries and the files they name.
 
 ## 3. Local storage
 
@@ -212,7 +296,10 @@ OA-47 makes Thimsy's settings local. Two existing paths take Thimsy data from th
 | Theme lock (§4.7) | `/data/system/nano_theme.lock` | `/storage/.config/thimsy/theme.lock` |
 | Device id cache (random ids only) | `/data/system/nano_device_id` | `/storage/.config/thimsy/device-id` |
 | Fingerprint ids (§1) | `/data/system/nano_device_ids.txt` | `/storage/.config/thimsy/device-ids.txt` |
-| PortMaster (OA-50) | none | `/storage` (unchanged by this plan) |
+| Shipped emulator definitions (§2.8) | `/system/etc/gammaos/hotkeys/` | `/usr/share/thimsy/emulators/` *(proposed)* |
+| User emulator definitions (§2.8) | `/data/system/gammaos/hotkeys/` | `/storage/.config/thimsy/emulators/` *(proposed)* |
+| Shared storage (§2.7) | none while the emulator files are on the card; with `emu_sd` off, the emulator folders on internal storage, as today | none: links or keys to the card's folders |
+| PortMaster (OA-50) | none | `/storage` (unchanged by this plan; space is owner question 22) |
 
 Every path in this table comes from `nanoplat::DeviceStore` (§8.1), so the shared code holds none of them (OA-4).
 
@@ -319,7 +406,7 @@ Before an emulator starts (`emuSettingsSyncLaunch` on Android, the launch path o
 1. With the switch on and the card in, that emulator's files are synced card to local (§5.1).
 2. Its live files are brought up to date from the local copy:
    - **Live file is the local copy** (Android app-private files, all Linux files): nothing more to do.
-   - **Live file on the card** (Android only: `retroarch.cfg`, `config/`, PPSSPP's `PSP/SYSTEM`, Flycast's `emu.cfg` and the others in the emulator's own folder on the card, since that is the only place the emulator reads them): the folder is a **live slot**. A marker `emulator_config/<emu>/.thimsy-slot` records the set id, each file's hash as last written or taken, and `restore` when the slot's earlier files are owed back (step 5). Before the fill, each slot file is checked against the marker:
+   - **Live file on the card** (Android only: an emulator whose definition says `files.live: slot`, today RetroArch's `retroarch.cfg` and `config/`, PPSSPP's `PSP/SYSTEM`, Flycast's `emu.cfg`, Azahar's `config/` and the others in an emulator's own folder on the card, since that is the only place the emulator reads them): the folder is a **live slot**. A marker `emulator_config/<emu>/.thimsy-slot` records the set id, each file's hash as last written or taken, and `restore` when the slot's earlier files are owed back (step 5). Before the fill, each slot file is checked against the marker:
 
      | Slot file | Marker | Before the fill |
      |---|---|---|
@@ -330,11 +417,11 @@ Before an emulator starts (`emuSettingsSyncLaunch` on Android, the launch path o
 
      Then the local copy is written in. A file whose local copy is missing or empty is not filled: the slot's file is left as it is.
    - **Emulator folders on internal storage** (`emu_sd` off): they are local copies, not slots.
-3. Folder keys are set from where the card is now (RetroArch's `raDirKeys` and `raHealConfig`, then the hotkey provisioning), so a stored path never points at a card that is out.
+3. The definition's pointing (§2.7) is applied from where the card is now: its `config_key` entries are written into the live files (for RetroArch today, `raDirKeys` and `raHealConfig`, with §2.7's save and state keys), its links are checked and made, and on Linux the append config is written and any bind requested; then the hotkey provisioning runs. So a stored path never points at a card that is out, and the emulator always reads the one shared copy.
 
 After it exits (Android: when Nano is in front again; Linux: `pollChild`):
 
-4. Live files changed during the run are copied to the local copy, then to the card set. For a slot, only when the marker names this device's set; a slot another device or a shipped build wrote last is never taken as this device's settings.
+4. Live files changed during the run are copied to the local copy, then to the card set. For a slot, only when the marker names this device's set; a slot another device or a shipped build wrote last is never taken as this device's settings. Shared storage is never copied: the emulator wrote it in place. On Linux a bind is released when the game's process group ends.
 5. When the marker has `restore`, the slot's earlier files are put back from `slot-kept/legacy/` and the marker is removed, so a shipped build using that card finds its own settings again.
 
 The slot check (step 2's table, then step 5 when owed) also runs at start, at card adoption and at each sweep, for every emulator that is not running. So a run cut short by a crash, a power cut or a flat battery is taken in and put back at the next start, and no slot is overwritten without the check.
@@ -359,17 +446,19 @@ Run once, on the first start of the build that carries this change. Nothing is d
 6. **Theme:** the live theme keys are this device's own values. If the theme card has no `theme.json`, it is written from them. If it has one (another device got there first), it is shown, and the device's own values go to the local theme file. A one-line notice says the theme came from the card.
 7. **Playlists:** user playlists in `nano_music.json` are written to `Thimsy/playlists/` on the library's volume (§2.5). A name already taken there is written as `<name> (<model name>).m3u8`. `nano_music.json` keeps each until its file is written, then holds only the scan cache.
 8. **Downloaded themes:** each set in `/data/system/nano_esde_themes` (`NanoMenuEsdeMenu.cpp` 197) that the theme card's `ES-DE/themes` lacks is copied there (copied, not moved; skipped when the card lacks room), so a `theme.json` naming it finds it on every device (OA-37). The theme list also reads `<theme card>/ES-DE/themes` when the store is elsewhere.
+9. **Save states (OA-53):** RetroArch states this device kept beside the ROMs (the shipped `savestates_in_content_dir`) or loose in `retroarch/states/` are copied into `retroarch/states/<core>/`, `<core>` being the core of this device's current pick for the system, the likeliest maker; the originals stay. A state whose system has no RetroArch pick here is left where it is (owner question 18). Shared storage needs no step: it is already in the emulator folders on the card (`emu_sd` on) or on internal storage (off), and nothing is mirrored.
 
 A device with no settings of its own (a fresh install) meeting a card with legacy shared files (`<emu>/app/`, settings in the card folders) and no set for its id is asked once: "This card has emulator settings from before. Use them on this device?" Yes copies them in as this device's set. This replaces `emuSdForeignDialog` and keeps today's restore-after-reinstall for old cards.
 
 ### 6.2 Linux
 
-No Linux build has shipped, so devices need no migration. `linux-next`'s shared-pick code is reworked before it merges (§7). Linux never imports Android's settings files or picks (different emulators). On a card from Android, Linux's set starts from the image defaults.
+No Linux build has shipped, so devices need no migration. `linux-next`'s shared-pick code is reworked before it merges (§7). Linux never imports Android's settings files or picks (different emulators). On a card from Android, Linux's set starts from the image defaults. No card has `retroarch/linux/` or `<emu>/linux/`, so Linux starts straight on OA-53's per-core folders (§2.7).
 
 ### 6.3 The floor and older builds
 
 - **Additive only.** `devices/`, `theme.json` and the playlists are new files and folders. `format.json` stays at major 1. Shipped builds ignore them: they leave unknown folders alone, and `repoint` rewrites only absent card ids followed by `/emulator_config`, which is right for this card anyway.
 - **A card used by both a shipped build and a new build:** the shipped build keeps using and writing the shared legacy files (`<emu>/app/`) and labels; the new build does not read them after migration, so such a change does not reach the new one (owner question 12). The slots are different, since there they are the shipped build's only copy of its RetroArch and PPSSPP settings: on the card the new build migrated with, the slots carry its marker, so a shipped build's edit there is taken into the migrated device's set, and the two keep sharing those files as before; on any other card the slot has no marker, so the shipped build's files are kept and put back after each run (§5.6). No setting is lost either way.
+- **Saves on a card shared with a shipped build:** a shipped build still writes every RetroArch save and state beside the ROM, whatever its core. A save beside the ROM can therefore still be overwritten by a shipped build running a core outside the card core's family, as today; new builds never write there with such a core (§2.7).
 - **The floor** (Q12) is the first Android release with this change. From it, Android behaves as §2 to §5 say. Linux has the behaviour from its first build.
 - Legacy files are never cleaned up automatically. A later "Remove old shared settings" action can be considered once every device the owner uses is past the floor.
 
@@ -378,16 +467,18 @@ No Linux build has shipped, so devices need no migration. `linux-next`'s shared-
 | Earlier decision | Now |
 |---|---|
 | **OA-38, `step/w8-emu`** (picks shared, last pick wins) | Picks are per device (§2.3, §5.7). Kept from W8: `nanoplat::Emulators` (4c800fc); seeding image defaults (ebc12c7); the launch fallback chain and "a fallback is never recorded" (7712435, 9db53ae, 4aad6c0's CatalogFirst). Reverted: Linux writing labels and `emulators.json`; keeping an unrunnable label as a pick (`esdeStoreLoadGameEmus`'s `runnableOnly=false` call); the store-mode heal skip (W8-EMU-20): the heal repairs local picks again and never writes `systems.json`'s launch fields. `LIBRARY-FORMAT.md` f933326, 350fcb8 and f303d13 are rewritten. Done on `linux-next` before it merges into `linux`, as OA-46 says. |
-| **OA-26, OA-39** (PPSSPP and ScummVM settings shared, per-platform override layers, a shared `scummvm/scummvm.ini`) | Settings are per device. No override layers, no shared `scummvm.ini`; W7-INTEROP-11 and -12 are withdrawn (never built). `<emu>/linux/` keeps only saves and states. PPSSPP's `SAVEDATA` stays shared (OA-21), bound into Linux's local memory stick at launch (`LIBRARY-FORMAT.md` 4.18 step 2). |
+| **OA-26, OA-39** (PPSSPP and ScummVM settings shared, per-platform override layers, a shared `scummvm/scummvm.ini`) | Settings are per device. No override layers, no shared `scummvm.ini`; W7-INTEROP-11 and -12 are withdrawn (never built). `<emu>/linux/` is withdrawn too: saves and states are shared per core (OA-53, §2.7). PPSSPP's shared folders are linked into Linux's local memory stick at launch (§2.7; `LIBRARY-FORMAT.md` 4.18 step 2 drafted bind mounts). |
 | **OA-32, OA-20's card file** (`Thimsy/settings.ini`) | Dropped (OA-47). `LIBRARY-FORMAT.md` 4.21 goes. `portable_settings_plan.md` is superseded except its phase 0 inventory (`prefs.json`). Classes P, M, A and L no longer put anything on a card; the new `card` field marks the theme keys. |
 | **OA-32 Q4** (theme in settings.ini, mirrored to ES-DE) | The theme in `Thimsy/theme.json`, mirrored to ES-DE's four keys (§2.4). |
 | **OA-23, OA-40** (playlists travel, device file kept as a cache) | OA-48: on the card only, no mirror, card wins. `nano_music.json` is the scan cache. |
-| **OA-50** | PortMaster is local; not in any set. |
+| **OA-50** | PortMaster is local; not in any set. Its space on RK3566 is owner question 22. |
 | **OA-35** (seeded defaults) | Unchanged and local. The first card a device uses gets its theme from the device's seeded values (§4.7, §6.1 step 6). Seeded image default emulators (W8) are the fallback, not picks. |
 | **OA-37** (a missing theme falls back) | Unchanged. A card's `theme.json` can name a set that is not on this device (a downloaded set kept on another card or on another device): the default is shown and the stored choice kept. Downloads going to `<card>/ES-DE/themes` (G14) makes this rare. |
-| **OA-21** (saves) | Unchanged. SeedlessDS's `user` folder stays shared until checked (§2.2). |
+| **OA-21** (saves), with OA-53 | OA-21's share-or-sort rule stays and both platforms apply it. Its per-platform folders go: a save of a core outside the card core's family goes to `retroarch/saves/<core>/`, every state to `retroarch/states/<core>/`, shared by every device and both platforms (§2.7). `retroarch/linux/` and `<emu>/linux/` are withdrawn. Owner question 13 is answered. SeedlessDS's `user` folder stays shared until checked (§2.2). |
+| **OA-52** (emulated system storage) | Each emulator's drive is shared storage in its card folder, never in a set, never mirrored (§2.7). |
+| **Linux's emulator manifest** (`LIBRARY-FORMAT.md` N1) and Android's per-emulator tables (`NanoEmuSync`'s `items()`, `raDirKeys`, the link lists) | Emulator definitions (OA-54, §2.8). |
 | **Scraper preferences in `es_settings.xml`** (store mode) | Local only: not adopted from or written to the card (§2.6, owner question 14). |
-| **`systems.json`'s shared fields** | Library data under OA-49, adopted from the card as today (§2.6, owner question 15). |
+| **`systems.json`** | Launch fields per device (OA-46, §2.3); the other fields library data under OA-49, adopted from the card as today (§2.6, owner question 15). |
 | **G14** (downloaded themes on the device) | Downloads go to the theme card; existing sets are copied there (§6.1 step 8). |
 
 ## 8. Code impact
@@ -399,21 +490,23 @@ AS marks Android-compiled code. Every AS change is an `android-surface:` commit,
 New in `nano/NanoPlatform.h` (AS, header), each with firmware, Linux and host implementations:
 
 - **`DeviceIdentity`:** `unitSerial()` (raw, may be empty), `serialReady()`, `fingerprint()` (§1), `modelId()`, `modelName()`, `platform()`. Firmware: `platform/firmware/DeviceIdentity.cpp` (AS) reads §1's Android order. Linux: `platform/linux/DeviceIdentity.cpp` (LO) reads `/run/thimsy/unit-serial`, then the device tree. Host: `platform/host/FakeDeviceIdentity.cpp`.
-- **`DeviceStore`:** every per-platform path this plan adds (§3's table): `localSetDir()`, `parkedSetDir(id)`, `syncStateFile()`, `localPickFiles()`, `localThemeFile()`, `themeLock()`, `deviceIdCache()`, `deviceIdList()`. Firmware `platform/firmware/DeviceStore.cpp` (AS), Linux `platform/linux/DeviceStore.cpp` (LO), host `FakeDeviceStore.cpp`. `NanoDeviceId`, `NanoEmuSets` and `NanoThemeCard` take every path from it.
-- **`EmulatorFiles`:** `settingsItems()` (§2.2's table, with live paths), `readLive`, `writeLive` (the app stopped first and its owner and label kept on Android; plain atomic writes on Linux), `emulatorRunning(emu)`. Firmware: `platform/firmware/EmulatorFiles.cpp` (AS), taking `NanoEmuSync`'s `items()` and `NanoSdMove.cpp`'s `sdWriteAppFile`, `sdPkgRunning`, `sdStopIfRunning` as moves. Linux: `platform/linux/EmulatorFiles.cpp` (LO), from the emulator manifest. Host: `FakeEmulatorFiles.cpp`.
-- `Emulators` (W8) stays as it is.
+- **`DeviceStore`:** every per-platform path this plan adds (§3's table): `localSetDir()`, `parkedSetDir(id)`, `syncStateFile()`, `localPickFiles()`, `localThemeFile()`, `themeLock()`, `deviceIdCache()`, `deviceIdList()`, `shippedDefsDir()`, `userDefsDir()`. Firmware `platform/firmware/DeviceStore.cpp` (AS), Linux `platform/linux/DeviceStore.cpp` (LO), host `FakeDeviceStore.cpp`. `NanoDeviceId`, `NanoEmuSets` and `NanoThemeCard` take every path from it.
+- **`EmulatorFiles`:** `settingsItems()` and `sharedItems()` (the definitions' `files` entries resolved against this platform's base folders), `readLive`, `writeLive` (the app stopped first and its owner and label kept on Android; plain atomic writes on Linux), `emulatorRunning(emu)`, `point(emu)` and `unpoint(emu)` (§2.7's methods). Firmware: `platform/firmware/EmulatorFiles.cpp` (AS), taking `NanoSdMove.cpp`'s `sdWriteAppFile`, `sdPkgRunning`, `sdStopIfRunning` as moves; `NanoEmuSync`'s `items()` table becomes the shipped definitions' data (§2.8). Linux: `platform/linux/EmulatorFiles.cpp` (LO): links on `/storage`, binds through thimsy-session. Host: `FakeEmulatorFiles.cpp`. None of the three names an emulator.
+- **`EmuDefs`** (shared, `nano/NanoEmuDefs.cpp/.h`, `user_emulators_plan.md` phase 1): loads and validates the definitions from `DeviceStore`'s two folders. Every component below takes its per-emulator facts from it.
+- `Emulators` (W8) keeps its interface; on Linux it answers from the definitions' `launch.linux` entries, and on Android the catalog also takes the definitions' `launch.android` entries (`user_emulators_plan.md` §3).
 
 ### 8.2 Shared code
 
 | File | Change | Kind |
 |---|---|---|
+| `nano/NanoEmuDefs.cpp/.h` (new, `user_emulators_plan.md` phase 1) | the definition loader and validator with `user_emulators_plan.md` §1a's fields; the shared corpus | AS (new file) |
 | `nano/NanoDeviceId.cpp/.h` (new) | id from platform and serial, the refusal list, the pending state, the fingerprint and collision ids, the random fallback and its cache | AS (new file) |
-| `nano/NanoEmuSets.cpp/.h` (new) | set paths, `device.json` read and write, the owner check and parked sets, the switch states, turning on and off, `.previous` copies, partial sets, `picks.json` and its per-entry merge and key conversion, slot markers and the slot check, the migration's pending state | AS (new file) |
-| `nano/NanoEmuSync.cpp/.h` | `Item` gains its live kind (app-private, slot, local); `cardPath` goes to `devices/<id>/<emu>/[app/]<rel>`; `baseKey` gains the set id; `items()` moves to the platform; `repoint` also walks `devices/` | AS |
-| `nano/NanoSdMove.cpp` | `emuSettingsSync` (target set, slot steps), `emuSettingsSyncLaunch` plus a new after-run sync, the slot check at start, adoption and each sweep, `emuSdTick` (switch states instead of `emu_sd` adoption), `emuSdForeign`, `emuSdForeignDialog`, `emuSdForeignChoice` replaced by §6.1's legacy question, `emuSdAdoptBegin`/`Done`, `emuSdMode` (the move and the switch separated), `emuMoveStart` (moves shared data; settings files become slot files) | AS, the largest |
-| `nano/NanoRaConfig.cpp/.h` | RetroArch's slot file list; `raHealConfig` after a slot is filled | AS |
+| `nano/NanoEmuSets.cpp/.h` (new) | set paths, `device.json` read and write, the owner check and parked sets, the switch states, turning on and off, `.previous` copies, partial sets, `picks.json` and its per-entry merge and key conversion, slot markers and the slot check, the migration's pending state; every per-emulator fact from `EmuDefs` | AS (new file) |
+| `nano/NanoEmuSync.cpp/.h` | `Item` gains its live kind (app-private, slot, local); `cardPath` goes to `devices/<id>/<emu>/[app/]<rel>`; `baseKey` gains the set id; `items()` is built from the definitions through `EmulatorFiles`, and its table becomes the shipped definitions' data; `repoint` also walks `devices/` | AS |
+| `nano/NanoSdMove.cpp` | `emuSettingsSync` (target set, slot steps), `emuSettingsSyncLaunch` plus a new after-run sync, the slot check at start, adoption and each sweep, `emuSdTick` (switch states instead of `emu_sd` adoption), `emuSdForeign`, `emuSdForeignDialog`, `emuSdForeignChoice` replaced by §6.1's legacy question, `emuSdAdoptBegin`/`Done`, `emuSdMode` (the move and the switch separated), `emuMoveStart` (moves the definitions' shared storage; settings files become slot files; the per-emulator blocks it changes read the definitions) | AS, the largest |
+| `nano/NanoRaConfig.cpp/.h` | `raDirKeys` and the slot file list become RetroArch's definition (`files.settings`, `point`); the save and state keys of §2.7, with the save family from the definition's launch entries; `raHealConfig` after a slot is filled | AS |
 | `nano/NanoHotkeys.cpp` | provisioning writes the local copy, then the slot | AS |
-| `nano/NanoBiosWorker.cpp`, `NanoBiosInstall.cpp` | emulator configs they write go through the set write path **(verify which files)** | AS |
+| `nano/NanoBiosWorker.cpp`, `NanoBiosInstall.cpp` | emulator configs they write go through the set write path **(verify which files)**; BIOS targets this plan touches come from the definitions' `bios` block | AS |
 | `nano/NanoMenuPS3EmuCatalog.cpp` | `setGameEmulator` writes local and card picks, never `esdeStoreSaveGameEmu`; local game keys in §2.2's form; `loadGameEmulators` merges the card's; `esdeStoreSaveSystemEmus` and `esdeStoreApplySystemEmus` stop writing and adopting labels; W8's fallback code kept | AS |
 | `nano/NanoEsdeStore.cpp` | `esdeStoreLoadGameEmus` and `esdeStoreSaveGameEmu` used only by the migration; `esdeStoreApplySettings` and `esdeStoreSettingChanged` drop the 12 scraper keys (§2.6); the sweep (`esdeStoreSweepBuild`, `esdeStoreSweep`) watches `theme.json` and this device's `picks.json`; the theme mirror through `esdeSettingsSet` | AS |
 | `nano/NanoMenuXmb.cpp` | `esdeStoreAdoptSystems` adopts shared fields only; `esdeSystemsJson`/`esdeStoreSaveSystems` keep launch fields as read; `systemsHealTick` without W8's store-mode skip; `loadSystemsConfig` applies picks | AS |
@@ -426,38 +519,41 @@ New in `nano/NanoPlatform.h` (AS, header), each with firmware, Linux and host im
 
 ### 8.3 Linux only
 
-- `nano/platform/linux/Launcher.cpp`: no sync code of its own; the shared launch path calls the before and after syncs on both platforms. `argvFor` keeps `/storage/.config/retroarch/retroarch.cfg`. LO.
+- `nano/platform/linux/Launcher.cpp`: no sync code of its own; the shared launch path calls the before and after syncs on both platforms. `argvFor` builds the argv from the definition's `launch.linux` entry (RetroArch's keeps `/storage/.config/retroarch/retroarch.cfg`), and the append config's keys come from RetroArch's definition (§2.7). LO.
+- `linux/package/thimsy-data` (or each emulator's package): installs the shipped definitions for RetroArch, PPSSPP and ScummVM in `/usr/share/thimsy/emulators/`. LO.
 - `nano/platform/linux/` settings dispatcher (W6-caps keyed table): the two new rows. LO.
-- `linux/src/thimsy-session`: always publishes `/run/thimsy/unit-serial` at start, from nvmem, empty when there is no chip id (§1). LO.
+- `linux/src/thimsy-session`: always publishes `/run/thimsy/unit-serial` at start, from nvmem, empty when there is no chip id (§1); takes a `bind` request for a definition of origin `system` or `index` and releases it when the game's process group ends (§2.7). LO.
 
 ### 8.4 Data, schemas, docs
 
-- `linux/schema/device.schema.json`, `picks.schema.json`, `theme.schema.json` (new); fixtures in `linux/tests/fixtures/card/` (a card with two Android sets and one Linux set, a partial set, a damaged `picks.json`, a `theme.json` with an unknown key). LO.
+- `linux/schema/emu-set.schema.json`, `picks.schema.json`, `theme.schema.json` (new); `linux/schema/emulator-def.schema.json` (new, shared with `user_emulators_plan.md`); fixtures in `linux/tests/fixtures/card/` (a card with two Android sets and one Linux set, a partial set, a damaged `picks.json`, a `theme.json` with an unknown key, per-core save and state folders) and a definition corpus. LO.
 - `tools/nano-tree/prefs.json`, `nanotree/prefs.py`, `tests/test_prefs.py`: the `card` field; rows for `emu_card_sets` (D). LO.
-- `LIBRARY-FORMAT.md`: section 3's tree; 4.1's theme keys; 4.8 to 4.10 (launch fields kept as read, labels and `emulators.json` legacy); 4.15 to 4.19 rewritten for per-device sets; 4.21 removed; 4.22 per OA-48; new sections for `devices/<id>/`, `picks.json` and `theme.json`; sections 5 to 10. `docs/linux/INTEROP-AUDIT.md`, `linux_handheld_plan.md` §7.2, §7.5, §7.6 and `portable_settings_plan.md`: a superseded note. `docs/linux/IMPLEMENTATION.md`: the new interfaces. `TODO.md`: a link to this plan. LO.
+- `LIBRARY-FORMAT.md`: section 3's tree; 4.1's theme keys; 4.8 to 4.10 (launch fields kept as read, labels and `emulators.json` legacy); 4.15 to 4.19 rewritten for per-device sets and for OA-52 and OA-53 (shared storage per §2.7, per-core `retroarch/saves/` and `retroarch/states/`, no `linux/` folders, links on Linux); §10's "which Android core" question answered by §2.7's card core; 4.21 removed; 4.22 per OA-48; new sections for `devices/<id>/`, `picks.json` and `theme.json`; sections 5 to 10. `docs/linux/INTEROP-AUDIT.md`, `linux_handheld_plan.md` §7.2, §7.5, §7.6 and `portable_settings_plan.md`: a superseded note. `docs/linux/IMPLEMENTATION.md`: the new interfaces. `TODO.md`: a link to this plan. LO.
 
 ### 8.5 Tests
 
-- **Unit (host):** `NanoDeviceId_test` (hash form, refused serials, random fallback, serial wins over cache, pending while `unit-serial` is missing and no random id meanwhile, a fingerprint clash gives the collision id and keeps it with the card out); `NanoEmuSets_test` (on, off, on with an old set and the default choice with an unchanged local set, `.previous` copies on every replace, partial set resumed, damaged `picks.json`, per-entry merge, game keys converted for a new volume id and a second card, system picks only where they differ from the image defaults, owner id differs: parked and swapped, migration pending with the adopted card out and with another card in: nothing taken, no slot filled); slot check (unchanged, changed with this set's marker taken in, another set's marker kept in `slot-kept/<id>`, no marker kept and put back after the run, missing or empty local copy never filled, a run cut short recovered at start); `NanoEmuSync_test` (new keys, card paths under `devices/`); `NanoThemeCard_test` (seed, show and restore, power cut with the local file left, local file written before the keys, the lock, missing keys, the theme card with store mode off and with the store on internal storage, mirror only when the set is in the store, aspect ratio never written, `Theme` and `ThemeSet` spellings, an ES-DE app edit adopted, not adopted while the app runs or when it is the value mirrored before last).
+- **Unit (host):** `NanoEmuDefs_test` (`user_emulators_plan.md` §1a's fields and rules; the shipped definitions reproduce today's `items()`, `raDirKeys` and link lists); save placement (a core in the card core's family beside the ROM, another core in `saves/<core>/`, no card core, states always per core); `NanoDeviceId_test` (hash form, refused serials, random fallback, serial wins over cache, pending while `unit-serial` is missing and no random id meanwhile, a fingerprint clash gives the collision id and keeps it with the card out); `NanoEmuSets_test` (on, off, on with an old set and the default choice with an unchanged local set, `.previous` copies on every replace, partial set resumed, damaged `picks.json`, per-entry merge, game keys converted for a new volume id and a second card, system picks only where they differ from the image defaults, owner id differs: parked and swapped, migration pending with the adopted card out and with another card in: nothing taken, no slot filled); slot check (unchanged, changed with this set's marker taken in, another set's marker kept in `slot-kept/<id>`, no marker kept and put back after the run, missing or empty local copy never filled, a run cut short recovered at start); `NanoEmuSync_test` (new keys, card paths under `devices/`); `NanoThemeCard_test` (seed, show and restore, power cut with the local file left, local file written before the keys, the lock, missing keys, the theme card with store mode off and with the store on internal storage, mirror only when the set is in the store, aspect ratio never written, `Theme` and `ThemeSet` spellings, an ES-DE app edit adopted, not adopted while the app runs or when it is the value mirrored before last).
 - **Platform:** `platform/linux/tests/deviceidentity_test.cpp` (fake device tree, NUL byte, missing node, `/run` fallback); a firmware unit test of the property order with a fake property source.
-- **Host scenarios:** two fake devices sharing one card image (each keeps its own RetroArch config and picks, both show one theme, the card removed and put back, a PC edit wins); single-card Linux: the card in unit A, then in unit B with edits, then back in A (A's settings come back, B's are parked and in B's card set, none of B's in A's set); two units with the same serial (a collision id, two sets); a card from a shipped build with no slot marker (its slot files are back after a new-build run).
+- **Host scenarios:** two fake devices sharing one card image (each keeps its own RetroArch config and picks, both show one theme, the card removed and put back, a PC edit wins); single-card Linux: the card in unit A, then in unit B with edits, then back in A (A's settings come back, B's are parked and in B's card set, none of B's in A's set); two units with the same serial (a collision id, two sets); a card from a shipped build with no slot marker (its slot files are back after a new-build run); two devices running different RetroArch cores for one game (two save folders, two state folders, neither core offered the other's state); PPSSPP on Android and Linux sharing `SAVEDATA` and states; a hand-written definition for a new emulator getting the same set, storage and launch handling as a shipped one.
+- **No per-emulator cases:** a lint (`tools/nano-tree/tests/test_no_emulator_cases.py`, new) fails when a shared file this plan adds names a shipped emulator's package, card folder or settings file.
 - **Card contract** (`test_card_contract.py`): a Linux visit leaves every other device's set, every label, `emulators.json` and the legacy folders byte-identical; `theme.json` holds only `card: theme` keys.
 - **Device:** on the ARC-D, Android and Linux each keep their own set on the one card, and the theme follows both ways (OA-18).
-- **Verify list (next build window, the Cube and the ARC-D):** the serial each source gives, on two units of one model where possible; the fingerprint sources and whether the MAC is the factory one; where U-Boot keeps its environment (Linux); which `es_settings.xml` the bundled ES-DE app reads, and which set key 3.5.0 writes; what SeedlessDS's `user` folder holds.
+- **Verify list (next build window, the Cube and the ARC-D):** the serial each source gives, on two units of one model where possible; the fingerprint sources and whether the MAC is the factory one; where U-Boot keeps its environment (Linux); which `es_settings.xml` the bundled ES-DE app reads, and which set key 3.5.0 writes; what SeedlessDS's `user` folder holds; Vita3K's `pref-path`, Eden's and Azahar's storage keys and Dolphin's NAND and memory-card keys on the Android builds; whether PPSSPP on Linux follows links; that one RetroArch core gives the same folder name on both platforms.
 
 ### 8.6 Phases
 
 | # | Step | Kind | Size *(guess)* |
 |---|---|---|---|
 | 0 | `LIBRARY-FORMAT.md` and the other docs, the three schemas and fixtures, `prefs.json`'s `card` field | LO | 2-3 days |
+| 0b | Definitions: `user_emulators_plan.md` §1a's fields in `NanoEmuDefs` and the schema, shipped definitions carrying today's tables, the lint | AS + LO | 1-1.5 weeks |
 | 1 | Device identity: `DeviceIdentity` on three platforms, `NanoDeviceId`, thimsy-session's file | AS + LO | 2-3 days |
 | 2 | Per-device picks: rework W8 on `linux-next` (§7), `picks.json`, systems adoption keeps local launch fields, labels never written | AS | 1-1.5 weeks |
-| 3 | Emulator sets: `NanoEmuSets`, `NanoEmuSync` generalised, `DeviceStore`, `EmulatorFiles` (moves), slots and the slot check, parked sets, the switch and its rows, the before and after syncs, §6.1's migration and question | AS + LO | 3-4.5 weeks |
+| 3 | Emulator sets: `NanoEmuSets`, `NanoEmuSync` generalised, `DeviceStore`, `EmulatorFiles` (moves), slots and the slot check, parked sets, the switch and its rows, the before and after syncs, the pointing methods and the per-core save and state folders (§2.7), §6.1's migration and question | AS + LO | 3.5-5 weeks |
 | 4 | Theme on the card: `NanoThemeCard`, the call sites, the ES-DE mirror, downloads to the card | AS | 1-1.5 weeks |
 | 5 | Playlists on the card (OA-48) | AS | 3-5 days |
 | 6 | Host scenarios, the card contract checks, the ARC-D round trip at the next build window | AS + LO | 1 week |
 
-Total about 8 to 11 person-weeks *(guess)*. Phase 2 must land on `linux-next` before it merges into `linux` (OA-46). Phases 1 and 0 can start at once; 3 and 4 depend on 1; 4 is independent of 2 and 3.
+Total about 9.5 to 13 person-weeks *(guess)*. Phase 2 must land on `linux-next` before it merges into `linux` (OA-46). Phases 0, 0b and 1 can start at once; 0b needs `user_emulators_plan.md` phase 1's loader, or is its first part; 3 depends on 0b and 1; 4 depends on 1 and is independent of 2 and 3.
 
 ## 9. Questions for the owner
 
@@ -473,7 +569,14 @@ Total about 8 to 11 person-weeks *(guess)*. Phase 2 must land on `linux-next` be
 10. **Switch defaults.** Linux on; Android from `emu_sd` (recommended).
 11. **Clashes.** File-level, the card wins (OA-46), and the losing device copy is kept once in `conflicts/` (recommended). Or no copy kept.
 12. **Cards shared with shipped Android builds.** Their changes to the old shared files (`<emu>/app/`, labels) are not seen by new builds after migration; slot files stay shared with the migrated device, and are kept and put back on other cards (§6.3) (recommended: accept and document). Or keep importing the shared files, which brings back the shared model for those devices.
-13. **Save states.** Stay per platform and shared between devices of a platform (recommended, OA-21 unchanged). Or per device too.
+13. **Save states.** Answered by OA-53: shared on the card by every device and both platforms, one folder per core (§2.7).
 14. **Scraper preferences.** Local only: neither adopted from nor written to the card's `es_settings.xml` (recommended, §2.6, OA-47). Or keep writing them (never adopting), so the ES-DE app scrapes the way the last device that changed one does.
-15. **`systems.json`'s shared fields** (which systems show, their order and names, custom systems). Library data on the card, card wins, as today (recommended, §2.6, OA-49). Or local per device, which needs a local layer over the card's list.
+15. **`systems.json`'s shared fields** (which systems show, their order and names, custom systems). OA-46 now names the launch fields as per device; the other fields choose no emulator, so they stay library data on the card, card wins, as today, and a custom system shares its entry but not its launch fields (recommended, §2.6, OA-49). Or local per device, which needs a local layer over the card's list.
 16. **Switch off, card holds this device's set.** Ignore the card set (recommended, §4.1: a read-only set would drop every edit at the next start). Or use it read-only, as OA-46's lookup sentence alone suggests.
+17. **The card core for beside-ROM saves.** The core the card's `systems.json` launch fields name, kept as read; a system with none has no card core, so every core's saves go to `retroarch/saves/<core>/` (recommended, §2.7). Or the core of the device that first saves a game, recorded per game on the card: closer to who made the file, but a new card file and a write at every first save.
+18. **Android's beside-ROM save states at migration.** Copy them once into `retroarch/states/<core>/` for the core of the device's current pick, and leave the originals (recommended, §6.1 step 9). Or leave them only: new builds' RetroArch no longer lists them.
+19. **Shared storage while Android's emulator files are on internal storage** (`emu_sd` off). It stays there until the user runs Move Emulator Files, as today (recommended, §2.7). Or move it to the card on its own when a card is in, as OA-52 and OA-53 read literally suggest, at the cost of a large copy nobody asked for.
+20. **Card out, shared storage on the card.** The emulator does not start until the card is back (recommended, §2.7: no mirror). Or usb_storage_plan.md's fallback to an internal folder, which is the second copy OA-52 and OA-53 rule out and can split a save.
+21. **User definitions on the card.** A copy in this device's set, with a changed copy used only after the device's import screen accepts it (recommended, §2.8). Or local only, imported again by hand after a reinstall.
+22. **PortMaster's space on RK3566 (OA-50).** `/storage` is 256 MiB (`linux/board/rk3566/genimage.cfg`, entry 4), and PortMaster's runtimes are hundreds of MB, the popular set 614.5 MB (`docs/linux/research/portmaster.md` §5 and Q7). Recommended: a dedicated local ext4 partition that D60firstboot makes at first boot between `info` and `games` (4 GiB *(guess)*, or a share of the card capped at that), mounted at `/storage/ports`. The image stays 2410 MiB, so writing a card stays quick, and `/storage` keeps its size. It moves the games partition's start, so the re-adoption of an old library must look past it; no Linux card has shipped, so nothing migrates. Or grow `data` in `genimage.cfg` (for example to 4 GiB): one line, but the image and every card write grow by the same amount. Or keep 256 MiB and offer only ports without large runtimes.
+23. **Pointing on Linux.** A key in the emulator's settings where it has one, else a symbolic link on `/storage` to the card folder, and a bind mount only for an emulator that refuses links (recommended, §2.7). Or bind mounts throughout, as `LIBRARY-FORMAT.md` 4.18 drafted for PPSSPP, which needs a root step at every launch.
