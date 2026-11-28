@@ -101,6 +101,8 @@ LINUX_MAY_ADD = re.compile(
     r"|emulator_config/retroarch/(?:saves|states)/[^/]+/[^/]+/(?:[^/]+/)*[^/]+$"
     r"|emulator_config/ppsspp/PSP/(?:SAVEDATA|PPSSPP_STATE)/"
     r"|emulator_config/scummvm/saves/"
+    r"|emulator_config/[a-z0-9_-]+/thimsy-older/(?:[^/]+/)*[^/]+$"
+    r"|emulator_config/[a-z0-9_-]+/\.thimsy-run\.json$"
     r"|Thimsy/theme\.json$"
     r"|Thimsy/playlists/[^/]+\.m3u8$"
     r"|ES-DE/gamelists/[^/]+/gamelist\.xml$"
@@ -459,6 +461,25 @@ class Vectors(unittest.TestCase):
                 self.assertEqual(m.group("below"), below)
         self.assertEqual(len(set(cases)), len(cases))
         self.assertIn("{subdir}", DOC.read_text(encoding="utf-8"), "LIBRARY-FORMAT.md 4.17 names the placeholder")
+
+    def test_swept_and_kept_files_are_not_save_folders(self):
+        """4.17: thimsy-older/ and the run marker are Linux's to write but are not where RetroArch reads;
+        a numbered .bak stays beside the save and is never read as a save."""
+        for rel in ("emulator_config/retroarch/thimsy-older/saves/mesen/nes/Other Game.srm",
+                    "emulator_config/retroarch/thimsy-older/saves/mesen/nes/Other Game.srm.2",
+                    "emulator_config/retroarch/thimsy-older/states/mesen/nes/USA/Other Game.state1",
+                    "emulator_config/retroarch/.thimsy-run.json"):
+            with self.subTest(file=rel):
+                self.assertRegex(rel, LINUX_MAY_ADD)
+                self.assertNotRegex(rel, SHARED_SAVES)
+        for rel in ("emulator_config/retroarch/saves/mesen/nes/Zelda (USA).srm.2026-12-01.bak",
+                    "emulator_config/retroarch/saves/mesen/nes/Zelda (USA).srm.2026-12-01.2.bak"):
+            with self.subTest(file=rel):
+                self.assertRegex(rel, LINUX_MAY_ADD)
+                self.assertNotRegex(rel, r"\.(srm|sav|state\d*|state\.auto)$", "a .bak is not a save")
+        text = DOC.read_text(encoding="utf-8")
+        for name in ("thimsy-older/", ".thimsy-run.json", ".<date>.2.bak"):
+            self.assertIn(name, text)
 
     def test_launch_fields_are_kept_as_read(self):
         a = {s["id"]: s for s in card_json(ANDROID, "ES-DE/nano/systems.json")["systems"]}
