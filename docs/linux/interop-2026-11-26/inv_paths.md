@@ -1,3 +1,5 @@
+> **Superseded where it differs (2026-11-27).** This is a raw report, a snapshot of 2026-11-26. `docs/linux/DECISIONS.md` OA-46 to OA-54 replaced its model: settings and picks are per device, saves, states and BIOS are shared on the card apart per core, and there is no `<emu>/linux/`, `retroarch/linux/` or `systems.linux.json`. The current contract is `LIBRARY-FORMAT.md`.
+
 ## Card layout and mount paths: Android and Linux (OA-8 audit, paths slice)
 
 Repo: C:/Users/krist/code/thimsy-os-linux (branch linux). I only read files. "Plan" means linux_handheld_plan.md. Anything marked (inference) is my reading and has not been checked on a device.

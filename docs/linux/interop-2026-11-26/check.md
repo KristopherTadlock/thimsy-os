@@ -1,3 +1,5 @@
+> **Superseded where it differs (2026-11-27).** This is a raw report, a snapshot of 2026-11-26. `docs/linux/DECISIONS.md` OA-46 to OA-54 replaced its model: settings and picks are per device, saves, states and BIOS are shared on the card apart per core, and there is no `<emu>/linux/`, `retroarch/linux/` or `systems.linux.json`. The current contract is `LIBRARY-FORMAT.md`.
+
 OA-8 adversarial check of the interop contract and gap list (read-only; nothing edited, built or run). Repo: C:/Users/krist/code/thimsy-os-linux. "(inf)" marks inference. In this report, file:line is `nano/` unless another path is given.
 
 ## 1. Spot-checks (18 claims)
