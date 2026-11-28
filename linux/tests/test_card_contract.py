@@ -82,11 +82,14 @@ THEME_KEYS = frozenset("""
 """.split())
 
 # Shared saves and states (OA-53, LIBRARY-FORMAT.md 4.17 to 4.19): RetroArch's saves in
-# saves/<family>/<system>/ and states in states/<core>/<system>/ (a family or core id, then a
-# system id), with the files and folders a core keeps itself below them (opera/per_game/,
-# mame/, ...), and the standalone emulators' own shared folders.
+# saves/<family>/<system>/[<subdir>/] and states in states/<core>/<system>/[<subdir>/] (a family or
+# core id, a system id, then {subdir}, the game's own folder below the system folder, empty for a
+# game directly in it, so two games of one name in two subfolders keep two files), with the files
+# and folders a core keeps itself below them (opera/per_game/, mame/, ...), and the standalone
+# emulators' own shared folders. `below` is {subdir} plus any core-kept folders.
 SHARED_SAVES = re.compile(
-    r"^emulator_config/(?:retroarch/(?:saves|states)/(?P<core>[a-z0-9][a-z0-9_.-]*)/(?P<system>[a-z0-9]+)/(?:[^/]+/)*[^/]+$"
+    r"^emulator_config/(?:retroarch/(?:saves|states)/(?P<core>[a-z0-9][a-z0-9_.-]*)/(?P<system>[a-z0-9]+)/"
+    r"(?P<below>(?:[^/]+/)*)[^/]+$"
     r"|ppsspp/PSP/(?:SAVEDATA|PPSSPP_STATE)/"
     r"|scummvm/saves/)")
 
@@ -435,6 +438,27 @@ class Vectors(unittest.TestCase):
                 self.assertNotRegex(rel, LINUX_MAY_ADD)
         self.assertTrue((LINUXW / "emulator_config/retroarch/saves/opera/3do/opera/per_game/x").is_file(),
                         "the Linux-written card has a core-kept folder")
+
+    def test_same_name_games_in_two_subfolders_keep_two_files(self):
+        """4.17: {subdir} below the system folder, so ROMs/snes/USA/Game.sfc and ROMs/snes/Europe/Game.sfc
+        write two saves and two state folders; a game directly in ROMs/snes/ has an empty {subdir}."""
+        cases = {
+            "emulator_config/retroarch/saves/snes9x/snes/USA/Game.srm": "USA/",
+            "emulator_config/retroarch/saves/snes9x/snes/Europe/Game.srm": "Europe/",
+            "emulator_config/retroarch/saves/snes9x/snes/Game.srm": "",
+            "emulator_config/retroarch/states/snes9x/snes/USA/Game.state1": "USA/",
+            "emulator_config/retroarch/states/snes9x/snes/Europe/Game.state1": "Europe/",
+            "emulator_config/retroarch/saves/mesen/nes/hacks/Super Mario Bros. (Hack).srm": "hacks/",
+        }
+        for rel, below in cases.items():
+            with self.subTest(file=rel):
+                m = SHARED_SAVES.match(rel)
+                self.assertIsNotNone(m)
+                self.assertRegex(rel, LINUX_MAY_ADD)
+                self.assertIn(m.group("system"), ("snes", "nes"), "the system level comes first")
+                self.assertEqual(m.group("below"), below)
+        self.assertEqual(len(set(cases)), len(cases))
+        self.assertIn("{subdir}", DOC.read_text(encoding="utf-8"), "LIBRARY-FORMAT.md 4.17 names the placeholder")
 
     def test_launch_fields_are_kept_as_read(self):
         a = {s["id"]: s for s in card_json(ANDROID, "ES-DE/nano/systems.json")["systems"]}
