@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "systems": {
+    "psx": {
+      "launchType": "libretro-core",
+      "coreSo": "pcsx_rearmed_libretro_android.so",
+      "key": "core:pcsx_rearmed"
+    }
+  },
+  "games": {
+    "n64/Mario Kart 64 (USA).z64": {
+      "label": "Mupen64Plus-Next",
+      "am": "",
+      "key": "core:mupen64plus_next"
+    }
+  }
+}

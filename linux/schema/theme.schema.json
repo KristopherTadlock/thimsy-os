@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://thimsy.invalid/linux/schema/theme.schema.json",
+  "title": "Thimsy Thimsy/theme.json",
+  "description": "The theme switches (XMB, ES-DE, Minima and the like, with their style switches) and each theme's settings, shared by every device using the card; the card's value wins over the device's while the card is in (OA-51; LIBRARY-FORMAT.md 4.26; per_device_config_plan.md 2.4). Keys are tools/nano-tree/prefs.json's 'ini' names of the rows marked card: theme; values are strings in the device store's own encoding. Unknown keys are kept, so the theme object is open. Never holds the aspect ratio or any other screen-dependent key. Thimsy-new file. Only the draft-07 keywords devicejson.py validates are used.",
+  "type": "object",
+  "required": ["version", "theme"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {"const": 1},
+    "theme": {
+      "type": "object",
+      "propertyNames": {"$ref": "#/definitions/pref_key"},
+      "additionalProperties": {"type": "string"}
+    }
+  },
+  "definitions": {
+    "pref_key": {"type": "string", "pattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)+$", "description": "A prefs.json 'ini' name: dotted, lower case."}
+  }
+}

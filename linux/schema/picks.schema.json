@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://thimsy.invalid/linux/schema/picks.schema.json",
+  "title": "Thimsy emulator_config/devices/<id>/picks.json",
+  "description": "One device's emulator picks, per system and per game (OA-46; LIBRARY-FORMAT.md 4.25; per_device_config_plan.md 2.2). Written only by the device whose set it is; merged per entry with the device's local picks, the card's entry winning a clash. A system is listed only where its pick differs from the device's image default. Thimsy-new file: strict at the top, open per entry, so a newer writer's fields survive. Only the draft-07 keywords devicejson.py validates are used.",
+  "type": "object",
+  "required": ["version"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {"const": 1},
+    "systems": {
+      "type": "object",
+      "description": "Keyed by the system's id in nano/systems.json (nes, psx, n64).",
+      "propertyNames": {"$ref": "#/definitions/system_id"},
+      "additionalProperties": {"$ref": "#/definitions/system_pick"}
+    },
+    "games": {
+      "type": "object",
+      "description": "Keyed by the game key, form (c): the ES-DE folder, '/', the path relative to it, case kept, no './'.",
+      "propertyNames": {"$ref": "#/definitions/game"},
+      "additionalProperties": {"$ref": "#/definitions/game_pick"}
+    }
+  },
+  "definitions": {
+    "system_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"},
+    "game": {"type": "string", "pattern": "^(?!\\.{1,2}/)[^/]+/(?!/)(?!\\.{1,2}/)(?!.*/\\.{1,2}/).+$"},
+    "emu_key": {
+      "type": "string",
+      "pattern": "^(core:[a-z0-9_]+|emu:[a-z0-9][a-z0-9-]*|family:[a-z0-9][a-z0-9.-]*)$"
+    },
+    "system_pick": {
+      "type": "object",
+      "description": "The launch fields' own names, as nano/systems.json and nano_systems.json spell them.",
+      "properties": {
+        "launchType": {"enum": ["libretro-core", "custom-package", "retroarch-intent"]},
+        "coreSo": {"type": "string"},
+        "package": {"type": "string"},
+        "launchArgs": {"type": "string"},
+        "intentTemplate": {"type": "string"},
+        "key": {"$ref": "#/definitions/emu_key", "description": "The portable key of the same pick; informative only."}
+      }
+    },
+    "game_pick": {
+      "type": "object",
+      "description": "nano/emulators.json's fields.",
+      "properties": {
+        "label": {"type": "string", "description": "Nano's display label of the emulator."},
+        "am": {"type": "string", "description": "Android am start arguments; empty on Linux."},
+        "key": {"$ref": "#/definitions/emu_key", "description": "The portable key of the same pick; informative only."}
+      }
+    }
+  }
+}

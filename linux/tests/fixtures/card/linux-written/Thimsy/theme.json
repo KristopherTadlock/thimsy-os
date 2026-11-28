@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "theme": {
+    "home.theme": "3",
+    "esde_theme.set": "colorful-simplified-es-de",
+    "esde_theme.variant": "default",
+    "esde_theme.color_scheme": "colorful-dark",
+    "esde.settings_theme": "minima"
+  }
+}

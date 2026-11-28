@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "id": "android-b41e07c2d9a35f18",
+  "platform": "android",
+  "model": "anbernic-rg-cube",
+  "name": "Anbernic RG Cube",
+  "source": "random",
+  "thimsy": "0.2",
+  "first": "2026-12-02",
+  "last": "2026-12-02"
+}

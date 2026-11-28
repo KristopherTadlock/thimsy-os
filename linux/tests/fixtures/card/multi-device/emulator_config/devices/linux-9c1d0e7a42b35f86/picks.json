@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "games": {
+    "psx/Crash Bandicoot (USA).chd": {
+      "label": "Beetle PSX",
+      "am": "",
+      "key": "core:mednafen_psx"
+    }
+  }
+}
