@@ -51,6 +51,8 @@ Replace `sdCardRoot` / `sdIsSlot` / `emuSdSlotCard` with a drive list (`NanoDriv
 The label comes from `/dev/block/vold/public:M,m` (FAT/exFAT volume label), read once per mount. The kind comes from the sysfs block path (`/mmc` or `/usb`). The list refreshes on the existing one-second storage tick, plus the mount watcher.
 
 ### 2. Two drive settings, with internal storage as the fallback
+
+> **Superseded in part (2026-11-27, `docs/linux/DECISIONS.md` OA-49, OA-52, OA-53).** Gamelists, collections and media live on the drive only, with no device mirror (OA-49), so option A's internal copy of `gamelist.xml`, collections and ES-DE settings is dropped: with the drive out, ES-DE uses the internal store's own files, never a copy of the drive's. Saves, save states, BIOS and emulated system storage are shared storage with no mirror either (OA-52, OA-53), so the fallback covers emulator settings files only, and an emulator whose shared storage is on the removed drive does not start until the drive is back (`per_device_config_plan.md` §2.7 and its question 20). Lines below that this changes are marked *(superseded)*.
 Two settings under **Settings > Storage**:
 - **ES-DE Drive** (`persist.gammaos.nano.storage.esde_drive`)
 - **Emulator Settings Drive** (`persist.gammaos.nano.storage.emu_drive`)
@@ -62,8 +64,8 @@ Each holds a volume id, or `internal`. Each row lists Internal Storage and every
   - If the drive has none yet, Nano asks: **Copy from <current location>** (the move rules: copy without overwriting, the drive wins, the leftovers prompt) or **Start Empty**.
   - Re-pointing goes through `fileJobRelocate` with nothing to copy, which rewrites the emulators' paths, the SAF grants and the symlinks.
 - **The drive is removed:** that setting falls back to internal storage within the existing 10-s grace.
-  - ES-DE reads `/sdcard/ES-DE` again.
-  - The emulators are re-pointed to their internal settings (see section 3).
+  - ES-DE reads `/sdcard/ES-DE` again *(superseded, OA-49: the internal store's own files, not a mirror of the drive's)*.
+  - The emulators are re-pointed to their internal settings (see section 3) *(superseded, OA-52, OA-53: settings only; an emulator with shared storage on the drive waits for it)*.
   - A banner says "<drive> was removed: ES-DE / emulator settings are on internal storage now".
   - The saved choice stays: when the same drive (same volume id) comes back, both settings return to it, with a banner.
   - A different drive inserted meanwhile is never adopted automatically. It shows up in the two rows for the user to choose.
@@ -72,7 +74,7 @@ Each holds a volume id, or `internal`. Each row lists Internal Storage and every
 ### What the internal fallback contains (decision needed)
 While a drive holds the settings, internal storage has either nothing (the move deleted the internal copies) or an old copy. Two options:
 - **A. Mirror (recommended):** Nano keeps an internal copy in step with the drive.
-  - ES-DE: `gamelist.xml`, collections and settings, not the media.
+  - ES-DE: `gamelist.xml`, collections and settings, not the media *(superseded, OA-49: no mirror of library data; this line is dropped)*.
   - Emulators: the settings files `NanoEmuSync` already tracks, not saves or large data.
   - It is updated after each sync, so a fallback picks up where the drive left off.
   - Changes made on internal storage while the drive was out are synced back when it returns, with the drive winning clashes as in `emusync::decide`.
@@ -81,7 +83,7 @@ While a drive holds the settings, internal storage has either nothing (the move 
 ### 3. Emulator settings on any drive
 - **Adoption and sync** use the Emulator Settings Drive, whatever its kind. `emuSdSlotCard()` becomes `emuSettingsDrive()`, with the same callers.
 - **The sync base** (`/data/system/nano_emu_sync.txt`) is already keyed by volume id, so each drive keeps its own history.
-- **`repoint()`** only ever retargets to the chosen drive or to internal storage, never to "any present drive". On removal it re-points the emulators that named the drive's `emulator_config` to their internal locations.
+- **`repoint()`** only ever retargets to the chosen drive or to internal storage, never to "any present drive". On removal it re-points the emulators that named the drive's `emulator_config` to their internal locations *(superseded, OA-52, OA-53: their settings only; shared storage is never re-pointed to an internal copy)*.
 - **The leftover mixed state** (emulators pointed at USB, `emu_sd=1`, nothing adopted) becomes Emulator Settings Drive = that USB drive the first time this build runs.
 - **`persist.gammaos.nano.emu_sd` and `emu_sd_card`** migrate into `emu_drive`.
 
@@ -112,7 +114,7 @@ While a drive holds the settings, internal storage has either nothing (the move 
 - **Hard-coded ids in about 12 emulator configs, the SAF grants and the Dolphin/hakuX symlinks:** every change of drive goes through `fileJobRelocate`, never a property flip.
 
 ## Questions for the user
-1. The internal fallback: A (mirror, recommended) or B (plain)? See section 2.
+1. The internal fallback: A (mirror, recommended) or B (plain)? See section 2. *(Narrowed by OA-49, OA-52, OA-53: the choice now covers emulator settings files only.)*
 2. When the drive that was removed comes back, should the settings return to it automatically (as designed), or stay on internal storage until the user chooses it again?
 
 ## Tests
