@@ -17329,10 +17329,10 @@ index 00000000000..67e40b60d64
 +}  // namespace android
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoEmuSync.cpp b/frameworks/base/cmds/gammaos-nano/NanoEmuSync.cpp
 new file mode 100644
-index 00000000000..f64c2819b09
+index 00000000000..5b1f07e8461
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/NanoEmuSync.cpp
-@@ -0,0 +1,217 @@
+@@ -0,0 +1,286 @@
 +// GammaOS Nano: emulator settings in app-private folders, kept in step with the microSD card.
 +//
 +// Move Emulator Files to microSD points each emulator at its folder on the card where it has a
@@ -17345,6 +17345,9 @@ index 00000000000..f64c2819b09
 +// other side (a file deleted on one side is deleted on the other); changed on both, or never synced
 +// on this card (a reinstall, another card), the card's copy wins. So the card is the master: a file
 +// edited on it is what the emulator gets, and a reinstalled Thimsy gets its settings back from it.
++// ScummVM's scummvm.ini holds your games too: when the card's copy wins over a ScummVM copy that
++// changed as well (or was never synced on this card, and is not another card's), the games only
++// ScummVM's copy has are kept.
 +// What looks like a mass deletion (an emulator installed again, a card folder deleted or unreadable)
 +// is taken as never synced, so what is left is copied back rather than deleted; an app copy another
 +// card's sync wrote, unchanged since, gives way to this card's.
@@ -17361,6 +17364,7 @@ index 00000000000..f64c2819b09
 +#include <cctype>
 +#include <cstdlib>
 +#include <cstring>
++#include <set>
 +
 +namespace android {
 +namespace emusync {
@@ -17374,7 +17378,7 @@ index 00000000000..f64c2819b09
 +        {"dolphin", "org.dolphinemu.dolphinemu", false, "shared_prefs", {}},
 +        {"armsx2", "com.armsx2", false, "shared_prefs", {}},
 +        {"scummvm", "org.scummvm.scummvm", false, "shared_prefs", {}},
-+        {"scummvm", "org.scummvm.scummvm", false, "files/scummvm.ini", {}},   // settings, games, key maps
++        {"scummvm", "org.scummvm.scummvm", false, "files/scummvm.ini", {}, false, true},   // settings, games, key maps
 +        {"vita3k", "org.vita3k.emulator", false, "shared_prefs", {}},
 +        {"vita3k", "org.vita3k.emulator", true, "config.yml", {}},
 +        {"azahar", "org.azahar_emu.azahar", false, "shared_prefs", {}},   // its Android settings and button maps
@@ -17464,13 +17468,12 @@ index 00000000000..f64c2819b09
 +static bool isHex(char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'); }
 +
 +bool isVolumeId(const std::string& s) {
-+    if (s.size() == 9) {
-+        for (size_t i = 0; i < 9; i++)
-+            if (i == 4 ? s[i] != '-' : !isHex(s[i])) return false;
-+        return true;
-+    }
-+    if (s.size() != 32) return false;
-+    for (char c : s) if (!isHex(c)) return false;
++    // Where each '-' goes: XXXX-XXXX, or a UUID's 8-4-4-4-12 (the Cube's card); 32 hex digits have none.
++    static const char kShort[] = "xxxx-xxxx", kUuid[] = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx";
++    const char* form = s.size() == 9 ? kShort : s.size() == 36 ? kUuid : nullptr;
++    if (!form && s.size() != 32) return false;
++    for (size_t i = 0; i < s.size(); i++)
++        if ((form && form[i] == '-') ? s[i] != '-' : !isHex(s[i])) return false;
 +    return true;
 +}
 +
@@ -17483,7 +17486,7 @@ index 00000000000..f64c2819b09
 +                           (at >= 3 && text[at - 3] == '%' && text[at - 2] == '2' && (text[at - 1] == 'F' || text[at - 1] == 'f'));
 +        if (!slash || !isHex(text[at])) continue;
 +        size_t end = at;
-+        while (end < text.size() && (isHex(text[end]) || text[end] == '-') && end - at < 32) end++;
++        while (end < text.size() && (isHex(text[end]) || text[end] == '-') && end - at < 36) end++;
 +        const std::string vol = text.substr(at, end - at);
 +        if (!isVolumeId(vol) || vol == id) continue;
 +        bool follows = false;
@@ -17531,6 +17534,72 @@ index 00000000000..f64c2819b09
 +    return out;
 +}
 +
++namespace {
++
++// A section of an ini file: its name and where it is, from the comments above its [name] line to
++// the next one's.
++struct IniSection {
++    std::string name;
++    size_t begin, end;
++};
++
++// The sections as ScummVM reads them: a line that starts with '[' (after a BOM, on the first line)
++// names one, up to the first ']'. The comment lines (#, ; or //) since the last setting are the
++// section's own, as ScummVM keeps them: they go with it.
++std::vector<IniSection> iniSections(const std::string& t) {
++    std::vector<IniSection> out;
++    size_t comments = std::string::npos;   // where the comments above the next line start
++    for (size_t p = 0; p < t.size();) {
++        const size_t nl = t.find('\n', p), next = nl == std::string::npos ? t.size() : nl + 1;
++        const size_t s = p == 0 && t.compare(0, 3, "\xEF\xBB\xBF") == 0 ? 3 : p;
++        const size_t close = s < next && t[s] == '[' ? t.find(']', s) : std::string::npos;
++        size_t c = s;
++        while (c < next && (t[c] == ' ' || t[c] == '\t' || t[c] == '\r' || t[c] == '\n')) c++;
++        if (close != std::string::npos && close < next) {
++            const size_t begin = comments == std::string::npos ? s : comments;
++            if (!out.empty()) out.back().end = begin;
++            out.push_back({t.substr(s + 1, close - s - 1), begin, t.size()});
++            comments = std::string::npos;
++        } else if (c < next && (t[c] == '#' || t[c] == ';' || t.compare(c, 2, "//") == 0)) {
++            if (comments == std::string::npos) comments = s;
++        } else if (c < next) {
++            comments = std::string::npos;   // a setting: the comments above it are its own
++        }
++        p = next;
++    }
++    return out;
++}
++
++std::string lowerAscii(std::string s) {
++    for (char& c : s) c = (char)tolower((unsigned char)c);
++    return s;
++}
++
++}  // namespace
++
++std::string mergeGames(const std::string& card, const std::string& app) {
++    // ScummVM's own sections (its settings, key maps, cloud saves; __ ones are never saved): not games.
++    static const char* const kOwn[] = {"scummvm", "keymapper", "cloud"};
++    std::set<std::string> have;
++    for (const auto& s : iniSections(card)) have.insert(lowerAscii(s.name));
++    std::string out = card;
++    const char* eol = card.find("\r\n") != std::string::npos ? "\r\n" : "\n";
++    for (const auto& s : iniSections(app)) {
++        const std::string n = lowerAscii(s.name);
++        if (n.empty() || n.compare(0, 2, "__") == 0
++            || std::any_of(std::begin(kOwn), std::end(kOwn), [&](const char* o) { return n == o; })
++            || !have.insert(n).second)
++            continue;
++        if (!out.empty() && out.back() != '\n') out += eol;
++        out.append(app, s.begin, s.end - s.begin);
++    }
++    return out;
++}
++
++bool keepsAppGames(const Item& it, bool haveBase, int64_t baseApp, int64_t app, bool fromOtherCard) {
++    return it.games && app >= 0 && !fromOtherCard && (!haveBase || app != baseApp);
++}
++
 +std::vector<size_t> unpackedTogether(const std::vector<int64_t>& mtimes, size_t minCount) {
 +    std::map<int64_t, size_t> perMinute;
 +    for (int64_t t : mtimes) perMinute[t / 60]++;
@@ -17552,10 +17621,10 @@ index 00000000000..f64c2819b09
 +}  // namespace android
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoEmuSync.h b/frameworks/base/cmds/gammaos-nano/NanoEmuSync.h
 new file mode 100644
-index 00000000000..a20aafdaa10
+index 00000000000..98b3ea8893c
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/NanoEmuSync.h
-@@ -0,0 +1,74 @@
+@@ -0,0 +1,88 @@
 +// The emulator settings that live in an app's private folder (Android preferences, button maps,
 +// ScummVM's scummvm.ini, Vita3K's config.yml, RetroArch's controller profiles), kept in step with a
 +// copy on the microSD card (NanoEmuSync.cpp has why and how). No Android code: host tested.
@@ -17580,6 +17649,7 @@ index 00000000000..a20aafdaa10
 +    const char* rel;
 +    std::vector<std::string> skip;
 +    bool many = false;   // many files: not checked just before the emulator starts (that waits for it)
++    bool games = false;  // ScummVM's scummvm.ini: a card win keeps the games only the app's copy has (mergeGames)
 +};
 +const std::vector<Item>& items();
 +
@@ -17610,7 +17680,8 @@ index 00000000000..a20aafdaa10
 +Base baseLoad(const std::string& text);
 +uint64_t hash(const std::string& data);   // never 0
 +
-+// A card volume id as Android names it (XXXX-XXXX, or 32 hex digits).
++// A card volume id as Android names it (XXXX-XXXX, 32 hex digits, or a UUID's 8-4-4-4-12 as the
++// Cube names its card: 00000000-0000-0000-0000-000000000001).
 +bool isVolumeId(const std::string& s);
 +
 +// text with the emulator_config folder of a card that is out (absent(id)) named on the card with id
@@ -17622,6 +17693,18 @@ index 00000000000..a20aafdaa10
 +// The external storage folder grants text names (content://com.android.externalstorage.documents/
 +// tree/<volume>%3A<path>, or ScummVM's /saf/<volume>%3A<path>): {volume, path}, path decoded.
 +std::vector<std::pair<std::string, std::string>> treeUris(const std::string& text);
++
++// scummvm.ini as it goes into ScummVM when the card's copy wins over a ScummVM copy that changed too
++// (or was never synced on this card): the card's file, then each game section only app has, as app
++// has it. ScummVM's own sections ([scummvm], [keymapper], [cloud]) are the card's alone. Section names
++// compare ignoring case, as ScummVM's do. So a game added in ScummVM is not lost to the card's copy.
++std::string mergeGames(const std::string& card, const std::string& app);
++
++// Whether the card's copy of it, winning (Act::ToApp), is merged with the app's (mergeGames): for
++// scummvm.ini, when the app's copy (app, its state) changed since the last sync (baseApp) or was
++// never synced on this card. Not for a copy another card's sync wrote, unchanged since
++// (fromOtherCard): its games are that card's, and it gives way to this card's whole.
++bool keepsAppGames(const Item& it, bool haveBase, int64_t baseApp, int64_t app, bool fromOtherCard);
 +
 +// The files of a folder an app filled from its own package in one go (RetroArch's controller
 +// profiles, hundreds unpacked within a minute): those of the minute (and the next) holding at least
@@ -22147,10 +22230,10 @@ index 00000000000..e78fee47847
 +}  // namespace android
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoHakuxSetup.cpp b/frameworks/base/cmds/gammaos-nano/NanoHakuxSetup.cpp
 new file mode 100644
-index 00000000000..4b2315ef4e2
+index 00000000000..99b513f4132
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/NanoHakuxSetup.cpp
-@@ -0,0 +1,352 @@
+@@ -0,0 +1,350 @@
 +/*
 + * Copyright (C) 2026 The Thimsy OS Project
 + *
@@ -22242,10 +22325,8 @@ index 00000000000..4b2315ef4e2
 +    if (sl == std::string::npos || strcasecmp(rest.substr(0, sl).c_str(), "roms") != 0) return false;
 +    const std::string name = rest.substr(sl + 1);
 +    if (!isFolderName(name)) return false;
-+    const Folder f{volume, "ROMs/" + name};
-+    // "<sequence>|uri_revoke|<package>|<volume>|<rel>" in a PROPERTY_VALUE_MAX (92) property.
-+    if (strlen(kPkg) + f.volume.size() + f.rel.size() + 2 + 25 >= 92) return false;
-+    *out = f;
++    // Any length: a grant too long for the command property goes in a file (sdUriCommand).
++    *out = Folder{volume, "ROMs/" + name};
 +    return true;
 +}
 +
@@ -22505,10 +22586,10 @@ index 00000000000..4b2315ef4e2
 +}  // namespace android
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoHakuxSetup.h b/frameworks/base/cmds/gammaos-nano/NanoHakuxSetup.h
 new file mode 100644
-index 00000000000..f44dfbeb4e3
+index 00000000000..2c7d41137b4
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/NanoHakuxSetup.h
-@@ -0,0 +1,117 @@
+@@ -0,0 +1,115 @@
 +/*
 + * Copyright (C) 2026 The Thimsy OS Project
 + *
@@ -22556,9 +22637,7 @@ index 00000000000..f44dfbeb4e3
 +};
 +
 +// A ROM folder path as the scanner lists it (/data/media/0, /sdcard, /storage/emulated/0,
-+// /storage/<uuid> or /mnt/media_rw/<uuid>, then ROMs in any case and one folder). False for any other,
-+// and for one whose grant is too long for the property it goes to system_server in (sdUriCommand), so
-+// a long folder name leaves only that folder out.
++// /storage/<uuid> or /mnt/media_rw/<uuid>, then ROMs in any case and one folder). False for any other.
 +bool folderOf(const std::string& path, Folder* out);
 +// As Uri.toString() writes DocumentsContract.buildTreeDocumentUri's: the string hakuX compares with
 +// its persisted grants. uriFolder reads one back (false: not one of Thimsy's kind).
@@ -41311,7 +41390,7 @@ index d1b72700c49..e4210134101 100644
 +
  } // namespace android
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoMenuPS3Folder.cpp b/frameworks/base/cmds/gammaos-nano/NanoMenuPS3Folder.cpp
-index b3221c1d5d6..e65ab3776bb 100644
+index b3221c1d5d6..2cafee88636 100644
 --- a/frameworks/base/cmds/gammaos-nano/NanoMenuPS3Folder.cpp
 +++ b/frameworks/base/cmds/gammaos-nano/NanoMenuPS3Folder.cpp
 @@ -14,22 +14,43 @@
@@ -41500,15 +41579,17 @@ index b3221c1d5d6..e65ab3776bb 100644
      saveSystemsConfig();
      gsRefreshStackLevels();
      if (!mPs3Stack.empty() && mPs3Stack.back().screenKind == GS_FOLDER)
-@@ -391,6 +471,20 @@ static bool isStorageRoot(const std::string& p) {
+@@ -391,6 +471,22 @@ static bool isStorageRoot(const std::string& p) {
      return false;
  }
  
-+// A folder as the browser names it: a storage root as in the roots list, else its own name.
-+static std::string folderBrowserName(const std::string& p) {
++// A folder as the browser names it: a storage root as in the roots list, else its own name. card:
++// the microSD slot's card (NanoMenu::emuSdSlotCard; a USB drive is not one).
++static std::string folderBrowserName(const std::string& p, const std::string& card) {
 +    if (p.empty()) return trDyn("Storage");
 +    if (p == "/storage/emulated/0") return trDyn("Internal storage");
 +    if (isStorageRoot(p)) {
++        if (p == card) return trDyn("microSD card");   // not its long volume id
 +        const size_t sl = p.find_last_of('/');
 +        const char* fmt = p.compare(0, 12, "/mnt/shares/") == 0 ? trDyn("Share: %s")
 +                          : p.compare(0, 14, "/mnt/media_rw/") == 0 ? trDyn("Removable: %s") : trDyn("SD: %s");
@@ -41521,7 +41602,7 @@ index b3221c1d5d6..e65ab3776bb 100644
  void NanoMenu::buildFolderBrowser(const std::string& path, Ps3Level& out) {
      out.items.clear(); out.sel = 0; out.screenKind = GS_FOLDERBROWSE;
      mGsFolderPath = path;
-@@ -406,7 +500,7 @@ void NanoMenu::buildFolderBrowser(const std::string& path, Ps3Level& out) {
+@@ -406,7 +502,7 @@ void NanoMenu::buildFolderBrowser(const std::string& path, Ps3Level& out) {
          // #90 DraStic data-folder picker (target 5): offer a reset-to-default at the top of the roots,
          // since the roots pseudo-folder has no "Select This Folder". Selecting it clears the override.
          // Same for the Boxart Folder picker (target 7): "Use Default Folder" moves the art back to internal.
@@ -41530,12 +41611,19 @@ index b3221c1d5d6..e65ab3776bb 100644
              Ps3Item it; it.label = "Use Default Folder"; it.kind = PS3_GS_SELFOLDER; it.payloadStr = "@default";
              it.iconTex = iconTexForIcon(22); it.nmapTex = nmapForIcon(22); it.iconR = it.iconG = it.iconB = 1.0f;
              out.items.push_back(it);
-@@ -425,24 +519,38 @@ void NanoMenu::buildFolderBrowser(const std::string& path, Ps3Level& out) {
+@@ -420,29 +516,45 @@ void NanoMenu::buildFolderBrowser(const std::string& path, Ps3Level& out) {
+         auto isShare = [&](const char* n) {
+             return std::find(shareNames.begin(), shareNames.end(), std::string(n)) != shareNames.end();
+         };
++        const std::string card = emuSdSlotCard();   // named as such, not by its long volume id
+         DIR* d = opendir("/storage");
+         if (d) { struct dirent* e; while ((e = readdir(d)) != nullptr) {
              if (e->d_name[0] == '.') continue;
              if (!strcmp(e->d_name, "emulated") || !strcmp(e->d_name, "self")) continue;
              if (isShare(e->d_name)) continue;
 -            addDir(std::string(trDyn("SD: ")) + e->d_name, std::string("/storage/") + e->d_name);
-+            addDir(folderFmt(trDyn("SD: %s"), e->d_name), std::string("/storage/") + e->d_name);
++            const std::string p = std::string("/storage/") + e->d_name;
++            addDir(p == card ? std::string(trDyn("microSD card")) : folderFmt(trDyn("SD: %s"), e->d_name), p);
          } closedir(d); }
          d = opendir("/mnt/media_rw");
          if (d) { struct dirent* e; while ((e = readdir(d)) != nullptr) {
@@ -41559,7 +41647,7 @@ index b3221c1d5d6..e65ab3776bb 100644
 +    // "Select This Folder", then the subfolders.
 +    std::string parent;
 +    if (!isStorageRoot(path)) { size_t sl = path.rfind('/'); parent = sl == std::string::npos ? "" : path.substr(0, sl); }
-+    addDir(".. " + folderBrowserName(parent), parent);
++    addDir(".. " + folderBrowserName(parent, isStorageRoot(parent) ? emuSdSlotCard() : std::string()), parent);
 +    // Icon-import picker (target 9) also lists selectable image files, so the user can browse to
 +    // their own PNG; it selects a file, so it has no "Select This Folder". It used to share target
 +    // 6 with the Syncthing folder picker, which therefore had no such row: a Syncthing folder could
@@ -41575,7 +41663,7 @@ index b3221c1d5d6..e65ab3776bb 100644
  
      // Subdirectories, from the worker rather than from a blocking opendir+stat here.
      //
-@@ -451,11 +559,6 @@ void NanoMenu::buildFolderBrowser(const std::string& path, Ps3Level& out) {
+@@ -451,11 +563,6 @@ void NanoMenu::buildFolderBrowser(const std::string& path, Ps3Level& out) {
      // which is what let the watchdog abort nano when a folder on an FTP share was opened. The
      // listing is requested once and cached; until it arrives the screen shows "Loading..." and
      // stays fully responsive, so Back still works if the server never answers.
@@ -41587,7 +41675,7 @@ index b3221c1d5d6..e65ab3776bb 100644
      auto isImageName = [](const std::string& n) {
          size_t dot = n.rfind('.');
          if (dot == std::string::npos) return false;
-@@ -482,13 +585,6 @@ void NanoMenu::buildFolderBrowser(const std::string& path, Ps3Level& out) {
+@@ -482,13 +589,6 @@ void NanoMenu::buildFolderBrowser(const std::string& path, Ps3Level& out) {
          it.iconTex = 0; it.nmapTex = 0; it.iconR = it.iconG = it.iconB = 0.55f;
          out.items.push_back(it);
      }
@@ -41601,7 +41689,7 @@ index b3221c1d5d6..e65ab3776bb 100644
  }
  
  // Queue a directory listing for the folder browser. Render thread; never blocks.
-@@ -537,6 +633,7 @@ void NanoMenu::fbRequestListing(const std::string& path) {
+@@ -537,6 +637,7 @@ void NanoMenu::fbRequestListing(const std::string& path) {
                      std::lock_guard<std::mutex> lk(mFbLock);
                      mFbDone.push_back(std::move(r));
                  }
@@ -41609,7 +41697,7 @@ index b3221c1d5d6..e65ab3776bb 100644
              }
          });
      }
-@@ -587,19 +684,37 @@ void NanoMenu::fbStopWorker() {
+@@ -587,19 +688,37 @@ void NanoMenu::fbStopWorker() {
      mFbStarted = false;
  }
  
@@ -41653,7 +41741,7 @@ index b3221c1d5d6..e65ab3776bb 100644
      saveSystemsConfig();
      // Pop the browser, refresh the scan-folders screen + the Game category.
      if (!mPs3Stack.empty() && mPs3Stack.back().screenKind == GS_FOLDERBROWSE) mPs3Stack.pop_back();
-@@ -626,10 +741,479 @@ void NanoMenu::drasticCheatsFolderSelect(const std::string& path) {
+@@ -626,10 +745,479 @@ void NanoMenu::drasticCheatsFolderSelect(const std::string& path) {
      drasticFolderSelect("persist.gammaos.drastic.cheats_dir", "DraStic cheats folder", path);
  }
  
@@ -42134,7 +42222,7 @@ index b3221c1d5d6..e65ab3776bb 100644
          ALOGI("ps3menu: %s reset to default", what);
      } else {
          std::string p = path;
-@@ -637,11 +1221,11 @@ void NanoMenu::drasticFolderSelect(const char* prop, const char* what, const std
+@@ -637,11 +1225,11 @@ void NanoMenu::drasticFolderSelect(const char* prop, const char* what, const std
          struct stat st = {};
          if (stat(p.c_str(), &st) != 0) ::mkdir(p.c_str(), 0775);
          if (stat(p.c_str(), &st) != 0 || !S_ISDIR(st.st_mode) || access(p.c_str(), W_OK) != 0) {
@@ -65651,10 +65739,10 @@ index 00000000000..ec40b141ee0
 +}  // namespace android
 diff --git a/frameworks/base/cmds/gammaos-nano/NanoSdMove.cpp b/frameworks/base/cmds/gammaos-nano/NanoSdMove.cpp
 new file mode 100644
-index 00000000000..f6a6dbd8200
+index 00000000000..2adfb3b4f34
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/NanoSdMove.cpp
-@@ -0,0 +1,2683 @@
+@@ -0,0 +1,2749 @@
 +/*
 + * Copyright (C) 2026 The Thimsy OS Project
 + *
@@ -66697,18 +66785,61 @@ index 00000000000..f6a6dbd8200
 +    return stat(sdCanon(dir).c_str(), &st) == 0 && S_ISDIR(st.st_mode);
 +}
 +
++// An argument too long for the command property goes in this file (NanoUriGrant.argFile), which
++// only root and system can write; the command then names it: "<package>|@<token>".
++static std::string sdUriArgFile(const std::string& token) { return "/data/system/nano_uri_grant_" + token + ".txt"; }
++
++// Argument files a Nano that was stopped mid-command left (each is deleted once answered): those
++// over a minute old, well past the longest wait for an answer, so not one in use.
++static void sdUriArgSweep() {
++    DIR* d = opendir("/data/system");
++    if (!d) return;
++    const time_t now = time(nullptr);
++    while (dirent* e = readdir(d)) {
++        if (strncmp(e->d_name, "nano_uri_grant_", 15) != 0) continue;
++        const std::string p = std::string("/data/system/") + e->d_name;
++        struct stat st;
++        if (lstat(p.c_str(), &st) == 0 && S_ISREG(st.st_mode) && now - st.st_mtime > 60) unlink(p.c_str());
++    }
++    closedir(d);
++}
++
++static bool sdUriArgWrite(const std::string& path, const std::string& arg) {
++    const std::string tmp = path + ".tmp";
++    const int fd = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0644);
++    if (fd < 0) return false;
++    bool ok = write(fd, arg.data(), arg.size()) == (ssize_t)arg.size();
++    ok = fchmod(fd, 0644) == 0 && ok;   // system_server reads it
++    ok = close(fd) == 0 && ok;
++    if (!ok || rename(tmp.c_str(), path.c_str()) != 0) { unlink(tmp.c_str()); return false; }
++    return true;
++}
++
 +// Gives pkg a folder on a volume as if it had been picked through Android, or takes it back (NanoNetBridge).
 +static bool sdUriCommand(const char* verb, const char* pkg, const std::string& volume, const std::string& rel) {
 +    static const char kProp[] = "sys.gammaos.nano.uri_grant";
-+    const std::string arg = std::string(pkg) + "|" + volume + "|" + rel;
-+    if (arg.size() + 25 >= PROPERTY_VALUE_MAX) {   // "<13-digit sequence>|uri_revoke|" ahead of it
-+        ALOGW("sdmove: folder %s for %s too long to send (volume %s)", verb, pkg, volume.c_str());
++    std::string arg = std::string(pkg) + "|" + volume + "|" + rel;
++    if (arg.size() > 4096) {   // NanoUriGrant.ARG_FILE_MAX
++        ALOGW("sdmove: folder %s for %s too long to send", verb, pkg);
 +        return false;
 +    }
 +    // One at a time (the hakuX folders and a move to microSD can overlap): there is one command and
 +    // one answer property.
 +    static std::mutex mu;
 +    std::lock_guard<std::mutex> lock(mu);
++    // "<13-digit sequence>|uri_revoke|" goes ahead of it. Longer (a card with a 36-character volume
++    // id, as on the Cube): in a file of its own, named by a token unique to this process and time.
++    struct ArgFile { std::string path; ~ArgFile() { if (!path.empty()) unlink(path.c_str()); } } argFile;
++    if (arg.size() + 25 >= PROPERTY_VALUE_MAX) {
++        sdUriArgSweep();
++        const std::string token = std::to_string(uptimeMillis()) + std::to_string(getpid());
++        if (!sdUriArgWrite(sdUriArgFile(token), arg)) {
++            ALOGW("sdmove: folder %s for %s: could not write its argument file", verb, pkg);
++            return false;
++        }
++        argFile.path = sdUriArgFile(token);
++        arg = std::string(pkg) + "|@" + token;
++    }
 +    property_set(kProp, "");
 +    for (int attempt = 0; attempt < 2; attempt++) {   // a Wi-Fi command sent meanwhile replaces it unread
 +        if (!nanoNetBridgeCmd(verb, arg)) return false;
@@ -67417,7 +67548,9 @@ index 00000000000..f6a6dbd8200
 +            auto owner = base.find(ownerKey);
 +            // The app's copy came from another card's sync, unchanged since: not this device's change,
 +            // so this card's copy wins as on a card never synced.
-+            if (owner != base.end() && owner->second.hash != cardTag && f.sa >= 0 && owner->second.app == f.sa) haveBase = false;
++            const bool fromOtherCard =
++                owner != base.end() && owner->second.hash != cardTag && f.sa >= 0 && owner->second.app == f.sa;
++            if (fromOtherCard) haveBase = false;
 +            emusync::Act act = emusync::decide(haveBase, haveBase ? b->second.app : -1, haveBase ? b->second.card : -1,
 +                                               f.sa, f.sc, appWins);
 +            if (!haveBase && f.sa >= 0 && f.sc >= 0 && (act == emusync::Act::ToApp || act == emusync::Act::ToCard)) {
@@ -67449,6 +67582,8 @@ index 00000000000..f6a6dbd8200
 +                stopped.insert(it.pkg);
 +            }
 +            bool ok = true;
++            bool merged = false;        // a scummvm.ini with the games only the app's copy had
++            bool cardWritten = false;   // the card's copy too
 +            switch (act) {
 +                case emusync::Act::None: break;
 +                case emusync::Act::ToApp: {
@@ -67457,7 +67592,16 @@ index 00000000000..f6a6dbd8200
 +                    // was pulled out would reset the emulator).
 +                    const bool emptyXml = cardText.empty() && f.c.size() > 4 && f.c.compare(f.c.size() - 4, 4, ".xml") == 0;
 +                    if (!cardRead || sdSyncStamp(f.c) != f.sc || emptyXml) { ok = false; break; }
-+                    const std::string t = emusync::repoint(cardText, cardId, sdVolumeAbsent);
++                    std::string t = emusync::repoint(cardText, cardId, sdVolumeAbsent);
++                    // scummvm.ini over a ScummVM copy that changed too (or was never synced on this card):
++                    // the games only ScummVM's copy has are kept, and go to the card's copy as well.
++                    if (emusync::keepsAppGames(it, haveBase, haveBase ? b->second.app : -1, f.sa, fromOtherCard)) {
++                        std::string appText;
++                        if (!nanobios::appFileRead(f.a, &appText)) { ok = false; break; }
++                        const std::string m = emusync::mergeGames(t, appText);
++                        merged = m != t;
++                        if (merged) t = m;
++                    }
 +                    std::string made;
 +                    // Labelled as the app's at once (a launch may end this process before the sync ends).
 +                    ok = sdAppMkdirs(appRoot, f.a.substr(0, f.a.find_last_of('/')), &made);
@@ -67466,6 +67610,14 @@ index 00000000000..f6a6dbd8200
 +                    if (ok) {
 +                        restoredFiles++;
 +                        sdGrantsFrom(it.pkg, t, cardId, &grants);
++                    }
++                    if (ok && merged) {
++                        ALOGI("emusync: %s %s from the card, with the games only the app's copy had", it.emu, it.rel);
++                        // Else the card's copy lacks them until ScummVM next writes its file.
++                        if (sdSyncStamp(f.c) == f.sc && sdWriteFileSync(f.c, t)) {
++                            cardText = t;
++                            cardWritten = true;
++                        }
 +                    }
 +                    break;
 +                }
@@ -67486,10 +67638,12 @@ index 00000000000..f6a6dbd8200
 +                skipped = true;
 +                continue;   // tried again next time
 +            }
-+            // The side that was read as it was then: a change since is sent next time.
++            // The side that was read as it was then: a change since is sent next time. Merged games
++            // the card's copy did not get: the app's copy counts as changed, so they go there next
++            // time (or are merged again) rather than being lost to a later card edit.
 +            const bool none = act == emusync::Act::None;
-+            const int64_t na = act == emusync::Act::ToCard || none ? f.sa : sdSyncStamp(f.a);
-+            const int64_t nc = act == emusync::Act::ToApp || none ? f.sc : sdSyncStamp(f.c);
++            const int64_t na = act == emusync::Act::ToCard || none || (merged && !cardWritten) ? f.sa : sdSyncStamp(f.a);
++            const int64_t nc = (act == emusync::Act::ToApp && !cardWritten) || none ? f.sc : sdSyncStamp(f.c);
 +            if (na < 0 && nc < 0) {
 +                base.erase(f.key);
 +            } else {
@@ -158196,10 +158350,10 @@ index 00000000000..b285b42d83a
 +}
 diff --git a/frameworks/base/cmds/gammaos-nano/test/unit/NanoEmuSync_test.cpp b/frameworks/base/cmds/gammaos-nano/test/unit/NanoEmuSync_test.cpp
 new file mode 100644
-index 00000000000..929623b1b89
+index 00000000000..de173d6fde7
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/test/unit/NanoEmuSync_test.cpp
-@@ -0,0 +1,146 @@
+@@ -0,0 +1,273 @@
 +#include <gtest/gtest.h>
 +
 +#include <algorithm>
@@ -158291,6 +158445,133 @@ index 00000000000..929623b1b89
 +    EXPECT_FALSE(emusync::isVolumeId("primary"));
 +    EXPECT_FALSE(emusync::isVolumeId("1A2B3C4D"));
 +    EXPECT_FALSE(emusync::isVolumeId("1A2B-3C4G"));
++    // A UUID's 8-4-4-4-12, as the Cube names its card.
++    EXPECT_TRUE(emusync::isVolumeId("00000000-0000-0000-0000-000000000001"));
++    EXPECT_TRUE(emusync::isVolumeId("0a1B2c3D-4e5F-6789-abcd-EF0123456789"));
++    EXPECT_FALSE(emusync::isVolumeId("00000000-0000-0000-0000-00000000000g"));
++    EXPECT_FALSE(emusync::isVolumeId("000000000-000-0000-0000-000000000001"));   // a '-' out of place
++    EXPECT_FALSE(emusync::isVolumeId("00000000-0000-0000-0000-0000000000011"));  // 37 characters
++    EXPECT_FALSE(emusync::isVolumeId("00000000-0000-0000-0000-00000000001"));    // 35
++    EXPECT_FALSE(emusync::isVolumeId("000000000000000000000000000000000001"));   // 36 with no '-'
++    EXPECT_FALSE(emusync::isVolumeId("00000000-0000-0000-0000-0000000000-1"));
++}
++
++TEST(EmuSync, TheCubesCardIdIsRepointed) {
++    const std::string cube = "00000000-0000-0000-0000-000000000001", other = "00000000-0000-0000-0000-000000000002";
++    auto out = [&](const std::string& v) { return v != other; };   // the other one is in
++    // Settings from the Cube's card at index 1, now at index 3 (a USB drive came first).
++    EXPECT_EQ(emusync::repoint("<string name=\"dir\">/storage/" + cube + "/emulator_config/m64plus</string>",
++                               "00000000-0000-0000-0000-000000000003", out),
++              "<string name=\"dir\">/storage/00000000-0000-0000-0000-000000000003/emulator_config/m64plus</string>");
++    EXPECT_EQ(emusync::repoint("savepath=/mnt/media_rw/" + cube + "/emulator_config/scummvm/saves\n", "AAAA-BBBB", out),
++              "savepath=/mnt/media_rw/AAAA-BBBB/emulator_config/scummvm/saves\n");
++    EXPECT_EQ(emusync::repoint("content://com.android.externalstorage.documents/tree/" + cube + "%3Aemulator_config%2Fazahar",
++                               "AAAA-BBBB", out),
++              "content://com.android.externalstorage.documents/tree/AAAA-BBBB%3Aemulator_config%2Fazahar");
++    EXPECT_EQ(emusync::repoint("tree%2F" + cube + "%253Aemulator_config", "AAAA-BBBB", out),
++              "tree%2FAAAA-BBBB%253Aemulator_config");
++    EXPECT_EQ(emusync::repoint("/storage/1111-2222/emulator_config/x", cube, out), "/storage/" + cube + "/emulator_config/x");
++    // Left as they are: the card that is in, this card, other folders.
++    EXPECT_EQ(emusync::repoint("/storage/" + other + "/emulator_config/x", cube, out), "/storage/" + other + "/emulator_config/x");
++    EXPECT_EQ(emusync::repoint("/storage/" + cube + "/emulator_config/x", cube, out), "/storage/" + cube + "/emulator_config/x");
++    EXPECT_EQ(emusync::repoint("/storage/" + cube + "/ROMs/psx", "AAAA-BBBB", out), "/storage/" + cube + "/ROMs/psx");
++    EXPECT_EQ(emusync::repoint("/storage/" + cube + "0/emulator_config/x", "AAAA-BBBB", out),
++              "/storage/" + cube + "0/emulator_config/x");   // 37 characters: not a volume id
++}
++
++TEST(EmuSync, OnlyScummvmIniMergesGames) {
++    size_t games = 0;
++    for (const auto& it : emusync::items()) {
++        if (!it.games) continue;
++        games++;
++        EXPECT_EQ(std::string(it.emu) + "/" + it.rel, "scummvm/files/scummvm.ini");
++    }
++    EXPECT_EQ(games, 1u);
++}
++
++TEST(EmuSync, ACardWinKeepsTheGamesOnlyScummvmHas) {
++    const std::string card =
++        "[scummvm]\nversioninfo=2026.3.0\ngfx_mode=opengl\n\n"
++        "[keymapper]\nkeymap_global_MENU=JOY_START\n\n"
++        "[sky]\ndescription=Beneath a Steel Sky (CD/DOS/English)\ngameid=sky\n"
++        "path=/storage/emulated/0/ROMs/scummvm/Beneath a Steel Sky\n\n";
++    const std::string app =
++        "[scummvm]\nversioninfo=2026.3.0\ngfx_mode=surfacesdl\nlastselectedgame=tentacle\n\n"
++        "[keymapper]\nkeymap_global_MENU=JOY_BACK\n\n"
++        "[cloud]\nstorage_current=1\n\n"
++        "[tentacle]\ndescription=Day of the Tentacle (CD/DOS/English)\nengineid=scumm\ngameid=tentacle\n"
++        "path=/storage/00000000-0000-0000-0000-000000000001/Roms/scummvm/Day Of The Tentacle (DOS CD)\n\n"
++        "[SKY]\ndescription=Beneath a Steel Sky, ScummVM's copy\ngameid=sky\n\n"
++        "[monkey1]\ngameid=monkey1\npath=/storage/emulated/0/ROMs/scummvm/Monkey Island";
++    // The card's file as it is (its settings, key maps and shared games), then the games only
++    // ScummVM's copy has, as that copy has them; [SKY] is the card's [sky] (names ignore case).
++    EXPECT_EQ(emusync::mergeGames(card, app),
++              card +
++                  "[tentacle]\ndescription=Day of the Tentacle (CD/DOS/English)\nengineid=scumm\ngameid=tentacle\n"
++                  "path=/storage/00000000-0000-0000-0000-000000000001/Roms/scummvm/Day Of The Tentacle (DOS CD)\n\n"
++                  "[monkey1]\ngameid=monkey1\npath=/storage/emulated/0/ROMs/scummvm/Monkey Island");
++    // Nothing only ScummVM has: the card's file, byte for byte.
++    EXPECT_EQ(emusync::mergeGames(card, card), card);
++    EXPECT_EQ(emusync::mergeGames(card, ""), card);
++    EXPECT_EQ(emusync::mergeGames(card, "[scummvm]\nx=1\n[__TRANSIENT]\ny=2\n[Cloud]\nz=3\n"), card);
++}
++
++TEST(EmuSync, MergedGamesKeepTheCardsLineEnds) {
++    // A card file edited on a PC: CRLF, a BOM and no last line end; ScummVM's game goes after a CRLF.
++    const std::string card = "\xEF\xBB\xBF[scummvm]\r\nversioninfo=2026.3.0\r\n\r\n[sky]\r\ngameid=sky";
++    const std::string app = "[sky]\ngameid=sky\n\n[dig]\ngameid=dig\n\n";
++    EXPECT_EQ(emusync::mergeGames(card, app), card + "\r\n[dig]\ngameid=dig\n\n");
++    // A BOM on ScummVM's copy is not carried over; the card's [scummvm] behind a BOM is still seen.
++    EXPECT_EQ(emusync::mergeGames("[sky]\n", "\xEF\xBB\xBF[dig]\ngameid=dig\n"), "[sky]\n[dig]\ngameid=dig\n");
++    EXPECT_EQ(emusync::mergeGames(card, "[scummvm]\nx=1\n"), card);
++    // An empty card file (none on the card yet, or no sections) takes ScummVM's games alone.
++    EXPECT_EQ(emusync::mergeGames("", "[scummvm]\nx=1\n\n[dig]\ngameid=dig\n"), "[dig]\ngameid=dig\n");
++    // Not a section: a line that only has a '[' later on, or a '[' with no ']'.
++    EXPECT_EQ(emusync::mergeGames("[sky]\n", " [dig]\nkey=[a]\n[broken\n"), "[sky]\n");
++}
++
++TEST(EmuSync, CommentsGoWithTheSectionBelowThem) {
++    // ScummVM keeps a comment with the section (or setting) under it: an app-only game takes its
++    // own comments along, and a shared section's comments stay out.
++    const std::string card = "[scummvm]\na=1\n\n[sky]\ngameid=sky\n";
++    const std::string app =
++        "[scummvm]\na=1\n\n# my note\n; and more\n\n[dig]\ngameid=dig\n# about sky\n[sky]\ngameid=sky\n"
++        "[monkey1]\n# about the path\npath=/x\n// last\n";
++    EXPECT_EQ(emusync::mergeGames(card, app),
++              card + "# my note\n; and more\n\n[dig]\ngameid=dig\n[monkey1]\n# about the path\npath=/x\n// last\n");
++    // Comments at the top of ScummVM's copy, behind a BOM, go with its first section.
++    EXPECT_EQ(emusync::mergeGames("[sky]\n", "\xEF\xBB\xBF# top\n[dig]\ngameid=dig\n"), "[sky]\n# top\n[dig]\ngameid=dig\n");
++}
++
++TEST(EmuSync, OnlyThisDevicesScummvmCopyKeepsItsGames) {
++    const emusync::Item* ini = nullptr;
++    const emusync::Item* prefs = nullptr;
++    for (const auto& it : emusync::items()) {
++        if (it.games) ini = &it;
++        else if (std::string(it.emu) == "scummvm") prefs = &it;
++    }
++    ASSERT_TRUE(ini && prefs);
++    EXPECT_TRUE(emusync::keepsAppGames(*ini, true, 100, 150, false));    // changed in ScummVM too
++    EXPECT_TRUE(emusync::keepsAppGames(*ini, false, -1, 150, false));    // never synced on this card
++    EXPECT_FALSE(emusync::keepsAppGames(*ini, true, 100, 100, false));   // ScummVM's copy as synced
++    EXPECT_FALSE(emusync::keepsAppGames(*ini, false, -1, -1, false));    // none in ScummVM
++    EXPECT_FALSE(emusync::keepsAppGames(*prefs, false, -1, 150, false)); // not scummvm.ini
++    // Another card's sync wrote ScummVM's copy, unchanged since: its games are that card's (their
++    // folders are on it), so this card's copy goes in whole.
++    EXPECT_FALSE(emusync::keepsAppGames(*ini, false, -1, 150, true));
++}
++
++TEST(EmuSync, MergedGamesTheCardMissedGoThereNextTime) {
++    // The merge went into ScummVM (its copy now 160) but not to the card (still 200). Kept as the app
++    // copy before it (150): ScummVM's copy reads as changed, so it goes to the card next time ...
++    EXPECT_EQ(emusync::decide(true, 150, 200, 160, 200), Act::ToCard);
++    // ... or, the card edited meanwhile, the card wins over a changed ScummVM copy: merged again.
++    EXPECT_EQ(emusync::decide(true, 150, 200, 160, 300), Act::ToApp);
++    const emusync::Item* ini = nullptr;
++    for (const auto& it : emusync::items())
++        if (it.games) ini = &it;
++    ASSERT_TRUE(ini);
++    EXPECT_TRUE(emusync::keepsAppGames(*ini, true, 150, 160, false));
 +}
 +
 +TEST(EmuSync, SettingsNamingACardThatIsOutNameThisOne) {
@@ -159055,10 +159336,10 @@ index 00000000000..72d6a784a6d
 +}
 diff --git a/frameworks/base/cmds/gammaos-nano/test/unit/NanoHakuxSetup_test.cpp b/frameworks/base/cmds/gammaos-nano/test/unit/NanoHakuxSetup_test.cpp
 new file mode 100644
-index 00000000000..73158c9b2b4
+index 00000000000..1920ea70a8f
 --- /dev/null
 +++ b/frameworks/base/cmds/gammaos-nano/test/unit/NanoHakuxSetup_test.cpp
-@@ -0,0 +1,476 @@
+@@ -0,0 +1,473 @@
 +// hakuX's games folders kept to Game Settings (NanoHakuxSetup): which folders the Xbox system's scan
 +// candidates make, what hakuX's settings become, and the whole sync on a scratch root.
 +
@@ -159172,19 +159453,16 @@ index 00000000000..73158c9b2b4
 +    EXPECT_FALSE(folderOf(p, &f)) << p;
 +}
 +
-+TEST(HakuxSetup, FolderTooLongToGrantIsLeftOut) {
++TEST(HakuxSetup, LongFolderNamesAndTheCubesCardAreGiven) {
++  // A grant too long for the command property goes in a file (sdUriCommand): none is left out.
 +  Folder f;
-+  const std::string n32(32, 'a'), n33(33, 'a'), n30(30, 'b'), n31(31, 'b');
-+  EXPECT_TRUE(folderOf("/data/media/0/ROMs/" + n32, &f));
-+  EXPECT_FALSE(folderOf("/data/media/0/ROMs/" + n33, &f));
-+  EXPECT_TRUE(folderOf("/storage/1A2B-3C4D/ROMs/" + n30, &f));
-+  EXPECT_FALSE(folderOf("/storage/1A2B-3C4D/ROMs/" + n31, &f));
-+  // Only that folder: the others are still given.
-+  Drives d;
-+  Settings s;
-+  s.candidates = {"/data/media/0/ROMs/Microsoft_Xbox_Original_Games_Collection", "/data/media/0/ROMs/xbox"};
-+  d.dirs = {s.candidates[0], s.candidates[1]};
-+  EXPECT_EQ(std::vector<std::string>{kInternal}, uris(resolveFolders(s, {}, d.mounted(), d.exists())));
++  const std::string cube = "00000000-0000-0000-0000-000000000001", n64(64, 'a');
++  ASSERT_TRUE(folderOf("/storage/" + cube + "/ROMs/xbox", &f));
++  EXPECT_EQ((Folder{cube, "ROMs/xbox"}), f);
++  ASSERT_TRUE(folderOf("/mnt/media_rw/" + cube + "/roms/" + n64, &f));
++  EXPECT_EQ((Folder{cube, "ROMs/" + n64}), f);
++  ASSERT_TRUE(folderOf("/data/media/0/ROMs/Microsoft_Xbox_Original_Games_Collection", &f));
++  EXPECT_EQ((Folder{"primary", "ROMs/Microsoft_Xbox_Original_Games_Collection"}), f);
 +}
 +
 +TEST(HakuxSetup, Uris) {
@@ -169578,10 +169856,10 @@ index 09826b52602..d5cd3dbde82 100644
                      displayLayout.getThermalBrightnessThrottlingMapId() == null
                              ? DisplayDeviceConfig.DEFAULT_ID
 diff --git a/frameworks/base/services/core/java/com/android/server/gammaos/NanoNetBridge.java b/frameworks/base/services/core/java/com/android/server/gammaos/NanoNetBridge.java
-index b91d1046e25..f7e40cf0549 100644
+index b91d1046e25..0939d2f77b3 100644
 --- a/frameworks/base/services/core/java/com/android/server/gammaos/NanoNetBridge.java
 +++ b/frameworks/base/services/core/java/com/android/server/gammaos/NanoNetBridge.java
-@@ -31,15 +31,23 @@ import android.content.BroadcastReceiver;
+@@ -31,18 +31,29 @@ import android.content.BroadcastReceiver;
  import android.content.Context;
  import android.content.Intent;
  import android.content.IntentFilter;
@@ -169604,8 +169882,14 @@ index b91d1046e25..f7e40cf0549 100644
 +
  import java.io.File;
  import java.io.FileWriter;
++import java.io.IOException;
  import java.lang.reflect.Method;
-@@ -218,6 +226,40 @@ public final class NanoNetBridge {
++import java.nio.charset.StandardCharsets;
++import java.nio.file.Files;
+ import java.util.ArrayList;
+ import java.util.BitSet;
+ import java.util.Collections;
+@@ -218,6 +229,57 @@ public final class NanoNetBridge {
          }
      };
  
@@ -169614,11 +169898,17 @@ index b91d1046e25..f7e40cf0549 100644
 +    // folders included): uri_grant
 +    // gives the package the folder as if the user had picked it in the system folder picker, for
 +    // apps that only use a folder picked that way; uri_revoke takes it back, with the grants under
-+    // it. The answer goes to URI_GRANT_PROP as "ok|<package>" or "fail|<package>".
++    // it. The answer goes to URI_GRANT_PROP as "ok|<package>" or "fail|<package>". An argument
++    // too long for the command property comes as "<package>|@<token>" (NanoUriGrant.resolve).
 +    private static final String URI_GRANT_PROP = "sys.gammaos.nano.uri_grant";
 +
 +    private void uriGrant(String arg, boolean revoke) {
-+        final String[] grant = NanoUriGrant.parse(arg);
++        // One too long for the command property comes in a file (a card with a 36-character
++        // volume id, as on the Cube).
++        final String file = NanoUriGrant.argFile(arg);
++        final String full = NanoUriGrant.resolve(arg, file != null ? readUriArgFile(file) : null);
++        if (full == null) Slog.w(TAG, "uri_grant: no matching argument file for " + arg);
++        final String[] grant = full == null ? null : NanoUriGrant.parse(full);
 +        boolean ok = false;
 +        if (grant != null) {
 +            final Uri tree = DocumentsContract.buildTreeDocumentUri(
@@ -169643,10 +169933,21 @@ index b91d1046e25..f7e40cf0549 100644
 +        SystemProperties.set(URI_GRANT_PROP, (ok ? "ok|" : "fail|") + arg.split("\\|", -1)[0]);
 +    }
 +
++    /** A uri_grant argument file as text, or null when it is missing, unreadable or too long. */
++    private static String readUriArgFile(String path) {
++        final File f = new File(path);
++        if (f.length() > NanoUriGrant.ARG_FILE_MAX) return null;
++        try {
++            return new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8);
++        } catch (IOException | SecurityException e) {
++            return null;
++        }
++    }
++
      private static long parseSeq(String v) {
          if (v == null || v.isEmpty()) return -1;
          int p = v.indexOf('|');
-@@ -290,6 +332,12 @@ public final class NanoNetBridge {
+@@ -290,6 +352,12 @@ public final class NanoNetBridge {
                      if (parts.length >= 2) btConfirm(parts[0], "accept".equals(parts[1]));
                      break;
                  }
@@ -169729,10 +170030,10 @@ index 1b40fe50ca4..99da89c622d 100644
          if (!base.isEmpty()) {
 diff --git a/frameworks/base/services/core/java/com/android/server/gammaos/NanoUriGrant.java b/frameworks/base/services/core/java/com/android/server/gammaos/NanoUriGrant.java
 new file mode 100644
-index 00000000000..80156380dcc
+index 00000000000..cf757f187b8
 --- /dev/null
 +++ b/frameworks/base/services/core/java/com/android/server/gammaos/NanoUriGrant.java
-@@ -0,0 +1,176 @@
+@@ -0,0 +1,205 @@
 +/*
 + * Copyright (C) 2026 The Thimsy OS Project
 + *
@@ -169779,6 +170080,33 @@ index 00000000000..80156380dcc
 +    };
 +
 +    /**
++     * An argument too long for the command property (PROPERTY_VALUE_MAX, 92 bytes with the sequence
++     * and verb; a card named by a 36-character UUID, as on the Cube) comes in a file Nano writes,
++     * ARG_FILE_PREFIX + &lt;token&gt; + ".txt", the command's argument then being
++     * "&lt;package&gt;|@&lt;token&gt;" (digits). Only root and system can write /data/system.
++     */
++    private static final String ARG_FILE_PREFIX = "/data/system/nano_uri_grant_";
++    /** The longest argument file read, in bytes. */
++    static final int ARG_FILE_MAX = 4096;
++
++    /** The file a command's argument names ("&lt;package&gt;|@&lt;token&gt;"), else null. */
++    static String argFile(String arg) {
++        final String[] p = arg.split("\\|", -1);
++        return p.length == 2 && p[1].matches("@[0-9]{1,24}")
++                ? ARG_FILE_PREFIX + p[1].substring(1) + ".txt" : null;
++    }
++
++    /**
++     * The argument a command gives: arg itself, or for one that names a file (argFile) what that
++     * file holds (fileText, null when it can't be read) when it is for the same package; else null.
++     */
++    static String resolve(String arg, String fileText) {
++        if (argFile(arg) == null) return arg;
++        final String pkg = arg.substring(0, arg.indexOf('|'));
++        return fileText != null && fileText.startsWith(pkg + "|") ? fileText : null;
++    }
++
++    /**
 +     * "&lt;package&gt;|&lt;volume&gt;|&lt;path&gt;" as {package, external storage document id},
 +     * or null for anything but one of APPS and a folder of internal storage ("primary") or of a
 +     * card or drive (its volume uuid) that is not the volume's root or a PROTECTED one; the app's
@@ -169788,7 +170116,9 @@ index 00000000000..80156380dcc
 +    static String[] parse(String arg) {
 +        final String[] p = arg.split("\\|", -1);
 +        if (p.length != 3) return null;
-+        final boolean volume = p[1].equals("primary") || p[1].matches("[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}|[0-9A-Fa-f]{32}");
++        // XXXX-XXXX, 32 hex digits, or a UUID's 8-4-4-4-12 (the Cube's card).
++        final boolean volume = p[1].equals("primary") || p[1].matches("[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}"
++                + "|[0-9A-Fa-f]{32}|[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}");
 +        boolean app = false;
 +        for (String a : APPS) app = app || a.equals(p[0]);
 +        return app && volume && allowedFolder(p[0], p[2]) ? new String[] {p[0], p[1] + ":" + p[2]} : null;

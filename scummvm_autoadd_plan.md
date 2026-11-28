@@ -423,6 +423,13 @@ Phase 1's folder listing could apply with the core too, launching each folder th
 
 B1, B2 and B6 are separate from the ScummVM listing and can ship first (Phase 0).
 
+**Done in build 43 (not yet tested on the device):**
+- B1: an argument too long for the property goes in `/data/system/nano_uri_grant_<token>.txt`. The command then sends `<package>|@<token>` (`sdUriCommand`, `NanoUriGrant.argFile` and `resolve`). Short ones go as before. Files over a minute old (left by a Nano stopped mid-command) are deleted before the next one is written. `NanoUriGrant.parse` takes the 8-4-4-4-12 id. hakuX's card folders have no length limit any more.
+- B2: `isVolumeId` takes 8-4-4-4-12; `repoint()` reads up to 36 characters.
+- B6: `emusync::mergeGames` for the `scummvm.ini` item (`Item::games`), when `emusync::keepsAppGames` says so. The merged file goes to ScummVM and to the card's copy. Every section but `[scummvm]`, `[keymapper]`, `[cloud]` and `__*` counts as a game, and a section's comments go with it. A ScummVM copy another card's sync wrote, unchanged since, is not merged: its games are that card's. If the card's copy could not be written, the next sync sends the merged file to the card (or merges again).
+- B5: the folder browser names the microSD slot's card (`emuSdSlotCard()`) "microSD card". A USB drive keeps "SD: <id>", also with no card in.
+- Host tests: `NanoEmuSync_test.cpp` (run by `tests/unit/test_nano_units.py`), `tests/unit/test_nano_uri_grant.py`.
+
 ---
 
 ## 15. Host unit tests
@@ -477,6 +484,13 @@ Respect the Cube hazards (no dwc3 debugfs, no dispc1 sysfs, no stop/start). Step
 - Clear ScummVM's data, then launch an unregistered folder: Nano's minimal file works and ScummVM keeps its defaults.
 
 **After Phase 0 fixes:** Move Emulator Files to microSD for Azahar succeeds, and the "too long to send" line is gone from the log. Both sides of `scummvm.ini` edited: your sections survive the sync.
+1. With the card in, run Move Emulator Files to microSD. Azahar and SeedlessDS move. `adb logcat -d | grep -E "uri_grant|too long"` shows `uri_grant org.azahar_emu.azahar content://...00000000-0000-0000-0000-000000000001%3Aemulator_config%2Fazahar: true` (and SeedlessDS's), and no "too long" or "no matching argument file" line.
+2. `adb shell su -c 'ls /data/system/ | grep nano_uri_grant_'` prints nothing (Nano deletes each file after the answer, and any left over a minute old before the next one).
+3. Open Azahar and SeedlessDS: no folder picker; their files are on the card.
+4. Put an Xbox game in the card's `ROMs/xbox`. hakuX lists the card folder.
+5. Game Settings, Add Folder: the roots list shows "microSD card", not "SD: 00000000-...". Open it: the ".." row says ".. microSD card". With a USB drive in, it is listed as "SD: <id>".
+6. Back up both `scummvm.ini` copies (step 0.1). Add a game in ScummVM and close it. Then add a section on the card's copy (on a PC, or `adb push`). Start ScummVM from Nano (Nano syncs just before it starts). ScummVM lists both games, and both copies have both. The log has "emusync: scummvm files/scummvm.ini from the card, with the games only the app's copy had".
+7. Optional (B2): with a USB drive mounted before the card (card at another index), an emulator whose settings name the card's `emulator_config` still starts with its settings.
 
 ---
 

@@ -3,17 +3,21 @@
 hakuX, Azahar, SeedlessDS, WatermelonDS and ScummVM may be given any folder of internal storage or a card
 or drive, but never a volume's root, Android/ (other apps' files; an app's own Android/data, media and obb folders
 are its to have), the user's photos, videos, recordings and documents, or Nano Backup. Any other app is refused, so a property any root process can set never grants
-more.
+more. An argument too long for the property (a card with a 36-character volume id, as on the Cube) comes in a file
+Nano writes, named by a token in the command. The sources are the ones the patch creates.
 """
 import os
+import re
 import shutil
 import tempfile
 
 from tests import util
+from tests.unit import test_screen_arrangement as arrangement
 
-GAMMAOS = os.path.join(util.AOSP, "frameworks/base/services/core/java/com/android/server/gammaos")
+GAMMAOS = "frameworks/base/services/core/java/com/android/server/gammaos"
 FIXTURES = os.path.join(util.TESTS, "fixtures/uri_grant")
 CARD = "1A2B-3C4D"
+CUBE = "00000000-0000-0000-0000-000000000001"   # the Cube's card
 
 
 class UriGrantArgs(util.TestCase):
@@ -25,14 +29,15 @@ class UriGrantArgs(util.TestCase):
         if not (shutil.which("javac") and shutil.which("java")):
             cls.build_error = "javac isn't on PATH"
             return
-        if not os.path.isfile(os.path.join(GAMMAOS, "NanoUriGrant.java")):
-            cls.build_error = f"no AOSP tree at {util.AOSP}"
-            return
+        text = arrangement.new_file(util.slurp(arrangement.PATCH, text=True), f"{GAMMAOS}/NanoUriGrant.java")
+        assert text is not None, "the patch doesn't create NanoUriGrant.java"
         cls.work = tempfile.mkdtemp(prefix="thimsy-urigrant-")
         cls.classes = os.path.join(cls.work, "classes")
         os.makedirs(cls.classes)
-        proc = util.run(["javac", "-nowarn", "-encoding", "UTF-8", "-d", cls.classes,
-                         os.path.join(GAMMAOS, "NanoUriGrant.java"),
+        source = os.path.join(cls.work, "NanoUriGrant.java")
+        with open(source, "w", encoding="utf-8") as f:
+            f.write(text)
+        proc = util.run(["javac", "-nowarn", "-encoding", "UTF-8", "-d", cls.classes, source,
                          os.path.join(FIXTURES, "UriGrantCheck.java")], timeout=300)
         if proc.returncode:
             raise AssertionError("javac failed:\n" + proc.stdout + proc.stderr)
@@ -51,6 +56,71 @@ class UriGrantArgs(util.TestCase):
         proc = self.assertOk(util.run(["java", "-cp", self.classes, "com.android.server.gammaos.UriGrantCheck"],
                                       input="".join(a + "\n" for a in args)))
         return [None if line == "-" else tuple(line.split("\t")) for line in proc.stdout.splitlines()]
+
+    def resolve(self, *pairs):
+        """(argFile, resolve) for each (command argument, file text or None), None for null."""
+        proc = self.assertOk(util.run(["java", "-cp", self.classes, "com.android.server.gammaos.UriGrantCheck",
+                                       "resolve"],
+                                      input="".join(f"{a}\t{'-' if t is None else t}\n" for a, t in pairs)))
+        return [tuple(None if v == "-" else v for v in line.split("\t")) for line in proc.stdout.splitlines()]
+
+    def test_the_cubes_card(self):
+        """The Cube names its card by a UUID's 8-4-4-4-12."""
+        self.assertEqual(self.parse(f"org.azahar_emu.azahar|{CUBE}|emulator_config/azahar",
+                                    f"com.rfandango.haku_x|{CUBE.upper()}|ROMs/xbox",
+                                    "org.scummvm.scummvm|0a1B2c3D-4e5F-6789-abcd-EF0123456789|Roms/scummvm"),
+                         [("org.azahar_emu.azahar", f"{CUBE}:emulator_config/azahar"),
+                          ("com.rfandango.haku_x", f"{CUBE.upper()}:ROMs/xbox"),
+                          ("org.scummvm.scummvm", "0a1B2c3D-4e5F-6789-abcd-EF0123456789:Roms/scummvm")])
+        refused = [f"org.azahar_emu.azahar|{v}|emulator_config/azahar" for v in (
+            "00000000-0000-0000-0000-00000000000g", "000000000-000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-0000000000011", "00000000-0000-0000-0000-00000000001",
+            "000000000000000000000000000000000001", f"{CUBE}-1", f"{CUBE}/..", f"../{CUBE}")]
+        refused += [f"org.azahar_emu.azahar|{CUBE}|",                         # the card's root
+                    f"org.azahar_emu.azahar|{CUBE}|DCIM"]
+        self.assertEqual(self.parse(*refused), [None] * len(refused))
+
+    def test_an_argument_too_long_for_the_property_comes_in_a_file(self):
+        """SeedlessDS's folder on the Cube's card: 82 characters, more than the property holds with the
+        sequence and verb. The command names the file by a token; the file holds the argument."""
+        arg = f"com.seedlessds.app|{CUBE}|emulator_config/seedlessds"
+        self.assertGreaterEqual(len(arg) + 25, 92)
+        file = "/data/system/nano_uri_grant_1234567890123456.txt"
+        self.assertEqual(self.resolve(("com.seedlessds.app|@1234567890123456", arg)), [(file, arg)])
+        self.assertEqual(self.parse(arg), [("com.seedlessds.app", f"{CUBE}:emulator_config/seedlessds")])
+        # A file for another package, or none: refused. So is anything in a file that parse refuses.
+        one = "/data/system/nano_uri_grant_1.txt"
+        self.assertEqual(self.resolve(("org.azahar_emu.azahar|@1234567890123456", arg),
+                                      ("com.seedlessds.app|@1234567890123456", None),
+                                      ("com.seedlessds.app|@1", "com.seedlessds.app"),
+                                      ("com.seedlessds.app|@1", "com.seedlessds.appx|primary|ROMs")),
+                         [(file, None), (file, None), (one, None), (one, None)])
+        self.assertEqual(self.parse(f"com.seedlessds.app|{CUBE}|DCIM"), [None])
+
+    def test_only_a_digit_token_names_a_file(self):
+        """Anything else is the argument itself, which parse then refuses (two fields): never a path
+        into another folder."""
+        plain = f"com.seedlessds.app|{CUBE}|emulator_config/seedlessds"
+        cases = ["com.seedlessds.app|@", "com.seedlessds.app|@12a", "com.seedlessds.app|@../../x",
+                 "com.seedlessds.app|@" + "1" * 25, "com.seedlessds.app|@-1", "com.seedlessds.app|12",
+                 "com.seedlessds.app|@1|x", plain]
+        self.assertEqual(self.resolve(*[(c, plain) for c in cases]), [(None, c) for c in cases])
+        self.assertEqual(self.parse(*cases[:-1]), [None] * (len(cases) - 1))
+
+    def test_nano_sends_it_as_system_server_reads_it(self):
+        """NanoSdMove.cpp's sdUriCommand writes the file NanoUriGrant.argFile names, holding the
+        argument, with a digit token, and refuses one longer than ARG_FILE_MAX bytes."""
+        patch = util.slurp(arrangement.PATCH, text=True)
+        java = arrangement.new_file(patch, f"{GAMMAOS}/NanoUriGrant.java")
+        nano = arrangement.new_file(patch, "frameworks/base/cmds/gammaos-nano/NanoSdMove.cpp")
+        prefix = re.search(r'ARG_FILE_PREFIX = "([^"]+)"', java).group(1)
+        self.assertIn(f'return "{prefix}" + token + ".txt";', nano)
+        limit = re.search(r"ARG_FILE_MAX = (\d+);", java).group(1)
+        self.assertIn(f"if (arg.size() > {limit}) {{", nano)
+        self.assertIn('arg = std::string(pkg) + "|@" + token;', nano)
+        self.assertIn("const std::string token = std::to_string(uptimeMillis()) + std::to_string(getpid());", nano)
+        self.assertIn("sdUriArgWrite(sdUriArgFile(token), arg)", nano)
+        self.assertNotIn("too long to send (volume", nano)
 
     def test_emulator_folders(self):
         self.assertEqual(self.parse(f"org.azahar_emu.azahar|{CARD}|emulator_config/azahar",
