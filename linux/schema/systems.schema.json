@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://thimsy.invalid/linux/schema/systems.schema.json",
   "title": "Thimsy ES-DE/nano/systems.json",
-  "description": "Nano's systems on the card (esdeSystemsJson, NanoMenuXmb.cpp). Android owns the launch fields (launchType, coreSo, package, launchArgs, intentTemplate): Linux reads them and never changes them (interop Q4). Both platforms may write the other fields. The scraper accounts are never on the card: the scraper object allows only override and platform (OA-32 Q6). Unknown fields are allowed because the file is already in the field; Android rebuilds it from structs, so a field only Linux knows does not survive an Android save. Only the draft-07 keywords devicejson.py validates are used.",
+  "description": "Nano's systems on the card (esdeSystemsJson, NanoMenuXmb.cpp). The launch fields (launchType, coreSo, package, launchArgs, intentTemplate) are per device (OA-46): a writer keeps each existing system's launch fields exactly as it read them and writes its own only for a system it adds; a device's system picks are in its set's picks.json (LIBRARY-FORMAT.md 4.8, 4.25). The card's launch fields also name the system's card core for shared saves (OA-53, 4.17). Both platforms may write the other fields, the shared system list. The scraper accounts are never on the card: the scraper object allows only override and platform (OA-32 Q6). Unknown fields are allowed because the file is already in the field; Android rebuilds it from structs, so a field only Linux knows does not survive an Android save. Only the draft-07 keywords devicejson.py validates are used.",
   "type": "object",
   "required": ["systems"],
   "properties": {

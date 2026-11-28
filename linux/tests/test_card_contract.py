@@ -11,7 +11,8 @@ linux/tests/fixtures/card/ holds three cards:
                    (Cube mount-order paths, Android-only labels);
   linux-written/   the same card after a Linux visit that follows the
                    contract (favourite, play, collection add, Linux's own
-                   emulator set and picks, the theme, a playlist);
+                   emulator set and picks, the theme, a playlist, a save
+                   and a save state in the shared per-core folders);
   multi-device/    several devices' emulator sets side by side (OA-46):
                    two Android Cubes, both sides of a dual-boot ARC-D, a
                    partial set, and a theme.json with a newer writer's key.
@@ -78,12 +79,21 @@ THEME_KEYS = frozenset("""
     esde.settings_theme esde.menu_color_scheme esde.menu_blur esde.transition esde.clock esde.variant_triggers
 """.split())
 
-# What a Linux visit may add to a card (LIBRARY-FORMAT.md 3, 4.24 to 4.26).
+# Shared saves and states (OA-53, LIBRARY-FORMAT.md 4.17 to 4.19): one folder per RetroArch core,
+# and the standalone emulators' own shared folders.
+SHARED_SAVES = re.compile(
+    r"^emulator_config/(?:retroarch/(?:saves|states)/(?P<core>[^/]+)/[^/]+$"
+    r"|ppsspp/PSP/(?:SAVEDATA|PPSSPP_STATE)/"
+    r"|scummvm/saves/)")
+
+# What a Linux visit may add to a card (LIBRARY-FORMAT.md 3, 4.17 to 4.26).
 LINUX_MAY_ADD = re.compile(
     r"^(?:ES-DE/nano/format\.json$"
     r"|emulator_config/card\.json$"
     r"|emulator_config/devices/linux-[0-9a-f]{16}/"
-    r"|emulator_config/[^/]+/linux/(saves|states|PSP/PPSSPP_STATE)/"
+    r"|emulator_config/retroarch/(?:saves|states)/[^/]+/[^/]+$"
+    r"|emulator_config/ppsspp/PSP/(?:SAVEDATA|PPSSPP_STATE)/"
+    r"|emulator_config/scummvm/saves/"
     r"|Thimsy/theme\.json$"
     r"|Thimsy/playlists/[^/]+\.m3u8$"
     r"|ES-DE/gamelists/[^/]+/gamelist\.xml$"
@@ -376,14 +386,30 @@ class Vectors(unittest.TestCase):
         self.assertTrue(any(SET_DIR.match(r) for r in added), "the visit made Linux's own set")
 
     def test_no_retired_file_is_written(self):
-        """OA-46 and OA-47: no shared settings, no settings.ini, no systems.linux.json."""
+        """OA-46, OA-47, OA-53: no shared settings, no settings.ini, no systems.linux.json, no linux/ folder."""
         for rel in ("Thimsy/settings.ini", "ES-DE/nano/systems.linux.json", "emulator_config/scummvm/scummvm.ini"):
             with self.subTest(file=rel):
                 self.assertFalse((LINUXW / rel).exists())
-        for rel, _p in files_under(LINUXW):
-            with self.subTest(file=rel):
-                self.assertNotRegex(rel, r"^emulator_config/[^/]+/linux/(PSP/SYSTEM|scummvm\.ini)",
-                                    "no per-platform override layer (W7-INTEROP-11, -12 withdrawn)")
+        for card in ALL_CARDS:
+            for rel, _p in files_under(card):
+                with self.subTest(card=card.name, file=rel):
+                    self.assertNotRegex(rel, r"^emulator_config/(?:[^/]+/)?linux/",
+                                        "no per-platform folder (W7-INTEROP-11, -12, -15 withdrawn)")
+
+    def test_saves_and_states_are_shared_per_core(self):
+        """OA-53: Linux's saves and states go to the shared folders, a RetroArch core's in its own folder."""
+        before = {rel for rel, _p in files_under(ANDROID)}
+        added = [rel for rel, _p in files_under(LINUXW) if rel not in before]
+        shared = [rel for rel in added if SHARED_SAVES.match(rel)]
+        self.assertTrue(any("/states/" in r for r in shared), "the visit left a state in retroarch/states/<core>/")
+        self.assertTrue(any("/saves/" in r for r in shared), "the visit left a save in retroarch/saves/<core>/")
+        for rel in added:
+            if re.search(r"\.(srm|sav|state\d*|state\.auto)$", rel):
+                with self.subTest(file=rel):
+                    m = SHARED_SAVES.match(rel)
+                    self.assertIsNotNone(m, "a save or state outside the shared folders")
+                    if rel.startswith("emulator_config/retroarch/"):
+                        self.assertTrue(m.group("core"), "one folder per core")
 
     def test_launch_fields_are_kept_as_read(self):
         a = {s["id"]: s for s in card_json(ANDROID, "ES-DE/nano/systems.json")["systems"]}
@@ -432,7 +458,6 @@ class Vectors(unittest.TestCase):
             owned = []
             for rel, _p in files_under(card):
                 if rel in ("ES-DE/nano/format.json", "emulator_config/card.json") or rel.startswith("Thimsy/") \
-                        or re.match(r"emulator_config/[^/]+/linux/", rel) \
                         or re.fullmatch(r"emulator_config/devices/[^/]+/(device|picks)\.json", rel):
                     owned.append(rel)
             self.assertTrue(any(r.endswith("/picks.json") for r in owned))
