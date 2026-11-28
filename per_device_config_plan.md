@@ -319,7 +319,7 @@ Every per-emulator rule in this plan is a field of the emulator's definition: `u
 | which files are left out of the set | `files.exclude` | §2.2, the move |
 | how config reaches the emulator at launch and comes back | `files.live` (`local` or `slot`, per platform), `files.launch_copy`, `files.shared[].point`, `files.after` | §5.6 |
 | launch entries per platform | `launch.android` (today's `players`), `launch.linux` (argv templates, the core, its `core_file`, its save family) | §5.7, the catalog, §2.7's save rule |
-| where saves and states go and which keys point at them | `files.shared[]` `card` placeholders (`{save_family}`, `{core}`, `{system}`, `{subdir}`; `{game}` and `{rom_dir}` in `legacy` and `names`), `point.set`, `point.rest`, `legacy`, `names`; the launch entry's `core`, `save_family`, `core_name`; `files.roots.android.internal` (the shared root with `emu_sd` off) | §2.7, §5.6 |
+| where saves and states go and which keys point at them | `files.shared[]` `card` placeholders (`{save_family}`, `{core}`, `{system}`, `{subdir}`; `{game}` and `{rom_dir}` in `legacy` and `names`), `point.set`, `point.rest`, `legacy`, `names`; the launch entry's `core`, `save_family`, `core_name`, `state_core`; `files.roots.android.internal` (the shared root with `emu_sd` off) | §2.7, §5.6 |
 | hotkeys | `actions`, `provision` | `ThimsyHotkeyController`, `NanoHotkeys`, Linux's session |
 | controller map | `controls` | the button map, pad provisioning |
 | card or local storage | `files.shared[].place` (`card` or `local`), `storage.needs_card_to_start` | §2.7, §3 |
