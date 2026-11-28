@@ -275,12 +275,20 @@ Where a definition could use more than one, the recommended order is `config_key
     "platforms": ["android"],
     "point": { "config_key": { "file": "retroarch.cfg", "format": "retroarch_cfg", "key": "savefile_directory" },
                "set":  { "sort_savefiles_enable": "false", "sort_savefiles_by_content_enable": "false",
-                         "savefiles_in_content_dir": "false" },
+                         "savefiles_in_content_dir": "false",
+                         "menu_show_load_core": "false", "menu_show_load_content": "false",
+                         "menu_show_load_disc": "false", "menu_content_show_history": "false",
+                         "menu_content_show_favorites": "false", "menu_content_show_playlists": "false",
+                         "menu_content_show_explore": "false" },
                "rest": { "savefile_directory": "{card}/saves", "sort_savefiles_enable": "false",
-                         "sort_savefiles_by_content_enable": "false", "savefiles_in_content_dir": "true" } } }
+                         "sort_savefiles_by_content_enable": "false", "savefiles_in_content_dir": "true",
+                         "menu_show_load_core": "true", "menu_show_load_content": "true",
+                         "menu_show_load_disc": "true", "menu_content_show_history": "true",
+                         "menu_content_show_favorites": "true", "menu_content_show_playlists": "true",
+                         "menu_content_show_explore": "true" } } }
   ```
 
-  RetroArch's definition also names the per-launch copy: `"launch_copy": { "android": { "file": "retroarch.cfg", "base": "media", "rel": "thimsy-launch/retroarch.cfg" } }` (§5.6).
+  RetroArch's definition also names the per-launch copy: `"launch_copy": { "android": { "file": "retroarch.cfg", "base": "media", "rel": "thimsy-launch/retroarch.cfg" } }` (§5.6). The example carries the seven loading-menu keys of rule 1 below in `set` and `rest`; the two marked verify there are left out until checked.
 
   The rule is generic: any launch entry with `core` (and `save_family`, `core_name`) and any shared entry whose `card` path has a placeholder get the same handling, so a user's definition for another libretro frontend gets it too. Nano's code names no core and no key. This replaces Linux's `retroarch/linux/saves/<system>/` and `.../states/<system>/`, and settles `LIBRARY-FORMAT.md` §10's "which Android core decides a shared save": none does.
 - **No other core or game during a Nano launch.** The save and state folders are fixed for the whole run. A core or game loaded from RetroArch's own menu (Load Core, Load Content, History, Favorites, the `.lpl` playlists) would write into them: the same game under another family's core would overwrite the family's save, another core's state would be offered to the launched core, and another game's save would land where no launch of that game reads it. Two rules stop this:
