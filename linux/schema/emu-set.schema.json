@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://thimsy.invalid/linux/schema/emu-set.schema.json",
+  "title": "Thimsy emulator_config/devices/<id>/device.json",
+  "description": "The label of one device's emulator set on a card (OA-46; LIBRARY-FORMAT.md 4.24; per_device_config_plan.md 1, 2.2). Written last, so a set folder without it is partial and never used as the truth. The id equals the folder's name. Only the device whose id it is writes it. The device's local copy also carries 'changed' and 'migration', which never go to the card, so this schema refuses them. Not the hardware device.json (device.schema.json). Thimsy-new file: this schema is what a writer of contract major 1 emits; readers keep unknown fields. Only the draft-07 keywords linux/tools/thimsy-import/thimsy_import/devicejson.py validates are used.",
+  "type": "object",
+  "required": ["version", "id", "platform"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {"const": 1},
+    "id": {"$ref": "#/definitions/set_id"},
+    "platform": {"$ref": "#/definitions/platform"},
+    "model": {"$ref": "#/definitions/slug", "description": "multi_device_plan.md's descriptor id, the same on both builds."},
+    "name": {"type": "string", "minLength": 1, "description": "The model's display name. The user's own device name is never written."},
+    "source": {"enum": ["serial", "serial+fp", "random"], "description": "serial: the hash of the unit's chip serial; serial+fp: the collision id of two units with one serial; random: no usable serial."},
+    "fp": {"$ref": "#/definitions/hash", "description": "FNV-1a 64 of a second hardware value, to catch two units with one serial."},
+    "thimsy": {"$ref": "#/definitions/version_text", "description": "The Thimsy release that last wrote the set."},
+    "first": {"$ref": "#/definitions/date"},
+    "last": {"$ref": "#/definitions/date"}
+  },
+  "definitions": {
+    "set_id": {"type": "string", "pattern": "^(android|linux)-[0-9a-f]{16}$", "description": "<platform>-<FNV-1a 64 of 'thimsy-unit:' and the serial>, or 16 random hex digits; never the raw serial."},
+    "hash": {"type": "string", "pattern": "^[0-9a-f]{16}$"},
+    "platform": {"enum": ["android", "linux"]},
+    "slug": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+    "version_text": {"type": "string", "pattern": "^[0-9A-Za-z][0-9A-Za-z.+~-]*$"},
+    "date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "description": "YYYY-MM-DD, informational only."}
+  }
+}

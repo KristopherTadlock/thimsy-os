@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "id": "linux-9c1d0e7a42b35f86",
+  "platform": "linux",
+  "model": "anbernic-rg-arc-d",
+  "name": "Anbernic RG ARC-D",
+  "source": "serial",
+  "thimsy": "0.2",
+  "first": "2026-12-01",
+  "last": "2026-12-04",
+  "fp": "5e0a9c41d2b7f318"
+}

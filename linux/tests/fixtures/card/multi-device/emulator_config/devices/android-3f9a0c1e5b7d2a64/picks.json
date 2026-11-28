@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "systems": {
+    "n64": {
+      "launchType": "custom-package",
+      "package": "org.mupen64plusae.v3.fzurita",
+      "key": "emu:m64plus-fz",
+      "fromANewerWriter": true
+    }
+  }
+}

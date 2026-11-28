@@ -1,3 +1,5 @@
+> **Superseded where it differs (2026-11-27).** This is a raw report, a snapshot of 2026-11-26. `docs/linux/DECISIONS.md` OA-46 to OA-54 replaced its model: settings and picks are per device, saves, states and BIOS are shared on the card apart per core, and there is no `<emu>/linux/`, `retroarch/linux/` or `systems.linux.json`. The current contract is `LIBRARY-FORMAT.md`.
+
 ES-DE store on the card: inventory and Linux resolution (OA-8 audit, esde task)
 
 Root: C:/Users/krist/code/thimsy-os-linux/nano (shared by the Android and Linux builds). Android seeding: C:/Users/krist/code/thimsy-os-nano. I edited nothing and built nothing.

@@ -1,3 +1,5 @@
+> **Superseded where it differs (2026-11-27).** This is a raw report, a snapshot of 2026-11-26. `docs/linux/DECISIONS.md` OA-46 to OA-54 replaced its model: settings and picks are per device, saves, states and BIOS are shared on the card apart per core, and there is no `<emu>/linux/`, `retroarch/linux/` or `systems.linux.json`. The current contract is `LIBRARY-FORMAT.md`.
+
 OA-8 synthesis: Thimsy card interoperability between Android and Linux (ES-DE store and emulator_config)
 
 Scope: read-only. Repo C:/Users/krist/code/thimsy-os-linux (branch linux), plus C:/Users/krist/code/thimsy-os-nano. I edited, built and ran nothing. Evidence comes from the three inventories plus my own checks. "(inf)" marks inference. "android-surface" marks a change to Android behaviour (platform/firmware, or shared code whose output Android writes).

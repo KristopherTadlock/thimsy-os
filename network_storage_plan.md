@@ -115,6 +115,8 @@ Each enabled share is registered with vold, so Android, every app and Nano treat
 
 Saves to the share are offered as a backup action instead (2.8), not as live storage.
 
+*(Superseded in part, OA-49, OA-52, OA-53: there is no internal mirror of gamelists or collections, `usb_storage_plan.md` §2's note; on a card, saves, states, NAND and BIOS are shared storage with no mirror, `per_device_config_plan.md` §2.7. Whether a share may hold them is for this plan's next revision.)*
+
 ### 2.3 The SMB client: native, hardened
 Phase 0 work, worth doing even before the rest:
 1. **Update libsmb2 to 6.3.2** (a drop-in security release). Then evaluate 7.0.0 (19 Nov 2026), which breaks the API: per-thread contexts, optional OpenSSL 3 crypto, CSPRNG nonces, a signature-verification fix, and share enumeration as a flat API. sharefs doesn't use share enumeration yet, so the break is small.

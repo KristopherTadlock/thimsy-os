@@ -8,6 +8,7 @@ Working name in this document: **Thimsy Home** (the app), against **Thimsy OS** 
 
 - Port the Nano build's features to an Android launcher for Android gaming handhelds (Anbernic, AYN, Retroid Pocket), keeping as many features as possible.
 - The exported game lists and emulator profiles (through `ES-DE` and `emulator_config`) are interoperable between Thimsy OS as custom firmware and the Android launcher.
+  *(Refined 2026-11-27, `docs/linux/DECISIONS.md` OA-46 to OA-53: emulator profiles are per device, each device's set kept in `emulator_config/devices/<id>/` on the card (OA-46); game lists, media, saves, save states, BIOS and the theme are shared on the card by every device (OA-49, OA-51, OA-53). `LIBRARY-FORMAT.md` and `per_device_config_plan.md` have the rules.)*
 - The launcher can be installed as Android's main launcher (the home app).
 - Thimsy's UI and navigation are kept where possible.
 
@@ -162,7 +163,7 @@ Changes that make it a real interchange format:
 5. **Path spellings.** The app only ever sees `/storage/emulated/0` and `/storage/<id>`; the firmware also sees `/sdcard`, `/data/media/0` and `/mnt/media_rw/<id>`. `storagePath()` (`NanoLaunch.h`) and `sameFile` already normalise these; the spec fixes the stored spelling to `/storage/...`.
 6. **Android Games.** `ROMs/androidgames/<name>.app` holds one line, the package name, on both sides (ES-DE uses the same `.app` idea). The app does the helper APK's job itself (list the installed games, keep the files and their icons in `downloaded_media/androidgames`) and starts a game with `getLaunchIntentForPackage`.
 7. **ScummVM.** The firmware lists games from ScummVM's private `scummvm.ini`; the app cannot read it below R. It falls back to `ROMs/scummvm/*.scummvm` files (first line = the game's ID, launched through `{file.content}`), which is ES-DE's own convention and what the pack-in already ships.
-8. **Emulator profiles.** The emulator definition of `user_emulators_plan.md` becomes the shared profile format. The built-in set ships in both the image and the APK; the user's own live in `Thimsy/emulators/*.json` on shared storage (the import folder that plan already names) so they travel with the card. The app reads the same `actions`, `provision`, `players`, `storage` and `bios` blocks and applies each rule only at the access level it needs.
+8. **Emulator profiles.** The emulator definition of `user_emulators_plan.md` becomes the shared profile format. The built-in set ships in both the image and the APK; the user's own live in `Thimsy/emulators/*.json` on shared storage (the import folder that plan already names) so they travel with the card. The app reads the same `actions`, `provision`, `players`, `storage` and `bios` blocks and applies each rule only at the access level it needs. *(Superseded in part, OA-46 and OA-54: user definitions are local, and `Thimsy/emulators/` is only an import folder; a set may carry a copy of its device's user definitions, used only after the device accepts it (`per_device_config_plan.md` §2.8). Picks and settings are per device, in `emulator_config/devices/<id>/`.)*
 9. **A library without a card (D12, optional).** **Export Library...** and **Import Library...** on both sides write and read one zip of `ES-DE` (without media unless asked), `nano/` and `Thimsy/emulators`, for moving between two devices' internal storage. No ROMs, no BIOS files, no scraper accounts.
 
 What stays outside the contract, and why: `/data/system` state (internal mode), system properties, `emulator_config/<emulator>/app/` mirrors below R, the Quick Resume state, and Nano's built-in DS player data.
@@ -171,8 +172,8 @@ What stays outside the contract, and why: `/data/system` state (internal mode), 
 
 | From | To | What the user does | What arrives |
 |---|---|---|---|
-| Thimsy OS, card | Thimsy Home | move the card | games, favourites, hidden, titles, collections, per-game and per-system emulators, play counts, media, systems; emulator saves and settings for emulators that take a folder |
-| Thimsy Home, card | Thimsy OS | move the card | the same; Thimsy OS adopts the card as it does today (`emuSdTick`, the foreign-card dialog) and also restores `app/` mirrors if any exist |
+| Thimsy OS, card | Thimsy Home | move the card | games, favourites, hidden, titles, collections, ~~per-game and per-system emulators~~, play counts, media, systems; emulator saves, ~~and settings~~ for emulators that take a folder *(superseded, OA-46 to OA-54: picks and settings are per device, in each device's set `emulator_config/devices/<id>/`, so Thimsy Home starts from its own; saves, states, BIOS and emulated drives are shared storage on the card; the theme is shared, `Thimsy/theme.json`)* |
+| Thimsy Home, card | Thimsy OS | move the card | the same; Thimsy OS adopts the card as it does today (`emuSdTick`, the foreign-card dialog) and also restores `app/` mirrors if any exist *(superseded, OA-46: the foreign-card dialog and the `app/` mirrors give way to per-device sets; a device with no set of its own is asked once whether to use a card's old shared settings, `per_device_config_plan.md` §6.1)* |
 | Either, internal storage | the other | Export Library / Import Library, or copy the `ES-DE` folder over USB | the library; emulator files only where the user copies `emulator_config` too |
 | Either | mainline ES-DE | point ES-DE at the folder | everything ES-DE has a field for; `nano/` is ignored |
 

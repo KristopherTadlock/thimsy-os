@@ -6,15 +6,22 @@ Android and Linux Thimsy share. They are checked with the draft-07 subset
 validator thimsy-import already has (thimsy_import/devicejson.py), so a
 keyword it does not know fails here instead of being skipped.
 
-linux/tests/fixtures/card/ holds two copies of one card:
+linux/tests/fixtures/card/ holds three cards:
   android-cube/    as the Thimsy Android build on the RG Cube leaves it
                    (Cube mount-order paths, Android-only labels);
   linux-written/   the same card after a Linux visit that follows the
-                   contract (favourite, play, collection add, emulator
-                   choices, a PPSSPP setting, settings.ini, a playlist).
-The vector tests check the contract's rules between the two: Android's
+                   contract (favourite, play, collection add, Linux's own
+                   emulator set and picks, the theme, a playlist, a save
+                   in the shared per-family folder, a folder a core
+                   keeps itself below one, and a save state in the
+                   shared per-core folder);
+  multi-device/    several devices' emulator sets side by side (OA-46):
+                   two Android Cubes, both sides of a dual-boot ARC-D, a
+                   partial set, and a theme.json with a newer writer's key.
+The vector tests check the contract's rules between the first two: Android's
 files Linux must not rewrite stay byte-identical, labels and unknown tags
-survive, and nothing Linux owns holds an absolute card path.
+survive, Linux adds only files the contract lets it write, and nothing
+Thimsy owns holds an absolute card path.
 
 Standard library only. Nothing here builds or runs a program.
 
@@ -37,26 +44,71 @@ SCHEMA = LINUX / "schema"
 CARDS = HERE / "fixtures" / "card"
 ANDROID = CARDS / "android-cube"
 LINUXW = CARDS / "linux-written"
+MULTI = CARDS / "multi-device"
+ALL_CARDS = (ANDROID, LINUXW, MULTI)
 DOC = REPO / "LIBRARY-FORMAT.md"
 
 sys.path.insert(0, str(LINUX / "tools" / "thimsy-import"))
 from thimsy_import import devicejson  # noqa: E402
 
-# Where each schema's file lives on the card.
-SCHEMA_FOR = {
-    "ES-DE/nano/systems.json": "systems.schema.json",
-    "ES-DE/nano/systems.linux.json": "systems.linux.schema.json",
-    "ES-DE/nano/emulators.json": "emulators.schema.json",
-    "ES-DE/nano/names.json": "names.schema.json",
-    "ES-DE/nano/index.json": "index.schema.json",
-    "ES-DE/nano/format.json": "format.schema.json",
-    "emulator_config/card.json": "card.schema.json",
-}
-CARD_SCHEMAS = sorted(set(SCHEMA_FOR.values()))
+# Where each schema's file lives on the card: (pattern, name the doc uses, schema).
+SCHEMA_FOR = (
+    (r"ES-DE/nano/systems\.json", "systems.json", "systems.schema.json"),
+    (r"ES-DE/nano/emulators\.json", "emulators.json", "emulators.schema.json"),
+    (r"ES-DE/nano/names\.json", "names.json", "names.schema.json"),
+    (r"ES-DE/nano/index\.json", "index.json", "index.schema.json"),
+    (r"ES-DE/nano/format\.json", "format.json", "format.schema.json"),
+    (r"emulator_config/card\.json", "card.json", "card.schema.json"),
+    (r"emulator_config/devices/[^/]+/device\.json", "devices/<id>/device.json", "emu-set.schema.json"),
+    (r"emulator_config/devices/[^/]+/picks\.json", "devices/<id>/picks.json", "picks.schema.json"),
+    (r"Thimsy/theme\.json", "Thimsy/theme.json", "theme.schema.json"),
+)
+CARD_SCHEMAS = sorted({s for _p, _n, s in SCHEMA_FOR})
 
 LAUNCH_FIELDS = ("launchType", "coreSo", "package", "launchArgs", "intentTemplate")
 ABSOLUTE_CARD = re.compile(r"/storage/|/mnt/media_rw/|/sdcard/|/data/media/0/")
 CUBE_PREFIX = re.compile(r"/storage/(00000000-0000-0000-0000-[0-9A-Fa-f]{12})/")
+SET_DIR = re.compile(r"emulator_config/devices/([^/]+)/")
+
+# LIBRARY-FORMAT.md 4.26 (per_device_config_plan.md 2.4): the theme keys, by prefs.json's ini names.
+THEME_KEYS = frozenset("""
+    home.theme home.xmb home.carousel home.minima
+    home.font home.wallpaper_effect home.wallpaper_dim
+    xmb.theme xmb.color xmb.color_custom xmb.background xmb.font xmb.day_night xmb.wave xmb.wave_explicit
+    dsi.dark dsi.effect dsi.tile_icon dsi.rom_title
+    minima.background minima.long_names
+    esde_theme.set esde_theme.variant esde_theme.color_scheme esde_theme.font_size
+    esde.settings_theme esde.menu_color_scheme esde.menu_blur esde.transition esde.clock esde.variant_triggers
+""".split())
+
+# Shared saves and states (OA-53, LIBRARY-FORMAT.md 4.17 to 4.19): RetroArch's saves in
+# saves/<family>/<system>/[<subdir>/] and states in states/<core>/<system>/[<subdir>/] (a family or
+# core id, a system id, then {subdir}, the game's own folder below the system folder, empty for a
+# game directly in it, so two games of one name in two subfolders keep two files), with the files
+# and folders a core keeps itself below them (opera/per_game/, mame/, ...), and the standalone
+# emulators' own shared folders. `below` is {subdir} plus any core-kept folders.
+SHARED_SAVES = re.compile(
+    r"^emulator_config/(?:retroarch/(?:saves|states)/(?P<core>[a-z0-9][a-z0-9_.-]*)/(?P<system>[a-z0-9]+)/"
+    r"(?P<below>(?:[^/]+/)*)[^/]+$"
+    r"|ppsspp/PSP/(?:SAVEDATA|PPSSPP_STATE)/"
+    r"|scummvm/saves/)")
+
+# What a Linux visit may add to a card (LIBRARY-FORMAT.md 3, 4.17 to 4.26).
+LINUX_MAY_ADD = re.compile(
+    r"^(?:ES-DE/nano/format\.json$"
+    r"|emulator_config/card\.json$"
+    r"|emulator_config/devices/linux-[0-9a-f]{16}/"
+    r"|emulator_config/conflicts/linux-[0-9a-f]{16}/"
+    r"|emulator_config/retroarch/(?:saves|states)/[^/]+/[^/]+/(?:[^/]+/)*[^/]+$"
+    r"|emulator_config/ppsspp/PSP/(?:SAVEDATA|PPSSPP_STATE)/"
+    r"|emulator_config/scummvm/saves/"
+    r"|emulator_config/[a-z0-9_-]+/thimsy-older/(?:[^/]+/)*[^/]+$"
+    r"|emulator_config/[a-z0-9_-]+/\.thimsy-run\.json$"
+    r"|Thimsy/theme\.json$"
+    r"|Thimsy/playlists/[^/]+\.m3u8$"
+    r"|ES-DE/gamelists/[^/]+/gamelist\.xml$"
+    r"|ES-DE/collections/custom-[^/]+\.cfg$"
+    r"|ES-DE/downloaded_media/)")
 
 
 def load(name):
@@ -65,6 +117,13 @@ def load(name):
 
 def card_json(card, rel):
     return json.loads((card / rel).read_text(encoding="utf-8"))
+
+
+def schema_for(rel):
+    for pattern, _name, schema in SCHEMA_FOR:
+        if re.fullmatch(pattern, rel):
+            return schema
+    return None
 
 
 def schema_nodes(node, where="#"):
@@ -87,26 +146,16 @@ def esde_xml(path):
     return ET.fromstring("<root>%s</root>" % text)
 
 
-def ini(path):
-    """{(section, key): value} for an INI file with 'key = value' lines (';' and '#' comments)."""
-    out, section = {}, ""
-    for line in path.read_text(encoding="utf-8").splitlines():
-        s = line.strip()
-        if not s or s[0] in "#;":
-            continue
-        if s.startswith("[") and s.endswith("]"):
-            section = s[1:-1]
-            continue
-        k, _, v = s.partition("=")
-        out[(section, k.strip())] = v.strip()
-    return out
-
-
 def files_under(root):
     for dirpath, _dirs, names in os.walk(root):
         for n in names:
             p = Path(dirpath) / n
             yield p.relative_to(root).as_posix(), p
+
+
+def set_dirs(card):
+    base = card / "emulator_config" / "devices"
+    return sorted(p for p in base.iterdir() if p.is_dir()) if base.is_dir() else []
 
 
 class Schemas(unittest.TestCase):
@@ -138,25 +187,30 @@ class Schemas(unittest.TestCase):
         text = DOC.read_text(encoding="utf-8")
         for name in CARD_SCHEMAS:
             self.assertIn("linux/schema/" + name, text)
-        for rel in SCHEMA_FOR:
-            self.assertIn(rel.split("/")[-1], text)
+        for _pattern, name, _schema in SCHEMA_FOR:
+            self.assertIn(name, text)
+
+    def test_retired_schemas_are_gone(self):
+        """systems.linux.json is retired (LIBRARY-FORMAT.md 4.9)."""
+        self.assertFalse((SCHEMA / "systems.linux.schema.json").exists())
 
 
 class Fixtures(unittest.TestCase):
     def test_every_json_file_on_a_fixture_card_has_a_schema_and_passes(self):
-        for card in (ANDROID, LINUXW):
+        for card in ALL_CARDS:
             for rel, path in files_under(card):
                 if not rel.endswith(".json"):
                     continue
                 with self.subTest(card=card.name, file=rel):
-                    self.assertIn(rel, SCHEMA_FOR, "a JSON file the contract does not define")
+                    schema = schema_for(rel)
+                    self.assertIsNotNone(schema, "a JSON file the contract does not define")
                     doc = json.loads(path.read_text(encoding="utf-8"))
-                    self.assertEqual(devicejson.validate(doc, load(SCHEMA_FOR[rel])), [])
+                    self.assertEqual(devicejson.validate(doc, load(schema)), [])
 
     def test_esde_xml_files_parse(self):
-        for card in (ANDROID, LINUXW):
+        for card in ALL_CARDS:
             for rel, path in files_under(card):
-                if rel.endswith(".xml"):
+                if rel.endswith(".xml") and rel.startswith("ES-DE/"):
                     with self.subTest(card=card.name, file=rel):
                         esde_xml(path)
 
@@ -165,6 +219,7 @@ class Fixtures(unittest.TestCase):
         names = (ANDROID / "ES-DE/nano/names.json").read_text(encoding="utf-8")
         self.assertRegex(names, CUBE_PREFIX)
         self.assertFalse((ANDROID / "emulator_config/card.json").exists(), "no shipped Android build writes card.json")
+        self.assertEqual(set_dirs(ANDROID), [], "no shipped Android build writes a per-device set")
 
 
 class Rejections(unittest.TestCase):
@@ -178,6 +233,11 @@ class Rejections(unittest.TestCase):
         with self.subTest(schema=schema, why=why):
             self.assertEqual(devicejson.validate(doc, load(schema)), [], why)
 
+    def changed(self, base, change):
+        doc = json.loads(json.dumps(base))
+        change(doc)
+        return doc
+
     def test_card_json(self):
         base = card_json(LINUXW, "emulator_config/card.json")
         for why, change in (
@@ -190,25 +250,56 @@ class Rejections(unittest.TestCase):
                 ("version 2", lambda d: d.update(version=2)),
                 ("no aliases", lambda d: d.pop("aliases")),
                 ("a field this major does not define", lambda d: d.update(extra=1))):
-            doc = json.loads(json.dumps(base))
-            change(doc)
-            self.bad("card.schema.json", doc, why)
+            self.bad("card.schema.json", self.changed(base, change), why)
 
-    def test_systems_linux_json(self):
-        base = card_json(LINUXW, "ES-DE/nano/systems.linux.json")
+    def test_set_device_json(self):
+        base = card_json(LINUXW, "emulator_config/devices/linux-9c1d0e7a42b35f86/device.json")
         for why, change in (
-                ("a core path", lambda d: d["systems"]["psx"].update(key="/usr/lib/libretro/pcsx_rearmed_libretro.so")),
-                ("an Android package", lambda d: d["systems"]["psx"].update(key="pkg:org.ppsspp.ppsspp")),
-                ("upper case", lambda d: d["systems"]["psx"].update(key="core:PCSX_ReARMed")),
-                ("a launch command", lambda d: d["systems"]["psx"].update(argv=["retroarch"])),
+                ("a raw serial as the id", lambda d: d.update(id="linux-ABC123XYZ")),
+                ("no platform in the id", lambda d: d.update(id="9c1d0e7a42b35f86")),
+                ("an unknown platform", lambda d: d.update(platform="windows")),
+                ("an upper-case hash", lambda d: d.update(id="linux-9C1D0E7A42B35F86")),
+                ("the local-only 'changed' field", lambda d: d.update(changed=True)),
+                ("the local-only 'migration' field", lambda d: d.update(migration="slots-pending")),
+                ("the user's device name", lambda d: d.update(deviceName="My ARC")),
+                ("an unknown id source", lambda d: d.update(source="mac")),
+                ("version 2", lambda d: d.update(version=2)),
+                ("no id", lambda d: d.pop("id"))):
+            self.bad("emu-set.schema.json", self.changed(base, change), why)
+        self.good("emu-set.schema.json", {"version": 1, "id": "android-0123456789abcdef", "platform": "android"},
+                  "the minimum")
+
+    def test_picks_json(self):
+        base = card_json(LINUXW, "emulator_config/devices/linux-9c1d0e7a42b35f86/picks.json")
+        for why, change in (
+                ("a core path as a key", lambda d: d["systems"]["psx"].update(key="/usr/lib/libretro/pcsx_rearmed_libretro.so")),
+                ("an Android package as a key", lambda d: d["systems"]["psx"].update(key="pkg:org.ppsspp.ppsspp")),
+                ("an upper-case key", lambda d: d["systems"]["psx"].update(key="core:PCSX_ReARMed")),
+                ("an unknown launch type", lambda d: d["systems"]["psx"].update(launchType="shell")),
                 ("a './' game key", lambda d: d["games"].update({"./n64/x.z64": {"key": "core:x"}})),
                 ("a game key with './' inside", lambda d: d["games"].update({"n64/./x.z64": {"key": "core:x"}})),
-                ("a game key with no folder", lambda d: d["games"].update({"x.z64": {"key": "core:x"}}))):
-            doc = json.loads(json.dumps(base))
-            change(doc)
-            self.bad("systems.linux.schema.json", doc, why)
+                ("a game key with no folder", lambda d: d["games"].update({"x.z64": {"key": "core:x"}})),
+                ("an absolute game key", lambda d: d["games"].update({"/storage/9602-C755/ROMs/n64/x.z64": {}})),
+                ("a top-level field this major does not define", lambda d: d.update(settings={})),
+                ("version 2", lambda d: d.update(version=2))):
+            self.bad("picks.schema.json", self.changed(base, change), why)
         for key in ("core:mupen64plus_next", "emu:ppsspp", "emu:m64plus-fz", "family:melonds", "family:psp.ppsspp"):
-            self.good("systems.linux.schema.json", {"version": 1, "systems": {"x": {"key": key}}}, key)
+            self.good("picks.schema.json", {"version": 1, "systems": {"x": {"key": key}}}, key)
+        self.good("picks.schema.json", self.changed(base, lambda d: d["systems"]["psx"].update(fromANewerWriter=1)),
+                  "an unknown field in an entry is kept")
+
+    def test_theme_json(self):
+        base = card_json(LINUXW, "Thimsy/theme.json")
+        for why, change in (
+                ("a number as a value", lambda d: d["theme"].update(**{"home.theme": 3})),
+                ("a boolean as a value", lambda d: d["theme"].update(**{"esde.clock": True})),
+                ("an upper-case key", lambda d: d["theme"].update(**{"Home.theme": "3"})),
+                ("a key with no dot", lambda d: d["theme"].update(theme="3")),
+                ("a top-level field this major does not define", lambda d: d.update(settings={})),
+                ("no theme", lambda d: d.pop("theme")),
+                ("version 2", lambda d: d.update(version=2))):
+            self.bad("theme.schema.json", self.changed(base, change), why)
+        self.good("theme.schema.json", card_json(MULTI, "Thimsy/theme.json"), "a newer writer's key is kept")
 
     def test_format_json(self):
         self.good("format.schema.json", {"version": 1}, "major 1")
@@ -244,19 +335,164 @@ class Rejections(unittest.TestCase):
         self.good("systems.schema.json", systems, "an unknown system field")
 
 
+class Sets(unittest.TestCase):
+    """Per-device emulator sets (OA-46, LIBRARY-FORMAT.md 4.24)."""
+
+    def test_a_complete_set_is_named_by_its_id(self):
+        for card in ALL_CARDS:
+            for d in set_dirs(card):
+                label = d / "device.json"
+                if not label.exists():
+                    continue
+                doc = json.loads(label.read_text(encoding="utf-8"))
+                with self.subTest(card=card.name, set=d.name):
+                    self.assertEqual(doc["id"], d.name, "the folder is the set's id")
+                    self.assertTrue(doc["id"].startswith(doc["platform"] + "-"))
+                    if doc.get("source") == "random":
+                        self.assertNotIn("fp", doc, "a random id has no serial to check")
+
+    def test_the_multi_device_vector_covers_the_cases(self):
+        complete = [d for d in set_dirs(MULTI) if (d / "device.json").exists()]
+        partial = [d for d in set_dirs(MULTI) if not (d / "device.json").exists()]
+        platforms = {d.name.split("-")[0] for d in complete}
+        self.assertEqual(platforms, {"android", "linux"})
+        self.assertGreaterEqual(sum(d.name.startswith("android-") for d in complete), 2)
+        self.assertTrue(partial, "a set whose copy did not finish has no device.json")
+        models = [card_json(MULTI, "emulator_config/devices/%s/device.json" % d.name)["model"] for d in complete]
+        self.assertTrue(any(models.count(m) > 1 for m in models), "two units, or two platforms, of one model")
+
+    def test_a_set_holds_no_shared_data(self):
+        """Saves, states, BIOS and caches stay out of every set (4.24)."""
+        forbidden = re.compile(r"/(saves|states|system|cheats|Cheats|SAVEDATA|PPSSPP_STATE|TEXTURES|shaders|cache)/"
+                               r"|\.(srm|state\d*)$")
+        for card in ALL_CARDS:
+            for rel, _p in files_under(card):
+                if SET_DIR.match(rel):
+                    with self.subTest(card=card.name, file=rel):
+                        self.assertIsNone(forbidden.search(rel))
+
+
 class Vectors(unittest.TestCase):
     """The rules between an Android-written card and the same card after a Linux visit."""
 
     def test_files_linux_only_reads_stay_byte_identical(self):
         # names.json and index.json: compatibility mode until the floor (interop Q12).
-        # emulators.json: Android's; Linux keeps its own per-game choices in systems.linux.json.
-        # es_settings.xml: ROMDirectory is written only when empty.
+        # emulators.json: legacy; no build with this contract writes it (4.10).
+        # es_settings.xml: ROMDirectory is written only when empty, and the theme mirror
+        #   only when the chosen set is in the store's themes (4.1); this card has none.
+        # ppsspp.ini: Android's live slot; Linux never reads or writes it (4.18).
         for rel in ("ES-DE/nano/names.json", "ES-DE/nano/index.json", "ES-DE/nano/emulators.json",
-                    "ES-DE/settings/es_settings.xml"):
+                    "ES-DE/settings/es_settings.xml", "emulator_config/ppsspp/PSP/SYSTEM/ppsspp.ini"):
             with self.subTest(file=rel):
                 self.assertEqual((ANDROID / rel).read_bytes(), (LINUXW / rel).read_bytes())
 
-    def test_launch_fields_are_androids(self):
+    def test_linux_adds_only_what_the_contract_lets_it_write(self):
+        before = {rel for rel, _p in files_under(ANDROID)}
+        added = sorted(rel for rel, _p in files_under(LINUXW) if rel not in before)
+        self.assertTrue(added)
+        for rel in added:
+            with self.subTest(file=rel):
+                self.assertRegex(rel, LINUX_MAY_ADD)
+        self.assertTrue(any(SET_DIR.match(r) for r in added), "the visit made Linux's own set")
+
+    def test_no_retired_file_is_written(self):
+        """OA-46, OA-47, OA-53: no shared settings, no settings.ini, no systems.linux.json, no linux/ folder."""
+        for rel in ("Thimsy/settings.ini", "ES-DE/nano/systems.linux.json", "emulator_config/scummvm/scummvm.ini"):
+            with self.subTest(file=rel):
+                self.assertFalse((LINUXW / rel).exists())
+        for card in ALL_CARDS:
+            for rel, _p in files_under(card):
+                with self.subTest(card=card.name, file=rel):
+                    self.assertNotRegex(rel, r"^emulator_config/(?:[^/]+/)?linux/",
+                                        "no per-platform folder (W7-INTEROP-11, -12, -15 withdrawn)")
+
+    def test_saves_and_states_are_shared_per_core(self):
+        """OA-53: Linux's saves and states go to the shared folders: RetroArch's saves per family and
+        system, its states per core and system, none beside a ROM."""
+        systems = {s["id"] for s in card_json(LINUXW, "ES-DE/nano/systems.json")["systems"]}
+        before = {rel for rel, _p in files_under(ANDROID)}
+        added = [rel for rel, _p in files_under(LINUXW) if rel not in before]
+        shared = [rel for rel in added if SHARED_SAVES.match(rel)]
+        self.assertTrue(any("/states/" in r for r in shared), "the visit left a state in retroarch/states/<core>/<system>/")
+        self.assertTrue(any("/saves/" in r for r in shared), "the visit left a save in retroarch/saves/<family>/<system>/")
+        for rel in added:
+            if re.search(r"\.(srm|sav|state\d*|state\.auto)$", rel):
+                with self.subTest(file=rel):
+                    m = SHARED_SAVES.match(rel)
+                    self.assertIsNotNone(m, "a save or state outside the shared folders")
+                    self.assertFalse(rel.startswith("ROMs/"), "nothing beside a ROM")
+                    if rel.startswith("emulator_config/retroarch/"):
+                        self.assertTrue(m.group("core"), "one folder per family or core")
+                        self.assertIn(m.group("system"), systems, "then one folder per system")
+
+    def test_core_kept_folders_are_shared_storage(self):
+        """4.17: files and folders a core keeps itself land below its family's folder, at any depth;
+        a loose file in retroarch/saves/ or one without a system level is not where Linux writes."""
+        for rel in ("emulator_config/retroarch/saves/opera/3do/opera/per_game/x",
+                    "emulator_config/retroarch/saves/mame/arcade/mame/cfg/default.cfg",
+                    "emulator_config/retroarch/saves/mesen/nes/Zelda (USA).srm"):
+            with self.subTest(file=rel):
+                self.assertRegex(rel, SHARED_SAVES)
+                self.assertRegex(rel, LINUX_MAY_ADD)
+        for rel in ("emulator_config/retroarch/saves/Zelda (USA).srm",
+                    "emulator_config/retroarch/saves/mesen/Zelda (USA).srm",
+                    "emulator_config/retroarch/states/Zelda (USA).state"):
+            with self.subTest(file=rel):
+                self.assertNotRegex(rel, LINUX_MAY_ADD)
+        self.assertTrue((LINUXW / "emulator_config/retroarch/saves/opera/3do/opera/per_game/x").is_file(),
+                        "the Linux-written card has a core-kept folder")
+
+    def test_same_name_games_in_two_subfolders_keep_two_files(self):
+        """4.17: {subdir} below the system folder, so ROMs/snes/USA/Game.sfc and ROMs/snes/Europe/Game.sfc
+        write two saves and two state folders; a game directly in ROMs/snes/ has an empty {subdir}."""
+        cases = {
+            "emulator_config/retroarch/saves/snes9x/snes/USA/Game.srm": "USA/",
+            "emulator_config/retroarch/saves/snes9x/snes/Europe/Game.srm": "Europe/",
+            "emulator_config/retroarch/saves/snes9x/snes/Game.srm": "",
+            "emulator_config/retroarch/states/snes9x/snes/USA/Game.state1": "USA/",
+            "emulator_config/retroarch/states/snes9x/snes/Europe/Game.state1": "Europe/",
+            "emulator_config/retroarch/saves/mesen/nes/hacks/Super Mario Bros. (Hack).srm": "hacks/",
+        }
+        for rel, below in cases.items():
+            with self.subTest(file=rel):
+                m = SHARED_SAVES.match(rel)
+                self.assertIsNotNone(m)
+                self.assertRegex(rel, LINUX_MAY_ADD)
+                self.assertIn(m.group("system"), ("snes", "nes"), "the system level comes first")
+                self.assertEqual(m.group("below"), below)
+        self.assertEqual(len(set(cases)), len(cases))
+        self.assertIn("{subdir}", DOC.read_text(encoding="utf-8"), "LIBRARY-FORMAT.md 4.17 names the placeholder")
+
+    def test_swept_and_kept_files_are_not_save_folders(self):
+        """4.17: thimsy-older/ and the run marker are Linux's to write but are not where RetroArch reads;
+        a numbered .bak stays beside the save and is never read as a save."""
+        for rel in ("emulator_config/retroarch/thimsy-older/saves/mesen/nes/Other Game.srm",
+                    "emulator_config/retroarch/thimsy-older/saves/mesen/nes/Other Game.srm.2",
+                    "emulator_config/retroarch/thimsy-older/states/mesen/nes/USA/Other Game.state1",
+                    "emulator_config/retroarch/.thimsy-run.json"):
+            with self.subTest(file=rel):
+                self.assertRegex(rel, LINUX_MAY_ADD)
+                self.assertNotRegex(rel, SHARED_SAVES)
+        for rel in ("emulator_config/retroarch/saves/mesen/nes/Zelda (USA).srm.2026-12-01.bak",
+                    "emulator_config/retroarch/saves/mesen/nes/Zelda (USA).srm.2026-12-01.2.bak"):
+            with self.subTest(file=rel):
+                self.assertRegex(rel, LINUX_MAY_ADD)
+                self.assertNotRegex(rel, r"\.(srm|sav|state\d*|state\.auto)$", "a .bak is not a save")
+        text = DOC.read_text(encoding="utf-8")
+        for name in ("thimsy-older/", ".thimsy-run.json", ".<date>.2.bak"):
+            self.assertIn(name, text)
+
+    def test_link_merge_conflicts_are_kept_under_linux_own_id(self):
+        """4.15: Linux writes conflicts/ only under its own id, through a link merge; section 3 lists it."""
+        self.assertRegex("emulator_config/conflicts/linux-9c1d0e7a42b35f86/ppsspp/PSP/SAVEDATA/x/DATA.BIN",
+                         LINUX_MAY_ADD)
+        self.assertNotRegex("emulator_config/conflicts/android-0123456789abcdef/ppsspp/PSP/SAVEDATA/x/DATA.BIN",
+                            LINUX_MAY_ADD)
+        tree = DOC.read_text(encoding="utf-8").split("## 3. Layout and owners", 1)[1].split("## 4.", 1)[0]
+        for folder in ("conflicts/<id>/", "retroarch/thimsy-older/", "retroarch/.thimsy-run.json"):
+            self.assertIn(folder, tree)
+
+    def test_launch_fields_are_kept_as_read(self):
         a = {s["id"]: s for s in card_json(ANDROID, "ES-DE/nano/systems.json")["systems"]}
         l = {s["id"]: s for s in card_json(LINUXW, "ES-DE/nano/systems.json")["systems"]}
         self.assertEqual(set(a), set(l), "Linux keeps every system, used or not")
@@ -297,15 +533,18 @@ class Vectors(unittest.TestCase):
         for line in l[len(a):]:
             self.assertTrue(line.startswith("%ROMPATH%/"), "a new line under ROMDirectory uses %ROMPATH%: " + line)
 
-    def test_nothing_linux_owns_holds_an_absolute_card_path(self):
-        owned = ["ES-DE/nano/systems.linux.json", "ES-DE/nano/format.json", "emulator_config/card.json"]
-        for rel, _p in files_under(LINUXW):
-            if rel.startswith("Thimsy/") or re.match(r"emulator_config/[^/]+/linux/", rel):
-                owned.append(rel)
-        self.assertTrue(any("/linux/" in r for r in owned))
-        for rel in owned:
-            with self.subTest(file=rel):
-                self.assertIsNone(ABSOLUTE_CARD.search((LINUXW / rel).read_text(encoding="utf-8")))
+    def test_nothing_thimsy_owns_holds_an_absolute_card_path(self):
+        # Emulator settings files in a set are the emulator's own bytes and may (4.24).
+        for card in (LINUXW, MULTI):
+            owned = []
+            for rel, _p in files_under(card):
+                if rel in ("ES-DE/nano/format.json", "emulator_config/card.json") or rel.startswith("Thimsy/") \
+                        or re.fullmatch(r"emulator_config/devices/[^/]+/(device|picks)\.json", rel):
+                    owned.append(rel)
+            self.assertTrue(any(r.endswith("/picks.json") for r in owned))
+            for rel in owned:
+                with self.subTest(card=card.name, file=rel):
+                    self.assertIsNone(ABSOLUTE_CARD.search((card / rel).read_text(encoding="utf-8")))
 
     def test_card_json_rules(self):
         doc = card_json(LINUXW, "emulator_config/card.json")
@@ -320,53 +559,22 @@ class Vectors(unittest.TestCase):
         self.assertTrue(found)
         self.assertLessEqual(found, set(ids))
 
-    def test_systems_linux_game_keys_name_real_games(self):
-        doc = card_json(LINUXW, "ES-DE/nano/systems.linux.json")
+    def test_linux_picks_sit_beside_the_legacy_ones(self):
+        """Linux's pick for a game Android picked too is in Linux's set; Android's item is untouched."""
+        picks = card_json(LINUXW, "emulator_config/devices/linux-9c1d0e7a42b35f86/picks.json")
         emus = {i["game"] for i in card_json(LINUXW, "ES-DE/nano/emulators.json")["items"]}
-        for game in doc.get("games", {}):
-            self.assertIn(game, emus, "fixture: the Linux choice sits beside Android's for the same game")
+        self.assertTrue(set(picks.get("games", {})) & emus)
 
-    # Example key classes for the PPSSPP fixture only; the full list is later work (OA-26).
-    PPSSPP_PLATFORM_KEYS = {("General", "CurrentDirectory"), ("Graphics", "GraphicsBackend")}
-
-    def test_ppsspp_layers(self):
-        rel = "emulator_config/ppsspp/PSP/SYSTEM/ppsspp.ini"
-        a, l = ini(ANDROID / rel), ini(LINUXW / rel)
-        self.assertEqual(set(a), set(l), "the shared file keeps every key, known or not")
-        for k in self.PPSSPP_PLATFORM_KEYS:
-            self.assertEqual(a[k], l[k], "Android's per-platform value stays in the shared file: %s" % (k,))
-        override = ini(LINUXW / "emulator_config/ppsspp/linux/PSP/SYSTEM/ppsspp.ini")
-        self.assertTrue(override)
-        self.assertLessEqual(set(override), self.PPSSPP_PLATFORM_KEYS, "the override holds per-platform keys only")
-
-    # OA-32 Q5 and Q6 and its autonomous answers: never on the card.
-    DEVICE_ONLY = re.compile(r"(^|\.)(ssh|password|passwd|api_key|kiosk|timezone|auto_time|system_name|rgb|led|slide)"
-                             r"(\.|_|$)|^scraper\.(user|pass|key)$|^hotkeys\..*button")
-
-    def test_settings_ini_dialect(self):
-        path = LINUXW / "Thimsy/settings.ini"
-        raw = path.read_bytes()
-        raw.decode("utf-8")
-        self.assertLessEqual(len(raw), 1 << 20)
-        section, keys = None, {}
-        for n, line in enumerate(raw.decode("utf-8").splitlines(), 1):
-            self.assertLessEqual(len(line.encode("utf-8")), 4096)
-            s = line.strip()
-            if not s or s[0] in "#;":
-                continue
-            m = re.fullmatch(r"\[([a-z0-9_.-]+)\]", s)
-            if m:
-                section = m.group(1)
-                continue
-            m = re.fullmatch(r"([a-z0-9_.]+)\s*=\s*(.*)", s)
-            self.assertIsNotNone(m, "line %d is not 'key = value': %r" % (n, line))
-            self.assertIsNotNone(section, "line %d is outside a section" % n)
-            keys[(section, m.group(1))] = m.group(2)
-            full = m.group(1) if section in ("meta", "android", "linux") or section.startswith("device.") \
-                else section + "." + m.group(1)
-            self.assertIsNone(self.DEVICE_ONLY.search(full), "a device-only key on the card: " + full)
-        self.assertEqual(keys[("meta", "format")], "1")
-        self.assertTrue(raw.decode("utf-8").rstrip().splitlines()[-1].startswith("#"), "Nano's trailer comment")
+    def test_theme_json_holds_only_theme_keys(self):
+        """What this build writes to theme.json is the 31 theme keys, never aspect ratio (4.26)."""
+        keys = set(card_json(LINUXW, "Thimsy/theme.json")["theme"])
+        self.assertTrue(keys)
+        self.assertLessEqual(keys, THEME_KEYS)
+        self.assertEqual(len(THEME_KEYS), 31)
+        text = DOC.read_text(encoding="utf-8")
+        for key in sorted(THEME_KEYS):
+            with self.subTest(key=key):
+                self.assertIn("`%s`" % key, text, "LIBRARY-FORMAT.md 4.26 lists it")
 
     def test_playlists_are_relative_m3u8(self):
         pl = LINUXW / "Thimsy/playlists"

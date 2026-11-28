@@ -1,18 +1,19 @@
 # User emulators plan: an emulator the user installs works like a pack-in
 
-Status: draft for review (2026-11-23). Not started. Builds on usb_storage_plan.md (drives), controller_layout_plan.md (phase 5, pad provisioning and Merge Controllers) and button_map_overlay_plan.md (readers). Worked example throughout: DuckStation for Android (PS1), which Thimsy may not ship.
+Status: draft for review (2026-11-23). Not started. Builds on usb_storage_plan.md (drives), controller_layout_plan.md (phase 5, pad provisioning and Merge Controllers) and button_map_overlay_plan.md (readers). Worked example throughout: DuckStation for Android (PS1), which Thimsy may not ship. Revised 2026-11-27 for `docs/linux/DECISIONS.md` OA-54: the definition also drives per-device settings, shared storage, launch entries per platform and card or local storage, on Android and Linux, and the shipped emulators use the same files (§1a). Still a plan: nothing here is implemented.
 
 ## Requirement (user, 2026-11-23)
 
 > I would like the users of thimsy to be able to install emulators that are not part of the official package, make that emulator an option for launching games, and create all of the features supported for packaged emulators - universal hotkey support, controller mapping, and exporting files to external storage. Research how this could be supported. Write a planning document in markdown and add it to the to-do list. here is one example - the duckstation standalone emulator.
 
-Read as six goals:
+Read as six goals, with a seventh added by OA-54:
 1. A user installs an emulator APK that Thimsy doesn't ship (Play, an app store, or a sideloaded APK).
 2. Thimsy offers it as a launch option per system, and per game, in Nano and in ES-DE.
 3. Universal hotkeys work for it.
 4. Controller mapping works for it: positional default binds, player assignment (Merge Controllers) and the button map overlay.
 5. Its files can go to external storage like a pack-in's (Move Emulator Files, microSD, later USB), and the BIOS installer puts BIOS files where it looks.
 6. All of this is driven by a data file (an **emulator definition**), so known-but-not-shipped emulators such as DuckStation get it without a rebuild, and a completely unknown emulator still gets a defined minimum.
+7. (OA-54, owner, 2026-11-27) The same file drives everything an integration needs, on both builds: the per-device settings (OA-46), the shared storage (OA-52, OA-53), the hotkeys, the controller map, the launch entries per platform and card or local storage. The shipped emulators are described by the same files, so a hand-written definition gets the same integration as a pack-in. per_device_config_plan.md holds the sync rules; this plan defines the fields (§1a).
 
 ## Conventions
 
@@ -172,18 +173,55 @@ Blocks (all optional except `id`, `name`, `packages`):
 | `install` | `{url, store_id, note}`: where to get the APK. Thimsy never hosts it | Nano UI |
 | `tested` | Versions known to work: `[{versionName, versionCode}]` | Nano UI |
 | `systems` | ROM-folder ids it plays (`["psx"]`); extends `defaultSystemFor` | Button map, Nano |
-| `players` | Daijisho-schema player entries per platform `uniqueId`, merged into `mEmuCatalog` | Nano |
+| `players` | Daijisho-schema player entries per platform `uniqueId`, merged into `mEmuCatalog`; the Android list of `launch` (§1a) | Nano |
+| `launch` | Launch entries per platform: `android` (the `players` list), `linux` (argv entries with the core and its save family) (§1a) | Nano (both builds) |
+| `files` | Per-device settings, shared storage and left-out files, per platform, and how config reaches the emulator and comes back (§1a) | Nano (both builds) |
 | `controls` | Button map reader, pad provisioning, player assignment (section 5) | Nano |
-| `storage` | Move, link, sync and grant rules (section 6) | Nano, registry |
+| `storage` | Card folder, move, link, sync and grant rules (section 6); its `link` and `sync` are shorthand for `files` entries (§1a) | Nano, registry |
 | `bios` | Where the BIOS installer puts a system's files for this app (section 6) | Nano |
 | `android_game` | `false` by default: listed packages are hidden from Android Games | Android Games helper |
 
 Where definitions come from:
-- **Shipped definitions** (origin `system`) in `/system/etc/gammaos/hotkeys/` from `mods/hotkeys/` (installed by `mods/55-hotkeys.sh:20-25`, no change). Thimsy ships definitions for known emulators it doesn't bundle: DuckStation first. A definition is not the app, so this doesn't redistribute anything.
+- **Shipped definitions** (origin `system`) in `/system/etc/gammaos/hotkeys/` from `mods/hotkeys/` (installed by `mods/55-hotkeys.sh:20-25`, no change). Thimsy ships a definition for every emulator it bundles (OA-54, §1a) and for known emulators it doesn't bundle: DuckStation first. A definition is not the app, so this doesn't redistribute anything.
 - **User definitions** in `/data/system/gammaos/hotkeys/`, written only by Nano after validation (sections 4 and 8), or by root by hand (the developer path in `HOTKEYS.md:421-429`, treated as `imported`). Nano records each file's origin in `/data/system/gammaos/emulators_state.json` (section 2). A file whose origin isn't recorded there is `imported`.
 - **(decide)** D2: a community index (a signed JSON in the Thimsy repo or releases) that Nano can fetch (origin `index`). Recommended later (phase 7), never automatic.
+- **Linux** reads the same format (OA-54): shipped definitions in `/usr/share/thimsy/emulators/`, user ones in `/storage/.config/thimsy/emulators/` (*proposed paths*, per_device_config_plan.md §2.8), imported through the same confirm screen (`linux_handheld_plan.md` §7.2, decision 17). `packages`, `signers` and `install` are Android fields; a Linux definition launches through `launch.linux`. Emulators the user installs on Linux are later work.
 
 **One validator, two languages.** Nano (`NanoEmuDefs`, C++) and PWM (`ThimsyHotkeyController`, Java) apply the same checks at load: 1 MB size cap (as `openTarget`), `schema`, known keys, and the user-tier rules (section 4). A file either reader refuses is ignored by both. One shared corpus of good and bad definitions drives `tests/unit/test_hotkey_controller.py` and `NanoEmuDefs_test.cpp`. PWM reads off the key path: it reloads when the directories change (a `FileObserver` or the stamp check on a handler thread), not on each hotkey.
+
+### 1a. Fields for settings, shared storage and launch (OA-54)
+
+OA-54 (`docs/linux/DECISIONS.md`) makes the definition the only source of an emulator's per-device configuration (OA-46), its shared storage (OA-52, OA-53), its hotkeys, its controller map, its launch entries and its card or local storage, on Android and Linux. The rules that use these fields are in per_device_config_plan.md: §2.2 the per-device set, §2.7 shared storage and the pointing methods, §5 the sync, §5.7 the launch order, §2.8 the mapping from each rule to a field. This section only defines the fields. They are part of `schema` 1: no definition has shipped.
+
+| Field | Meaning | per_device_config_plan.md |
+|---|---|---|
+| `files.roots` | Per platform, the base folders the emulator reads. Android: `media` (`/data/media/0/Android/data/<pkg>/files`), `data` (`/data/data/<pkg>`), `card` (the shared root: `emulator_config/<card_folder>` on the drive, or `internal` while the emulator files are on internal storage, `emu_sd` off), `internal` (the folder Move Emulator Files moves into the card folder, for example RetroArch's `/storage/emulated/0/RetroArch`, ScummVM's `/data/data/org.scummvm.scummvm/files`). Linux: `config` (`/storage/.config/<dir>`), `share` (`/storage/.local/share/<dir>`), `card`. `<dir>` matches `^[A-Za-z0-9._-]{1,32}$` | §3 |
+| `files.settings[]` | Per-device settings: `{base, rel, dir, many, skip, platforms}`. Each goes into the device's set, `devices/<id>/<card_folder>/[app/]<rel>` | §2.2 |
+| `files.shared[]` | Shared storage: `{base, rel, class, card, point, place, platforms, legacy, names}`. `class` is `drive`, `saves`, `states`, `bios` or `content`; `card` is its folder under the `card` root, which may use the placeholders `{save_family}`, `{core}`, `{system}` and `{subdir}`, filled at each launch from the launch entry and the game (such an entry must be pointed by `config_key` or `append`): `{system}` is the game's system folder under `ROMs/`, `{subdir}` the path of the game's own folder below it, empty for a game directly in `ROMs/<system>/` (an empty `{subdir}` leaves no empty path part), so games of one name in two subfolders get two folders. In `legacy` and `names`, `{game}` is the ROM's file name without its last extension, the name RetroArch gives its saves **(verify for `.m3u`, `.cue`, `.zip`, `.7z` and names with several dots, per_device_config_plan.md §8.5)**, matched literally (only a `*` in the pattern is a wildcard), and `{rom_dir}` is the ROM's own folder; `place` is `card` (the default) or `local`; `legacy` lists the places saves made outside the folder may be (`{rom_dir}/{game}.srm` beside the ROM, `saves/{game}.srm` loose, `saves/{core_name}/{game}.srm` sorted by core, `saves/{content_dir}/{game}.srm` and `saves/{core_name}/{content_dir}/{game}.srm` sorted by content directory, `{content_dir}` being the name of the ROM's own folder; a path without `{rom_dir}` is under the `card` root; `{names}` at the end of a `legacy` path stands for each of the entry's `names` patterns, so every per-game file a core writes, not only its `.srm`, is looked for in each place). A file in a `{core_name}` folder belongs to that core's family; any other to the game's legacy pick, else the system's. One is copied in once per game for the family it belongs to when the folder has none. A file in a place that does not name the game's system and folder (loose, a per-core or a content-directory folder) is copied in on its own only when no other game on the card has that name. Every other one is listed in Older saves (per_device_config_plan.md §2.7, `LIBRARY-FORMAT.md` 4.17). `names` lists every per-game file name the emulator or any of its cores writes in a placeholder folder (`{game}.srm`, `{game}.rtc`, a core's extra memory card or VMU files, `{game}.state*`); after each run a file of another game's name written there is moved to `thimsy-older/` and listed in Older saves | §2.7, §5.6 |
+| `files.shared[].point` | How the emulator reaches it: `slot`, `link`, `bind`, `append` (`{key}`: RetroArch's append config on Linux) or `config_key` (`{file, format, section, key}`, where `file` is one of this definition's `files.settings`). With `config_key` or `append`, `set` holds other keys fixed for the launch, and with `config_key` on a file with no launch copy, `rest` holds the values the stored file keeps: for a key whose `card` path has no launch placeholder, by default the shared-root path itself, `{card}/<card path>`, so the emulator opened outside Nano uses the same copy; only launch-placeholder and `set` keys rest at an emulator default; launch values go only into the per-launch copy where the definition has one (`files.launch_copy`), and then no stored file is reset: each keeps the user's own value of the key, and `rest` is not used; else they are put back to `rest` after each run. With `append`, each key's value in the live settings file, or its absence, is recorded before the run and put back after it (the value restored, the key removed only when it was absent), in case the emulator saved the launch's values there | §2.7, §5.6 |
+| `files.exclude[]` | `{base, glob}`: never synced, never moved (caches, shader caches, logs) | §2.2, §2.7 |
+| `files.live` | Per platform, where the emulator reads its settings: `local` (its own folder, which is the local copy) or `slot` (its folder on the card, filled from the set before each launch) | §5.6 |
+| `files.launch_copy` | Per platform, a settings file each launch passes as a per-launch copy: `{file, base, rel}`, where `file` is one of `files.settings` and `base` and `rel` a path under the definition's own roots that no other launcher names (RetroArch's on Android: `retroarch.cfg`, `media`, `thimsy-launch/retroarch.cfg`). Before a launch the copy is the live file plus the launch's `config_key` and `point.set` values, and the launch template's `{launch_config}` names it; after the run each other key the emulator changed in it goes back into the live file. A `config_key` entry with a launch placeholder in its `card` path, or with a `set`, must name a file that has a `launch_copy` on that platform | §5.6 |
+| `files.after` | When the after-run copy runs: `exit` (the emulator's process has ended: on Linux the game's process group, on Android every process of its packages) or `foreground` (Android: Nano is in front again). A definition with a `files.launch_copy`, or with any `config_key` or `append` point, uses `exit`, so no pointing key is put back while the emulator is alive; the validator refuses `foreground` there | §5.6 |
+| `launch.android[]` | Today's `players` entries (section 3). A definition may still write `players`; it is read as this list. An entry that runs a libretro core also carries `core`, `core_file` (RetroArch's: `{core}_libretro_android.so`), `save_family`, `core_name` and, when needed, `state_core`, as on Linux. The entry marked `frontend: libretro` (origin `system` only) names the `package`, `activity`, `extras` and `cores` folder of Nano's own `libretro-core` launches (the overlay's, the home's and Quick Resume's), with `{file.path}`, `{core.path}` and `{launch_config}` (the per-launch copy, `files.launch_copy`) as placeholders, and `config_prop`, the system property through which Nano tells the framework's home-screen launch where the per-launch copy is (RetroArch's: `sys.gammaos.retroarch.cfg_dir`); that framework launch stays code for now (per_device_config_plan.md §2.8) | §5.7, §2.7 |
+| `launch.linux[]` | `{id, name, systems, exts, argv, core, core_file, save_family, core_name, state_core, frontend}`: `argv` is a list of tokens with `{file.path}`, `{core.path}`, `{append}` and the `files.roots` names as placeholders, never run through a shell; `core` names a libretro core for a RetroArch entry; `core_file` is the core's file name as a template with `{core}` (RetroArch's: `{core}_libretro.so`), which fills `{core.path}` and through which `systems.json`'s `coreSo` is read (the `launch.android` entry's template) and written; `save_family` joins cores whose in-game saves are compatible (OA-21), and a core with none is its own family; `core_name` is the folder name RetroArch's own per-core sorting gives the core (its `library_name` **(verify per core)**), used only to know whose a legacy save is; `state_core`, default `core`, fills `{core}` in a states path, so a core whose two platform builds cannot read each other's states gets its own folder on one platform (per_device_config_plan.md §2.7); `frontend: libretro` (origin `system` only) marks the entry that takes `systems.json`'s `libretro-core` launches | §2.7, §5.7, §8.3 |
+| `actions`, `provision` | Hotkeys, as today (section 4). An entry may carry `platforms`. On Linux the drivers are the ones `linux_handheld_plan.md` §5.3 names: RetroArch's network commands and a signal to the game's process group | — |
+| `controls` | The controller map (section 5) | — |
+| `storage.needs_card_to_start` | Kept (section 6). With shared storage on the card and the card out, the emulator does not start | §2.7 |
+
+**Shorthand kept.** Section 6's `storage.link` entries are read as `files.shared` entries with `point: link`, `storage.sync` items as `files.settings` entries, and `storage.setting` entries as `files.shared` entries with `point.config_key` (the `file`, `format`, `section` and `key` given; `subdir` as the `card` path): the shared root's path is written per launch, and `point.rest` is the entry's `rest` value, else the shared-root path itself, `{card}/<subdir>` (the internal root while `emu_sd` is off). A `storage.setting` path has no launch placeholder, so the stored settings file keeps naming the one copy and the emulator opened outside Nano uses it too; only launch-placeholder and `set` keys rest at an emulator default (per_device_config_plan.md §2.7, §5.6). A path appears in one form only; the validator refuses a path written in both.
+
+**Shipped emulators use the same files.** Thimsy writes a definition for every emulator it ships (RetroArch, PPSSPP and ScummVM on both builds; on Android also Dolphin, Azahar, Vita3K, Flycast, DraStic and the other pack-ins). Today's per-emulator tables become data in those files, moved with no change of behaviour: `NanoEmuSync`'s `items()`, RetroArch's `raDirKeys` and slot list, `NanoSdMove.cpp`'s groups and link lists, the BIOS installer's slots. per_device_config_plan.md §2.7 gives the first cut for each and §2.8 says which of them that plan moves. From then on a pack-in and a user emulator differ only in their definition's origin, and a definition written by hand gets the same integration.
+
+**How the new fields fall under the existing rules.**
+
+- **Validator (section 1).** The same two readers, the same 1 MB cap, the `schema` check and the known-key check; the new keys join the known list. Every path is relative, with no `..` and no leading `/`, under one of the definition's own `files.roots`; a `card` path is under the definition's `card_folder`. A path listed as both settings and shared storage, or as shared and excluded, is refused. Linux uses the same C++ validator (`NanoEmuDefs`) and the same corpus.
+- **Origin (sections 4, 6 and 8).**
+  - `system` and `index`: every field.
+  - `imported`: `card_folder` is forced to `user-<id>`, as today. `files.settings` entries with `base: data` stay in the device's local set and never go to the card set (section 6's rule that an imported definition cannot sync private data to the card). `point: bind` is refused, since it needs a root mount. `point: config_key` may name only the definition's own settings files, like `provision[].file`. `launch.android` passes the player validation (section 3). `launch.linux`'s `argv[0]` must be an executable in the image or under the definition's own `share` root, and runs as `nano`.
+  - Overriding a built-in id keeps today's rule (`packages` a subset of the built-in's). An override's `files.shared` may move or narrow the built-in's shared storage within the same card folder, never add a folder outside it.
+- **Signing (sections 2 and 8).** The new fields grant no access. They name only files inside the definition's own folders and its card folder, which Nano already writes as root for `provision`. All files access and SAF grants still need a `system` or `index` origin, a signer pin match and consent. So a `slot` that the emulator reads through a SAF grant (Azahar's folder, for example) works for a user emulator only with those. Linux has no APK signer: a Linux definition's trust is its origin alone.
+- **User-editable.** Definitions and the per-device sets are plain, documented files (OA-54), with the schema `linux/schema/emulator-def.schema.json` (new). A user edits a copy and imports it (section 8); Nano never acts on a file it has not validated and recorded. Whether the device's set on the card keeps a copy of its user definitions is D12.
 
 ### 2. Registry: detection, signer check, grants
 
@@ -312,12 +350,12 @@ The 14 C++ readers stay. `defaultSystemFor` (P:11309-11317) consults the definit
 ```
 - `card_folder`: must match `^[a-z0-9_-]{1,32}$`. Built-in group folder names (`NanoSdMove.cpp` `kGroupPkg[]`, P:64857-64897: `dolphin`, `retroarch`, ...) and a name another definition already uses are refused, and the import fails on a clash. For `imported` definitions Nano forces the prefix `user-` (`user-<id>`), so a user file can't write into a shipped definition's folder.
 - `base`: `media` is `/data/media/0/Android/data/<pkg>/files`, `data` is `/data/data/<pkg>`. Paths are relative and may not contain `..` or start with `/`.
-- `link`: Dolphin's method (strategy C). Each listed subfolder moves to `<drive>/emulator_config/<card_folder>/<dir>` and becomes a link.
-- `sync`: `emusync::Item`s, appended to `kItems` (strategy D). Sync copies to the card, where any app with storage access can read and change the files, and card edits flow back into the app with the card winning (`README.md:588-599`). So:
+- `link`: Dolphin's method (strategy C). Each listed subfolder moves to `<drive>/emulator_config/<card_folder>/<dir>` and becomes a link. These folders are shared storage (OA-52, OA-53): one copy on the card for every device, no device mirror. From OA-54 on they are written as `files.shared` entries with `point: link` (§1a).
+- `sync`: per-device settings (strategy D), written as `files.settings` entries from OA-54 on (§1a). They go into this device's set on the card, `devices/<id>/<card_folder>/` (per_device_config_plan.md §2.2), not into one copy every device shares. The card copy is where any app with storage access can read and change the files, and card edits flow back into the app with the card winning (`README.md:588-599`, per_device_config_plan.md §5.1). So:
   - `base: "media"` is allowed for every origin (`Android/data` is already outside the app's private data);
   - `base: "data"` only for `system` and `index` origins, only for `shared_prefs` or named files, with a size cap per item (1 MB). An `imported` definition can't sync private data;
   - the confirm screen says "copies <app>'s private settings to the card, where other apps can read and change them" when a `data` item is present.
-- `setting`: rewrite one key in an `ini` or `xml_prefs` file to the card path (strategy A, generic formats only).
+- `setting`: point one key in an `ini` or `xml_prefs` file at the card path (strategy A, generic formats only). From OA-54 on it is a `files.shared` entry with `point.config_key` (§1a): the path is written before each launch and the `rest` value (by default the shared-root path itself, so the emulator opened outside Nano uses the same copy) put back after it.
 - `saf`: give the app `emulator_config/<card_folder>` as a picked folder and write the tree URI into a prefs key (strategy B). Needs registry consent.
 - `all_files`: request All files access through the registry (verified + consent, origin `system` or `index`).
 
@@ -325,12 +363,12 @@ The 14 C++ readers stay. `defaultSystemFor` (P:11309-11317) consults the definit
 
 **Code changes (Nano):**
 - Groups become dynamic: built-in `kGroup*` stay; each definition with `storage` gets a group id above them. `groupPkg()`, `fileJobRelocate`, `emuRepointAbsent`'s link loop and `sdGrantsFrom` look definitions up.
-- `emusync::items()` returns `kItems` plus definition items, rebuilt when the definition stamp changes.
+- `emusync::items()` comes from the definitions only, shipped ones included (`kItems` becomes their data, §1a), rebuilt when the definition stamp changes.
 - Every rule passes through `sdSourceRoot`, `sdTooBroad`, `sdAppPathSafe` and the "link only into this drive's `emulator_config/<card_folder>`" check. These cover the app's own files; the card copy is covered by the `sync` and `card_folder` rules above.
 
 **Card out.** Which rule applies depends on usb_storage_plan.md:
 - **Before it lands:** today's rule. `needs_card_to_start` makes a definition group block the launch with the usual message while its drive is out (`README.md:586-587`).
-- **After it lands:** `needs_card_to_start` maps to its fallback. Sync items fall back to internal copies like pack-ins (its option A or B). For `link` groups, the links point at the missing drive, so on removal each link is swapped for an internal folder (empty, or the mirror if option A keeps one); when the drive returns, the internal contents are copied back without overwriting (the drive wins) and the links are restored. The same swap is needed for Dolphin and hakuX, so it belongs in usb_storage_plan.md and definitions reuse it.
+- **After it lands:** under OA-52 and OA-53 shared storage has no device mirror, so per_device_config_plan.md §2.7 recommends that an emulator with shared storage on the card waits for the card, and the fallback below covers settings only (its owner question 20). If the owner chooses the fallback for shared storage too: `needs_card_to_start` maps to its fallback. Sync items fall back to internal copies like pack-ins (its option A or B). For `link` groups, the links point at the missing drive, so on removal each link is swapped for an internal folder (empty, or the mirror if option A keeps one); when the drive returns, the internal contents are copied back without overwriting (the drive wins) and the links are restored. The same swap is needed for Dolphin and hakuX, so it belongs in usb_storage_plan.md and definitions reuse it.
 - Order: Phase 5 ships either before usb_storage_plan.md with the blocking rule, or after it with the swap. It doesn't define a third behaviour.
 - `emuSdSlotCard()` becomes `emuSettingsDrive()` there, and definition groups get it with no extra work.
 
@@ -397,6 +435,7 @@ Each phase says what is code and what is data.
 
 **Phase 1: foundation and launch (code: Nano, PWM, rc, sepolicy; data: definition `players`, `systems`).**
 - `NanoEmuDefs` validator and the matching Java checks in `ThimsyHotkeyController` (size, `schema`, known keys, origin, user-tier rules, player validation, `card_folder`), with the shared corpus. PWM loads off the key path.
+- §1a's fields in the validator and in `linux/schema/emulator-def.schema.json`, and shipped definitions for the bundled emulators that carry today's tables (`items()`, `raDirKeys`, the link lists). per_device_config_plan.md's phase 0b needs them.
 - Precedence fix in PWM, Nano and `emulatorForPackage`.
 - rc `mkdir /data/system/gammaos/hotkeys` and the sepolicy line.
 - `loadEmuCatalog` merges definition players. Custom > Installed App... with templates. Per-game Custom row. `playerRepair` seed fallback (D4). Android Games user exclude list.
@@ -420,7 +459,7 @@ Each phase says what is code and what is data.
 - `readDeclarative`, the gammapad virtual-descriptor rule, `defaults_convention` through `PadModel`, DuckStation fixtures captured in Phase 0.
 
 **Phase 5: storage and BIOS (code: Nano; data: `storage`, `bios`).**
-- Dynamic groups, definition sync items with the origin rules, `card_folder` checks, card-out behaviour per usb_storage_plan.md's state (section 6), the D5 choice.
+- Dynamic groups, definition sync items (§1a's `files` entries) with the origin rules, `card_folder` checks, card-out behaviour per usb_storage_plan.md's state (section 6), the D5 choice.
 - `SLOT_DEFINITION` in the BIOS installer.
 - DuckStation `storage` and `bios` blocks per Phase 0 (link for the Play line; SAF if the beta's data-location setting can take a granted folder, UNVERIFIED).
 
@@ -444,6 +483,7 @@ Each phase says what is code and what is data.
 - **(decide) D9:** signer check: accept any certificate in the app's rotation lineage (`hasSigningCertificate`, simpler), or only the current signer, with a rotation treated as "signer changed: ask again" (stricter, recommended)?
 - **(decide) D10:** an imported definition gets no All files access or SAF grants (recommended), or gets them after a second confirm screen that says the source is unverified?
 - **(decide) D11:** where the import folder `Thimsy/emulators/` lives: internal shared storage only (as section 8 is drafted), the ES-DE Drive only (`usb_storage_plan.md`), or both? Recommended: both, always through **Import Definition...** and its confirm screen, never read live from a drive; this is what `linux_handheld_plan.md` decision 17 recommends for Linux. That decision and this one settle it together, and `android_launcher_plan.md` §3 item 8 follows.
+- **(decide) D12:** OA-54 keeps definitions locally or on the card. Recommended: with the SD card settings switch on, the device's set on the card carries a copy of its user definitions (`devices/<id>/emulators/<def id>.json`), and a copy changed on the card is used only after this device's Import Definition... screen accepts it. Or local only, imported again by hand after a reinstall. Settled with per_device_config_plan.md owner question 21.
 
 ## Risks
 
@@ -472,11 +512,11 @@ Each phase says what is code and what is data.
 - A framework test for `NanoPermGrantBridge`: a non-pack-in package without verified consent for its current signer gets no MES.
 
 **Nano C++ tests (`frameworks/base/cmds/gammaos-nano/test/unit/`)** (Nano's test suite is here; the patch has no `ps3xmb/test` directory)
-- New `NanoEmuDefs_test.cpp`: the shared corpus; path limits per package, size, unknown drivers and formats, no `*`, player option allowlist, `uniqueId` replacement only for `system` origin, `card_folder` rules, `base: "data"` refused for `imported`, `${appdata}`/`${appmedia}` expansion.
+- New `NanoEmuDefs_test.cpp`: the shared corpus; path limits per package, size, unknown drivers and formats, no `*`, player option allowlist, `uniqueId` replacement only for `system` origin, `card_folder` rules, `base: "data"` refused for `imported`, `${appdata}`/`${appmedia}` expansion. §1a: paths under `files.roots`, a path in both settings and shared refused, `bind` refused for `imported`, `config_key` only into the definition's own settings files, `launch.linux` argv rules, `imported` `data` settings kept out of the card set; the shipped definitions reproduce today's `items()`, `raDirKeys` and link lists.
 - `NanoSystemsHeal_test.cpp` (P:160383): seed fallback for a builtin system on a missing package (D4).
 - `NanoLaunch_test.cpp` (P:157974): DuckStation templates with `{file.uri}` and `{file.path}` for internal, card and subfolder ROMs.
 - `NanoButtonMapReaders_test.cpp` (P:153622): `readDeclarative` against fixture trees under `test/fixtures/buttonmap/duckstation/{bound,unbound}` captured in Phase 0; the gammapad virtual-descriptor rule.
-- `NanoEmuSync_test.cpp` (P:156421): definition items join `kItems`.
+- `NanoEmuSync_test.cpp` (P:156421): the items come from the definitions; the shipped ones equal today's `kItems`.
 - `NanoBiosCatalog_test.cpp` (P:152303): `SLOT_DEFINITION` installs a psx row to a definition's `dir`.
 - `test/e2e/NanoFileJob_e2e_test.cpp` (P:147331): a definition-driven link move and repoint.
 - `test/fuzz/json_fuzzer.cpp`: definition corpus and the player validator.
@@ -484,7 +524,7 @@ Each phase says what is code and what is data.
 ## Docs
 
 - README: a new section "Emulators you install": what works with no definition, with a definition, the DuckStation example, the consent screen, "hotkeys from the second launch", and the 1.2 ES-DE route. Update the storage-access bullet (`README.md:707-709`), the Move Emulator Files list (`README.md:560-587`) and the BIOS dialog text (`README.md:686-704`).
-- HOTKEYS.md: Profiles (`:126-132`) become definitions; the new blocks; user-tier limits and reserved ids; Add Emulator... and Bind Mode; Import Definition...; rewrite "Adding an emulator" (`:421-429`).
+- HOTKEYS.md: Profiles (`:126-132`) become definitions; the new blocks, §1a's included; user-tier limits and reserved ids; Add Emulator... and Bind Mode; Import Definition...; rewrite "Adding an emulator" (`:421-429`).
 - BIOS.md: definitions' `bios` targets.
 - TODO.md: add this plan under a new "Emulators" heading.
 
@@ -501,7 +541,7 @@ On a Cube with the 1.4.4 build:
 8. Button map over DuckStation shows the dualshock drawing with its binds (or "assumed defaults"), and the Quit row, with gammapad off, on with swap off, and on with swap on. An app with no definition shows the Quit row.
 9. Import Definition... from `/sdcard/Thimsy/emulators` shows the confirm screen with the origin "imported"; a definition that writes outside its package's folders, lists a system app, uses `fallback` as its id, or has a player with `--user` is refused with a reason.
 10. Consent screen for DuckStation names the app, the access and the origin; with a non-matching signer (a re-signed APK, installed after an uninstall), no grants at any point and a "signature doesn't match" note. An imported definition gets no grants (D10).
-11. Move Emulator Files to microSD moves DuckStation's memcards and states; DuckStation still finds them; card out blocks its launch with the usual message (or, after usb_storage_plan.md, falls back to internal with a banner); card back, games start.
+11. Move Emulator Files to microSD moves DuckStation's memcards and states; DuckStation still finds them; card out blocks its launch with the usual message, also after usb_storage_plan.md, since memcards and states are shared storage with no internal copy (per_device_config_plan.md §2.7), unless the owner picks that plan's fallback for shared storage (its owner question 20); card back, games start.
 12. With usb_storage_plan.md in: Emulator Settings Drive on a USB drive; pull it during the home screen and during a DuckStation game; DuckStation's links are swapped to internal and restored when the drive returns, with nothing lost.
 13. Install Your Own BIOS Files with a PS1 BIOS puts it where DuckStation looks; DuckStation boots with it.
 14. Update DuckStation (Play to beta): binds come back after its settings reset; "not tested" note if the version isn't listed; grants kept (same key).
@@ -565,10 +605,21 @@ Draft file `mods/hotkeys/duckstation.json`. Everything marked `UNVERIFIED` in th
               "stick-l:left": "LLeft", "stick-l:right": "LRight", "stick-l:up": "LUp", "stick-l:down": "LDown",
               "stick-r:left": "RLeft", "stick-r:right": "RRight", "stick-r:up": "RUp", "stick-r:down": "RDown"}
   },
+  "files": {
+    "live": {"android": "local"},
+    "after": {"android": "foreground"},
+    "settings": [{"base": "data", "rel": "shared_prefs", "dir": true},
+                 {"base": "media", "rel": "settings.ini"}],
+    "shared": [{"base": "media", "rel": "memcards",    "class": "saves",   "card": "memcards",    "point": "link"},
+               {"base": "media", "rel": "savestates",  "class": "states",  "card": "savestates",  "point": "link"},
+               {"base": "media", "rel": "bios",        "class": "bios",    "card": "bios",        "point": "link"},
+               {"base": "media", "rel": "covers",      "class": "content", "card": "covers",      "point": "link"},
+               {"base": "media", "rel": "screenshots", "class": "content", "card": "screenshots", "point": "link"},
+               {"base": "media", "rel": "cheats",      "class": "content", "card": "cheats",      "point": "link"}],
+    "exclude": [{"base": "media", "glob": "cache/**"}, {"base": "media", "glob": "shaders/**"}]
+  },
   "storage": {
     "card_folder": "duckstation",
-    "link": [{"base": "media", "dirs": ["memcards", "savestates", "bios", "covers", "screenshots", "cheats"]}],
-    "sync": [{"base": "data", "rel": "shared_prefs"}],
     "all_files": false,
     "needs_card_to_start": true
   },
@@ -592,7 +643,8 @@ What each part rests on:
 | Default pad convention | 2021 `ControllerAutoMapper.java:209-219` (Cross on `BUTTON_A`) | UNVERIFIED for current builds; the beta uses SDL's controller database (beta page) |
 | `players: unsupported` | No evidence either way for multitap or port assignment on Android | UNVERIFIED (Phase 0 step 7) |
 | Storage folders | `Android/data/<pkg>/files/{memcards,savestates}` ([guide](https://joeysretrohandhelds.com/guides/duckstation-android-setup-guide/)) | Single hobbyist source; others UNVERIFIED |
-| `sync` of `shared_prefs` | Origin `system`, so `base: "data"` is allowed for `shared_prefs` | Needs the confirm-screen line |
+| `files.settings` with `shared_prefs` | Origin `system`, so `base: "data"` is allowed for `shared_prefs`; it goes into each device's own set (per_device_config_plan.md §2.2) | Needs the confirm-screen line |
+| `files.shared` folders, `files.exclude` | OA-52, OA-53: memory cards, states and BIOS shared on the card, one copy; caches and shaders never synced | Folder names UNVERIFIED (Phase 0 step 4) |
 | BIOS folder `files/bios` | Desktop DuckStation's `bios` folder in its data dir | UNVERIFIED on Android (Phase 0 step 9) |
 | Beta data relocation | Beta page: data locations per category, document-provider folders allowed | UNVERIFIED whether Nano can set it without the app's UI |
 | Quit | No documented exit intent; `exit` driver | D7 |

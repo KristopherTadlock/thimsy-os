@@ -73,6 +73,7 @@ CLASSES = ("P", "M", "A", "L", "E", "D", "S", "R", "?")
 PORTABLE = ("P", "M", "A", "L")
 TYPES = ("bool", "int", "float", "enum", "string", "list", "color", "path", "url")
 ENCODINGS = ("1/0", "true/false")  # how a bool is stored in the device store
+CARD_FILES = ("theme",)  # a row's "card": the card file that also holds it (theme: Thimsy/theme.json, OA-51)
 SETTINGS_NS = {"kGlobal": "global", "kSecure": "secure", "kSystem": "system"}
 SKIP_DIRS = {"test", "tests", "testdata"}
 SKIP_PATHS = ("platform/host/",)  # the host build's fake platform: test code, never on a device
@@ -837,6 +838,12 @@ def check_table(table: dict, found: Dict[str, Use]) -> List[str]:
             if ini in ini_seen:
                 problems.append("%s: ini key %s is also %s's" % (m, ini, ini_seen[ini]))
             ini_seen[ini] = m
+        card = r.get("card")
+        if card is not None:
+            if card not in CARD_FILES:
+                problems.append("%s: card %r is not one of %s" % (m, card, ", ".join(CARD_FILES)))
+            elif not ini:
+                problems.append("%s: card %s, but no \"ini\" names it in that file" % (m, card))
         if c == "?" and m not in unclassified:
             problems.append("%s: class ?, but not in the unclassified list" % m)
         if c != "?" and m in unclassified:

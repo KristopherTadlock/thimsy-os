@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "theme": {
+    "home.theme": "1",
+    "xmb.theme": "2",
+    "xmb.color": "4",
+    "home.future_switch": "on"
+  }
+}

@@ -1,11 +1,13 @@
 """The settings schema inventory (portable_settings_plan.md §3.3 and §7.1 phase 0): every setting key
-nano/ reads or writes has a row in tools/nano-tree/prefs.json, classified as the plan and OA-32 say.
+nano/ reads or writes has a row in tools/nano-tree/prefs.json, classified as the plan says. OA-47 keeps it
+as the inventory of settings that are now local only; its "card" field marks the theme keys that OA-51
+keeps on the card in Thimsy/theme.json.
 Fork-only: it never gates an Android build. Run with
 
   python3 -m unittest discover -s tools/nano-tree/tests -t tools/nano-tree/tests -p test_prefs.py
 
 `python3 tools/nano-tree/tests/test_prefs.py --list` prints every scanned key with its class, its
-settings.ini key, the defaults the code passes and where it is first used.
+portable ini name, the defaults the code passes and where it is first used.
 `python3 tools/nano-tree/tests/test_prefs.py --update-globs` rewrites prefs-globs.txt after a key
 under a persist.* glob row was added or dropped and its class was checked.
 """
@@ -30,6 +32,7 @@ from nanotree.ratchets import read_list, write_list  # noqa: E402
 NANO = os.path.join(ROOT, "nano")
 TABLE = os.path.join(TOOL_DIR, "prefs.json")
 GLOBS = os.path.join(TOOL_DIR, "prefs-globs.txt")
+LIBRARY_FORMAT = os.path.join(ROOT, "LIBRARY-FORMAT.md")
 GLOBS_HEADER = """The keys each persist.* glob row in prefs.json covers ("<glob> <key>"; tools/nano-tree/nanotree/prefs.py).
 A glob takes in any new key under it, so test_prefs.py fails when this set changes: check the new key's
 class (give it its own row if the glob's class is wrong for it), then
@@ -125,14 +128,17 @@ class Prefs(unittest.TestCase):
                          "new key's class, then run tools/nano-tree/tests/test_prefs.py --update-globs:\n  "
                          + "\n  ".join(msg[:40]))
 
-    def test_oa32_rules(self):
-        # Theme travels and mirrors to ES-DE; aspect ratio per model (Q4).
+    def test_device_only_rules(self):
+        # The ES-DE theme is on the card and mirrored to ES-DE (OA-51); the aspect ratio stays local (OA-51).
         for k, es in (("themeset", "ThemeSet"), ("variant", "ThemeVariant"), ("colorscheme", "ThemeColorScheme"),
                       ("fontsize", "ThemeFontSize")):
             r = self.row("persist.gammaos.nano.esde." + k)
-            self.assertEqual((r["class"], r.get("es_de")), ("P", es))
+            self.assertEqual((r["class"], r.get("es_de"), r.get("card")), ("P", es, "theme"))
             self.assertTrue(r["ini"].startswith("esde_theme."))
-        self.assertEqual(self.row("persist.gammaos.nano.esde.aspectratio")["class"], "M")
+        aspect = self.row("persist.gammaos.nano.esde.aspectratio")
+        self.assertEqual(aspect["class"], "M")
+        self.assertNotIn("card", aspect)
+        self.assertNotIn("es_de", aspect)
         # Hotkey buttons, RGB light settings and slide actions: device only (Q5).
         for k in ("save", "load", "fastforward", "rewind", "quit", "buttonmap", "screen"):
             self.assertEqual(self.cls_of("persist.gammaos.hotkeys." + k), "D")
@@ -140,11 +146,11 @@ class Prefs(unittest.TestCase):
                   "persist.gammargb.control", "persist.gammaos.rotate.down_action", "persist.gammaos.rotate.up_action",
                   "persist.gammaos.rotate.launch_target"):
             self.assertEqual(self.cls_of(k), "D", k)
-        # Scraper account and API keys: never on the card (Q6).
+        # Scraper account and API keys: never on the card (OA-32 Q6, kept by OA-47).
         for k in ("ssuser", "sspass", "tgdbkey", "ssdevid", "ssdevpw"):
             self.assertEqual(self.cls_of("persist.gammaos.scraper." + k), "S")
-        # Language travels; time zone and automatic time stay (Q9).
-        self.assertEqual(self.cls_of("persist.sys.locale"), "P")
+        # Language is local like every Thimsy setting (OA-47); time zone and automatic time stay too.
+        self.assertNotIn("card", self.row("persist.sys.locale"))
         for k in ("persist.sys.timezone", "persist.gammaos.nano.tz_olson", "global:auto_time", "global:auto_time_zone"):
             self.assertEqual(self.cls_of(k), "D", k)
         # Kiosk Mode and the system name stay on the device (Q13).
@@ -154,6 +160,22 @@ class Prefs(unittest.TestCase):
         for r in self.rows:
             if r["class"] == "M":
                 self.assertTrue(r["ini"].startswith("device.*."), r["match"])
+
+    def test_theme_keys_are_the_only_card_keys(self):
+        """OA-47 and OA-51: only the theme switches and each theme's settings are on the card, in theme.json."""
+        theme = sorted(r["ini"] for r in self.rows if r.get("card") == "theme")
+        self.assertEqual(len(theme), 31)
+        self.assertEqual([r["match"] for r in self.rows if r.get("card") not in (None, "theme")], [])
+        for r in self.rows:
+            if r.get("card"):
+                self.assertEqual(r["class"], "P", r["match"])
+        if os.path.isfile(LIBRARY_FORMAT):
+            # LIBRARY-FORMAT.md 4.26 lists the same keys.
+            with open(LIBRARY_FORMAT, encoding="utf-8") as f:
+                text = f.read()
+            part = text[text.index("- **The theme keys (31)**"):text.index("- **Never in it, kept local:**")]
+            listed = sorted(set(re.findall(r"`([a-z0-9_]+(?:\.[a-z0-9_]+)+)`", part)))
+            self.assertEqual(theme, listed)
 
     def test_linux_only_keys_are_not_android_section(self):
         cfg = Upstream.load(ROOT)
@@ -421,6 +443,9 @@ class Unit(unittest.TestCase):
             {"match": "persist.h", "class": "D", "type": "enum", "default": "x", "note": "n", "source": "manual"},
             {"match": "persist.i", "class": "D", "type": "enum", "default": "auto", "values": ["auto"], "note": "n",
              "source": "manual"},
+            {"match": "persist.j", "class": "D", "card": "theme", "note": "n", "source": "manual"},
+            {"match": "persist.k", "class": "P", "ini": "home.k", "type": "string", "default": "", "card": "settings",
+             "note": "n", "source": "manual"},
         ]
         problems = check_table({"rows": rows, "unclassified": []}, found)
         text = "\n".join(problems)
@@ -437,6 +462,8 @@ class Unit(unittest.TestCase):
         self.assertIn("persist.g: an enum whose default '' is not one of its values (auto)", text)
         self.assertIn("persist.h: an enum, but no \"values\"", text)
         self.assertNotIn("persist.i", text)
+        self.assertIn("persist.j: card theme, but no \"ini\" names it in that file", text)
+        self.assertIn("persist.k: card 'settings' is not one of theme", text)
         self.assertNotIn("persist.a.y", text)        # covered by the glob
 
     def test_scripts(self):
