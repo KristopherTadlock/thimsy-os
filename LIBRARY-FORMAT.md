@@ -71,7 +71,7 @@ Schemas of Thimsy's new files (`card.json`, a set's `device.json`, `picks.json`,
 
 Shipped Android builds never check a `version` field (INTEROP-AUDIT.md). So:
 
-- **Changes are additive only.** A new file, a new field or a new folder. Never a new meaning for an existing field. `devices/`, `slot-kept/`, `conflicts/`, `retroarch/thimsy-older/`, `retroarch/.thimsy-run.json`, `theme.json`, the playlists and the folders `retroarch/saves/<family>/<system>/` and `retroarch/states/<core>/<system>/` are new; shipped builds leave them alone (plan §6.3).
+- **Changes are additive only.** A new file, a new field or a new folder. Never a new meaning for an existing field. `devices/`, `slot-kept/`, `conflicts/`, `retroarch/thimsy-older/`, `retroarch/.thimsy-run.json`, `theme.json`, the playlists and the folders `retroarch/saves/<family>/<system>/[<subdir>/]` and `retroarch/states/<core>/<system>/[<subdir>/]` are new; shipped builds leave them alone (plan §6.3).
 - **Labels are kept.** No writer removes or rewrites an existing `<altemulator>` or `<alternativeEmulator>`. From the per-device change on, neither build writes them at all; Android reads them once, at migration (***proposed***, plan §2.3, owner question 5). Older builds and the real ES-DE app read only these labels, and they stay valid.
 - **`names.json` and `index.json` stay in their absolute form** until the Android compatibility floor (Q12). Relative keys would be pruned or cleared by every shipped build (check.md B1, B2).
 - **The ROMDirectory re-root rule stays "only when the stored folder is missing"**, widened only to "or the stored id is a known alias of this card" (check.md B6).
@@ -578,7 +578,7 @@ Between any two devices that use one card, whatever their platform:
 - play counts only grow;
 - collection lines are kept verbatim;
 - every file Linux added is one this contract lets Linux write: its own set, `card.json`, `format.json`, `theme.json`, playlists, and saves and states in the shared RetroArch and per-emulator folders (4.17 to 4.19);
-- saves Linux added sit in `retroarch/saves/<family>/<system>/` and states in `retroarch/states/<core>/<system>/` (4.17), and none beside a ROM;
+- saves Linux added sit in `retroarch/saves/<family>/<system>/[<subdir>/]` and states in `retroarch/states/<core>/<system>/[<subdir>/]` (4.17), and none beside a ROM;
 - nothing Thimsy owns holds an absolute card path;
 - every Cube prefix in the card's files is in `card.json`'s aliases;
 - no `settings.ini`, `systems.linux.json`, `linux/` folder, PPSSPP override layer or shared `scummvm.ini` is written;
@@ -656,7 +656,7 @@ Proposed in wave 7 (W7-INTEROP), and where each stands now:
 - **W7-INTEROP-12:** a new shared `scummvm/scummvm.ini`. **Withdrawn**: OA-39 confirmed it, and OA-46 replaces OA-39 (never built).
 - **W7-INTEROP-13:** playlists in `Thimsy/playlists/`. **Confirmed** by OA-40 and OA-48.
 - **W7-INTEROP-14:** form (d) is written `/storage/%CARDID%/<rel>`; `%CARDID%/<rel>` is also read. Holds.
-- **W7-INTEROP-15:** OA-21's `linux/saves/<system>/` replaces `sort_savefiles_enable`. **Replaced** by OA-53: every save goes to `retroarch/saves/<family>/<system>/` and every state to `retroarch/states/<core>/<system>/`, on both platforms; there is no `linux/` folder (4.17).
+- **W7-INTEROP-15:** OA-21's `linux/saves/<system>/` replaces `sort_savefiles_enable`. **Replaced** by OA-53: every save goes to `retroarch/saves/<family>/<system>/[<subdir>/]` and every state to `retroarch/states/<core>/<system>/[<subdir>/]`, on both platforms; there is no `linux/` folder (4.17).
 - **W7-INTEROP-16:** schemas of Thimsy-new files are strict; schemas of Android files in the field allow unknown fields. Holds, with `picks.json` entries and `theme.json`'s keys kept open.
 
 Wave 7's owner questions, all answered:
