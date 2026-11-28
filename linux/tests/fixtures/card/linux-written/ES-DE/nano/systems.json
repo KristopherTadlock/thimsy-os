@@ -58,6 +58,24 @@
       ],
       "extensions": [".bin", ".n64", ".ndd", ".u1", ".v64", ".z64"],
       "icon": {"ref": "builtin:5", "tintR": 0, "tintG": 0.6, "tintB": 0}
+    },
+    {
+      "id": "3do",
+      "builtin": true,
+      "enabled": true,
+      "order": 20,
+      "displayName": "3DO",
+      "shortname": "3DO",
+      "romDir": "3do",
+      "launchType": "libretro-core",
+      "coreSo": "opera_libretro_android.so",
+      "package": "",
+      "launchArgs": "",
+      "intentTemplate": "",
+      "scanSources": [
+        {"type": "rawpath", "value": "/storage/%CARDID%/ROMs/3do", "subfolders": true}
+      ],
+      "extensions": [".iso", ".chd", ".cue"]
     }
   ]
 }

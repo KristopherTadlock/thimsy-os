@@ -12,8 +12,9 @@ linux/tests/fixtures/card/ holds three cards:
   linux-written/   the same card after a Linux visit that follows the
                    contract (favourite, play, collection add, Linux's own
                    emulator set and picks, the theme, a playlist, a save
-                   in the shared per-family folder and a save state in
-                   the shared per-core folder);
+                   in the shared per-family folder, a folder a core
+                   keeps itself below one, and a save state in the
+                   shared per-core folder);
   multi-device/    several devices' emulator sets side by side (OA-46):
                    two Android Cubes, both sides of a dual-boot ARC-D, a
                    partial set, and a theme.json with a newer writer's key.
@@ -82,9 +83,10 @@ THEME_KEYS = frozenset("""
 
 # Shared saves and states (OA-53, LIBRARY-FORMAT.md 4.17 to 4.19): RetroArch's saves in
 # saves/<family>/<system>/ and states in states/<core>/<system>/ (a family or core id, then a
-# system id), and the standalone emulators' own shared folders.
+# system id), with the files and folders a core keeps itself below them (opera/per_game/,
+# mame/, ...), and the standalone emulators' own shared folders.
 SHARED_SAVES = re.compile(
-    r"^emulator_config/(?:retroarch/(?:saves|states)/(?P<core>[a-z0-9][a-z0-9_.-]*)/(?P<system>[a-z0-9]+)/[^/]+$"
+    r"^emulator_config/(?:retroarch/(?:saves|states)/(?P<core>[a-z0-9][a-z0-9_.-]*)/(?P<system>[a-z0-9]+)/(?:[^/]+/)*[^/]+$"
     r"|ppsspp/PSP/(?:SAVEDATA|PPSSPP_STATE)/"
     r"|scummvm/saves/)")
 
@@ -93,7 +95,7 @@ LINUX_MAY_ADD = re.compile(
     r"^(?:ES-DE/nano/format\.json$"
     r"|emulator_config/card\.json$"
     r"|emulator_config/devices/linux-[0-9a-f]{16}/"
-    r"|emulator_config/retroarch/(?:saves|states)/[^/]+/[^/]+/[^/]+$"
+    r"|emulator_config/retroarch/(?:saves|states)/[^/]+/[^/]+/(?:[^/]+/)*[^/]+$"
     r"|emulator_config/ppsspp/PSP/(?:SAVEDATA|PPSSPP_STATE)/"
     r"|emulator_config/scummvm/saves/"
     r"|Thimsy/theme\.json$"
@@ -416,6 +418,23 @@ class Vectors(unittest.TestCase):
                     if rel.startswith("emulator_config/retroarch/"):
                         self.assertTrue(m.group("core"), "one folder per family or core")
                         self.assertIn(m.group("system"), systems, "then one folder per system")
+
+    def test_core_kept_folders_are_shared_storage(self):
+        """4.17: files and folders a core keeps itself land below its family's folder, at any depth;
+        a loose file in retroarch/saves/ or one without a system level is not where Linux writes."""
+        for rel in ("emulator_config/retroarch/saves/opera/3do/opera/per_game/x",
+                    "emulator_config/retroarch/saves/mame/arcade/mame/cfg/default.cfg",
+                    "emulator_config/retroarch/saves/mesen/nes/Zelda (USA).srm"):
+            with self.subTest(file=rel):
+                self.assertRegex(rel, SHARED_SAVES)
+                self.assertRegex(rel, LINUX_MAY_ADD)
+        for rel in ("emulator_config/retroarch/saves/Zelda (USA).srm",
+                    "emulator_config/retroarch/saves/mesen/Zelda (USA).srm",
+                    "emulator_config/retroarch/states/Zelda (USA).state"):
+            with self.subTest(file=rel):
+                self.assertNotRegex(rel, LINUX_MAY_ADD)
+        self.assertTrue((LINUXW / "emulator_config/retroarch/saves/opera/3do/opera/per_game/x").is_file(),
+                        "the Linux-written card has a core-kept folder")
 
     def test_launch_fields_are_kept_as_read(self):
         a = {s["id"]: s for s in card_json(ANDROID, "ES-DE/nano/systems.json")["systems"]}
