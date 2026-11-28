@@ -8,6 +8,7 @@ Working name in this document: **Thimsy Home** (the app), against **Thimsy OS** 
 
 - Port the Nano build's features to an Android launcher for Android gaming handhelds (Anbernic, AYN, Retroid Pocket), keeping as many features as possible.
 - The exported game lists and emulator profiles (through `ES-DE` and `emulator_config`) are interoperable between Thimsy OS as custom firmware and the Android launcher.
+  *(Refined 2026-11-27, `docs/linux/DECISIONS.md` OA-46 to OA-53: emulator profiles are per device, each device's set kept in `emulator_config/devices/<id>/` on the card (OA-46); game lists, media, saves, save states, BIOS and the theme are shared on the card by every device (OA-49, OA-51, OA-53). `LIBRARY-FORMAT.md` and `per_device_config_plan.md` have the rules.)*
 - The launcher can be installed as Android's main launcher (the home app).
 - Thimsy's UI and navigation are kept where possible.
 
