@@ -49,17 +49,17 @@ This was a read-only audit: nothing was built or run. The raw reports are in [in
 Shipped Android builds never check a `version` field, so any format change must be additive or dual-written.
 
 - **names.json and index.json:** relative keys or relative art paths in the existing files would be pruned or cleared by every shipped build. Use new files beside the old ones, or keep writing the absolute form, until a floor Android release ships.
-- **Emulator labels:** keep writing a label wherever one exists, because older builds and the real ES-DE app read only `<altemulator>`. Add a portable key beside it.
+- **Emulator labels:** keep writing a label wherever one exists, because older builds and the real ES-DE app read only `<altemulator>`. Add a portable key beside it. *(Superseded by OA-46. Now: existing labels are kept and never removed, but no build writes them after migration, because picks are per device; `LIBRARY-FORMAT.md` 1.4.)*
 - **Theme keys:** write ES-DE's `ThemeSet` only for themes that exist on the card, or use Nano-prefixed keys.
 - **ROMDirectory re-root:** keep the "stored folder missing" rule. A wider rule would redirect Android set-ups that use two volumes.
 
 ## Proposed direction (to become the card contract)
 
-The contract is now written: [LIBRARY-FORMAT.md](../../LIBRARY-FORMAT.md), with schemas in `linux/schema/` and test vectors in `linux/tests/fixtures/card/`. Its section 9 maps each gap above to where its fix lands.
+The contract is now written: [LIBRARY-FORMAT.md](../../LIBRARY-FORMAT.md), with schemas in `linux/schema/` and test vectors in `linux/tests/fixtures/card/`. Its section 9 maps each gap above to where its fix lands. The owner's rethink of config portability (`docs/linux/DECISIONS.md` OA-46 to OA-54, designed in [per_device_config_plan.md](../../per_device_config_plan.md)) replaced parts of this direction; those are marked below.
 
 - **Nothing new is written as an absolute path for the store's own volume.** Paths are relative, `%ROMPATH%`, folder-relative game keys or `%CARDID%`. Readers accept every legacy form. `emulator_config/card.json` lists every id each platform has seen for this card.
-- **Each platform keeps its own choices.** Linux uses `nano/systems.linux.json` and its own folders under `emulator_config/<emu>/linux/`. Shared emulator data (RetroArch BIOS and cheats, PPSSPP saves, ScummVM saves) lives in one place. Save states never cross platforms.
-- **Emulator choice uses a portable family key** (`core:pcsx_rearmed`, `emu:ppsspp`, `family:melonds`) from a shared table generated from ES-DE's `android` and `linuxarm` tables. Resolution order: this platform's choice, then the shared key, then the device default, then "unavailable on this device". A missing emulator never ends in a launch error.
+- **Each platform keeps its own choices.** *(Superseded by OA-46 and OA-53. Now: each device keeps its own emulator settings and picks in `emulator_config/devices/<id>/`, and saves, save states and BIOS are shared on the card by every device, kept apart per core.)* Linux uses `nano/systems.linux.json` and its own folders under `emulator_config/<emu>/linux/`. Shared emulator data (RetroArch BIOS and cheats, PPSSPP saves, ScummVM saves) lives in one place. Save states never cross platforms.
+- **Emulator choice uses a portable family key** (`core:pcsx_rearmed`, `emu:ppsspp`, `family:melonds`) from a shared table generated from ES-DE's `android` and `linuxarm` tables. Resolution order: this platform's choice, then the shared key, then the device default, then "unavailable on this device". *(Superseded by OA-46. Now: this device's pick for the game, then for the system, then the image default, then a fallback that is never recorded; the family key only names saves' families and fills informative `key` fields, `LIBRARY-FORMAT.md` section 5.)* A missing emulator never ends in a launch error.
 - **OA-4 fit:** `packageInstalled`/`coreSoExists`, the BIOS path whitelist, the Android path normalisation and the store default move behind the platform layer, in a new `Emulators` interface and an extended `Volumes`.
 
 ## Open questions for the owner
